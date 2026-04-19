@@ -3,7 +3,16 @@ export default function HomePage() {
     <main style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
       <h1>QualiFlow</h1>
       <p>Welcome to your Quality Management SaaS.</p>
-      <a href="/dashboard">Go to Dashboard</a>
+
+      <div style={{ marginTop: "20px" }}>
+        <a href="/dashboard" style={{ marginRight: "10px" }}>
+          Go to Dashboard
+        </a>
+
+        <a href="/login">
+          Login
+        </a>
+      </div>
     </main>
   );
 }
