@@ -1,10 +1,8 @@
-export default function HomePage() {
+export default function DashboardPage() {
   return (
-    <main style={{ padding: "20px" }}>
-      <h1>QualiFlow</h1>
-      <p>Welcome to your Quality Management SaaS</p>
-
-      <a href="/dashboard">Go to Dashboard</a>
+    <main style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
+      <h1>Dashboard</h1>
+      <p>Your dashboard is working.</p>
     </main>
   );
 }
