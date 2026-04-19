@@ -1,12 +1,26 @@
 "use client";
 
 import { useState } from "react";
+import { supabase } from "../../lib/supabaseClient";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
 
   const handleLogin = async () => {
-    alert(`Login link will be sent to ${email}`);
+    if (!email) {
+      alert("Please enter your email");
+      return;
+    }
+
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+    });
+
+    if (error) {
+      alert(error.message);
+    } else {
+      alert("Check your email for login link");
+    }
   };
 
   return (
@@ -21,7 +35,9 @@ export default function LoginPage() {
         style={{ padding: "8px", marginRight: "10px" }}
       />
 
-      <button onClick={handleLogin}>Send Login Link</button>
+      <button onClick={handleLogin}>
+        Send Login Link
+      </button>
     </main>
   );
 }
