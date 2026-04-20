@@ -5,6 +5,8 @@ import { supabase } from "../../lib/supabaseClient";
 
 export default function NcmrPage() {
   const [title, setTitle] = useState("");
+  const [severity, setSeverity] = useState("minor");
+  const [owner, setOwner] = useState("");
   const [list, setList] = useState<any[]>([]);
 
   const fetchData = async () => {
@@ -21,10 +23,12 @@ export default function NcmrPage() {
 
     await supabase.from("ncmrs").insert({
       title,
-      description: "",
+      severity,
+      owner,
     });
 
     setTitle("");
+    setOwner("");
     fetchData();
   };
 
@@ -36,19 +40,38 @@ export default function NcmrPage() {
     <main style={{ padding: "20px", fontFamily: "Arial" }}>
       <h1>NCMR</h1>
 
-      <input
-        value={title}
-        onChange={(e) => setTitle(e.target.value)}
-        placeholder="Enter NCMR title"
-        style={{ marginRight: "10px" }}
-      />
+      <div style={{ marginBottom: "10px" }}>
+        <input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="Title"
+          style={{ marginRight: "10px" }}
+        />
 
-      <button onClick={addNcmr}>Add</button>
+        <select
+          value={severity}
+          onChange={(e) => setSeverity(e.target.value)}
+          style={{ marginRight: "10px" }}
+        >
+          <option value="minor">Minor</option>
+          <option value="major">Major</option>
+          <option value="critical">Critical</option>
+        </select>
 
-      <ul style={{ marginTop: "20px" }}>
+        <input
+          value={owner}
+          onChange={(e) => setOwner(e.target.value)}
+          placeholder="Owner"
+          style={{ marginRight: "10px" }}
+        />
+
+        <button onClick={addNcmr}>Add</button>
+      </div>
+
+      <ul>
         {list.map((item) => (
           <li key={item.id}>
-            {item.title} — {item.status}
+            {item.title} — {item.severity} — {item.owner} — {item.status}
           </li>
         ))}
       </ul>
