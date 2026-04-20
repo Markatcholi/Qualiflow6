@@ -7,11 +7,10 @@ type Capa = {
   id: string;
   title: string | null;
   status: string | null;
-  ncmrs: {
-    id: string;
-    title: string;
-    severity: string;
-  }[];
+  owner: string | null;
+  due_date: string | null;
+  effectiveness_check: string | null;
+  linked_ncmr_title: string | null;
 };
 
 export default function CapaPage() {
@@ -20,16 +19,7 @@ export default function CapaPage() {
   const fetchData = async () => {
     const { data, error } = await supabase
       .from("capas")
-      .select(`
-        id,
-        title,
-        status,
-        ncmrs (
-          id,
-          title,
-          severity
-        )
-      `)
+      .select("*")
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -40,35 +30,63 @@ export default function CapaPage() {
     setList((data as Capa[]) || []);
   };
 
+  const updateStatus = async (id: string, status: string) => {
+    const { error } = await supabase
+      .from("capas")
+      .update({ status })
+      .eq("id", id);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    fetchData();
+  };
+
   useEffect(() => {
     fetchData();
   }, []);
 
   return (
-    <main style={{ padding: "20px", fontFamily: "Arial" }}>
+    <main style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
       <h1>CAPA Records</h1>
 
       {list.length === 0 ? (
         <p>No CAPA records yet.</p>
       ) : (
         <ul>
-          {list.map((item) => {
-            const linkedNcmr = item.ncmrs?.[0];
+          {list.map((item) => (
+            <li key={item.id} style={{ marginBottom: "16px" }}>
+              <strong>{item.title}</strong> — {item.status}
+              <br />
+              Owner: {item.owner || "Not assigned"}
+              <br />
+              Due Date: {item.due_date || "Not set"}
+              <br />
+              Effectiveness Check: {item.effectiveness_check || "Not started"}
 
-            return (
-              <li key={item.id} style={{ marginBottom: "12px" }}>
-                <strong>{item.title}</strong> — {item.status}
-                <br />
-                {linkedNcmr && (
-                  <>
-                    Linked NCMR: {linkedNcmr.title} — {linkedNcmr.severity}
-                    <br />
-                    <a href={`/ncmrs/${linkedNcmr.id}`}>Open Investigation</a>
-                  </>
-                )}
-              </li>
-            );
-          })}
+              <div style={{ marginTop: "8px" }}>
+                <button
+                  onClick={() => updateStatus(item.id, "in_progress")}
+                  style={{ marginRight: "8px" }}
+                >
+                  Move to In Progress
+                </button>
+
+                <button
+                  onClick={() => updateStatus(item.id, "effectiveness_check")}
+                  style={{ marginRight: "8px" }}
+                >
+                  Move to Effectiveness Check
+                </button>
+
+                <button onClick={() => updateStatus(item.id, "closed")}>
+                  Close
+                </button>
+              </div>
+            </li>
+          ))}
         </ul>
       )}
 
