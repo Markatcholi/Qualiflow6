@@ -58,7 +58,10 @@ export default function CapaPage() {
         <ul>
           {list.map((item) => (
             <li key={item.id} style={{ marginBottom: "16px" }}>
-              <strong>{item.title}</strong> — {item.status}
+              <a href={`/capa/${item.id}`}>
+                <strong>{item.title}</strong>
+              </a>{" "}
+              — {item.status}
               <br />
               Owner: {item.owner || "Not assigned"}
               <br />
