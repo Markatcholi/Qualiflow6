@@ -38,17 +38,33 @@ export default function NcmrPage() {
 
     const capaRequired = severity === "major" || severity === "critical";
 
-    const { error } = await supabase.from("ncmrs").insert({
-      title,
-      severity,
-      owner,
-      status: "open",
-      capa_required: capaRequired,
-    });
+    const { data, error } = await supabase
+      .from("ncmrs")
+      .insert({
+        title,
+        severity,
+        owner,
+        status: "open",
+        capa_required: capaRequired,
+      })
+      .select()
+      .single();
 
     if (error) {
       alert(error.message);
       return;
+    }
+
+    if (capaRequired && data) {
+      const { error: capaError } = await supabase.from("capas").insert({
+        ncmr_id: data.id,
+        title: `CAPA for ${title}`,
+      });
+
+      if (capaError) {
+        alert(capaError.message);
+        return;
+      }
     }
 
     setTitle("");
