@@ -14,6 +14,9 @@ export default function LoginPage() {
 
     const { error } = await supabase.auth.signInWithOtp({
       email,
+      options: {
+        emailRedirectTo: "https://qualiflow6.vercel.app/dashboard",
+      },
     });
 
     if (error) {
