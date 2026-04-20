@@ -10,6 +10,7 @@ type Ncmr = {
   severity: string | null;
   owner: string | null;
   status: string | null;
+  capa_required: boolean | null;
   created_at: string | null;
 };
 
@@ -36,11 +37,14 @@ export default function NcmrPage() {
   const addNcmr = async () => {
     if (!title) return;
 
+    const capaRequired = severity === "major" || severity === "critical";
+
     const { error } = await supabase.from("ncmrs").insert({
       title,
       severity,
       owner,
       status: "open",
+      capa_required: capaRequired,
     });
 
     if (error) {
@@ -102,8 +106,14 @@ export default function NcmrPage() {
 
       <ul>
         {list.map((item) => (
-          <li key={item.id} style={{ marginBottom: "10px" }}>
+          <li key={item.id} style={{ marginBottom: "12px" }}>
             <strong>{item.title}</strong> — {item.severity} — {item.owner} — {item.status}
+            {item.capa_required ? (
+              <span style={{ color: "red", marginLeft: "10px" }}>
+                CAPA Required
+              </span>
+            ) : null}
+
             <div style={{ marginTop: "6px" }}>
               <button
                 onClick={() => updateStatus(item.id, "investigation")}
@@ -111,6 +121,7 @@ export default function NcmrPage() {
               >
                 Move to Investigation
               </button>
+
               <button onClick={() => updateStatus(item.id, "closed")}>
                 Close
               </button>
