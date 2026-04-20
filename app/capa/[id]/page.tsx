@@ -58,14 +58,21 @@ export default function CapaDetailPage() {
   };
 
   useEffect(() => {
-    if (id) fetchRecord();
+    if (id) {
+      fetchRecord();
+    }
   }, [id]);
 
-  if (loading) return <main style={{ padding: "20px" }}>Loading...</main>;
-  if (!record) return <main style={{ padding: "20px" }}>Not found</main>;
+  if (loading) {
+    return <main style={{ padding: "20px" }}>Loading...</main>;
+  }
+
+  if (!record) {
+    return <main style={{ padding: "20px" }}>CAPA not found</main>;
+  }
 
   return (
-    <main style={{ padding: "20px", fontFamily: "Arial" }}>
+    <main style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
       <h1>CAPA Detail</h1>
 
       <p><strong>Title:</strong> {record.title}</p>
@@ -114,6 +121,7 @@ export default function CapaDetailPage() {
       </button>
 
       <br /><br />
+
       <a href="/capa">Back to CAPA</a>
     </main>
   );
