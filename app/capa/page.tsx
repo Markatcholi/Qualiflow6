@@ -11,7 +11,7 @@ type Capa = {
     id: string;
     title: string;
     severity: string;
-  } | null;
+  }[];
 };
 
 export default function CapaPage() {
@@ -37,7 +37,7 @@ export default function CapaPage() {
       return;
     }
 
-    setList(data || []);
+    setList((data as Capa[]) || []);
   };
 
   useEffect(() => {
@@ -52,21 +52,23 @@ export default function CapaPage() {
         <p>No CAPA records yet.</p>
       ) : (
         <ul>
-          {list.map((item) => (
-            <li key={item.id} style={{ marginBottom: "12px" }}>
-              <strong>{item.title}</strong> — {item.status}
-              <br />
-              {item.ncmrs && (
-                <>
-                  Linked NCMR: {item.ncmrs.title} — {item.ncmrs.severity}
-                  <br />
-                  <a href={`/ncmrs/${item.ncmrs.id}`}>
-                    Open Investigation
-                  </a>
-                </>
-              )}
-            </li>
-          ))}
+          {list.map((item) => {
+            const linkedNcmr = item.ncmrs?.[0];
+
+            return (
+              <li key={item.id} style={{ marginBottom: "12px" }}>
+                <strong>{item.title}</strong> — {item.status}
+                <br />
+                {linkedNcmr && (
+                  <>
+                    Linked NCMR: {linkedNcmr.title} — {linkedNcmr.severity}
+                    <br />
+                    <a href={`/ncmrs/${linkedNcmr.id}`}>Open Investigation</a>
+                  </>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
 
