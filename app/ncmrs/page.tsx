@@ -6,7 +6,6 @@ import { supabase } from "../../lib/supabaseClient";
 type Ncmr = {
   id: string;
   title: string | null;
-  description: string | null;
   severity: string | null;
   owner: string | null;
   status: string | null;
@@ -72,6 +71,10 @@ export default function NcmrPage() {
     fetchData();
   };
 
+  useEffect(() => {
+    fetchData();
+  }, []);
+
   return (
     <main style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
       <h1>NCMR</h1>
@@ -122,9 +125,14 @@ export default function NcmrPage() {
                 Move to Investigation
               </button>
 
-              <button onClick={() => updateStatus(item.id, "closed")}>
+              <button
+                onClick={() => updateStatus(item.id, "closed")}
+                style={{ marginRight: "8px" }}
+              >
                 Close
               </button>
+
+              <a href={`/ncmrs/${item.id}`}>Open Investigation</a>
             </div>
           </li>
         ))}
