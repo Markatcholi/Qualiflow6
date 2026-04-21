@@ -39,6 +39,20 @@ export default function NcmrPage() {
     setList((data as Ncmr[]) || []);
   };
 
+  const addAuditLog = async (
+    entityType: string,
+    entityId: string,
+    action: string,
+    details: string
+  ) => {
+    await supabase.from("audit_logs").insert({
+      entity_type: entityType,
+      entity_id: entityId,
+      action,
+      details,
+    });
+  };
+
   const addNcmr = async () => {
     if (!title) return;
 
@@ -61,6 +75,13 @@ export default function NcmrPage() {
       return;
     }
 
+    await addAuditLog(
+      "ncmr",
+      data.id,
+      "created",
+      `Created NCMR: ${title}`
+    );
+
     if (capaRequired && data) {
       const { error: capaError } = await supabase.from("capas").insert({
         ncmr_id: data.id,
@@ -72,6 +93,13 @@ export default function NcmrPage() {
         alert(capaError.message);
         return;
       }
+
+      await addAuditLog(
+        "ncmr",
+        data.id,
+        "capa_triggered",
+        `CAPA automatically required for severity: ${severity}`
+      );
     }
 
     setTitle("");
@@ -83,11 +111,11 @@ export default function NcmrPage() {
   const investigationComplete = (item: Ncmr) => {
     return Boolean(
       item.problem_description &&
-      item.containment_action &&
-      item.investigation_summary &&
-      item.root_cause &&
-      item.risk_assessment &&
-      item.corrective_action
+        item.containment_action &&
+        item.investigation_summary &&
+        item.root_cause &&
+        item.risk_assessment &&
+        item.corrective_action
     );
   };
 
@@ -96,6 +124,8 @@ export default function NcmrPage() {
       alert("Cannot close NCMR until investigation is completed.");
       return;
     }
+
+    const oldStatus = item.status;
 
     const { error } = await supabase
       .from("ncmrs")
@@ -106,6 +136,13 @@ export default function NcmrPage() {
       alert(error.message);
       return;
     }
+
+    await addAuditLog(
+      "ncmr",
+      item.id,
+      "status_changed",
+      `Status changed from ${oldStatus} to ${status}`
+    );
 
     fetchData();
   };
