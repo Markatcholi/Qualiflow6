@@ -45,11 +45,15 @@ export default function NcmrPage() {
     action: string,
     details: string
   ) => {
+    const { data: userData } = await supabase.auth.getUser();
+    const email = userData?.user?.email || "unknown";
+
     await supabase.from("audit_logs").insert({
       entity_type: entityType,
       entity_id: entityId,
       action,
       details,
+      user_email: email,
     });
   };
 
@@ -75,12 +79,7 @@ export default function NcmrPage() {
       return;
     }
 
-    await addAuditLog(
-      "ncmr",
-      data.id,
-      "created",
-      `Created NCMR: ${title}`
-    );
+    await addAuditLog("ncmr", data.id, "created", `Created NCMR: ${title}`);
 
     if (capaRequired && data) {
       const { error: capaError } = await supabase.from("capas").insert({
@@ -186,7 +185,8 @@ export default function NcmrPage() {
       <ul>
         {list.map((item) => (
           <li key={item.id} style={{ marginBottom: "12px" }}>
-            <strong>{item.title}</strong> — {item.severity} — {item.owner} — {item.status}
+            <strong>{item.title}</strong> — {item.severity} — {item.owner} —{" "}
+            {item.status}
             {item.capa_required ? (
               <span style={{ color: "red", marginLeft: "10px" }}>
                 CAPA Required
