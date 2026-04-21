@@ -9,6 +9,7 @@ type AuditLog = {
   entity_id: string | null;
   action: string | null;
   details: string | null;
+  user_email: string | null;
   created_at: string | null;
 };
 
@@ -46,6 +47,10 @@ export default function AuditPage() {
               <strong>{log.entity_type}</strong> — {log.action}
               <br />
               {log.details}
+              <br />
+              <span style={{ color: "gray" }}>
+                User: {log.user_email || "unknown"}
+              </span>
               <br />
               <small>{log.created_at}</small>
             </li>
