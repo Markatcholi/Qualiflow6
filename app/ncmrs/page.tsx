@@ -10,6 +10,12 @@ type Ncmr = {
   owner: string | null;
   status: string | null;
   capa_required: boolean | null;
+  problem_description: string | null;
+  containment_action: string | null;
+  investigation_summary: string | null;
+  root_cause: string | null;
+  risk_assessment: string | null;
+  corrective_action: string | null;
   created_at: string | null;
 };
 
@@ -30,7 +36,7 @@ export default function NcmrPage() {
       return;
     }
 
-    setList(data || []);
+    setList((data as Ncmr[]) || []);
   };
 
   const addNcmr = async () => {
@@ -59,6 +65,7 @@ export default function NcmrPage() {
       const { error: capaError } = await supabase.from("capas").insert({
         ncmr_id: data.id,
         title: `CAPA for ${title}`,
+        linked_ncmr_title: title,
       });
 
       if (capaError) {
@@ -73,11 +80,27 @@ export default function NcmrPage() {
     fetchData();
   };
 
-  const updateStatus = async (id: string, status: string) => {
+  const investigationComplete = (item: Ncmr) => {
+    return Boolean(
+      item.problem_description &&
+      item.containment_action &&
+      item.investigation_summary &&
+      item.root_cause &&
+      item.risk_assessment &&
+      item.corrective_action
+    );
+  };
+
+  const updateStatus = async (item: Ncmr, status: string) => {
+    if (status === "closed" && !investigationComplete(item)) {
+      alert("Cannot close NCMR until investigation is completed.");
+      return;
+    }
+
     const { error } = await supabase
       .from("ncmrs")
       .update({ status })
-      .eq("id", id);
+      .eq("id", item.id);
 
     if (error) {
       alert(error.message);
@@ -135,14 +158,14 @@ export default function NcmrPage() {
 
             <div style={{ marginTop: "6px" }}>
               <button
-                onClick={() => updateStatus(item.id, "investigation")}
+                onClick={() => updateStatus(item, "investigation")}
                 style={{ marginRight: "8px" }}
               >
                 Move to Investigation
               </button>
 
               <button
-                onClick={() => updateStatus(item.id, "closed")}
+                onClick={() => updateStatus(item, "closed")}
                 style={{ marginRight: "8px" }}
               >
                 Close
