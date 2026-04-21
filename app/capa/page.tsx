@@ -30,11 +30,16 @@ export default function CapaPage() {
     setList((data as Capa[]) || []);
   };
 
-  const updateStatus = async (id: string, status: string) => {
+  const updateStatus = async (item: Capa, status: string) => {
+    if (status === "closed" && !item.effectiveness_check) {
+      alert("Cannot close CAPA until effectiveness check is completed.");
+      return;
+    }
+
     const { error } = await supabase
       .from("capas")
       .update({ status })
-      .eq("id", id);
+      .eq("id", item.id);
 
     if (error) {
       alert(error.message);
@@ -71,20 +76,20 @@ export default function CapaPage() {
 
               <div style={{ marginTop: "8px" }}>
                 <button
-                  onClick={() => updateStatus(item.id, "in_progress")}
+                  onClick={() => updateStatus(item, "in_progress")}
                   style={{ marginRight: "8px" }}
                 >
                   Move to In Progress
                 </button>
 
                 <button
-                  onClick={() => updateStatus(item.id, "effectiveness_check")}
+                  onClick={() => updateStatus(item, "effectiveness_check")}
                   style={{ marginRight: "8px" }}
                 >
                   Move to Effectiveness Check
                 </button>
 
-                <button onClick={() => updateStatus(item.id, "closed")}>
+                <button onClick={() => updateStatus(item, "closed")}>
                   Close
                 </button>
               </div>
