@@ -10,7 +10,6 @@ export default function DashboardPage() {
   const [capaOverdue, setCapaOverdue] = useState(0);
 
   const fetchData = async () => {
-    // NCMR Open
     const { data: ncmrOpenData } = await supabase
       .from("ncmrs")
       .select("*")
@@ -18,7 +17,6 @@ export default function DashboardPage() {
 
     setNcmrOpen(ncmrOpenData?.length || 0);
 
-    // NCMR Investigation
     const { data: ncmrInvData } = await supabase
       .from("ncmrs")
       .select("*")
@@ -26,7 +24,6 @@ export default function DashboardPage() {
 
     setNcmrInvestigation(ncmrInvData?.length || 0);
 
-    // CAPA Open
     const { data: capaData } = await supabase
       .from("capas")
       .select("*")
@@ -34,7 +31,6 @@ export default function DashboardPage() {
 
     setCapaOpen(capaData?.length || 0);
 
-    // CAPA Overdue
     const today = new Date().toISOString().split("T")[0];
 
     const { data: overdueData } = await supabase
@@ -72,10 +68,13 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <br />
-
-      <a href="/ncmrs">Go to NCMRs</a> |{" "}
-      <a href="/capa">Go to CAPAs</a>
+      <div style={{ marginTop: "20px" }}>
+        <a href="/ncmrs">Go to NCMRs</a>
+        {" | "}
+        <a href="/capa">Go to CAPAs</a>
+        {" | "}
+        <a href="/audit">Go to Audit Trail</a>
+      </div>
     </main>
   );
 }
