@@ -10,11 +10,26 @@ type Capa = {
   owner: string | null;
   due_date: string | null;
   effectiveness_check: string | null;
-  linked_ncmr_title: string | null;
 };
 
 export default function CapaPage() {
   const [list, setList] = useState<Capa[]>([]);
+  const [userRole, setUserRole] = useState<string>("");
+
+  const fetchUserRole = async () => {
+    const { data: userData } = await supabase.auth.getUser();
+    const email = userData?.user?.email;
+
+    if (!email) return;
+
+    const { data } = await supabase
+      .from("user_roles")
+      .select("role")
+      .eq("user_email", email)
+      .single();
+
+    setUserRole(data?.role || "");
+  };
 
   const fetchData = async () => {
     const { data, error } = await supabase
@@ -31,9 +46,16 @@ export default function CapaPage() {
   };
 
   const updateStatus = async (item: Capa, status: string) => {
-    if (status === "closed" && !item.effectiveness_check) {
-      alert("Cannot close CAPA until effectiveness check is completed.");
-      return;
+    if (status === "closed") {
+      if (!item.effectiveness_check) {
+        alert("Cannot close CAPA until effectiveness check is completed.");
+        return;
+      }
+
+      if (userRole !== "approver") {
+        alert("Only an approver can close CAPA.");
+        return;
+      }
     }
 
     const { error } = await supabase
@@ -50,12 +72,15 @@ export default function CapaPage() {
   };
 
   useEffect(() => {
+    fetchUserRole();
     fetchData();
   }, []);
 
   return (
     <main style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
       <h1>CAPA Records</h1>
+
+      <p><strong>Your Role:</strong> {userRole || "none"}</p>
 
       {list.length === 0 ? (
         <p>No CAPA records yet.</p>
