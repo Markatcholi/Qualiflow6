@@ -20,26 +20,45 @@ export default function CapaPage() {
   const [userEmail, setUserEmail] = useState<string>("");
 
   const fetchUserRole = async () => {
-    const { data: userData } = await supabase.auth.getUser();
+    const { data: userData, error: userError } = await supabase.auth.getUser();
+
+    if (userError) {
+      alert(userError.message);
+      return;
+    }
+
     const email = userData?.user?.email || "";
     setUserEmail(email);
 
-    if (!email) return;
+    if (!email) {
+      setUserRole("");
+      return;
+    }
 
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("user_roles")
       .select("role")
       .eq("user_email", email)
       .maybeSingle();
 
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
     setUserRole(data?.role || "");
   };
 
   const fetchData = async () => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("capas")
       .select("*")
       .order("created_at", { ascending: false });
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
 
     setList((data as Capa[]) || []);
   };
@@ -55,11 +74,11 @@ export default function CapaPage() {
       return;
     }
 
-    const confirm = window.confirm(
+    const confirmClose = window.confirm(
       "By closing this CAPA, you are electronically signing that it is complete. Continue?"
     );
 
-    if (!confirm) return;
+    if (!confirmClose) return;
 
     const { error } = await supabase
       .from("capas")
@@ -80,7 +99,7 @@ export default function CapaPage() {
 
   const updateStatus = async (item: Capa, status: string) => {
     if (status === "closed") {
-      closeCapa(item);
+      await closeCapa(item);
       return;
     }
 
@@ -106,8 +125,8 @@ export default function CapaPage() {
     <main style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
       <h1>CAPA Records</h1>
 
-      <p><strong>Logged-in:</strong> {userEmail}</p>
-      <p><strong>Role:</strong> {userRole}</p>
+      <p><strong>Logged-in Email:</strong> {userEmail || "none"}</p>
+      <p><strong>Your Role:</strong> {userRole || "none"}</p>
 
       <ul>
         {list.map((item) => (
@@ -127,18 +146,24 @@ export default function CapaPage() {
             {item.approved_by && (
               <>
                 <br />
-                ✅ Approved by: {item.approved_by}
+                Approved by: {item.approved_by}
                 <br />
-                🕒 {item.approved_at}
+                {item.approved_at}
               </>
             )}
 
             <div style={{ marginTop: "8px" }}>
-              <button onClick={() => updateStatus(item, "in_progress")}>
+              <button
+                onClick={() => updateStatus(item, "in_progress")}
+                style={{ marginRight: "8px" }}
+              >
                 In Progress
               </button>
 
-              <button onClick={() => updateStatus(item, "effectiveness_check")}>
+              <button
+                onClick={() => updateStatus(item, "effectiveness_check")}
+                style={{ marginRight: "8px" }}
+              >
                 Effectiveness
               </button>
 
