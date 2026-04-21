@@ -79,3 +79,5 @@ export default function DashboardPage() {
     </main>
   );
 }
+<br />
+<a href="/audit">Go to Audit Trail</a>
