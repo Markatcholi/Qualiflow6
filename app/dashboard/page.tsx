@@ -14,17 +14,20 @@ export default function DashboardPage() {
   const [capaTotal, setCapaTotal] = useState(0);
   const [capaClosed, setCapaClosed] = useState(0);
 
+  const [avgNcmrCloseDays, setAvgNcmrCloseDays] = useState("0.0");
+  const [avgCapaCloseDays, setAvgCapaCloseDays] = useState("0.0");
+
   const fetchData = async () => {
-    const { data: ncmrAllData } = await supabase
-      .from("ncmrs")
-      .select("*");
-    setNcmrTotal(ncmrAllData?.length || 0);
+    const { data: ncmrAllData } = await supabase.from("ncmrs").select("*");
+    const allNcmrs = ncmrAllData || [];
+    setNcmrTotal(allNcmrs.length);
 
     const { data: ncmrClosedData } = await supabase
       .from("ncmrs")
       .select("*")
       .eq("status", "closed");
-    setNcmrClosed(ncmrClosedData?.length || 0);
+    const closedNcmrs = ncmrClosedData || [];
+    setNcmrClosed(closedNcmrs.length);
 
     const { data: ncmrOpenData } = await supabase
       .from("ncmrs")
@@ -38,16 +41,16 @@ export default function DashboardPage() {
       .eq("status", "investigation");
     setNcmrInvestigation(ncmrInvData?.length || 0);
 
-    const { data: capaAllData } = await supabase
-      .from("capas")
-      .select("*");
-    setCapaTotal(capaAllData?.length || 0);
+    const { data: capaAllData } = await supabase.from("capas").select("*");
+    const allCapas = capaAllData || [];
+    setCapaTotal(allCapas.length);
 
     const { data: capaClosedData } = await supabase
       .from("capas")
       .select("*")
       .eq("status", "closed");
-    setCapaClosed(capaClosedData?.length || 0);
+    const closedCapas = capaClosedData || [];
+    setCapaClosed(closedCapas.length);
 
     const { data: capaData } = await supabase
       .from("capas")
@@ -63,6 +66,40 @@ export default function DashboardPage() {
       .lt("due_date", today)
       .neq("status", "closed");
     setCapaOverdue(overdueData?.length || 0);
+
+    const ncmrDurations = closedNcmrs
+      .filter((item: any) => item.created_at && item.closed_at)
+      .map((item: any) => {
+        const created = new Date(item.created_at).getTime();
+        const closed = new Date(item.closed_at).getTime();
+        return (closed - created) / (1000 * 60 * 60 * 24);
+      });
+
+    if (ncmrDurations.length > 0) {
+      const avg =
+        ncmrDurations.reduce((sum: number, d: number) => sum + d, 0) /
+        ncmrDurations.length;
+      setAvgNcmrCloseDays(avg.toFixed(1));
+    } else {
+      setAvgNcmrCloseDays("0.0");
+    }
+
+    const capaDurations = closedCapas
+      .filter((item: any) => item.created_at && item.closed_at)
+      .map((item: any) => {
+        const created = new Date(item.created_at).getTime();
+        const closed = new Date(item.closed_at).getTime();
+        return (closed - created) / (1000 * 60 * 60 * 24);
+      });
+
+    if (capaDurations.length > 0) {
+      const avg =
+        capaDurations.reduce((sum: number, d: number) => sum + d, 0) /
+        capaDurations.length;
+      setAvgCapaCloseDays(avg.toFixed(1));
+    } else {
+      setAvgCapaCloseDays("0.0");
+    }
   };
 
   useEffect(() => {
@@ -101,6 +138,10 @@ export default function DashboardPage() {
         </div>
 
         <div style={{ padding: "15px", border: "1px solid #ccc" }}>
+          <strong>Average NCMR Close Time:</strong> {avgNcmrCloseDays} days
+        </div>
+
+        <div style={{ padding: "15px", border: "1px solid #ccc" }}>
           <strong>Total CAPAs:</strong> {capaTotal}
         </div>
 
@@ -114,6 +155,10 @@ export default function DashboardPage() {
 
         <div style={{ padding: "15px", border: "1px solid #ccc" }}>
           <strong>CAPA Closure Rate:</strong> {capaClosureRate}%
+        </div>
+
+        <div style={{ padding: "15px", border: "1px solid #ccc" }}>
+          <strong>Average CAPA Close Time:</strong> {avgCapaCloseDays} days
         </div>
 
         <div style={{ padding: "15px", border: "1px solid red" }}>
