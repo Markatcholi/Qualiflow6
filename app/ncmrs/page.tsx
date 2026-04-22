@@ -11,6 +11,11 @@ type Ncmr = {
   product_part_number: string | null;
   lot_number: string | null;
   workorder_number: string | null;
+  disposition: string | null;
+  source_of_detection: string | null;
+  department: string | null;
+  date_detected: string | null;
+  quantity_affected: number | null;
   severity: string | null;
   owner: string | null;
   status: string | null;
@@ -32,6 +37,11 @@ export default function NcmrPage() {
   const [productPartNumber, setProductPartNumber] = useState("");
   const [lotNumber, setLotNumber] = useState("");
   const [workorderNumber, setWorkorderNumber] = useState("");
+  const [disposition, setDisposition] = useState("hold");
+  const [sourceOfDetection, setSourceOfDetection] = useState("");
+  const [department, setDepartment] = useState("");
+  const [dateDetected, setDateDetected] = useState("");
+  const [quantityAffected, setQuantityAffected] = useState("");
   const [severity, setSeverity] = useState("minor");
   const [owner, setOwner] = useState("");
   const [list, setList] = useState<Ncmr[]>([]);
@@ -85,6 +95,11 @@ export default function NcmrPage() {
         product_part_number: productPartNumber,
         lot_number: lotNumber,
         workorder_number: workorderNumber,
+        disposition,
+        source_of_detection: sourceOfDetection,
+        department,
+        date_detected: dateDetected || null,
+        quantity_affected: quantityAffected ? Number(quantityAffected) : null,
         severity,
         owner,
         status: "open",
@@ -126,6 +141,11 @@ export default function NcmrPage() {
     setProductPartNumber("");
     setLotNumber("");
     setWorkorderNumber("");
+    setDisposition("hold");
+    setSourceOfDetection("");
+    setDepartment("");
+    setDateDetected("");
+    setQuantityAffected("");
     setOwner("");
     setSeverity("minor");
     fetchData();
@@ -256,6 +276,68 @@ export default function NcmrPage() {
       </div>
 
       <div style={{ marginBottom: "12px" }}>
+        <label>Disposition</label>
+        <br />
+        <select
+          value={disposition}
+          onChange={(e) => setDisposition(e.target.value)}
+          style={{ padding: "8px", minWidth: "180px" }}
+        >
+          <option value="hold">Hold</option>
+          <option value="use_as_is">Use As Is</option>
+          <option value="rework">Rework</option>
+          <option value="scrap">Scrap</option>
+          <option value="return_to_supplier">Return to Supplier</option>
+          <option value="pending_mrb">Pending MRB</option>
+        </select>
+      </div>
+
+      <div style={{ marginBottom: "12px" }}>
+        <label>Source of Detection</label>
+        <br />
+        <input
+          value={sourceOfDetection}
+          onChange={(e) => setSourceOfDetection(e.target.value)}
+          placeholder="Incoming, in-process, final inspection, complaint, audit, etc."
+          style={{ width: "100%", maxWidth: "500px", padding: "8px" }}
+        />
+      </div>
+
+      <div style={{ marginBottom: "12px" }}>
+        <label>Department</label>
+        <br />
+        <input
+          value={department}
+          onChange={(e) => setDepartment(e.target.value)}
+          placeholder="Manufacturing, Quality, Warehouse, Supplier Quality, etc."
+          style={{ width: "100%", maxWidth: "400px", padding: "8px" }}
+        />
+      </div>
+
+      <div style={{ marginBottom: "12px" }}>
+        <label>Date Detected</label>
+        <br />
+        <input
+          type="date"
+          value={dateDetected}
+          onChange={(e) => setDateDetected(e.target.value)}
+          style={{ padding: "8px" }}
+        />
+      </div>
+
+      <div style={{ marginBottom: "12px" }}>
+        <label>Quantity Affected</label>
+        <br />
+        <input
+          type="number"
+          value={quantityAffected}
+          onChange={(e) => setQuantityAffected(e.target.value)}
+          placeholder="Quantity affected"
+          style={{ width: "100%", maxWidth: "200px", padding: "8px" }}
+        />
+      </div>
+
+      <div style={{ marginBottom: "12px" }}>
         <label>Severity</label>
         <br />
         <select
@@ -300,6 +382,11 @@ export default function NcmrPage() {
               <div><strong>Part Number:</strong> {item.product_part_number || "N/A"}</div>
               <div><strong>Lot Number:</strong> {item.lot_number || "N/A"}</div>
               <div><strong>Work Order:</strong> {item.workorder_number || "N/A"}</div>
+              <div><strong>Disposition:</strong> {item.disposition || "N/A"}</div>
+              <div><strong>Source:</strong> {item.source_of_detection || "N/A"}</div>
+              <div><strong>Department:</strong> {item.department || "N/A"}</div>
+              <div><strong>Date Detected:</strong> {item.date_detected || "N/A"}</div>
+              <div><strong>Qty Affected:</strong> {item.quantity_affected ?? "N/A"}</div>
             </div>
 
             <div style={{ marginTop: "8px" }}>
