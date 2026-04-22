@@ -15,6 +15,8 @@ export default function CapaDetailPage() {
   const [dueDate, setDueDate] = useState("");
   const [actionPlan, setActionPlan] = useState("");
   const [effectiveness, setEffectiveness] = useState("");
+  const [evidenceUrl, setEvidenceUrl] = useState("");
+  const [evidenceNotes, setEvidenceNotes] = useState("");
 
   const fetchRecord = async () => {
     const { data, error } = await supabase
@@ -34,6 +36,8 @@ export default function CapaDetailPage() {
     setDueDate(data.due_date || "");
     setActionPlan(data.action_plan || "");
     setEffectiveness(data.effectiveness_check || "");
+    setEvidenceUrl(data.evidence_url || "");
+    setEvidenceNotes(data.evidence_notes || "");
     setLoading(false);
   };
 
@@ -45,6 +49,8 @@ export default function CapaDetailPage() {
         due_date: dueDate,
         action_plan: actionPlan,
         effectiveness_check: effectiveness,
+        evidence_url: evidenceUrl,
+        evidence_notes: evidenceNotes,
       })
       .eq("id", id);
 
@@ -115,6 +121,35 @@ export default function CapaDetailPage() {
           style={{ width: "100%", maxWidth: "600px" }}
         />
       </div>
+
+      <div style={{ marginTop: "15px" }}>
+        <label>Evidence Link</label><br />
+        <input
+          value={evidenceUrl}
+          onChange={(e) => setEvidenceUrl(e.target.value)}
+          placeholder="Paste file link or evidence URL"
+          style={{ padding: "8px", width: "100%", maxWidth: "600px" }}
+        />
+      </div>
+
+      <div style={{ marginTop: "15px" }}>
+        <label>Evidence Notes</label><br />
+        <textarea
+          value={evidenceNotes}
+          onChange={(e) => setEvidenceNotes(e.target.value)}
+          rows={3}
+          style={{ width: "100%", maxWidth: "600px" }}
+        />
+      </div>
+
+      {record.evidence_url ? (
+        <div style={{ marginTop: "15px" }}>
+          <strong>Saved Evidence:</strong>{" "}
+          <a href={record.evidence_url} target="_blank" rel="noreferrer">
+            Open Evidence
+          </a>
+        </div>
+      ) : null}
 
       <button onClick={saveCapa} style={{ marginTop: "15px" }}>
         Save CAPA
