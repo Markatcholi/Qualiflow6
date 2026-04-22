@@ -17,6 +17,7 @@ type Ncmr = {
   risk_assessment: string | null;
   corrective_action: string | null;
   created_at: string | null;
+  closed_at: string | null;
 };
 
 export default function NcmrPage() {
@@ -45,11 +46,15 @@ export default function NcmrPage() {
     action: string,
     details: string
   ) => {
+    const { data: userData } = await supabase.auth.getUser();
+    const email = userData?.user?.email || "unknown";
+
     await supabase.from("audit_logs").insert({
       entity_type: entityType,
       entity_id: entityId,
       action,
       details,
+      user_email: email,
     });
   };
 
@@ -75,12 +80,7 @@ export default function NcmrPage() {
       return;
     }
 
-    await addAuditLog(
-      "ncmr",
-      data.id,
-      "created",
-      `Created NCMR: ${title}`
-    );
+    await addAuditLog("ncmr", data.id, "created", `Created NCMR: ${title}`);
 
     if (capaRequired && data) {
       const { error: capaError } = await supabase.from("capas").insert({
@@ -126,10 +126,19 @@ export default function NcmrPage() {
     }
 
     const oldStatus = item.status;
+    const updatePayload: { status: string; closed_at?: string | null } = {
+      status,
+    };
+
+    if (status === "closed") {
+      updatePayload.closed_at = new Date().toISOString();
+    } else {
+      updatePayload.closed_at = null;
+    }
 
     const { error } = await supabase
       .from("ncmrs")
-      .update({ status })
+      .update(updatePayload)
       .eq("id", item.id);
 
     if (error) {
@@ -186,7 +195,8 @@ export default function NcmrPage() {
       <ul>
         {list.map((item) => (
           <li key={item.id} style={{ marginBottom: "12px" }}>
-            <strong>{item.title}</strong> — {item.severity} — {item.owner} — {item.status}
+            <strong>{item.title}</strong> — {item.severity} — {item.owner} —{" "}
+            {item.status}
             {item.capa_required ? (
               <span style={{ color: "red", marginLeft: "10px" }}>
                 CAPA Required
