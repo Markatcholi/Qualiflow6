@@ -12,6 +12,7 @@ type Capa = {
   effectiveness_check: string | null;
   approved_by: string | null;
   approved_at: string | null;
+  closed_at: string | null;
 };
 
 export default function CapaPage() {
@@ -86,6 +87,7 @@ export default function CapaPage() {
         status: "closed",
         approved_by: userEmail,
         approved_at: new Date().toISOString(),
+        closed_at: new Date().toISOString(),
       })
       .eq("id", item.id);
 
@@ -105,7 +107,10 @@ export default function CapaPage() {
 
     const { error } = await supabase
       .from("capas")
-      .update({ status })
+      .update({
+        status,
+        closed_at: null,
+      })
       .eq("id", item.id);
 
     if (error) {
