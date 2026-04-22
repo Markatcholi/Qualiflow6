@@ -6,6 +6,11 @@ import { supabase } from "../../lib/supabaseClient";
 type Ncmr = {
   id: string;
   title: string | null;
+  issue_description: string | null;
+  scope: string | null;
+  product_part_number: string | null;
+  lot_number: string | null;
+  workorder_number: string | null;
   severity: string | null;
   owner: string | null;
   status: string | null;
@@ -22,6 +27,11 @@ type Ncmr = {
 
 export default function NcmrPage() {
   const [title, setTitle] = useState("");
+  const [issueDescription, setIssueDescription] = useState("");
+  const [scope, setScope] = useState("");
+  const [productPartNumber, setProductPartNumber] = useState("");
+  const [lotNumber, setLotNumber] = useState("");
+  const [workorderNumber, setWorkorderNumber] = useState("");
   const [severity, setSeverity] = useState("minor");
   const [owner, setOwner] = useState("");
   const [list, setList] = useState<Ncmr[]>([]);
@@ -59,7 +69,10 @@ export default function NcmrPage() {
   };
 
   const addNcmr = async () => {
-    if (!title) return;
+    if (!title) {
+      alert("Title is required.");
+      return;
+    }
 
     const capaRequired = severity === "major" || severity === "critical";
 
@@ -67,6 +80,11 @@ export default function NcmrPage() {
       .from("ncmrs")
       .insert({
         title,
+        issue_description: issueDescription,
+        scope,
+        product_part_number: productPartNumber,
+        lot_number: lotNumber,
+        workorder_number: workorderNumber,
         severity,
         owner,
         status: "open",
@@ -103,6 +121,11 @@ export default function NcmrPage() {
     }
 
     setTitle("");
+    setIssueDescription("");
+    setScope("");
+    setProductPartNumber("");
+    setLotNumber("");
+    setWorkorderNumber("");
     setOwner("");
     setSeverity("minor");
     fetchData();
@@ -162,41 +185,111 @@ export default function NcmrPage() {
 
   return (
     <main style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
-      <h1>NCMR</h1>
+      <h1>NCMR Initiation</h1>
 
-      <div style={{ marginBottom: "14px" }}>
+      <div style={{ marginBottom: "12px" }}>
+        <label>Title</label>
+        <br />
         <input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          placeholder="Title"
-          style={{ marginRight: "10px", padding: "8px" }}
+          placeholder="Short NCMR title"
+          style={{ width: "100%", maxWidth: "500px", padding: "8px" }}
         />
+      </div>
 
+      <div style={{ marginBottom: "12px" }}>
+        <label>Issue Description</label>
+        <br />
+        <textarea
+          value={issueDescription}
+          onChange={(e) => setIssueDescription(e.target.value)}
+          placeholder="Describe the issue observed"
+          rows={4}
+          style={{ width: "100%", maxWidth: "800px" }}
+        />
+      </div>
+
+      <div style={{ marginBottom: "12px" }}>
+        <label>Scope</label>
+        <br />
+        <textarea
+          value={scope}
+          onChange={(e) => setScope(e.target.value)}
+          placeholder="Affected scope, quantity, line, product family, etc."
+          rows={3}
+          style={{ width: "100%", maxWidth: "800px" }}
+        />
+      </div>
+
+      <div style={{ marginBottom: "12px" }}>
+        <label>Product Part Number</label>
+        <br />
+        <input
+          value={productPartNumber}
+          onChange={(e) => setProductPartNumber(e.target.value)}
+          placeholder="Part number"
+          style={{ width: "100%", maxWidth: "400px", padding: "8px" }}
+        />
+      </div>
+
+      <div style={{ marginBottom: "12px" }}>
+        <label>Lot Number</label>
+        <br />
+        <input
+          value={lotNumber}
+          onChange={(e) => setLotNumber(e.target.value)}
+          placeholder="Lot number"
+          style={{ width: "100%", maxWidth: "400px", padding: "8px" }}
+        />
+      </div>
+
+      <div style={{ marginBottom: "12px" }}>
+        <label>Work Order Number</label>
+        <br />
+        <input
+          value={workorderNumber}
+          onChange={(e) => setWorkorderNumber(e.target.value)}
+          placeholder="Work order number"
+          style={{ width: "100%", maxWidth: "400px", padding: "8px" }}
+        />
+      </div>
+
+      <div style={{ marginBottom: "12px" }}>
+        <label>Severity</label>
+        <br />
         <select
           value={severity}
           onChange={(e) => setSeverity(e.target.value)}
-          style={{ marginRight: "10px", padding: "8px" }}
+          style={{ padding: "8px", minWidth: "160px" }}
         >
           <option value="minor">Minor</option>
           <option value="major">Major</option>
           <option value="critical">Critical</option>
         </select>
+      </div>
 
+      <div style={{ marginBottom: "12px" }}>
+        <label>Owner</label>
+        <br />
         <input
           value={owner}
           onChange={(e) => setOwner(e.target.value)}
           placeholder="Owner"
-          style={{ marginRight: "10px", padding: "8px" }}
+          style={{ width: "100%", maxWidth: "400px", padding: "8px" }}
         />
-
-        <button onClick={addNcmr}>Add</button>
       </div>
+
+      <div style={{ marginBottom: "20px" }}>
+        <button onClick={addNcmr}>Create NCMR</button>
+      </div>
+
+      <h2>Existing NCMRs</h2>
 
       <ul>
         {list.map((item) => (
-          <li key={item.id} style={{ marginBottom: "12px" }}>
-            <strong>{item.title}</strong> — {item.severity} — {item.owner} —{" "}
-            {item.status}
+          <li key={item.id} style={{ marginBottom: "16px" }}>
+            <strong>{item.title}</strong> — {item.severity} — {item.owner} — {item.status}
             {item.capa_required ? (
               <span style={{ color: "red", marginLeft: "10px" }}>
                 CAPA Required
@@ -204,6 +297,12 @@ export default function NcmrPage() {
             ) : null}
 
             <div style={{ marginTop: "6px" }}>
+              <div><strong>Part Number:</strong> {item.product_part_number || "N/A"}</div>
+              <div><strong>Lot Number:</strong> {item.lot_number || "N/A"}</div>
+              <div><strong>Work Order:</strong> {item.workorder_number || "N/A"}</div>
+            </div>
+
+            <div style={{ marginTop: "8px" }}>
               <button
                 onClick={() => updateStatus(item, "investigation")}
                 style={{ marginRight: "8px" }}
