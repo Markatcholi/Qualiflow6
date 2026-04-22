@@ -19,6 +19,8 @@ export default function NcmrDetailPage() {
   const [riskAssessment, setRiskAssessment] = useState("");
   const [correctiveAction, setCorrectiveAction] = useState("");
   const [reviewStatus, setReviewStatus] = useState("draft");
+  const [evidenceUrl, setEvidenceUrl] = useState("");
+  const [evidenceNotes, setEvidenceNotes] = useState("");
 
   const fetchRecord = async () => {
     const { data, error } = await supabase
@@ -42,12 +44,14 @@ export default function NcmrDetailPage() {
     setRiskAssessment(data.risk_assessment || "");
     setCorrectiveAction(data.corrective_action || "");
     setReviewStatus(data.review_status || "draft");
+    setEvidenceUrl(data.evidence_url || "");
+    setEvidenceNotes(data.evidence_notes || "");
     setLoading(false);
   };
 
   const saveInvestigation = async () => {
     const payload: any = {
-      investigator: investigator,
+      investigator,
       problem_description: problemDescription,
       containment_action: containmentAction,
       investigation_summary: investigationSummary,
@@ -55,6 +59,8 @@ export default function NcmrDetailPage() {
       risk_assessment: riskAssessment,
       corrective_action: correctiveAction,
       review_status: reviewStatus,
+      evidence_url: evidenceUrl,
+      evidence_notes: evidenceNotes,
     };
 
     if (!record?.investigation_opened_at) {
@@ -184,6 +190,28 @@ export default function NcmrDetailPage() {
       </div>
 
       <div style={{ marginBottom: "12px" }}>
+        <label>Evidence Link</label>
+        <br />
+        <input
+          value={evidenceUrl}
+          onChange={(e) => setEvidenceUrl(e.target.value)}
+          placeholder="Paste file link or evidence URL"
+          style={{ width: "100%", maxWidth: "800px", padding: "8px" }}
+        />
+      </div>
+
+      <div style={{ marginBottom: "12px" }}>
+        <label>Evidence Notes</label>
+        <br />
+        <textarea
+          value={evidenceNotes}
+          onChange={(e) => setEvidenceNotes(e.target.value)}
+          rows={3}
+          style={{ width: "100%", maxWidth: "800px" }}
+        />
+      </div>
+
+      <div style={{ marginBottom: "12px" }}>
         <label>Review Status</label>
         <br />
         <select
@@ -196,6 +224,15 @@ export default function NcmrDetailPage() {
           <option value="completed">Completed</option>
         </select>
       </div>
+
+      {record.evidence_url ? (
+        <div style={{ marginBottom: "12px" }}>
+          <strong>Saved Evidence:</strong>{" "}
+          <a href={record.evidence_url} target="_blank" rel="noreferrer">
+            Open Evidence
+          </a>
+        </div>
+      ) : null}
 
       <button onClick={saveInvestigation} style={{ marginRight: "10px" }}>
         Save Investigation
