@@ -17,6 +17,8 @@ export default function CapaDetailPage() {
   const [effectiveness, setEffectiveness] = useState("");
   const [evidenceUrl, setEvidenceUrl] = useState("");
   const [evidenceNotes, setEvidenceNotes] = useState("");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
 
   const fetchRecord = async () => {
     const { data, error } = await supabase
@@ -39,6 +41,38 @@ export default function CapaDetailPage() {
     setEvidenceUrl(data.evidence_url || "");
     setEvidenceNotes(data.evidence_notes || "");
     setLoading(false);
+  };
+
+  const uploadEvidence = async () => {
+    if (!selectedFile) {
+      alert("Please choose a file first.");
+      return;
+    }
+
+    setUploading(true);
+
+    const fileExt = selectedFile.name.split(".").pop();
+    const filePath = `capas/${id}/${Date.now()}.${fileExt}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from("evidence")
+      .upload(filePath, selectedFile, {
+        upsert: false,
+      });
+
+    if (uploadError) {
+      alert(uploadError.message);
+      setUploading(false);
+      return;
+    }
+
+    const { data } = supabase.storage
+      .from("evidence")
+      .getPublicUrl(filePath);
+
+    setEvidenceUrl(data.publicUrl);
+    setUploading(false);
+    alert("Evidence uploaded. Click Save CAPA to store it on the record.");
   };
 
   const saveCapa = async () => {
@@ -123,11 +157,26 @@ export default function CapaDetailPage() {
       </div>
 
       <div style={{ marginTop: "15px" }}>
-        <label>Evidence Link</label><br />
+        <label>Upload Evidence File</label><br />
+        <input
+          type="file"
+          onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
+        />
+        <button
+          onClick={uploadEvidence}
+          disabled={uploading}
+          style={{ marginLeft: "10px" }}
+        >
+          {uploading ? "Uploading..." : "Upload Evidence"}
+        </button>
+      </div>
+
+      <div style={{ marginTop: "15px" }}>
+        <label>Evidence URL</label><br />
         <input
           value={evidenceUrl}
           onChange={(e) => setEvidenceUrl(e.target.value)}
-          placeholder="Paste file link or evidence URL"
+          placeholder="Uploaded file URL will appear here"
           style={{ padding: "8px", width: "100%", maxWidth: "600px" }}
         />
       </div>
