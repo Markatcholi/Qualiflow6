@@ -287,6 +287,8 @@ export default function DashboardPage() {
         <a href="/capa">Go to CAPAs</a>
         {" | "}
         <a href="/audit">Go to Audit Trail</a>
+        {" | "}
+        <a href="/admin/master-data">Admin Master Data</a>
       </div>
     </main>
   );
