@@ -17,6 +17,10 @@ type DefectSubcategoryItem = {
 };
 
 export default function MasterDataPage() {
+  const [loading, setLoading] = useState(true);
+  const [userEmail, setUserEmail] = useState("");
+  const [userRole, setUserRole] = useState("");
+
   const [partNumbers, setPartNumbers] = useState<SimpleItem[]>([]);
   const [dispositions, setDispositions] = useState<SimpleItem[]>([]);
   const [detectionSources, setDetectionSources] = useState<SimpleItem[]>([]);
@@ -46,6 +50,40 @@ export default function MasterDataPage() {
   const [newDefectSubcategoryCategoryCode, setNewDefectSubcategoryCategoryCode] = useState("");
   const [newDefectSubcategoryCode, setNewDefectSubcategoryCode] = useState("");
   const [newDefectSubcategoryLabel, setNewDefectSubcategoryLabel] = useState("");
+
+  const fetchUserRole = async () => {
+    const { data: userData, error: userError } = await supabase.auth.getUser();
+
+    if (userError) {
+      alert(userError.message);
+      setLoading(false);
+      return;
+    }
+
+    const email = userData?.user?.email || "";
+    setUserEmail(email);
+
+    if (!email) {
+      setUserRole("");
+      setLoading(false);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("user_roles")
+      .select("role")
+      .eq("user_email", email)
+      .maybeSingle();
+
+    if (error) {
+      alert(error.message);
+      setLoading(false);
+      return;
+    }
+
+    setUserRole(data?.role || "");
+    setLoading(false);
+  };
 
   const fetchAll = async () => {
     const [
@@ -84,6 +122,7 @@ export default function MasterDataPage() {
   };
 
   useEffect(() => {
+    fetchUserRole();
     fetchAll();
   }, []);
 
@@ -177,9 +216,27 @@ export default function MasterDataPage() {
     marginBottom: "8px",
   };
 
+  if (loading) {
+    return <main style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>Loading...</main>;
+  }
+
+  if (userRole !== "approver") {
+    return (
+      <main style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
+        <h1>Access Denied</h1>
+        <p>Only approvers can access Admin Master Data.</p>
+        <p><strong>Logged-in Email:</strong> {userEmail || "none"}</p>
+        <p><strong>Your Role:</strong> {userRole || "none"}</p>
+        <a href="/dashboard">Back to Dashboard</a>
+      </main>
+    );
+  }
+
   return (
     <main style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
       <h1>Admin Master Data</h1>
+      <p><strong>Logged-in Email:</strong> {userEmail}</p>
+      <p><strong>Your Role:</strong> {userRole}</p>
 
       <div style={sectionStyle}>
         <h2>Product Part Numbers</h2>
