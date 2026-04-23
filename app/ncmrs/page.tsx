@@ -85,6 +85,7 @@ export default function NcmrPage() {
   const [owner, setOwner] = useState("");
   const [list, setList] = useState<Ncmr[]>([]);
 
+  const [partNumberOptions, setPartNumberOptions] = useState<MasterOption[]>([]);
   const [dispositionOptions, setDispositionOptions] = useState<MasterOption[]>([]);
   const [detectionSourceOptions, setDetectionSourceOptions] = useState<MasterOption[]>([]);
   const [departmentOptions, setDepartmentOptions] = useState<MasterOption[]>([]);
@@ -96,10 +97,11 @@ export default function NcmrPage() {
     return defectSubcategoryOptions.filter(
       (item) => item.category_code === defectCategory
     );
-  }, [defectCategoryOptions, defectSubcategoryOptions, defectCategory]);
+  }, [defectSubcategoryOptions, defectCategory]);
 
   const fetchMasterData = async () => {
     const [
+      partNumbersRes,
       dispositionsRes,
       detectionRes,
       departmentsRes,
@@ -107,6 +109,7 @@ export default function NcmrPage() {
       defectCategoryRes,
       defectSubcategoryRes,
     ] = await Promise.all([
+      supabase.from("md_product_part_numbers").select("code, label").order("label"),
       supabase.from("md_dispositions").select("code, label").order("label"),
       supabase.from("md_detection_sources").select("code, label").order("label"),
       supabase.from("md_departments").select("code, label").order("label"),
@@ -115,6 +118,7 @@ export default function NcmrPage() {
       supabase.from("md_defect_subcategories").select("category_code, code, label").order("label"),
     ]);
 
+    if (partNumbersRes.error) return alert(partNumbersRes.error.message);
     if (dispositionsRes.error) return alert(dispositionsRes.error.message);
     if (detectionRes.error) return alert(detectionRes.error.message);
     if (departmentsRes.error) return alert(departmentsRes.error.message);
@@ -122,6 +126,7 @@ export default function NcmrPage() {
     if (defectCategoryRes.error) return alert(defectCategoryRes.error.message);
     if (defectSubcategoryRes.error) return alert(defectSubcategoryRes.error.message);
 
+    setPartNumberOptions((partNumbersRes.data as MasterOption[]) || []);
     setDispositionOptions((dispositionsRes.data as MasterOption[]) || []);
     setDetectionSourceOptions((detectionRes.data as MasterOption[]) || []);
     setDepartmentOptions((departmentsRes.data as MasterOption[]) || []);
@@ -351,7 +356,14 @@ export default function NcmrPage() {
 
       <div style={{ marginBottom: "12px" }}>
         <label>Product Part Number</label><br />
-        <input value={productPartNumber} onChange={(e) => setProductPartNumber(e.target.value)} placeholder="Part number" style={{ width: "100%", maxWidth: "400px", padding: "8px" }} />
+        <select
+          value={productPartNumber}
+          onChange={(e) => setProductPartNumber(e.target.value)}
+          style={{ padding: "8px", minWidth: "220px" }}
+        >
+          <option value="">Select part number</option>
+          {renderOptions(partNumberOptions)}
+        </select>
       </div>
 
       <div style={{ marginBottom: "12px" }}>
