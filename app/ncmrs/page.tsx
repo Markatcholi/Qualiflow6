@@ -23,6 +23,11 @@ type Ncmr = {
   material_status: string | null;
   affected_quantity: number | null;
   quarantined_quantity: number | null;
+  supplier_name: string | null;
+  supplier_lot: string | null;
+  site_location: string | null;
+  immediate_correction: string | null;
+  long_term_corrective_action: string | null;
   severity: string | null;
   owner: string | null;
   status: string | null;
@@ -44,9 +49,10 @@ export default function NcmrPage() {
   const [productPartNumber, setProductPartNumber] = useState("");
   const [lotNumber, setLotNumber] = useState("");
   const [workorderNumber, setWorkorderNumber] = useState("");
+
   const [disposition, setDisposition] = useState("hold");
-  const [sourceOfDetection, setSourceOfDetection] = useState("");
-  const [department, setDepartment] = useState("");
+  const [sourceOfDetection, setSourceOfDetection] = useState("in_process_inspection");
+  const [department, setDepartment] = useState("manufacturing");
   const [dateDetected, setDateDetected] = useState("");
   const [quantityAffected, setQuantityAffected] = useState("");
 
@@ -57,6 +63,12 @@ export default function NcmrPage() {
   const [materialStatus, setMaterialStatus] = useState("quarantined");
   const [affectedQuantity, setAffectedQuantity] = useState("");
   const [quarantinedQuantity, setQuarantinedQuantity] = useState("");
+
+  const [supplierName, setSupplierName] = useState("");
+  const [supplierLot, setSupplierLot] = useState("");
+  const [siteLocation, setSiteLocation] = useState("");
+  const [immediateCorrection, setImmediateCorrection] = useState("");
+  const [longTermCorrectiveAction, setLongTermCorrectiveAction] = useState("");
 
   const [severity, setSeverity] = useState("minor");
   const [owner, setOwner] = useState("");
@@ -123,6 +135,11 @@ export default function NcmrPage() {
         material_status: materialStatus,
         affected_quantity: affectedQuantity ? Number(affectedQuantity) : null,
         quarantined_quantity: quarantinedQuantity ? Number(quarantinedQuantity) : null,
+        supplier_name: supplierName,
+        supplier_lot: supplierLot,
+        site_location: siteLocation,
+        immediate_correction: immediateCorrection,
+        long_term_corrective_action: longTermCorrectiveAction,
         severity,
         owner,
         status: "open",
@@ -165,8 +182,8 @@ export default function NcmrPage() {
     setLotNumber("");
     setWorkorderNumber("");
     setDisposition("hold");
-    setSourceOfDetection("");
-    setDepartment("");
+    setSourceOfDetection("in_process_inspection");
+    setDepartment("manufacturing");
     setDateDetected("");
     setQuantityAffected("");
     setContainmentOwner("");
@@ -176,6 +193,11 @@ export default function NcmrPage() {
     setMaterialStatus("quarantined");
     setAffectedQuantity("");
     setQuarantinedQuantity("");
+    setSupplierName("");
+    setSupplierLot("");
+    setSiteLocation("");
+    setImmediateCorrection("");
+    setLongTermCorrectiveAction("");
     setOwner("");
     setSeverity("minor");
     fetchData();
@@ -311,7 +333,7 @@ export default function NcmrPage() {
         <select
           value={disposition}
           onChange={(e) => setDisposition(e.target.value)}
-          style={{ padding: "8px", minWidth: "180px" }}
+          style={{ padding: "8px", minWidth: "220px" }}
         >
           <option value="hold">Hold</option>
           <option value="use_as_is">Use As Is</option>
@@ -325,23 +347,40 @@ export default function NcmrPage() {
       <div style={{ marginBottom: "12px" }}>
         <label>Source of Detection</label>
         <br />
-        <input
+        <select
           value={sourceOfDetection}
           onChange={(e) => setSourceOfDetection(e.target.value)}
-          placeholder="Incoming, in-process, final inspection, complaint, audit, etc."
-          style={{ width: "100%", maxWidth: "500px", padding: "8px" }}
-        />
+          style={{ padding: "8px", minWidth: "260px" }}
+        >
+          <option value="incoming_inspection">Incoming Inspection</option>
+          <option value="in_process_inspection">In-Process Inspection</option>
+          <option value="final_inspection">Final Inspection</option>
+          <option value="complaint">Complaint</option>
+          <option value="audit">Audit</option>
+          <option value="supplier_notification">Supplier Notification</option>
+          <option value="production_observation">Production Observation</option>
+          <option value="testing">Testing</option>
+        </select>
       </div>
 
       <div style={{ marginBottom: "12px" }}>
         <label>Department</label>
         <br />
-        <input
+        <select
           value={department}
           onChange={(e) => setDepartment(e.target.value)}
-          placeholder="Manufacturing, Quality, Warehouse, Supplier Quality, etc."
-          style={{ width: "100%", maxWidth: "400px", padding: "8px" }}
-        />
+          style={{ padding: "8px", minWidth: "220px" }}
+        >
+          <option value="manufacturing">Manufacturing</option>
+          <option value="quality">Quality</option>
+          <option value="warehouse">Warehouse</option>
+          <option value="supplier_quality">Supplier Quality</option>
+          <option value="engineering">Engineering</option>
+          <option value="r_and_d">R&D</option>
+          <option value="sterilization">Sterilization</option>
+          <option value="packaging">Packaging</option>
+          <option value="receiving_inspection">Receiving Inspection</option>
+        </select>
       </div>
 
       <div style={{ marginBottom: "12px" }}>
@@ -417,7 +456,7 @@ export default function NcmrPage() {
         <select
           value={materialStatus}
           onChange={(e) => setMaterialStatus(e.target.value)}
-          style={{ padding: "8px", minWidth: "180px" }}
+          style={{ padding: "8px", minWidth: "220px" }}
         >
           <option value="quarantined">Quarantined</option>
           <option value="segregated">Segregated</option>
@@ -449,6 +488,63 @@ export default function NcmrPage() {
           onChange={(e) => setQuarantinedQuantity(e.target.value)}
           placeholder="Quarantined quantity"
           style={{ width: "100%", maxWidth: "200px", padding: "8px" }}
+        />
+      </div>
+
+      <div style={{ marginBottom: "12px" }}>
+        <label>Supplier Name</label>
+        <br />
+        <input
+          value={supplierName}
+          onChange={(e) => setSupplierName(e.target.value)}
+          placeholder="Supplier name"
+          style={{ width: "100%", maxWidth: "400px", padding: "8px" }}
+        />
+      </div>
+
+      <div style={{ marginBottom: "12px" }}>
+        <label>Supplier Lot</label>
+        <br />
+        <input
+          value={supplierLot}
+          onChange={(e) => setSupplierLot(e.target.value)}
+          placeholder="Supplier lot"
+          style={{ width: "100%", maxWidth: "400px", padding: "8px" }}
+        />
+      </div>
+
+      <div style={{ marginBottom: "12px" }}>
+        <label>Site / Location</label>
+        <br />
+        <input
+          value={siteLocation}
+          onChange={(e) => setSiteLocation(e.target.value)}
+          placeholder="Site / room / line / location"
+          style={{ width: "100%", maxWidth: "400px", padding: "8px" }}
+        />
+      </div>
+
+      <div style={{ marginBottom: "12px" }}>
+        <label>Immediate Correction</label>
+        <br />
+        <textarea
+          value={immediateCorrection}
+          onChange={(e) => setImmediateCorrection(e.target.value)}
+          placeholder="Immediate correction taken"
+          rows={3}
+          style={{ width: "100%", maxWidth: "800px" }}
+        />
+      </div>
+
+      <div style={{ marginBottom: "12px" }}>
+        <label>Long-Term Corrective Action</label>
+        <br />
+        <textarea
+          value={longTermCorrectiveAction}
+          onChange={(e) => setLongTermCorrectiveAction(e.target.value)}
+          placeholder="Long-term corrective action planned"
+          rows={3}
+          style={{ width: "100%", maxWidth: "800px" }}
         />
       </div>
 
@@ -509,6 +605,11 @@ export default function NcmrPage() {
               <div><strong>Material Status:</strong> {item.material_status || "N/A"}</div>
               <div><strong>Affected Qty:</strong> {item.affected_quantity ?? "N/A"}</div>
               <div><strong>Quarantined Qty:</strong> {item.quarantined_quantity ?? "N/A"}</div>
+              <div><strong>Supplier Name:</strong> {item.supplier_name || "N/A"}</div>
+              <div><strong>Supplier Lot:</strong> {item.supplier_lot || "N/A"}</div>
+              <div><strong>Site/Location:</strong> {item.site_location || "N/A"}</div>
+              <div><strong>Immediate Correction:</strong> {item.immediate_correction || "N/A"}</div>
+              <div><strong>Long-Term Corrective Action:</strong> {item.long_term_corrective_action || "N/A"}</div>
             </div>
 
             <div style={{ marginTop: "8px" }}>
