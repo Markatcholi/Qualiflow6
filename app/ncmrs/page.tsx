@@ -16,6 +16,13 @@ type Ncmr = {
   department: string | null;
   date_detected: string | null;
   quantity_affected: number | null;
+  containment_owner: string | null;
+  mrb_decision_date: string | null;
+  defect_category: string | null;
+  defect_subcategory: string | null;
+  material_status: string | null;
+  affected_quantity: number | null;
+  quarantined_quantity: number | null;
   severity: string | null;
   owner: string | null;
   status: string | null;
@@ -42,6 +49,15 @@ export default function NcmrPage() {
   const [department, setDepartment] = useState("");
   const [dateDetected, setDateDetected] = useState("");
   const [quantityAffected, setQuantityAffected] = useState("");
+
+  const [containmentOwner, setContainmentOwner] = useState("");
+  const [mrbDecisionDate, setMrbDecisionDate] = useState("");
+  const [defectCategory, setDefectCategory] = useState("");
+  const [defectSubcategory, setDefectSubcategory] = useState("");
+  const [materialStatus, setMaterialStatus] = useState("quarantined");
+  const [affectedQuantity, setAffectedQuantity] = useState("");
+  const [quarantinedQuantity, setQuarantinedQuantity] = useState("");
+
   const [severity, setSeverity] = useState("minor");
   const [owner, setOwner] = useState("");
   const [list, setList] = useState<Ncmr[]>([]);
@@ -100,6 +116,13 @@ export default function NcmrPage() {
         department,
         date_detected: dateDetected || null,
         quantity_affected: quantityAffected ? Number(quantityAffected) : null,
+        containment_owner: containmentOwner,
+        mrb_decision_date: mrbDecisionDate || null,
+        defect_category: defectCategory,
+        defect_subcategory: defectSubcategory,
+        material_status: materialStatus,
+        affected_quantity: affectedQuantity ? Number(affectedQuantity) : null,
+        quarantined_quantity: quarantinedQuantity ? Number(quarantinedQuantity) : null,
         severity,
         owner,
         status: "open",
@@ -146,6 +169,13 @@ export default function NcmrPage() {
     setDepartment("");
     setDateDetected("");
     setQuantityAffected("");
+    setContainmentOwner("");
+    setMrbDecisionDate("");
+    setDefectCategory("");
+    setDefectSubcategory("");
+    setMaterialStatus("quarantined");
+    setAffectedQuantity("");
+    setQuarantinedQuantity("");
     setOwner("");
     setSeverity("minor");
     fetchData();
@@ -338,6 +368,91 @@ export default function NcmrPage() {
       </div>
 
       <div style={{ marginBottom: "12px" }}>
+        <label>Containment Owner</label>
+        <br />
+        <input
+          value={containmentOwner}
+          onChange={(e) => setContainmentOwner(e.target.value)}
+          placeholder="Containment owner"
+          style={{ width: "100%", maxWidth: "400px", padding: "8px" }}
+        />
+      </div>
+
+      <div style={{ marginBottom: "12px" }}>
+        <label>MRB Decision Date</label>
+        <br />
+        <input
+          type="date"
+          value={mrbDecisionDate}
+          onChange={(e) => setMrbDecisionDate(e.target.value)}
+          style={{ padding: "8px" }}
+        />
+      </div>
+
+      <div style={{ marginBottom: "12px" }}>
+        <label>Defect Category</label>
+        <br />
+        <input
+          value={defectCategory}
+          onChange={(e) => setDefectCategory(e.target.value)}
+          placeholder="Defect category"
+          style={{ width: "100%", maxWidth: "400px", padding: "8px" }}
+        />
+      </div>
+
+      <div style={{ marginBottom: "12px" }}>
+        <label>Defect Subcategory</label>
+        <br />
+        <input
+          value={defectSubcategory}
+          onChange={(e) => setDefectSubcategory(e.target.value)}
+          placeholder="Defect subcategory"
+          style={{ width: "100%", maxWidth: "400px", padding: "8px" }}
+        />
+      </div>
+
+      <div style={{ marginBottom: "12px" }}>
+        <label>Material Status</label>
+        <br />
+        <select
+          value={materialStatus}
+          onChange={(e) => setMaterialStatus(e.target.value)}
+          style={{ padding: "8px", minWidth: "180px" }}
+        >
+          <option value="quarantined">Quarantined</option>
+          <option value="segregated">Segregated</option>
+          <option value="released">Released</option>
+          <option value="under_review">Under Review</option>
+          <option value="scrapped">Scrapped</option>
+          <option value="reworked">Reworked</option>
+        </select>
+      </div>
+
+      <div style={{ marginBottom: "12px" }}>
+        <label>Affected Quantity</label>
+        <br />
+        <input
+          type="number"
+          value={affectedQuantity}
+          onChange={(e) => setAffectedQuantity(e.target.value)}
+          placeholder="Affected quantity"
+          style={{ width: "100%", maxWidth: "200px", padding: "8px" }}
+        />
+      </div>
+
+      <div style={{ marginBottom: "12px" }}>
+        <label>Quarantined Quantity</label>
+        <br />
+        <input
+          type="number"
+          value={quarantinedQuantity}
+          onChange={(e) => setQuarantinedQuantity(e.target.value)}
+          placeholder="Quarantined quantity"
+          style={{ width: "100%", maxWidth: "200px", padding: "8px" }}
+        />
+      </div>
+
+      <div style={{ marginBottom: "12px" }}>
         <label>Severity</label>
         <br />
         <select
@@ -387,6 +502,13 @@ export default function NcmrPage() {
               <div><strong>Department:</strong> {item.department || "N/A"}</div>
               <div><strong>Date Detected:</strong> {item.date_detected || "N/A"}</div>
               <div><strong>Qty Affected:</strong> {item.quantity_affected ?? "N/A"}</div>
+              <div><strong>Containment Owner:</strong> {item.containment_owner || "N/A"}</div>
+              <div><strong>MRB Decision Date:</strong> {item.mrb_decision_date || "N/A"}</div>
+              <div><strong>Defect Category:</strong> {item.defect_category || "N/A"}</div>
+              <div><strong>Defect Subcategory:</strong> {item.defect_subcategory || "N/A"}</div>
+              <div><strong>Material Status:</strong> {item.material_status || "N/A"}</div>
+              <div><strong>Affected Qty:</strong> {item.affected_quantity ?? "N/A"}</div>
+              <div><strong>Quarantined Qty:</strong> {item.quarantined_quantity ?? "N/A"}</div>
             </div>
 
             <div style={{ marginTop: "8px" }}>
