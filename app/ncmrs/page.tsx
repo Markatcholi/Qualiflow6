@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
 
 type Ncmr = {
@@ -47,6 +47,12 @@ type MasterOption = {
   label: string;
 };
 
+type DefectSubcategoryOption = {
+  category_code: string;
+  code: string;
+  label: string;
+};
+
 export default function NcmrPage() {
   const [title, setTitle] = useState("");
   const [issueDescription, setIssueDescription] = useState("");
@@ -63,8 +69,8 @@ export default function NcmrPage() {
 
   const [containmentOwner, setContainmentOwner] = useState("");
   const [mrbDecisionDate, setMrbDecisionDate] = useState("");
-  const [defectCategory, setDefectCategory] = useState("");
-  const [defectSubcategory, setDefectSubcategory] = useState("");
+  const [defectCategory, setDefectCategory] = useState("visual");
+  const [defectSubcategory, setDefectSubcategory] = useState("scratch");
   const [materialStatus, setMaterialStatus] = useState("quarantined");
   const [affectedQuantity, setAffectedQuantity] = useState("");
   const [quarantinedQuantity, setQuarantinedQuantity] = useState("");
@@ -83,6 +89,14 @@ export default function NcmrPage() {
   const [detectionSourceOptions, setDetectionSourceOptions] = useState<MasterOption[]>([]);
   const [departmentOptions, setDepartmentOptions] = useState<MasterOption[]>([]);
   const [materialStatusOptions, setMaterialStatusOptions] = useState<MasterOption[]>([]);
+  const [defectCategoryOptions, setDefectCategoryOptions] = useState<MasterOption[]>([]);
+  const [defectSubcategoryOptions, setDefectSubcategoryOptions] = useState<DefectSubcategoryOption[]>([]);
+
+  const filteredDefectSubcategories = useMemo(() => {
+    return defectSubcategoryOptions.filter(
+      (item) => item.category_code === defectCategory
+    );
+  }, [defectCategoryOptions, defectSubcategoryOptions, defectCategory]);
 
   const fetchMasterData = async () => {
     const [
@@ -90,34 +104,30 @@ export default function NcmrPage() {
       detectionRes,
       departmentsRes,
       materialRes,
+      defectCategoryRes,
+      defectSubcategoryRes,
     ] = await Promise.all([
       supabase.from("md_dispositions").select("code, label").order("label"),
       supabase.from("md_detection_sources").select("code, label").order("label"),
       supabase.from("md_departments").select("code, label").order("label"),
       supabase.from("md_material_statuses").select("code, label").order("label"),
+      supabase.from("md_defect_categories").select("code, label").order("label"),
+      supabase.from("md_defect_subcategories").select("category_code, code, label").order("label"),
     ]);
 
-    if (dispositionsRes.error) {
-      alert(dispositionsRes.error.message);
-      return;
-    }
-    if (detectionRes.error) {
-      alert(detectionRes.error.message);
-      return;
-    }
-    if (departmentsRes.error) {
-      alert(departmentsRes.error.message);
-      return;
-    }
-    if (materialRes.error) {
-      alert(materialRes.error.message);
-      return;
-    }
+    if (dispositionsRes.error) return alert(dispositionsRes.error.message);
+    if (detectionRes.error) return alert(detectionRes.error.message);
+    if (departmentsRes.error) return alert(departmentsRes.error.message);
+    if (materialRes.error) return alert(materialRes.error.message);
+    if (defectCategoryRes.error) return alert(defectCategoryRes.error.message);
+    if (defectSubcategoryRes.error) return alert(defectSubcategoryRes.error.message);
 
     setDispositionOptions((dispositionsRes.data as MasterOption[]) || []);
     setDetectionSourceOptions((detectionRes.data as MasterOption[]) || []);
     setDepartmentOptions((departmentsRes.data as MasterOption[]) || []);
     setMaterialStatusOptions((materialRes.data as MasterOption[]) || []);
+    setDefectCategoryOptions((defectCategoryRes.data as MasterOption[]) || []);
+    setDefectSubcategoryOptions((defectSubcategoryRes.data as DefectSubcategoryOption[]) || []);
   };
 
   const fetchData = async () => {
@@ -234,7 +244,7 @@ export default function NcmrPage() {
     setQuantityAffected("");
     setContainmentOwner("");
     setMrbDecisionDate("");
-    setDefectCategory("");
+    setDefectCategory(defectCategoryOptions[0]?.code || "visual");
     setDefectSubcategory("");
     setMaterialStatus("quarantined");
     setAffectedQuantity("");
@@ -267,9 +277,7 @@ export default function NcmrPage() {
     }
 
     const oldStatus = item.status;
-    const updatePayload: { status: string; closed_at?: string | null } = {
-      status,
-    };
+    const updatePayload: { status: string; closed_at?: string | null } = { status };
 
     if (status === "closed") {
       updatePayload.closed_at = new Date().toISOString();
@@ -302,6 +310,19 @@ export default function NcmrPage() {
     fetchData();
   }, []);
 
+  useEffect(() => {
+    if (filteredDefectSubcategories.length > 0) {
+      const stillValid = filteredDefectSubcategories.some(
+        (item) => item.code === defectSubcategory
+      );
+      if (!stillValid) {
+        setDefectSubcategory(filteredDefectSubcategories[0].code);
+      }
+    } else {
+      setDefectSubcategory("");
+    }
+  }, [defectCategory, defectSubcategoryOptions]);
+
   const renderOptions = (options: MasterOption[]) =>
     options.map((option) => (
       <option key={option.code} value={option.code}>
@@ -314,277 +335,139 @@ export default function NcmrPage() {
       <h1>NCMR Initiation</h1>
 
       <div style={{ marginBottom: "12px" }}>
-        <label>Title</label>
-        <br />
-        <input
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="Short NCMR title"
-          style={{ width: "100%", maxWidth: "500px", padding: "8px" }}
-        />
+        <label>Title</label><br />
+        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Short NCMR title" style={{ width: "100%", maxWidth: "500px", padding: "8px" }} />
       </div>
 
       <div style={{ marginBottom: "12px" }}>
-        <label>Issue Description</label>
-        <br />
-        <textarea
-          value={issueDescription}
-          onChange={(e) => setIssueDescription(e.target.value)}
-          placeholder="Describe the issue observed"
-          rows={4}
-          style={{ width: "100%", maxWidth: "800px" }}
-        />
+        <label>Issue Description</label><br />
+        <textarea value={issueDescription} onChange={(e) => setIssueDescription(e.target.value)} placeholder="Describe the issue observed" rows={4} style={{ width: "100%", maxWidth: "800px" }} />
       </div>
 
       <div style={{ marginBottom: "12px" }}>
-        <label>Scope</label>
-        <br />
-        <textarea
-          value={scope}
-          onChange={(e) => setScope(e.target.value)}
-          placeholder="Affected scope, quantity, line, product family, etc."
-          rows={3}
-          style={{ width: "100%", maxWidth: "800px" }}
-        />
+        <label>Scope</label><br />
+        <textarea value={scope} onChange={(e) => setScope(e.target.value)} placeholder="Affected scope, quantity, line, product family, etc." rows={3} style={{ width: "100%", maxWidth: "800px" }} />
       </div>
 
       <div style={{ marginBottom: "12px" }}>
-        <label>Product Part Number</label>
-        <br />
-        <input
-          value={productPartNumber}
-          onChange={(e) => setProductPartNumber(e.target.value)}
-          placeholder="Part number"
-          style={{ width: "100%", maxWidth: "400px", padding: "8px" }}
-        />
+        <label>Product Part Number</label><br />
+        <input value={productPartNumber} onChange={(e) => setProductPartNumber(e.target.value)} placeholder="Part number" style={{ width: "100%", maxWidth: "400px", padding: "8px" }} />
       </div>
 
       <div style={{ marginBottom: "12px" }}>
-        <label>Lot Number</label>
-        <br />
-        <input
-          value={lotNumber}
-          onChange={(e) => setLotNumber(e.target.value)}
-          placeholder="Lot number"
-          style={{ width: "100%", maxWidth: "400px", padding: "8px" }}
-        />
+        <label>Lot Number</label><br />
+        <input value={lotNumber} onChange={(e) => setLotNumber(e.target.value)} placeholder="Lot number" style={{ width: "100%", maxWidth: "400px", padding: "8px" }} />
       </div>
 
       <div style={{ marginBottom: "12px" }}>
-        <label>Work Order Number</label>
-        <br />
-        <input
-          value={workorderNumber}
-          onChange={(e) => setWorkorderNumber(e.target.value)}
-          placeholder="Work order number"
-          style={{ width: "100%", maxWidth: "400px", padding: "8px" }}
-        />
+        <label>Work Order Number</label><br />
+        <input value={workorderNumber} onChange={(e) => setWorkorderNumber(e.target.value)} placeholder="Work order number" style={{ width: "100%", maxWidth: "400px", padding: "8px" }} />
       </div>
 
       <div style={{ marginBottom: "12px" }}>
-        <label>Disposition</label>
-        <br />
-        <select
-          value={disposition}
-          onChange={(e) => setDisposition(e.target.value)}
-          style={{ padding: "8px", minWidth: "220px" }}
-        >
+        <label>Disposition</label><br />
+        <select value={disposition} onChange={(e) => setDisposition(e.target.value)} style={{ padding: "8px", minWidth: "220px" }}>
           {renderOptions(dispositionOptions)}
         </select>
       </div>
 
       <div style={{ marginBottom: "12px" }}>
-        <label>Source of Detection</label>
-        <br />
-        <select
-          value={sourceOfDetection}
-          onChange={(e) => setSourceOfDetection(e.target.value)}
-          style={{ padding: "8px", minWidth: "260px" }}
-        >
+        <label>Source of Detection</label><br />
+        <select value={sourceOfDetection} onChange={(e) => setSourceOfDetection(e.target.value)} style={{ padding: "8px", minWidth: "260px" }}>
           {renderOptions(detectionSourceOptions)}
         </select>
       </div>
 
       <div style={{ marginBottom: "12px" }}>
-        <label>Department</label>
-        <br />
-        <select
-          value={department}
-          onChange={(e) => setDepartment(e.target.value)}
-          style={{ padding: "8px", minWidth: "220px" }}
-        >
+        <label>Department</label><br />
+        <select value={department} onChange={(e) => setDepartment(e.target.value)} style={{ padding: "8px", minWidth: "220px" }}>
           {renderOptions(departmentOptions)}
         </select>
       </div>
 
       <div style={{ marginBottom: "12px" }}>
-        <label>Date Detected</label>
-        <br />
-        <input
-          type="date"
-          value={dateDetected}
-          onChange={(e) => setDateDetected(e.target.value)}
-          style={{ padding: "8px" }}
-        />
+        <label>Date Detected</label><br />
+        <input type="date" value={dateDetected} onChange={(e) => setDateDetected(e.target.value)} style={{ padding: "8px" }} />
       </div>
 
       <div style={{ marginBottom: "12px" }}>
-        <label>Quantity Affected</label>
-        <br />
-        <input
-          type="number"
-          value={quantityAffected}
-          onChange={(e) => setQuantityAffected(e.target.value)}
-          placeholder="Quantity affected"
-          style={{ width: "100%", maxWidth: "200px", padding: "8px" }}
-        />
+        <label>Quantity Affected</label><br />
+        <input type="number" value={quantityAffected} onChange={(e) => setQuantityAffected(e.target.value)} placeholder="Quantity affected" style={{ width: "100%", maxWidth: "200px", padding: "8px" }} />
       </div>
 
       <div style={{ marginBottom: "12px" }}>
-        <label>Containment Owner</label>
-        <br />
-        <input
-          value={containmentOwner}
-          onChange={(e) => setContainmentOwner(e.target.value)}
-          placeholder="Containment owner"
-          style={{ width: "100%", maxWidth: "400px", padding: "8px" }}
-        />
+        <label>Containment Owner</label><br />
+        <input value={containmentOwner} onChange={(e) => setContainmentOwner(e.target.value)} placeholder="Containment owner" style={{ width: "100%", maxWidth: "400px", padding: "8px" }} />
       </div>
 
       <div style={{ marginBottom: "12px" }}>
-        <label>MRB Decision Date</label>
-        <br />
-        <input
-          type="date"
-          value={mrbDecisionDate}
-          onChange={(e) => setMrbDecisionDate(e.target.value)}
-          style={{ padding: "8px" }}
-        />
+        <label>MRB Decision Date</label><br />
+        <input type="date" value={mrbDecisionDate} onChange={(e) => setMrbDecisionDate(e.target.value)} style={{ padding: "8px" }} />
       </div>
 
       <div style={{ marginBottom: "12px" }}>
-        <label>Defect Category</label>
-        <br />
-        <input
-          value={defectCategory}
-          onChange={(e) => setDefectCategory(e.target.value)}
-          placeholder="Defect category"
-          style={{ width: "100%", maxWidth: "400px", padding: "8px" }}
-        />
+        <label>Defect Category</label><br />
+        <select value={defectCategory} onChange={(e) => setDefectCategory(e.target.value)} style={{ padding: "8px", minWidth: "220px" }}>
+          {renderOptions(defectCategoryOptions)}
+        </select>
       </div>
 
       <div style={{ marginBottom: "12px" }}>
-        <label>Defect Subcategory</label>
-        <br />
-        <input
-          value={defectSubcategory}
-          onChange={(e) => setDefectSubcategory(e.target.value)}
-          placeholder="Defect subcategory"
-          style={{ width: "100%", maxWidth: "400px", padding: "8px" }}
-        />
+        <label>Defect Subcategory</label><br />
+        <select value={defectSubcategory} onChange={(e) => setDefectSubcategory(e.target.value)} style={{ padding: "8px", minWidth: "220px" }}>
+          {filteredDefectSubcategories.map((option) => (
+            <option key={option.code} value={option.code}>
+              {option.label}
+            </option>
+          ))}
+        </select>
       </div>
 
       <div style={{ marginBottom: "12px" }}>
-        <label>Material Status</label>
-        <br />
-        <select
-          value={materialStatus}
-          onChange={(e) => setMaterialStatus(e.target.value)}
-          style={{ padding: "8px", minWidth: "220px" }}
-        >
+        <label>Material Status</label><br />
+        <select value={materialStatus} onChange={(e) => setMaterialStatus(e.target.value)} style={{ padding: "8px", minWidth: "220px" }}>
           {renderOptions(materialStatusOptions)}
         </select>
       </div>
 
       <div style={{ marginBottom: "12px" }}>
-        <label>Affected Quantity</label>
-        <br />
-        <input
-          type="number"
-          value={affectedQuantity}
-          onChange={(e) => setAffectedQuantity(e.target.value)}
-          placeholder="Affected quantity"
-          style={{ width: "100%", maxWidth: "200px", padding: "8px" }}
-        />
+        <label>Affected Quantity</label><br />
+        <input type="number" value={affectedQuantity} onChange={(e) => setAffectedQuantity(e.target.value)} placeholder="Affected quantity" style={{ width: "100%", maxWidth: "200px", padding: "8px" }} />
       </div>
 
       <div style={{ marginBottom: "12px" }}>
-        <label>Quarantined Quantity</label>
-        <br />
-        <input
-          type="number"
-          value={quarantinedQuantity}
-          onChange={(e) => setQuarantinedQuantity(e.target.value)}
-          placeholder="Quarantined quantity"
-          style={{ width: "100%", maxWidth: "200px", padding: "8px" }}
-        />
+        <label>Quarantined Quantity</label><br />
+        <input type="number" value={quarantinedQuantity} onChange={(e) => setQuarantinedQuantity(e.target.value)} placeholder="Quarantined quantity" style={{ width: "100%", maxWidth: "200px", padding: "8px" }} />
       </div>
 
       <div style={{ marginBottom: "12px" }}>
-        <label>Supplier Name</label>
-        <br />
-        <input
-          value={supplierName}
-          onChange={(e) => setSupplierName(e.target.value)}
-          placeholder="Supplier name"
-          style={{ width: "100%", maxWidth: "400px", padding: "8px" }}
-        />
+        <label>Supplier Name</label><br />
+        <input value={supplierName} onChange={(e) => setSupplierName(e.target.value)} placeholder="Supplier name" style={{ width: "100%", maxWidth: "400px", padding: "8px" }} />
       </div>
 
       <div style={{ marginBottom: "12px" }}>
-        <label>Supplier Lot</label>
-        <br />
-        <input
-          value={supplierLot}
-          onChange={(e) => setSupplierLot(e.target.value)}
-          placeholder="Supplier lot"
-          style={{ width: "100%", maxWidth: "400px", padding: "8px" }}
-        />
+        <label>Supplier Lot</label><br />
+        <input value={supplierLot} onChange={(e) => setSupplierLot(e.target.value)} placeholder="Supplier lot" style={{ width: "100%", maxWidth: "400px", padding: "8px" }} />
       </div>
 
       <div style={{ marginBottom: "12px" }}>
-        <label>Site / Location</label>
-        <br />
-        <input
-          value={siteLocation}
-          onChange={(e) => setSiteLocation(e.target.value)}
-          placeholder="Site / room / line / location"
-          style={{ width: "100%", maxWidth: "400px", padding: "8px" }}
-        />
+        <label>Site / Location</label><br />
+        <input value={siteLocation} onChange={(e) => setSiteLocation(e.target.value)} placeholder="Site / room / line / location" style={{ width: "100%", maxWidth: "400px", padding: "8px" }} />
       </div>
 
       <div style={{ marginBottom: "12px" }}>
-        <label>Immediate Correction</label>
-        <br />
-        <textarea
-          value={immediateCorrection}
-          onChange={(e) => setImmediateCorrection(e.target.value)}
-          placeholder="Immediate correction taken"
-          rows={3}
-          style={{ width: "100%", maxWidth: "800px" }}
-        />
+        <label>Immediate Correction</label><br />
+        <textarea value={immediateCorrection} onChange={(e) => setImmediateCorrection(e.target.value)} placeholder="Immediate correction taken" rows={3} style={{ width: "100%", maxWidth: "800px" }} />
       </div>
 
       <div style={{ marginBottom: "12px" }}>
-        <label>Long-Term Corrective Action</label>
-        <br />
-        <textarea
-          value={longTermCorrectiveAction}
-          onChange={(e) => setLongTermCorrectiveAction(e.target.value)}
-          placeholder="Long-term corrective action planned"
-          rows={3}
-          style={{ width: "100%", maxWidth: "800px" }}
-        />
+        <label>Long-Term Corrective Action</label><br />
+        <textarea value={longTermCorrectiveAction} onChange={(e) => setLongTermCorrectiveAction(e.target.value)} placeholder="Long-term corrective action planned" rows={3} style={{ width: "100%", maxWidth: "800px" }} />
       </div>
 
       <div style={{ marginBottom: "12px" }}>
-        <label>Severity</label>
-        <br />
-        <select
-          value={severity}
-          onChange={(e) => setSeverity(e.target.value)}
-          style={{ padding: "8px", minWidth: "160px" }}
-        >
+        <label>Severity</label><br />
+        <select value={severity} onChange={(e) => setSeverity(e.target.value)} style={{ padding: "8px", minWidth: "160px" }}>
           <option value="minor">Minor</option>
           <option value="major">Major</option>
           <option value="critical">Critical</option>
@@ -592,14 +475,8 @@ export default function NcmrPage() {
       </div>
 
       <div style={{ marginBottom: "12px" }}>
-        <label>Owner</label>
-        <br />
-        <input
-          value={owner}
-          onChange={(e) => setOwner(e.target.value)}
-          placeholder="Owner"
-          style={{ width: "100%", maxWidth: "400px", padding: "8px" }}
-        />
+        <label>Owner</label><br />
+        <input value={owner} onChange={(e) => setOwner(e.target.value)} placeholder="Owner" style={{ width: "100%", maxWidth: "400px", padding: "8px" }} />
       </div>
 
       <div style={{ marginBottom: "20px" }}>
@@ -612,11 +489,7 @@ export default function NcmrPage() {
         {list.map((item) => (
           <li key={item.id} style={{ marginBottom: "16px" }}>
             <strong>{item.title}</strong> — {item.severity} — {item.owner} — {item.status}
-            {item.capa_required ? (
-              <span style={{ color: "red", marginLeft: "10px" }}>
-                CAPA Required
-              </span>
-            ) : null}
+            {item.capa_required ? <span style={{ color: "red", marginLeft: "10px" }}>CAPA Required</span> : null}
 
             <div style={{ marginTop: "6px" }}>
               <div><strong>Part Number:</strong> {item.product_part_number || "N/A"}</div>
@@ -642,17 +515,11 @@ export default function NcmrPage() {
             </div>
 
             <div style={{ marginTop: "8px" }}>
-              <button
-                onClick={() => updateStatus(item, "investigation")}
-                style={{ marginRight: "8px" }}
-              >
+              <button onClick={() => updateStatus(item, "investigation")} style={{ marginRight: "8px" }}>
                 Move to Investigation
               </button>
 
-              <button
-                onClick={() => updateStatus(item, "closed")}
-                style={{ marginRight: "8px" }}
-              >
+              <button onClick={() => updateStatus(item, "closed")} style={{ marginRight: "8px" }}>
                 Close
               </button>
 
