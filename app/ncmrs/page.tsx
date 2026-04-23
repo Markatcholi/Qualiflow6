@@ -42,6 +42,11 @@ type Ncmr = {
   closed_at: string | null;
 };
 
+type MasterOption = {
+  code: string;
+  label: string;
+};
+
 export default function NcmrPage() {
   const [title, setTitle] = useState("");
   const [issueDescription, setIssueDescription] = useState("");
@@ -73,6 +78,47 @@ export default function NcmrPage() {
   const [severity, setSeverity] = useState("minor");
   const [owner, setOwner] = useState("");
   const [list, setList] = useState<Ncmr[]>([]);
+
+  const [dispositionOptions, setDispositionOptions] = useState<MasterOption[]>([]);
+  const [detectionSourceOptions, setDetectionSourceOptions] = useState<MasterOption[]>([]);
+  const [departmentOptions, setDepartmentOptions] = useState<MasterOption[]>([]);
+  const [materialStatusOptions, setMaterialStatusOptions] = useState<MasterOption[]>([]);
+
+  const fetchMasterData = async () => {
+    const [
+      dispositionsRes,
+      detectionRes,
+      departmentsRes,
+      materialRes,
+    ] = await Promise.all([
+      supabase.from("md_dispositions").select("code, label").order("label"),
+      supabase.from("md_detection_sources").select("code, label").order("label"),
+      supabase.from("md_departments").select("code, label").order("label"),
+      supabase.from("md_material_statuses").select("code, label").order("label"),
+    ]);
+
+    if (dispositionsRes.error) {
+      alert(dispositionsRes.error.message);
+      return;
+    }
+    if (detectionRes.error) {
+      alert(detectionRes.error.message);
+      return;
+    }
+    if (departmentsRes.error) {
+      alert(departmentsRes.error.message);
+      return;
+    }
+    if (materialRes.error) {
+      alert(materialRes.error.message);
+      return;
+    }
+
+    setDispositionOptions((dispositionsRes.data as MasterOption[]) || []);
+    setDetectionSourceOptions((detectionRes.data as MasterOption[]) || []);
+    setDepartmentOptions((departmentsRes.data as MasterOption[]) || []);
+    setMaterialStatusOptions((materialRes.data as MasterOption[]) || []);
+  };
 
   const fetchData = async () => {
     const { data, error } = await supabase
@@ -252,8 +298,16 @@ export default function NcmrPage() {
   };
 
   useEffect(() => {
+    fetchMasterData();
     fetchData();
   }, []);
+
+  const renderOptions = (options: MasterOption[]) =>
+    options.map((option) => (
+      <option key={option.code} value={option.code}>
+        {option.label}
+      </option>
+    ));
 
   return (
     <main style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
@@ -335,12 +389,7 @@ export default function NcmrPage() {
           onChange={(e) => setDisposition(e.target.value)}
           style={{ padding: "8px", minWidth: "220px" }}
         >
-          <option value="hold">Hold</option>
-          <option value="use_as_is">Use As Is</option>
-          <option value="rework">Rework</option>
-          <option value="scrap">Scrap</option>
-          <option value="return_to_supplier">Return to Supplier</option>
-          <option value="pending_mrb">Pending MRB</option>
+          {renderOptions(dispositionOptions)}
         </select>
       </div>
 
@@ -352,14 +401,7 @@ export default function NcmrPage() {
           onChange={(e) => setSourceOfDetection(e.target.value)}
           style={{ padding: "8px", minWidth: "260px" }}
         >
-          <option value="incoming_inspection">Incoming Inspection</option>
-          <option value="in_process_inspection">In-Process Inspection</option>
-          <option value="final_inspection">Final Inspection</option>
-          <option value="complaint">Complaint</option>
-          <option value="audit">Audit</option>
-          <option value="supplier_notification">Supplier Notification</option>
-          <option value="production_observation">Production Observation</option>
-          <option value="testing">Testing</option>
+          {renderOptions(detectionSourceOptions)}
         </select>
       </div>
 
@@ -371,15 +413,7 @@ export default function NcmrPage() {
           onChange={(e) => setDepartment(e.target.value)}
           style={{ padding: "8px", minWidth: "220px" }}
         >
-          <option value="manufacturing">Manufacturing</option>
-          <option value="quality">Quality</option>
-          <option value="warehouse">Warehouse</option>
-          <option value="supplier_quality">Supplier Quality</option>
-          <option value="engineering">Engineering</option>
-          <option value="r_and_d">R&D</option>
-          <option value="sterilization">Sterilization</option>
-          <option value="packaging">Packaging</option>
-          <option value="receiving_inspection">Receiving Inspection</option>
+          {renderOptions(departmentOptions)}
         </select>
       </div>
 
@@ -458,12 +492,7 @@ export default function NcmrPage() {
           onChange={(e) => setMaterialStatus(e.target.value)}
           style={{ padding: "8px", minWidth: "220px" }}
         >
-          <option value="quarantined">Quarantined</option>
-          <option value="segregated">Segregated</option>
-          <option value="released">Released</option>
-          <option value="under_review">Under Review</option>
-          <option value="scrapped">Scrapped</option>
-          <option value="reworked">Reworked</option>
+          {renderOptions(materialStatusOptions)}
         </select>
       </div>
 
