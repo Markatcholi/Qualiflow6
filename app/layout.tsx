@@ -1,4 +1,10 @@
 import "./globals.css";
+import AppHeader from "./components/AppHeader";
+
+export const metadata = {
+  title: "QualiFlow",
+  description: "Quality Management SaaS",
+};
 
 export default function RootLayout({
   children,
@@ -7,7 +13,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <AppHeader />
+        {children}
+      </body>
     </html>
   );
 }
