@@ -16,12 +16,20 @@ type Capa = {
   signature_meaning: string | null;
   signed_by: string | null;
   signed_at: string | null;
+  linked_ncmr_title: string | null;
+  source_type: string | null;
+  capa_source: string | null;
 };
 
 export default function CapaPage() {
   const [list, setList] = useState<Capa[]>([]);
   const [userRole, setUserRole] = useState("");
   const [userEmail, setUserEmail] = useState("");
+
+  const [title, setTitle] = useState("");
+  const [owner, setOwner] = useState("");
+  const [dueDate, setDueDate] = useState("");
+  const [capaSource, setCapaSource] = useState("direct");
 
   const fetchUserRole = async () => {
     const { data: userData } = await supabase.auth.getUser();
@@ -66,6 +74,46 @@ export default function CapaPage() {
       details,
       user_email: userEmail || "unknown",
     });
+  };
+
+  const createDirectCapa = async () => {
+    if (!title) {
+      alert("CAPA title is required.");
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("capas")
+      .insert({
+        title,
+        owner,
+        due_date: dueDate || null,
+        status: "open",
+        source_type: "direct",
+        capa_source: capaSource,
+        linked_ncmr_title: null,
+        ncmr_id: null,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    await addAuditLog(
+      "capa",
+      data.id,
+      "created",
+      `Direct CAPA created: ${title}`
+    );
+
+    setTitle("");
+    setOwner("");
+    setDueDate("");
+    setCapaSource("direct");
+    fetchData();
   };
 
   const closeCapaWithSignature = async (item: Capa) => {
@@ -159,59 +207,124 @@ export default function CapaPage() {
       <p><strong>Logged-in Email:</strong> {userEmail || "none"}</p>
       <p><strong>Your Role:</strong> {userRole || "none"}</p>
 
-      <ul>
-        {list.map((item) => (
-          <li key={item.id} style={{ marginBottom: "18px" }}>
-            <a href={`/capa/${item.id}`}>
-              <strong>{item.title}</strong>
-            </a>{" "}
-            — {item.status}
+      <section style={{ border: "1px solid #ccc", padding: "15px", marginBottom: "20px" }}>
+        <h2>Initiate Direct CAPA</h2>
 
-            <br />
-            Owner: {item.owner || "Not assigned"}
-            <br />
-            Due Date: {item.due_date || "Not set"}
-            <br />
-            Effectiveness: {item.effectiveness_check || "Not done"}
+        <div style={{ marginBottom: "10px" }}>
+          <label>CAPA Title</label><br />
+          <input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="CAPA title"
+            style={{ width: "100%", maxWidth: "500px", padding: "8px" }}
+          />
+        </div>
 
-            {item.signed_by && (
-              <>
-                <br />
-                <strong>Electronic Signature:</strong>
-                <br />
-                Signed by: {item.signed_by}
-                <br />
-                Signed at: {item.signed_at}
-                <br />
-                Meaning: {item.signature_meaning}
-              </>
-            )}
+        <div style={{ marginBottom: "10px" }}>
+          <label>Owner</label><br />
+          <input
+            value={owner}
+            onChange={(e) => setOwner(e.target.value)}
+            placeholder="CAPA owner"
+            style={{ width: "100%", maxWidth: "400px", padding: "8px" }}
+          />
+        </div>
 
-            <div style={{ marginTop: "8px" }}>
-              <button
-                onClick={() => updateStatus(item, "in_progress")}
-                style={{ marginRight: "8px" }}
-              >
-                In Progress
-              </button>
+        <div style={{ marginBottom: "10px" }}>
+          <label>Due Date</label><br />
+          <input
+            type="date"
+            value={dueDate}
+            onChange={(e) => setDueDate(e.target.value)}
+            style={{ padding: "8px" }}
+          />
+        </div>
 
-              <button
-                onClick={() => updateStatus(item, "effectiveness_check")}
-                style={{ marginRight: "8px" }}
-              >
-                Effectiveness
-              </button>
+        <div style={{ marginBottom: "10px" }}>
+          <label>CAPA Source</label><br />
+          <select
+            value={capaSource}
+            onChange={(e) => setCapaSource(e.target.value)}
+            style={{ padding: "8px", minWidth: "220px" }}
+          >
+            <option value="direct">Direct</option>
+            <option value="audit">Audit</option>
+            <option value="complaint">Complaint</option>
+            <option value="trend">Trend</option>
+            <option value="management_review">Management Review</option>
+            <option value="supplier_issue">Supplier Issue</option>
+            <option value="process_issue">Process Issue</option>
+          </select>
+        </div>
 
-              <button onClick={() => updateStatus(item, "closed")}>
-                Close with E-Signature
-              </button>
-            </div>
-          </li>
-        ))}
-      </ul>
+        <button onClick={createDirectCapa}>Create Direct CAPA</button>
+      </section>
+
+      <h2>Existing CAPAs</h2>
+
+      {list.length === 0 ? (
+        <p>No CAPA records yet.</p>
+      ) : (
+        <ul>
+          {list.map((item) => (
+            <li key={item.id} style={{ marginBottom: "18px" }}>
+              <a href={`/capa/${item.id}`}>
+                <strong>{item.title}</strong>
+              </a>{" "}
+              — {item.status}
+
+              <br />
+              Source Type: {item.source_type || "NCMR-linked"}
+              <br />
+              CAPA Source: {item.capa_source || "NCMR"}
+              <br />
+              Linked NCMR: {item.linked_ncmr_title || "None"}
+              <br />
+              Owner: {item.owner || "Not assigned"}
+              <br />
+              Due Date: {item.due_date || "Not set"}
+              <br />
+              Effectiveness: {item.effectiveness_check || "Not done"}
+
+              {item.signed_by && (
+                <>
+                  <br />
+                  <strong>Electronic Signature:</strong>
+                  <br />
+                  Signed by: {item.signed_by}
+                  <br />
+                  Signed at: {item.signed_at}
+                  <br />
+                  Meaning: {item.signature_meaning}
+                </>
+              )}
+
+              <div style={{ marginTop: "8px" }}>
+                <button
+                  onClick={() => updateStatus(item, "in_progress")}
+                  style={{ marginRight: "8px" }}
+                >
+                  In Progress
+                </button>
+
+                <button
+                  onClick={() => updateStatus(item, "effectiveness_check")}
+                  style={{ marginRight: "8px" }}
+                >
+                  Effectiveness
+                </button>
+
+                <button onClick={() => updateStatus(item, "closed")}>
+                  Close with E-Signature
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
 
       <br />
-      <a href="/ncmrs">Back to NCMRs</a>
+      <a href="/dashboard">Back to Dashboard</a>
     </main>
   );
 }
