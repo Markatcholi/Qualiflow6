@@ -13,39 +13,28 @@ type Capa = {
   approved_by: string | null;
   approved_at: string | null;
   closed_at: string | null;
+  signature_meaning: string | null;
+  signed_by: string | null;
+  signed_at: string | null;
 };
 
 export default function CapaPage() {
   const [list, setList] = useState<Capa[]>([]);
-  const [userRole, setUserRole] = useState<string>("");
-  const [userEmail, setUserEmail] = useState<string>("");
+  const [userRole, setUserRole] = useState("");
+  const [userEmail, setUserEmail] = useState("");
 
   const fetchUserRole = async () => {
-    const { data: userData, error: userError } = await supabase.auth.getUser();
-
-    if (userError) {
-      alert(userError.message);
-      return;
-    }
-
+    const { data: userData } = await supabase.auth.getUser();
     const email = userData?.user?.email || "";
     setUserEmail(email);
 
-    if (!email) {
-      setUserRole("");
-      return;
-    }
+    if (!email) return;
 
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from("user_roles")
       .select("role")
       .eq("user_email", email)
       .maybeSingle();
-
-    if (error) {
-      alert(error.message);
-      return;
-    }
 
     setUserRole(data?.role || "");
   };
@@ -64,7 +53,22 @@ export default function CapaPage() {
     setList((data as Capa[]) || []);
   };
 
-  const closeCapa = async (item: Capa) => {
+  const addAuditLog = async (
+    entityType: string,
+    entityId: string,
+    action: string,
+    details: string
+  ) => {
+    await supabase.from("audit_logs").insert({
+      entity_type: entityType,
+      entity_id: entityId,
+      action,
+      details,
+      user_email: userEmail || "unknown",
+    });
+  };
+
+  const closeCapaWithSignature = async (item: Capa) => {
     if (!item.effectiveness_check) {
       alert("Complete effectiveness check before closing.");
       return;
@@ -75,19 +79,27 @@ export default function CapaPage() {
       return;
     }
 
-    const confirmClose = window.confirm(
-      "By closing this CAPA, you are electronically signing that it is complete. Continue?"
+    const confirmIntent = window.confirm(
+      "Electronic Signature:\n\nBy selecting OK, I confirm that I have reviewed this CAPA, the effectiveness check is complete, and I approve closure."
     );
 
-    if (!confirmClose) return;
+    if (!confirmIntent) return;
+
+    const signatureMeaning =
+      "I have reviewed this CAPA, confirmed effectiveness check completion, and approve closure.";
+
+    const now = new Date().toISOString();
 
     const { error } = await supabase
       .from("capas")
       .update({
         status: "closed",
         approved_by: userEmail,
-        approved_at: new Date().toISOString(),
-        closed_at: new Date().toISOString(),
+        approved_at: now,
+        signed_by: userEmail,
+        signed_at: now,
+        signature_meaning: signatureMeaning,
+        closed_at: now,
       })
       .eq("id", item.id);
 
@@ -96,12 +108,19 @@ export default function CapaPage() {
       return;
     }
 
+    await addAuditLog(
+      "capa",
+      item.id,
+      "electronic_signature",
+      `CAPA closed with electronic signature. Meaning: ${signatureMeaning}`
+    );
+
     fetchData();
   };
 
   const updateStatus = async (item: Capa, status: string) => {
     if (status === "closed") {
-      await closeCapa(item);
+      await closeCapaWithSignature(item);
       return;
     }
 
@@ -117,6 +136,13 @@ export default function CapaPage() {
       alert(error.message);
       return;
     }
+
+    await addAuditLog(
+      "capa",
+      item.id,
+      "status_changed",
+      `CAPA status changed to ${status}`
+    );
 
     fetchData();
   };
@@ -135,7 +161,7 @@ export default function CapaPage() {
 
       <ul>
         {list.map((item) => (
-          <li key={item.id} style={{ marginBottom: "16px" }}>
+          <li key={item.id} style={{ marginBottom: "18px" }}>
             <a href={`/capa/${item.id}`}>
               <strong>{item.title}</strong>
             </a>{" "}
@@ -148,12 +174,16 @@ export default function CapaPage() {
             <br />
             Effectiveness: {item.effectiveness_check || "Not done"}
 
-            {item.approved_by && (
+            {item.signed_by && (
               <>
                 <br />
-                Approved by: {item.approved_by}
+                <strong>Electronic Signature:</strong>
                 <br />
-                {item.approved_at}
+                Signed by: {item.signed_by}
+                <br />
+                Signed at: {item.signed_at}
+                <br />
+                Meaning: {item.signature_meaning}
               </>
             )}
 
@@ -173,7 +203,7 @@ export default function CapaPage() {
               </button>
 
               <button onClick={() => updateStatus(item, "closed")}>
-                Close (Sign)
+                Close with E-Signature
               </button>
             </div>
           </li>
