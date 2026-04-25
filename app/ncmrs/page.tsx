@@ -392,7 +392,6 @@ export default function NcmrPage() {
       <option key={option.code} value={option.code}>
         {option.label}
       </option>
-    ));
 
   return (
     <main style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
