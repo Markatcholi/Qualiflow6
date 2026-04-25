@@ -55,7 +55,7 @@ export default function NcmrDetailPage() {
       return;
     }
 
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from("capas")
       .select("*")
       .eq("id", capaId)
