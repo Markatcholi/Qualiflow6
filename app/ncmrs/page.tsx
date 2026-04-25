@@ -7,39 +7,16 @@ type Ncmr = {
   id: string;
   title: string | null;
   issue_description: string | null;
-  scope: string | null;
   product_part_number: string | null;
-  lot_number: string | null;
-  workorder_number: string | null;
-  disposition: string | null;
-  source_of_detection: string | null;
-  department: string | null;
-  date_detected: string | null;
-  quantity_affected: number | null;
-  containment_owner: string | null;
-  mrb_decision_date: string | null;
   defect_category: string | null;
   defect_subcategory: string | null;
-  material_status: string | null;
-  affected_quantity: number | null;
-  quarantined_quantity: number | null;
-  supplier_name: string | null;
-  supplier_lot: string | null;
-  site_location: string | null;
-  immediate_correction: string | null;
-  long_term_corrective_action: string | null;
+  recurring_issue: boolean | null;
+  recurrence_reason: string | null;
   severity: string | null;
   owner: string | null;
   status: string | null;
   capa_required: boolean | null;
-  problem_description: string | null;
-  containment_action: string | null;
-  investigation_summary: string | null;
-  root_cause: string | null;
-  risk_assessment: string | null;
-  corrective_action: string | null;
   created_at: string | null;
-  closed_at: string | null;
 };
 
 type MasterOption = {
@@ -70,7 +47,7 @@ export default function NcmrPage() {
   const [containmentOwner, setContainmentOwner] = useState("");
   const [mrbDecisionDate, setMrbDecisionDate] = useState("");
   const [defectCategory, setDefectCategory] = useState("visual");
-  const [defectSubcategory, setDefectSubcategory] = useState("scratch");
+  const [defectSubcategory, setDefectSubcategory] = useState("");
   const [materialStatus, setMaterialStatus] = useState("quarantined");
   const [affectedQuantity, setAffectedQuantity] = useState("");
   const [quarantinedQuantity, setQuarantinedQuantity] = useState("");
@@ -167,13 +144,57 @@ export default function NcmrPage() {
     });
   };
 
+  const checkRecurrence = async () => {
+    if (!productPartNumber || !defectCategory) {
+      return {
+        recurring: false,
+        reason: "",
+      };
+    }
+
+    const sixtyDaysAgo = new Date();
+    sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
+
+    const { data, error } = await supabase
+      .from("ncmrs")
+      .select("id, title, created_at, product_part_number, defect_category, defect_subcategory")
+      .eq("product_part_number", productPartNumber)
+      .eq("defect_category", defectCategory)
+      .gte("created_at", sixtyDaysAgo.toISOString());
+
+    if (error) {
+      alert(error.message);
+      return {
+        recurring: false,
+        reason: "",
+      };
+    }
+
+    const matches = data || [];
+
+    if (matches.length > 0) {
+      return {
+        recurring: true,
+        reason: `Recurring issue detected: ${matches.length} prior NCMR(s) with same part number and defect category in the last 60 days.`,
+      };
+    }
+
+    return {
+      recurring: false,
+      reason: "",
+    };
+  };
+
   const addNcmr = async () => {
     if (!title) {
       alert("Title is required.");
       return;
     }
 
-    const capaRequired = severity === "major" || severity === "critical";
+    const recurrence = await checkRecurrence();
+
+    const severityRequiresCapa = severity === "major" || severity === "critical";
+    const capaRequired = severityRequiresCapa || recurrence.recurring;
 
     const { data, error } = await supabase
       .from("ncmrs")
@@ -205,6 +226,9 @@ export default function NcmrPage() {
         owner,
         status: "open",
         capa_required: capaRequired,
+        recurring_issue: recurrence.recurring,
+        recurrence_reason: recurrence.reason,
+        recurrence_checked_at: new Date().toISOString(),
       })
       .select()
       .single();
@@ -216,11 +240,27 @@ export default function NcmrPage() {
 
     await addAuditLog("ncmr", data.id, "created", `Created NCMR: ${title}`);
 
+    if (recurrence.recurring) {
+      await addAuditLog(
+        "ncmr",
+        data.id,
+        "recurrence_detected",
+        recurrence.reason
+      );
+    }
+
     if (capaRequired && data) {
       const { error: capaError } = await supabase.from("capas").insert({
         ncmr_id: data.id,
         title: `CAPA for ${title}`,
         linked_ncmr_title: title,
+        source_type: "ncmr",
+        capa_source: recurrence.recurring ? "Recurring NCMR" : "NCMR Severity",
+        problem_description: issueDescription || title,
+        root_cause: "",
+        corrective_action_plan: longTermCorrectiveAction,
+        action_plan: longTermCorrectiveAction,
+        status: "open",
       });
 
       if (capaError) {
@@ -232,7 +272,9 @@ export default function NcmrPage() {
         "ncmr",
         data.id,
         "capa_triggered",
-        `CAPA automatically required for severity: ${severity}`
+        recurrence.recurring
+          ? "CAPA automatically required due to recurring issue."
+          : `CAPA automatically required for severity: ${severity}`
       );
     }
 
@@ -356,11 +398,7 @@ export default function NcmrPage() {
 
       <div style={{ marginBottom: "12px" }}>
         <label>Product Part Number</label><br />
-        <select
-          value={productPartNumber}
-          onChange={(e) => setProductPartNumber(e.target.value)}
-          style={{ padding: "8px", minWidth: "220px" }}
-        >
+        <select value={productPartNumber} onChange={(e) => setProductPartNumber(e.target.value)} style={{ padding: "8px", minWidth: "220px" }}>
           <option value="">Select part number</option>
           {renderOptions(partNumberOptions)}
         </select>
@@ -502,28 +540,14 @@ export default function NcmrPage() {
           <li key={item.id} style={{ marginBottom: "16px" }}>
             <strong>{item.title}</strong> — {item.severity} — {item.owner} — {item.status}
             {item.capa_required ? <span style={{ color: "red", marginLeft: "10px" }}>CAPA Required</span> : null}
+            {item.recurring_issue ? <span style={{ color: "orange", marginLeft: "10px" }}>Recurring Issue</span> : null}
 
             <div style={{ marginTop: "6px" }}>
               <div><strong>Part Number:</strong> {item.product_part_number || "N/A"}</div>
-              <div><strong>Lot Number:</strong> {item.lot_number || "N/A"}</div>
-              <div><strong>Work Order:</strong> {item.workorder_number || "N/A"}</div>
-              <div><strong>Disposition:</strong> {item.disposition || "N/A"}</div>
-              <div><strong>Source:</strong> {item.source_of_detection || "N/A"}</div>
-              <div><strong>Department:</strong> {item.department || "N/A"}</div>
-              <div><strong>Date Detected:</strong> {item.date_detected || "N/A"}</div>
-              <div><strong>Qty Affected:</strong> {item.quantity_affected ?? "N/A"}</div>
-              <div><strong>Containment Owner:</strong> {item.containment_owner || "N/A"}</div>
-              <div><strong>MRB Decision Date:</strong> {item.mrb_decision_date || "N/A"}</div>
               <div><strong>Defect Category:</strong> {item.defect_category || "N/A"}</div>
               <div><strong>Defect Subcategory:</strong> {item.defect_subcategory || "N/A"}</div>
-              <div><strong>Material Status:</strong> {item.material_status || "N/A"}</div>
-              <div><strong>Affected Qty:</strong> {item.affected_quantity ?? "N/A"}</div>
-              <div><strong>Quarantined Qty:</strong> {item.quarantined_quantity ?? "N/A"}</div>
-              <div><strong>Supplier Name:</strong> {item.supplier_name || "N/A"}</div>
-              <div><strong>Supplier Lot:</strong> {item.supplier_lot || "N/A"}</div>
-              <div><strong>Site/Location:</strong> {item.site_location || "N/A"}</div>
-              <div><strong>Immediate Correction:</strong> {item.immediate_correction || "N/A"}</div>
-              <div><strong>Long-Term Corrective Action:</strong> {item.long_term_corrective_action || "N/A"}</div>
+              <div><strong>Recurring:</strong> {item.recurring_issue ? "Yes" : "No"}</div>
+              <div><strong>Recurrence Reason:</strong> {item.recurrence_reason || "N/A"}</div>
             </div>
 
             <div style={{ marginTop: "8px" }}>
