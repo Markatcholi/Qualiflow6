@@ -56,10 +56,23 @@ export default function NcmrDetailPage() {
     }
 
     const { data, error } = await supabase
-      .from("capas")
-      .select("*")
-      .eq("id", capaId)
-      .maybeSingle();
+  .from("capas")
+  .select("*")
+  .eq("id", id)
+  .maybeSingle();
+
+if (error) {
+  alert(error.message);
+  setLoading(false);
+  return;
+}
+
+if (!data) {
+  alert("CAPA record not found.");
+  setRecord(null);
+  setLoading(false);
+  return;
+}
 
     setLinkedCapa(data || null);
   };
