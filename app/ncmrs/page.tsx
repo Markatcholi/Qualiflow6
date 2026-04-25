@@ -393,7 +393,7 @@ export default function NcmrPage() {
         {option.label}
       </option>
 
-  return (
+  return ))}
     <main style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
       <h1>NCMR Initiation</h1>
 
