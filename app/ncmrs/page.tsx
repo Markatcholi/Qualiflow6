@@ -543,7 +543,7 @@ export default function NcmrPage() {
 
       <div style={{ marginBottom: "12px" }}>
         <label>Severity</label><br />
-        <select value={severity} onChange={(e) => setSeverity(e.target.value)} style={{ padding: "8px", minWidth: "160px" }}>
+        <select value={severity: "not_assessed", } onChange={(e) => setSeverity(e.target.value)} style={{ padding: "8px", minWidth: "160px" }}>
           <option value="minor">Minor</option>
           <option value="major">Major</option>
           <option value="critical">Critical</option>
