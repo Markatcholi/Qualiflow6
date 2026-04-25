@@ -82,7 +82,7 @@ if (!data) {
       .from("ncmrs")
       .select("*")
       .eq("id", id)
-      .single();
+      .maybesingle();
 
     if (error) {
       alert(error.message);
