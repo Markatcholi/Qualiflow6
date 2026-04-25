@@ -17,26 +17,23 @@ type Ncmr = {
   date_detected: string | null;
   quantity_affected: number | null;
   containment_owner: string | null;
+  containment_action: string | null;
   mrb_decision_date: string | null;
   defect_category: string | null;
   defect_subcategory: string | null;
   material_status: string | null;
-  affected_quantity: number | null;
   quarantined_quantity: number | null;
   supplier_name: string | null;
   supplier_lot: string | null;
   site_location: string | null;
   immediate_correction: string | null;
-  long_term_corrective_action: string | null;
   severity: string | null;
   owner: string | null;
   status: string | null;
   capa_required: boolean | null;
   recurring_issue: boolean | null;
   recurrence_reason: string | null;
-  recurrence_checked_at: string | null;
   problem_description: string | null;
-  containment_action: string | null;
   investigation_summary: string | null;
   root_cause: string | null;
   risk_assessment: string | null;
@@ -63,28 +60,22 @@ export default function NcmrPage() {
   const [productPartNumber, setProductPartNumber] = useState("");
   const [lotNumber, setLotNumber] = useState("");
   const [workorderNumber, setWorkorderNumber] = useState("");
-
   const [disposition, setDisposition] = useState("hold");
   const [sourceOfDetection, setSourceOfDetection] = useState("in_process_inspection");
   const [department, setDepartment] = useState("manufacturing");
   const [dateDetected, setDateDetected] = useState("");
   const [quantityAffected, setQuantityAffected] = useState("");
-
   const [containmentOwner, setContainmentOwner] = useState("");
+  const [containmentAction, setContainmentAction] = useState("");
   const [mrbDecisionDate, setMrbDecisionDate] = useState("");
   const [defectCategory, setDefectCategory] = useState("visual");
   const [defectSubcategory, setDefectSubcategory] = useState("");
   const [materialStatus, setMaterialStatus] = useState("quarantined");
-  const [affectedQuantity, setAffectedQuantity] = useState("");
   const [quarantinedQuantity, setQuarantinedQuantity] = useState("");
-
   const [supplierName, setSupplierName] = useState("");
   const [supplierLot, setSupplierLot] = useState("");
   const [siteLocation, setSiteLocation] = useState("");
   const [immediateCorrection, setImmediateCorrection] = useState("");
-  const [longTermCorrectiveAction, setLongTermCorrectiveAction] = useState("");
-
-  const [severity, setSeverity] = useState("minor");
   const [owner, setOwner] = useState("");
   const [list, setList] = useState<Ncmr[]>([]);
 
@@ -116,10 +107,7 @@ export default function NcmrPage() {
       supabase.from("md_dispositions").select("code, label").order("label"),
       supabase.from("md_detection_sources").select("code, label").order("label"),
       supabase.from("md_departments").select("code, label").order("label"),
-      supabase.from("md_material_statuses").select("code, label").order("label"),
-      supabase.from("md_defect_categories").select("code, label").order("label"),
-      supabase.from("md_defect_subcategories").select("category_code, code, label").order("label"),
-    ]);
+      supabase.from("
 
     if (partNumbersRes.error) return alert(partNumbersRes.error.message);
     if (dispositionsRes.error) return alert(dispositionsRes.error.message);
