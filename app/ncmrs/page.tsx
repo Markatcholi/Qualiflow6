@@ -569,12 +569,31 @@ export default function NcmrPage() {
             {item.recurring_issue ? <span style={{ color: "orange", marginLeft: "10px" }}>Recurring Issue</span> : null}
 
             <div style={{ marginTop: "6px" }}>
-              <div><strong>Part Number:</strong> {item.product_part_number || "N/A"}</div>
-              <div><strong>Defect Category:</strong> {item.defect_category || "N/A"}</div>
-              <div><strong>Defect Subcategory:</strong> {item.defect_subcategory || "N/A"}</div>
-              <div><strong>Recurring:</strong> {item.recurring_issue ? "Yes" : "No"}</div>
-              <div><strong>Recurrence Reason:</strong> {item.recurrence_reason || "N/A"}</div>
-            </div>
+  <div><strong>Issue Description:</strong> {item.issue_description || "N/A"}</div>
+  <div><strong>Scope:</strong> {item.scope || "N/A"}</div>
+  <div><strong>Part Number:</strong> {item.product_part_number || "N/A"}</div>
+  <div><strong>Lot Number:</strong> {item.lot_number || "N/A"}</div>
+  <div><strong>Work Order:</strong> {item.workorder_number || "N/A"}</div>
+  <div><strong>Disposition:</strong> {item.disposition || "N/A"}</div>
+  <div><strong>Source:</strong> {item.source_of_detection || "N/A"}</div>
+  <div><strong>Department:</strong> {item.department || "N/A"}</div>
+  <div><strong>Date Detected:</strong> {item.date_detected || "N/A"}</div>
+  <div><strong>Qty Affected:</strong> {item.quantity_affected ?? "N/A"}</div>
+  <div><strong>Containment Owner:</strong> {item.containment_owner || "N/A"}</div>
+  <div><strong>MRB Decision Date:</strong> {item.mrb_decision_date || "N/A"}</div>
+  <div><strong>Defect Category:</strong> {item.defect_category || "N/A"}</div>
+  <div><strong>Defect Subcategory:</strong> {item.defect_subcategory || "N/A"}</div>
+  <div><strong>Material Status:</strong> {item.material_status || "N/A"}</div>
+  <div><strong>Affected Qty:</strong> {item.affected_quantity ?? "N/A"}</div>
+  <div><strong>Quarantined Qty:</strong> {item.quarantined_quantity ?? "N/A"}</div>
+  <div><strong>Supplier Name:</strong> {item.supplier_name || "N/A"}</div>
+  <div><strong>Supplier Lot:</strong> {item.supplier_lot || "N/A"}</div>
+  <div><strong>Site/Location:</strong> {item.site_location || "N/A"}</div>
+  <div><strong>Immediate Correction:</strong> {item.immediate_correction || "N/A"}</div>
+  <div><strong>Long-Term Corrective Action:</strong> {item.long_term_corrective_action || "N/A"}</div>
+  <div><strong>Recurring:</strong> {item.recurring_issue ? "Yes" : "No"}</div>
+  <div><strong>Recurrence Reason:</strong> {item.recurrence_reason || "N/A"}</div>
+</div>
 
             <div style={{ marginTop: "8px" }}>
               <button onClick={() => updateStatus(item, "investigation")} style={{ marginRight: "8px" }}>
