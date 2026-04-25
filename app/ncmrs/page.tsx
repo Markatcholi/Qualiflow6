@@ -93,36 +93,41 @@ export default function NcmrPage() {
     );
   }, [defectSubcategoryOptions, defectCategory]);
 
-  const fetchMasterData = async () => {
-    const [
-      partNumbersRes,
-      dispositionsRes,
-      detectionRes,
-      departmentsRes,
-      materialRes,
-      defectCategoryRes,
-      defectSubcategoryRes,
-    ] = await Promise.all([
-      supabase.from("md_product_part_numbers").select("code, label").order("label"),
-      supabase.from("md_dispositions").select("code, label").order("label"),
-      supabase.from("md_detection_sources").select("code, label").order("label"),
-      supabase.from("md_departments").select("code, label").order("label"),
-    if (partNumbersRes.error) return alert(partNumbersRes.error.message);
-    if (dispositionsRes.error) return alert(dispositionsRes.error.message);
-    if (detectionRes.error) return alert(detectionRes.error.message);
-    if (departmentsRes.error) return alert(departmentsRes.error.message);
-    if (materialRes.error) return alert(materialRes.error.message);
-    if (defectCategoryRes.error) return alert(defectCategoryRes.error.message);
-    if (defectSubcategoryRes.error) return alert(defectSubcategoryRes.error.message);
+ const fetchMasterData = async () => {
+  const [
+    partNumbersRes,
+    dispositionsRes,
+    detectionRes,
+    departmentsRes,
+    materialRes,
+    defectCategoryRes,
+    defectSubcategoryRes,
+  ] = await Promise.all([
+    supabase.from("md_product_part_numbers").select("code, label").order("label"),
+    supabase.from("md_dispositions").select("code, label").order("label"),
+    supabase.from("md_detection_sources").select("code, label").order("label"),
+    supabase.from("md_departments").select("code, label").order("label"),
+    supabase.from("md_material_statuses").select("code, label").order("label"),
+    supabase.from("md_defect_categories").select("code, label").order("label"),
+    supabase.from("md_defect_subcategories").select("category_code, code, label").order("label"),
+  ]);
 
-    setPartNumberOptions((partNumbersRes.data as MasterOption[]) || []);
-    setDispositionOptions((dispositionsRes.data as MasterOption[]) || []);
-    setDetectionSourceOptions((detectionRes.data as MasterOption[]) || []);
-    setDepartmentOptions((departmentsRes.data as MasterOption[]) || []);
-    setMaterialStatusOptions((materialRes.data as MasterOption[]) || []);
-    setDefectCategoryOptions((defectCategoryRes.data as MasterOption[]) || []);
-    setDefectSubcategoryOptions((defectSubcategoryRes.data as DefectSubcategoryOption[]) || []);
-  };
+  if (partNumbersRes.error) return alert(partNumbersRes.error.message);
+  if (dispositionsRes.error) return alert(dispositionsRes.error.message);
+  if (detectionRes.error) return alert(detectionRes.error.message);
+  if (departmentsRes.error) return alert(departmentsRes.error.message);
+  if (materialRes.error) return alert(materialRes.error.message);
+  if (defectCategoryRes.error) return alert(defectCategoryRes.error.message);
+  if (defectSubcategoryRes.error) return alert(defectSubcategoryRes.error.message);
+
+  setPartNumberOptions(partNumbersRes.data || []);
+  setDispositionOptions(dispositionsRes.data || []);
+  setDetectionSourceOptions(detectionRes.data || []);
+  setDepartmentOptions(departmentsRes.data || []);
+  setMaterialStatusOptions(materialRes.data || []);
+  setDefectCategoryOptions(defectCategoryRes.data || []);
+  setDefectSubcategoryOptions(defectSubcategoryRes.data || []);
+};
 
   const fetchData = async () => {
     const { data, error } = await supabase
