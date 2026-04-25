@@ -107,8 +107,6 @@ export default function NcmrPage() {
       supabase.from("md_dispositions").select("code, label").order("label"),
       supabase.from("md_detection_sources").select("code, label").order("label"),
       supabase.from("md_departments").select("code, label").order("label"),
-      supabase.from("
-
     if (partNumbersRes.error) return alert(partNumbersRes.error.message);
     if (dispositionsRes.error) return alert(dispositionsRes.error.message);
     if (detectionRes.error) return alert(detectionRes.error.message);
