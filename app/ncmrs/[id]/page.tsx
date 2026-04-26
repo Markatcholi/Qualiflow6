@@ -9,6 +9,7 @@ export default function NcmrDetailPage() {
   const id = params.id;
 
   const [record, setRecord] = useState<any>(null);
+  const [linkedCapa, setLinkedCapa] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   const [userEmail, setUserEmail] = useState("");
@@ -20,10 +21,11 @@ export default function NcmrDetailPage() {
   const [investigationSummary, setInvestigationSummary] = useState("");
   const [rootCause, setRootCause] = useState("");
   const [correctionActionProposal, setCorrectionActionProposal] = useState("");
+  const [correctiveAction, setCorrectiveAction] = useState("");
   const [riskAssessment, setRiskAssessment] = useState("");
+  const [severity, setSeverity] = useState("not_assessed");
   const [productDisposition, setProductDisposition] = useState("");
   const [dispositionJustification, setDispositionJustification] = useState("");
-  const [correctiveAction, setCorrectiveAction] = useState("");
   const [correctionImplementation, setCorrectionImplementation] = useState("");
   const [reviewStatus, setReviewStatus] = useState("draft");
 
@@ -48,15 +50,37 @@ export default function NcmrDetailPage() {
     setUserRole(data?.role || "");
   };
 
+  const fetchLinkedCapa = async (capaId: string | null) => {
+    if (!capaId) {
+      setLinkedCapa(null);
+      return;
+    }
+
+    const { data } = await supabase
+      .from("capas")
+      .select("*")
+      .eq("id", capaId)
+      .maybeSingle();
+
+    setLinkedCapa(data || null);
+  };
+
   const fetchRecord = async () => {
     const { data, error } = await supabase
       .from("ncmrs")
       .select("*")
       .eq("id", id)
-      .single();
+      .maybeSingle();
 
     if (error) {
       alert(error.message);
+      setLoading(false);
+      return;
+    }
+
+    if (!data) {
+      alert("NCMR record not found.");
+      setRecord(null);
       setLoading(false);
       return;
     }
@@ -68,21 +92,21 @@ export default function NcmrDetailPage() {
     setInvestigationSummary(data.investigation_summary || "");
     setRootCause(data.root_cause || "");
     setCorrectionActionProposal(data.correction_action_proposal || "");
+    setCorrectiveAction(data.corrective_action || "");
     setRiskAssessment(data.risk_assessment || "");
+    setSeverity(data.severity || "not_assessed");
     setProductDisposition(data.product_disposition || data.disposition || "");
     setDispositionJustification(data.disposition_justification || "");
-    setCorrectiveAction(data.corrective_action || "");
     setCorrectionImplementation(data.correction_implementation || "");
     setReviewStatus(data.review_status || "draft");
     setEvidenceUrl(data.evidence_url || "");
     setEvidenceNotes(data.evidence_notes || "");
+
+    await fetchLinkedCapa(data.capa_id || null);
     setLoading(false);
   };
 
-  const addAuditLog = async (
-    action: string,
-    details: string
-  ) => {
+  const addAuditLog = async (action: string, details: string) => {
     await supabase.from("audit_logs").insert({
       entity_type: "ncmr",
       entity_id: id,
@@ -90,6 +114,57 @@ export default function NcmrDetailPage() {
       details,
       user_email: userEmail || "unknown",
     });
+  };
+
+  const createCapaFromNcmr = async () => {
+    if (record?.capa_id) {
+      alert("This NCMR already has a linked CAPA.");
+      return;
+    }
+
+    const { data: capaData, error: capaError } = await supabase
+      .from("capas")
+      .insert({
+        title: `CAPA for ${record.title}`,
+        status: "open",
+        source_type: "ncmr",
+        capa_source: "NCMR",
+        ncmr_id: id,
+        linked_ncmr_title: record.title,
+        problem_description:
+          problemDescription || record.issue_description || record.title,
+        root_cause: rootCause,
+        corrective_action_plan: correctiveAction,
+        action_plan: correctiveAction,
+      })
+      .select()
+      .single();
+
+    if (capaError) {
+      alert(capaError.message);
+      return;
+    }
+
+    const { error: ncmrError } = await supabase
+      .from("ncmrs")
+      .update({
+        capa_id: capaData.id,
+        capa_required: true,
+      })
+      .eq("id", id);
+
+    if (ncmrError) {
+      alert(ncmrError.message);
+      return;
+    }
+
+    await addAuditLog(
+      "capa_created_from_ncmr",
+      `CAPA created and linked: ${capaData.title}`
+    );
+
+    alert("CAPA created and linked to this NCMR.");
+    fetchRecord();
   };
 
   const uploadEvidence = async () => {
@@ -128,11 +203,12 @@ export default function NcmrDetailPage() {
       investigation_summary: investigationSummary,
       root_cause: rootCause,
       correction_action_proposal: correctionActionProposal,
+      corrective_action: correctiveAction,
       risk_assessment: riskAssessment,
+      severity,
       product_disposition: productDisposition,
       disposition: productDisposition,
       disposition_justification: dispositionJustification,
-      corrective_action: correctiveAction,
       correction_implementation: correctionImplementation,
       review_status: reviewStatus,
       evidence_url: evidenceUrl,
@@ -161,34 +237,26 @@ export default function NcmrDetailPage() {
       return;
     }
 
-    if (!riskAssessment) {
-      alert("Risk assessment is required before MRB approval.");
-      return;
-    }
-
-    if (!productDisposition) {
-      alert("Product disposition is required before MRB approval.");
-      return;
-    }
-
-    if (!dispositionJustification) {
-      alert("Disposition justification is required before MRB approval.");
-      return;
-    }
+    if (!riskAssessment) return alert("Risk assessment is required before MRB approval.");
+    if (severity === "not_assessed") return alert("Severity must be assessed before MRB approval.");
+    if (!productDisposition) return alert("Product disposition is required before MRB approval.");
+    if (!dispositionJustification) return alert("Disposition justification is required before MRB approval.");
 
     const confirmed = window.confirm(
-      "Electronic Signature:\n\nI have reviewed the nonconformance, risk assessment, and proposed disposition, and approve the MRB decision."
+      "Electronic Signature:\n\nI have reviewed the nonconformance, risk assessment, severity, and proposed disposition, and approve the MRB decision."
     );
 
     if (!confirmed) return;
 
     const now = new Date().toISOString();
     const meaning =
-      "I have reviewed the nonconformance, risk assessment, and proposed disposition, and approve the MRB decision.";
+      "I have reviewed the nonconformance, risk assessment, severity, and proposed disposition, and approve the MRB decision.";
 
     const { error } = await supabase
       .from("ncmrs")
       .update({
+        risk_assessment: riskAssessment,
+        severity,
         product_disposition: productDisposition,
         disposition: productDisposition,
         disposition_justification: dispositionJustification,
@@ -230,42 +298,39 @@ export default function NcmrDetailPage() {
       return;
     }
 
-    await addAuditLog(
-      "correction_implemented",
-      "Correction implementation documented."
-    );
-
+    await addAuditLog("correction_implemented", "Correction implementation documented.");
     alert("Correction implementation recorded");
     fetchRecord();
   };
 
   const closeNcmr = async () => {
-    if (userRole !== "approver") {
-      alert("Only an approver can close NCMR.");
-      return;
-    }
+    if (userRole !== "approver") return alert("Only an approver can close NCMR.");
 
     if (!problemDescription) return alert("Problem description is required.");
     if (!containmentAction) return alert("Containment action is required.");
     if (!investigationSummary) return alert("Investigation summary is required.");
     if (!rootCause) return alert("Root cause is required.");
     if (!correctionActionProposal) return alert("Correction / corrective action proposal is required.");
+    if (!correctiveAction) return alert("Corrective action recommendation is required.");
     if (!riskAssessment) return alert("Risk assessment is required.");
+    if (severity === "not_assessed") return alert("Severity must be assessed.");
     if (!productDisposition) return alert("Product disposition is required.");
     if (!dispositionJustification) return alert("Disposition justification is required.");
     if (!record?.mrb_approved_by) return alert("MRB approval is required before closure.");
     if (!correctionImplementation) return alert("Correction implementation is required.");
-    if (!record?.correction_implemented_by) return alert("Correction implementation must be formally recorded before closure.");
+    if (!record?.correction_implemented_by) {
+      return alert("Correction implementation must be formally recorded before closure.");
+    }
 
     const confirmed = window.confirm(
-      "Electronic Signature:\n\nI confirm this NCMR investigation, risk assessment, disposition, MRB approval, correction implementation, and closure review are complete."
+      "Electronic Signature:\n\nI confirm this NCMR investigation, risk assessment, severity assessment, disposition, MRB approval, correction implementation, and closure review are complete."
     );
 
     if (!confirmed) return;
 
     const now = new Date().toISOString();
     const meaning =
-      "I confirm this NCMR investigation, risk assessment, disposition, MRB approval, correction implementation, and closure review are complete.";
+      "I confirm this NCMR investigation, risk assessment, severity assessment, disposition, MRB approval, correction implementation, and closure review are complete.";
 
     const { error } = await supabase
       .from("ncmrs")
@@ -284,7 +349,11 @@ export default function NcmrDetailPage() {
       return;
     }
 
-    await addAuditLog("ncmr_closed_signature", `NCMR closed with e-signature. Meaning: ${meaning}`);
+    await addAuditLog(
+      "ncmr_closed_signature",
+      `NCMR closed with e-signature. Meaning: ${meaning}`
+    );
+
     alert("NCMR closed");
     fetchRecord();
   };
@@ -318,9 +387,24 @@ export default function NcmrDetailPage() {
         <p><strong>Part Number:</strong> {record.product_part_number || "N/A"}</p>
         <p><strong>Lot Number:</strong> {record.lot_number || "N/A"}</p>
         <p><strong>Work Order:</strong> {record.workorder_number || "N/A"}</p>
-        <p><strong>Severity:</strong> {record.severity}</p>
+        <p><strong>Severity:</strong> {record.severity || "not_assessed"}</p>
         <p><strong>Status:</strong> {record.status}</p>
         <p><strong>CAPA Required:</strong> {record.capa_required ? "Yes" : "No"}</p>
+
+        {linkedCapa ? (
+          <p>
+            <strong>Linked CAPA:</strong>{" "}
+            <a href={`/capa/${linkedCapa.id}`}>{linkedCapa.title}</a>
+          </p>
+        ) : (
+          <p><strong>Linked CAPA:</strong> None</p>
+        )}
+
+        {!linkedCapa ? (
+          <button onClick={createCapaFromNcmr}>
+            Create CAPA from this NCMR
+          </button>
+        ) : null}
       </div>
 
       <section style={{ marginBottom: "20px" }}>
@@ -381,10 +465,11 @@ export default function NcmrDetailPage() {
       <section style={{ marginBottom: "20px" }}>
         <h2>4. Correction / Corrective Action Proposal</h2>
 
+        <label>Correction / Corrective Action Proposal</label><br />
         <select
           value={correctionActionProposal}
           onChange={(e) => setCorrectionActionProposal(e.target.value)}
-          style={{ padding: "8px", minWidth: "330px" }}
+          style={{ padding: "8px", minWidth: "330px", marginBottom: "12px" }}
         >
           <option value="">Select proposal</option>
           <option value="no_correction_required">No correction required</option>
@@ -400,11 +485,21 @@ export default function NcmrDetailPage() {
           <option value="supplier_corrective_action">Supplier corrective action</option>
           <option value="escalate_to_capa">Escalate to CAPA</option>
         </select>
+
+        <br />
+        <label>Corrective Action Recommendation</label><br />
+        <textarea
+          value={correctiveAction}
+          onChange={(e) => setCorrectiveAction(e.target.value)}
+          rows={4}
+          style={{ width: "100%", maxWidth: "800px" }}
+        />
       </section>
 
       <section style={{ marginBottom: "20px" }}>
         <h2>5. Risk Assessment</h2>
 
+        <label>Risk Assessment</label><br />
         <textarea
           value={riskAssessment}
           onChange={(e) => setRiskAssessment(e.target.value)}
@@ -412,6 +507,20 @@ export default function NcmrDetailPage() {
           rows={4}
           style={{ width: "100%", maxWidth: "800px" }}
         />
+
+        <div style={{ marginTop: "12px" }}>
+          <label>Severity</label><br />
+          <select
+            value={severity}
+            onChange={(e) => setSeverity(e.target.value)}
+            style={{ padding: "8px", minWidth: "180px" }}
+          >
+            <option value="not_assessed">Not Assessed</option>
+            <option value="minor">Minor</option>
+            <option value="major">Major</option>
+            <option value="critical">Critical</option>
+          </select>
+        </div>
       </section>
 
       <section style={{ marginBottom: "20px" }}>
@@ -457,18 +566,7 @@ export default function NcmrDetailPage() {
       </section>
 
       <section style={{ marginBottom: "20px" }}>
-        <h2>7. Corrective Action Recommendation</h2>
-
-        <textarea
-          value={correctiveAction}
-          onChange={(e) => setCorrectiveAction(e.target.value)}
-          rows={4}
-          style={{ width: "100%", maxWidth: "800px" }}
-        />
-      </section>
-
-      <section style={{ marginBottom: "20px" }}>
-        <h2>8. Correction Implementation</h2>
+        <h2>7. Correction Implementation</h2>
 
         <textarea
           value={correctionImplementation}
@@ -493,7 +591,7 @@ export default function NcmrDetailPage() {
       </section>
 
       <section style={{ marginBottom: "20px" }}>
-        <h2>9. Evidence</h2>
+        <h2>8. Evidence</h2>
 
         <input
           type="file"
@@ -537,7 +635,7 @@ export default function NcmrDetailPage() {
       </section>
 
       <section style={{ marginBottom: "20px" }}>
-        <h2>10. Closure</h2>
+        <h2>9. Closure</h2>
 
         <label>Review Status</label><br />
         <select
