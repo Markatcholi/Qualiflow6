@@ -25,6 +25,10 @@ export default function DashboardPage() {
   const [capaOverdueRate, setCapaOverdueRate] = useState("0.0");
   const [capaDueSoon, setCapaDueSoon] = useState(0);
 
+  const [capaAwaitingEffectiveness, setCapaAwaitingEffectiveness] = useState(0);
+  const [capaEffectivenessOverdue, setCapaEffectivenessOverdue] = useState(0);
+  const [capaEffectivenessDueSoon, setCapaEffectivenessDueSoon] = useState(0);
+
   const [ncmrTrend, setNcmrTrend] = useState<TrendItem[]>([]);
   const [capaTrend, setCapaTrend] = useState<TrendItem[]>([]);
 
@@ -37,7 +41,11 @@ export default function DashboardPage() {
       const year = d.getFullYear();
       const month = String(d.getMonth() + 1).padStart(2, "0");
       const key = `${year}-${month}`;
-      const label = d.toLocaleString("en-US", { month: "short", year: "2-digit" });
+      const label = d.toLocaleString("en-US", {
+        month: "short",
+        year: "2-digit",
+      });
+
       months.push({ key, label });
     }
 
@@ -54,8 +62,10 @@ export default function DashboardPage() {
 
     items.forEach((item) => {
       if (!item.created_at) return;
+
       const d = new Date(item.created_at);
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+
       if (counts[key] !== undefined) {
         counts[key] += 1;
       }
@@ -103,6 +113,7 @@ export default function DashboardPage() {
       const avg =
         ncmrDurations.reduce((sum: number, d: number) => sum + d, 0) /
         ncmrDurations.length;
+
       setAvgNcmrCloseDays(avg.toFixed(1));
     } else {
       setAvgNcmrCloseDays("0.0");
@@ -131,6 +142,10 @@ export default function DashboardPage() {
     const today = new Date();
     const todayStr = today.toISOString().split("T")[0];
 
+    const next7 = new Date();
+    next7.setDate(today.getDate() + 7);
+    const next7Str = next7.toISOString().split("T")[0];
+
     const overdueCapas = activeCapas.filter((item: any) => {
       return item.due_date && item.due_date < todayStr;
     });
@@ -140,16 +155,41 @@ export default function DashboardPage() {
       activeCapas.length > 0
         ? ((overdueCapas.length / activeCapas.length) * 100).toFixed(1)
         : "0.0";
-    setCapaOverdueRate(overdueRate);
 
-    const next7 = new Date();
-    next7.setDate(today.getDate() + 7);
-    const next7Str = next7.toISOString().split("T")[0];
+    setCapaOverdueRate(overdueRate);
 
     const dueSoonCapas = activeCapas.filter((item: any) => {
       return item.due_date && item.due_date >= todayStr && item.due_date <= next7Str;
     });
     setCapaDueSoon(dueSoonCapas.length);
+
+    const awaitingEffectiveness = allCapas.filter((item: any) => {
+      return item.status !== "closed" && item.implemented_by && !item.effectiveness_check;
+    });
+    setCapaAwaitingEffectiveness(awaitingEffectiveness.length);
+
+    const overdueEffectiveness = allCapas.filter((item: any) => {
+      return (
+        item.status !== "closed" &&
+        item.implemented_by &&
+        !item.effectiveness_check &&
+        item.effectiveness_due_date &&
+        item.effectiveness_due_date < todayStr
+      );
+    });
+    setCapaEffectivenessOverdue(overdueEffectiveness.length);
+
+    const dueSoonEffectiveness = allCapas.filter((item: any) => {
+      return (
+        item.status !== "closed" &&
+        item.implemented_by &&
+        !item.effectiveness_check &&
+        item.effectiveness_due_date &&
+        item.effectiveness_due_date >= todayStr &&
+        item.effectiveness_due_date <= next7Str
+      );
+    });
+    setCapaEffectivenessDueSoon(dueSoonEffectiveness.length);
 
     const capaDurations = closedCapas
       .filter((item: any) => item.created_at && item.closed_at)
@@ -163,6 +203,7 @@ export default function DashboardPage() {
       const avg =
         capaDurations.reduce((sum: number, d: number) => sum + d, 0) /
         capaDurations.length;
+
       setAvgCapaCloseDays(avg.toFixed(1));
     } else {
       setAvgCapaCloseDays("0.0");
@@ -187,12 +228,14 @@ export default function DashboardPage() {
     return (
       <div style={{ padding: "15px", border: "1px solid #ccc" }}>
         <strong>{title}</strong>
+
         <div style={{ marginTop: "10px" }}>
           {data.map((item) => (
             <div key={item.label} style={{ marginBottom: "10px" }}>
               <div style={{ fontSize: "14px", marginBottom: "4px" }}>
                 {item.label}: {item.count}
               </div>
+
               <div
                 style={{
                   background: "#eee",
@@ -220,7 +263,7 @@ export default function DashboardPage() {
     <main style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
       <h1>Quality Dashboard</h1>
 
-      <div style={{ display: "grid", gap: "15px", maxWidth: "700px" }}>
+      <div style={{ display: "grid", gap: "15px", maxWidth: "750px" }}>
         <div style={{ padding: "15px", border: "1px solid #ccc" }}>
           <strong>Total NCMRs:</strong> {ncmrTotal}
         </div>
@@ -275,6 +318,21 @@ export default function DashboardPage() {
 
         <div style={{ padding: "15px", border: "1px solid #cc8800" }}>
           <strong>CAPAs Due in Next 7 Days:</strong> {capaDueSoon}
+        </div>
+
+        <div style={{ padding: "15px", border: "1px solid #cc8800" }}>
+          <strong>CAPAs Awaiting Effectiveness:</strong>{" "}
+          {capaAwaitingEffectiveness}
+        </div>
+
+        <div style={{ padding: "15px", border: "1px solid red" }}>
+          <strong>CAPAs Overdue for Effectiveness:</strong>{" "}
+          {capaEffectivenessOverdue}
+        </div>
+
+        <div style={{ padding: "15px", border: "1px solid #cc8800" }}>
+          <strong>CAPA Effectiveness Due in Next 7 Days:</strong>{" "}
+          {capaEffectivenessDueSoon}
         </div>
 
         {renderTrend("NCMR Monthly Trend (Last 6 Months)", ncmrTrend)}
