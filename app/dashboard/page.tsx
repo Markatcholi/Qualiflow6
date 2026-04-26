@@ -8,6 +8,12 @@ type TrendItem = {
   count: number;
 };
 
+type NotificationItem = {
+  type: string;
+  message: string;
+  link: string;
+};
+
 export default function DashboardPage() {
   const [ncmrOpen, setNcmrOpen] = useState(0);
   const [ncmrInvestigation, setNcmrInvestigation] = useState(0);
@@ -28,6 +34,8 @@ export default function DashboardPage() {
   const [capaAwaitingEffectiveness, setCapaAwaitingEffectiveness] = useState(0);
   const [capaEffectivenessOverdue, setCapaEffectivenessOverdue] = useState(0);
   const [capaEffectivenessDueSoon, setCapaEffectivenessDueSoon] = useState(0);
+
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
 
   const [ncmrTrend, setNcmrTrend] = useState<TrendItem[]>([]);
   const [capaTrend, setCapaTrend] = useState<TrendItem[]>([]);
@@ -75,6 +83,108 @@ export default function DashboardPage() {
       label: m.label,
       count: counts[m.key],
     }));
+  };
+
+  const daysBetween = (dateString: string) => {
+    const start = new Date(dateString).getTime();
+    const now = new Date().getTime();
+    return Math.floor((now - start) / (1000 * 60 * 60 * 24));
+  };
+
+  const buildNotifications = (allNcmrs: any[], allCapas: any[]) => {
+    const alerts: NotificationItem[] = [];
+
+    const today = new Date();
+    const todayStr = today.toISOString().split("T")[0];
+
+    allCapas.forEach((capa: any) => {
+      if (capa.status !== "closed" && capa.due_date && capa.due_date < todayStr) {
+        alerts.push({
+          type: "CAPA Overdue",
+          message: `CAPA overdue: ${capa.title || "Untitled CAPA"} was due on ${capa.due_date}.`,
+          link: `/capa/${capa.id}`,
+        });
+      }
+
+      if (
+        capa.status !== "closed" &&
+        capa.implemented_by &&
+        !capa.effectiveness_check &&
+        capa.effectiveness_due_date &&
+        capa.effectiveness_due_date < todayStr
+      ) {
+        alerts.push({
+          type: "Effectiveness Overdue",
+          message: `Effectiveness check overdue for CAPA: ${capa.title || "Untitled CAPA"}.`,
+          link: `/capa/${capa.id}`,
+        });
+      }
+
+      if (
+        capa.status !== "closed" &&
+        capa.effectiveness_rating === "not_effective" &&
+        !capa.followup_capa_id
+      ) {
+        alerts.push({
+          type: "Follow-up CAPA Needed",
+          message: `CAPA rated Not Effective and needs follow-up CAPA: ${capa.title || "Untitled CAPA"}.`,
+          link: `/capa/${capa.id}`,
+        });
+      }
+    });
+
+    allNcmrs.forEach((ncmr: any) => {
+      if (
+        ncmr.status === "investigation" &&
+        ncmr.investigation_opened_at &&
+        daysBetween(ncmr.investigation_opened_at) > 10
+      ) {
+        alerts.push({
+          type: "NCMR Stuck",
+          message: `NCMR in investigation >10 days: ${ncmr.title || "Untitled NCMR"}.`,
+          link: `/ncmrs/${ncmr.id}`,
+        });
+      }
+
+      if (
+        ncmr.status !== "closed" &&
+        ncmr.severity === "critical" &&
+        !ncmr.capa_id
+      ) {
+        alerts.push({
+          type: "Critical NCMR Missing CAPA",
+          message: `Critical NCMR requires CAPA: ${ncmr.title || "Untitled NCMR"}.`,
+          link: `/ncmrs/${ncmr.id}`,
+        });
+      }
+
+      if (
+        ncmr.status !== "closed" &&
+        ncmr.severity === "major" &&
+        !ncmr.capa_id &&
+        !ncmr.capa_justification
+      ) {
+        alerts.push({
+          type: "Major NCMR Needs CAPA Decision",
+          message: `Major NCMR needs CAPA or no-CAPA justification: ${ncmr.title || "Untitled NCMR"}.`,
+          link: `/ncmrs/${ncmr.id}`,
+        });
+      }
+
+      if (
+        ncmr.status !== "closed" &&
+        ncmr.recurring_issue &&
+        !ncmr.capa_id
+      ) {
+        alerts.push({
+          type: "Recurring NCMR Missing CAPA",
+          message: `Recurring NCMR should be reviewed for CAPA: ${ncmr.title || "Untitled NCMR"}.`,
+          link: `/ncmrs/${ncmr.id}`,
+        });
+      }
+    });
+
+    setNotifications(alerts);
   };
 
   const fetchData = async () => {
@@ -210,6 +320,7 @@ export default function DashboardPage() {
     }
 
     setCapaTrend(buildTrend(allCapas));
+    buildNotifications(allNcmrs, allCapas);
   };
 
   useEffect(() => {
@@ -262,6 +373,31 @@ export default function DashboardPage() {
   return (
     <main style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
       <h1>Quality Dashboard</h1>
+
+      <section
+        style={{
+          border: notifications.length > 0 ? "2px solid red" : "1px solid #ccc",
+          padding: "16px",
+          marginBottom: "20px",
+          borderRadius: "8px",
+          maxWidth: "900px",
+        }}
+      >
+        <h2>Notification Panel</h2>
+
+        {notifications.length === 0 ? (
+          <p>No active quality alerts.</p>
+        ) : (
+          <ul>
+            {notifications.map((alert, index) => (
+              <li key={index} style={{ marginBottom: "10px" }}>
+                <strong>{alert.type}:</strong> {alert.message}{" "}
+                <a href={alert.link}>Open</a>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       <div style={{ display: "grid", gap: "15px", maxWidth: "750px" }}>
         <div style={{ padding: "15px", border: "1px solid #ccc" }}>
