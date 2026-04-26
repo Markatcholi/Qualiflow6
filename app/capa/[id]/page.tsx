@@ -16,6 +16,7 @@ export default function CapaDetailPage() {
 
   const [owner, setOwner] = useState("");
   const [dueDate, setDueDate] = useState("");
+  const [effectivenessDueDate, setEffectivenessDueDate] = useState("");
   const [problemDescription, setProblemDescription] = useState("");
   const [investigationSummary, setInvestigationSummary] = useState("");
   const [rootCause, setRootCause] = useState("");
@@ -49,7 +50,7 @@ export default function CapaDetailPage() {
       .from("capas")
       .select("*")
       .eq("id", id)
-      .single();
+      .maybeSingle();
 
     if (error) {
       alert(error.message);
@@ -57,9 +58,17 @@ export default function CapaDetailPage() {
       return;
     }
 
+    if (!data) {
+      alert("CAPA not found.");
+      setRecord(null);
+      setLoading(false);
+      return;
+    }
+
     setRecord(data);
     setOwner(data.owner || "");
     setDueDate(data.due_date || "");
+    setEffectivenessDueDate(data.effectiveness_due_date || "");
     setProblemDescription(data.problem_description || "");
     setInvestigationSummary(data.investigation_summary || "");
     setRootCause(data.root_cause || "");
@@ -115,6 +124,7 @@ export default function CapaDetailPage() {
       .update({
         owner,
         due_date: dueDate || null,
+        effectiveness_due_date: effectivenessDueDate || null,
         problem_description: problemDescription,
         investigation_summary: investigationSummary,
         root_cause: rootCause,
@@ -143,12 +153,18 @@ export default function CapaDetailPage() {
       return;
     }
 
+    if (!effectivenessDueDate) {
+      alert("Effectiveness due date is required before marking implementation complete.");
+      return;
+    }
+
     const now = new Date().toISOString();
 
     const { error } = await supabase
       .from("capas")
       .update({
         implementation_details: implementationDetails,
+        effectiveness_due_date: effectivenessDueDate,
         implemented_by: userEmail,
         implemented_at: now,
         status: "effectiveness_check",
@@ -160,14 +176,14 @@ export default function CapaDetailPage() {
       return;
     }
 
-    await addAuditLog("implemented", "CAPA implementation documented.");
+    await addAuditLog("implemented", "CAPA implementation documented and moved to effectiveness check.");
     alert("CAPA implementation recorded");
     fetchRecord();
   };
 
   const closeCapa = async () => {
-    if (userRole !== "approver") {
-      alert("Only an approver can close CAPA.");
+    if (userRole !== "approver" && userRole !== "vp_quality") {
+      alert("Only an approver or VP Quality can close CAPA.");
       return;
     }
 
@@ -177,6 +193,7 @@ export default function CapaDetailPage() {
     if (!correctiveActionPlan) return alert("Corrective action plan is required.");
     if (!implementationDetails) return alert("Implementation details are required.");
     if (!record?.implemented_by) return alert("Implementation must be formally recorded before closure.");
+    if (!effectivenessDueDate) return alert("Effectiveness due date is required before closure.");
     if (!effectiveness) return alert("Effectiveness check is required before closure.");
 
     const confirmed = window.confirm(
@@ -193,6 +210,9 @@ export default function CapaDetailPage() {
       .from("capas")
       .update({
         status: "closed",
+        owner,
+        due_date: dueDate || null,
+        effectiveness_due_date: effectivenessDueDate || null,
         problem_description: problemDescription,
         investigation_summary: investigationSummary,
         root_cause: rootCause,
@@ -267,7 +287,7 @@ export default function CapaDetailPage() {
         />
 
         <br />
-        <label>Due Date</label><br />
+        <label>CAPA Due Date</label><br />
         <input
           type="date"
           value={dueDate || ""}
@@ -338,6 +358,16 @@ export default function CapaDetailPage() {
         />
 
         <div style={{ marginTop: "12px" }}>
+          <label>Effectiveness Due Date</label><br />
+          <input
+            type="date"
+            value={effectivenessDueDate || ""}
+            onChange={(e) => setEffectivenessDueDate(e.target.value)}
+            style={{ padding: "8px" }}
+          />
+        </div>
+
+        <div style={{ marginTop: "12px" }}>
           <button onClick={markImplemented}>
             Mark Implementation Complete
           </button>
@@ -346,7 +376,8 @@ export default function CapaDetailPage() {
         {record.implemented_by ? (
           <div style={{ marginTop: "12px" }}>
             <strong>Implemented By:</strong> {record.implemented_by}<br />
-            <strong>Implemented At:</strong> {record.implemented_at}
+            <strong>Implemented At:</strong> {record.implemented_at}<br />
+            <strong>Effectiveness Due Date:</strong> {record.effectiveness_due_date || "N/A"}
           </div>
         ) : null}
       </section>
