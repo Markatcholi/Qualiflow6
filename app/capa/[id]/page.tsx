@@ -23,11 +23,8 @@ export default function CapaDetailPage() {
   const [correctiveActionPlan, setCorrectiveActionPlan] = useState("");
   const [implementationDetails, setImplementationDetails] = useState("");
   const [effectiveness, setEffectiveness] = useState("");
-
-  const [evidenceUrl, setEvidenceUrl] = useState("");
-  const [evidenceNotes, setEvidenceNotes] = useState("");
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [uploading, setUploading] = useState(false);
+  const [effectivenessRating, setEffectivenessRating] = useState("");
+  const [effectivenessFollowupAction, setEffectivenessFollowupAction] = useState("");
 
   const fetchUserRole = async () => {
     const { data: userData } = await supabase.auth.getUser();
@@ -75,8 +72,8 @@ export default function CapaDetailPage() {
     setCorrectiveActionPlan(data.corrective_action_plan || data.action_plan || "");
     setImplementationDetails(data.implementation_details || "");
     setEffectiveness(data.effectiveness_check || "");
-    setEvidenceUrl(data.evidence_url || "");
-    setEvidenceNotes(data.evidence_notes || "");
+    setEffectivenessRating(data.effectiveness_rating || "");
+    setEffectivenessFollowupAction(data.effectiveness_followup_action || "");
     setLoading(false);
   };
 
@@ -88,34 +85,6 @@ export default function CapaDetailPage() {
       details,
       user_email: userEmail || "unknown",
     });
-  };
-
-  const uploadEvidence = async () => {
-    if (!selectedFile) {
-      alert("Please choose a file first.");
-      return;
-    }
-
-    setUploading(true);
-
-    const fileExt = selectedFile.name.split(".").pop();
-    const filePath = `capas/${id}/${Date.now()}.${fileExt}`;
-
-    const { error: uploadError } = await supabase.storage
-      .from("evidence")
-      .upload(filePath, selectedFile, { upsert: false });
-
-    if (uploadError) {
-      alert(uploadError.message);
-      setUploading(false);
-      return;
-    }
-
-    const { data } = supabase.storage.from("evidence").getPublicUrl(filePath);
-
-    setEvidenceUrl(data.publicUrl);
-    setUploading(false);
-    alert("Evidence uploaded. Click Save CAPA Workflow to store it.");
   };
 
   const saveCapaWorkflow = async () => {
@@ -132,8 +101,8 @@ export default function CapaDetailPage() {
         action_plan: correctiveActionPlan,
         implementation_details: implementationDetails,
         effectiveness_check: effectiveness,
-        evidence_url: evidenceUrl,
-        evidence_notes: evidenceNotes,
+        effectiveness_rating: effectivenessRating,
+        effectiveness_followup_action: effectivenessFollowupAction,
       })
       .eq("id", id);
 
@@ -181,6 +150,57 @@ export default function CapaDetailPage() {
     fetchRecord();
   };
 
+  const createFollowupCapa = async () => {
+    if (record?.followup_capa_id) {
+      alert("A follow-up CAPA already exists.");
+      return;
+    }
+
+    const { data: followup, error } = await supabase
+      .from("capas")
+      .insert({
+        title: `Follow-up CAPA for ineffective action: ${record.title}`,
+        status: "open",
+        source_type: "capa_effectiveness",
+        capa_source: "Ineffective CAPA",
+        problem_description: `Original CAPA was rated Not Effective. Original CAPA: ${record.title}`,
+        investigation_summary: effectiveness,
+        root_cause: rootCause,
+        corrective_action_plan: effectivenessFollowupAction,
+        action_plan: effectivenessFollowupAction,
+        linked_ncmr_title: record.linked_ncmr_title || null,
+        ncmr_id: record.ncmr_id || null,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    const { error: updateError } = await supabase
+      .from("capas")
+      .update({
+        followup_capa_id: followup.id,
+        effectiveness_followup_action: effectivenessFollowupAction,
+      })
+      .eq("id", id);
+
+    if (updateError) {
+      alert(updateError.message);
+      return;
+    }
+
+    await addAuditLog(
+      "followup_capa_created",
+      `Follow-up CAPA created because effectiveness rating was Not Effective. Follow-up CAPA ID: ${followup.id}`
+    );
+
+    alert("Follow-up CAPA created.");
+    fetchRecord();
+  };
+
   const closeCapa = async () => {
     if (userRole !== "approver" && userRole !== "vp_quality") {
       alert("Only an approver or VP Quality can close CAPA.");
@@ -195,16 +215,32 @@ export default function CapaDetailPage() {
     if (!record?.implemented_by) return alert("Implementation must be formally recorded before closure.");
     if (!effectivenessDueDate) return alert("Effectiveness due date is required before closure.");
     if (!effectiveness) return alert("Effectiveness check is required before closure.");
+    if (!effectivenessRating) return alert("Effectiveness rating is required before closure.");
+
+    if (effectivenessRating === "partially_effective" && !effectivenessFollowupAction) {
+      return alert("Partially Effective requires a follow-up action.");
+    }
+
+    if (effectivenessRating === "not_effective") {
+      if (!effectivenessFollowupAction) {
+        return alert("Not Effective requires a follow-up action.");
+      }
+
+      if (!record?.followup_capa_id) {
+        await createFollowupCapa();
+        return alert("Follow-up CAPA was created. Review it before closing the original CAPA.");
+      }
+    }
 
     const confirmed = window.confirm(
-      "Electronic Signature:\n\nI confirm this CAPA investigation, root cause, corrective action plan, implementation, effectiveness check, and closure review are complete."
+      "Electronic Signature:\n\nI confirm this CAPA investigation, root cause, corrective action plan, implementation, effectiveness check, effectiveness rating, and closure review are complete."
     );
 
     if (!confirmed) return;
 
     const now = new Date().toISOString();
     const meaning =
-      "I confirm this CAPA investigation, root cause, corrective action plan, implementation, effectiveness check, and closure review are complete.";
+      "I confirm this CAPA investigation, root cause, corrective action plan, implementation, effectiveness check, effectiveness rating, and closure review are complete.";
 
     const { error } = await supabase
       .from("capas")
@@ -220,6 +256,8 @@ export default function CapaDetailPage() {
         action_plan: correctiveActionPlan,
         implementation_details: implementationDetails,
         effectiveness_check: effectiveness,
+        effectiveness_rating: effectivenessRating,
+        effectiveness_followup_action: effectivenessFollowupAction,
         approved_by: userEmail,
         approved_at: now,
         signed_by: userEmail,
@@ -238,7 +276,7 @@ export default function CapaDetailPage() {
 
     await addAuditLog(
       "capa_closed_signature",
-      `CAPA closed with e-signature. Meaning: ${meaning}`
+      `CAPA closed with e-signature. Effectiveness rating: ${effectivenessRating}. Meaning: ${meaning}`
     );
 
     alert("CAPA closed");
@@ -252,13 +290,8 @@ export default function CapaDetailPage() {
     }
   }, [id]);
 
-  if (loading) {
-    return <main style={{ padding: "20px" }}>Loading...</main>;
-  }
-
-  if (!record) {
-    return <main style={{ padding: "20px" }}>CAPA not found</main>;
-  }
+  if (loading) return <main style={{ padding: "20px" }}>Loading...</main>;
+  if (!record) return <main style={{ padding: "20px" }}>CAPA not found</main>;
 
   return (
     <main style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
@@ -272,105 +305,57 @@ export default function CapaDetailPage() {
         <p><strong>Title:</strong> {record.title}</p>
         <p><strong>Status:</strong> {record.status}</p>
         <p><strong>Linked NCMR:</strong> {record.linked_ncmr_title || "N/A"}</p>
-        <p><strong>Created:</strong> {record.created_at || "N/A"}</p>
-        <p><strong>Closed:</strong> {record.closed_at || "Not closed"}</p>
+        <p><strong>Effectiveness Rating:</strong> {record.effectiveness_rating || "Not rated"}</p>
+        {record.followup_capa_id ? (
+          <p>
+            <strong>Follow-up CAPA:</strong>{" "}
+            <a href={`/capa/${record.followup_capa_id}`}>Open Follow-up CAPA</a>
+          </p>
+        ) : null}
       </div>
 
       <section style={{ marginBottom: "20px" }}>
         <h2>1. Initiation</h2>
 
         <label>Owner</label><br />
-        <input
-          value={owner}
-          onChange={(e) => setOwner(e.target.value)}
-          style={{ padding: "8px", width: "300px", marginBottom: "12px" }}
-        />
+        <input value={owner} onChange={(e) => setOwner(e.target.value)} style={{ padding: "8px", width: "300px", marginBottom: "12px" }} />
 
         <br />
         <label>CAPA Due Date</label><br />
-        <input
-          type="date"
-          value={dueDate || ""}
-          onChange={(e) => setDueDate(e.target.value)}
-          style={{ padding: "8px", marginBottom: "12px" }}
-        />
+        <input type="date" value={dueDate || ""} onChange={(e) => setDueDate(e.target.value)} style={{ padding: "8px", marginBottom: "12px" }} />
 
         <br />
         <label>Problem Description</label><br />
-        <textarea
-          value={problemDescription}
-          onChange={(e) => setProblemDescription(e.target.value)}
-          placeholder="Describe why this CAPA was initiated."
-          rows={4}
-          style={{ width: "100%", maxWidth: "800px" }}
-        />
+        <textarea value={problemDescription} onChange={(e) => setProblemDescription(e.target.value)} rows={4} style={{ width: "100%", maxWidth: "800px" }} />
       </section>
 
       <section style={{ marginBottom: "20px" }}>
         <h2>2. Investigation</h2>
-
-        <label>Investigation Summary</label><br />
-        <textarea
-          value={investigationSummary}
-          onChange={(e) => setInvestigationSummary(e.target.value)}
-          placeholder="Summarize investigation activities and findings."
-          rows={4}
-          style={{ width: "100%", maxWidth: "800px" }}
-        />
+        <textarea value={investigationSummary} onChange={(e) => setInvestigationSummary(e.target.value)} rows={4} style={{ width: "100%", maxWidth: "800px" }} />
       </section>
 
       <section style={{ marginBottom: "20px" }}>
         <h2>3. Root Cause</h2>
-
-        <label>Root Cause</label><br />
-        <textarea
-          value={rootCause}
-          onChange={(e) => setRootCause(e.target.value)}
-          placeholder="Document verified root cause."
-          rows={4}
-          style={{ width: "100%", maxWidth: "800px" }}
-        />
+        <textarea value={rootCause} onChange={(e) => setRootCause(e.target.value)} rows={4} style={{ width: "100%", maxWidth: "800px" }} />
       </section>
 
       <section style={{ marginBottom: "20px" }}>
         <h2>4. Corrective Action Plan</h2>
-
-        <label>Corrective Action Plan</label><br />
-        <textarea
-          value={correctiveActionPlan}
-          onChange={(e) => setCorrectiveActionPlan(e.target.value)}
-          placeholder="Define corrective/preventive action plan."
-          rows={4}
-          style={{ width: "100%", maxWidth: "800px" }}
-        />
+        <textarea value={correctiveActionPlan} onChange={(e) => setCorrectiveActionPlan(e.target.value)} rows={4} style={{ width: "100%", maxWidth: "800px" }} />
       </section>
 
       <section style={{ marginBottom: "20px" }}>
         <h2>5. Implementation</h2>
 
-        <label>Implementation Details</label><br />
-        <textarea
-          value={implementationDetails}
-          onChange={(e) => setImplementationDetails(e.target.value)}
-          placeholder="Describe how the corrective action was implemented."
-          rows={4}
-          style={{ width: "100%", maxWidth: "800px" }}
-        />
+        <textarea value={implementationDetails} onChange={(e) => setImplementationDetails(e.target.value)} rows={4} style={{ width: "100%", maxWidth: "800px" }} />
 
         <div style={{ marginTop: "12px" }}>
           <label>Effectiveness Due Date</label><br />
-          <input
-            type="date"
-            value={effectivenessDueDate || ""}
-            onChange={(e) => setEffectivenessDueDate(e.target.value)}
-            style={{ padding: "8px" }}
-          />
+          <input type="date" value={effectivenessDueDate || ""} onChange={(e) => setEffectivenessDueDate(e.target.value)} style={{ padding: "8px" }} />
         </div>
 
         <div style={{ marginTop: "12px" }}>
-          <button onClick={markImplemented}>
-            Mark Implementation Complete
-          </button>
+          <button onClick={markImplemented}>Mark Implementation Complete</button>
         </div>
 
         {record.implemented_by ? (
@@ -386,61 +371,46 @@ export default function CapaDetailPage() {
         <h2>6. Effectiveness Check</h2>
 
         <label>Effectiveness Check</label><br />
-        <textarea
-          value={effectiveness}
-          onChange={(e) => setEffectiveness(e.target.value)}
-          placeholder="Document effectiveness evidence and conclusion."
-          rows={4}
-          style={{ width: "100%", maxWidth: "800px" }}
-        />
-      </section>
-
-      <section style={{ marginBottom: "20px" }}>
-        <h2>7. Evidence</h2>
-
-        <input
-          type="file"
-          onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
-        />
-        <button
-          onClick={uploadEvidence}
-          disabled={uploading}
-          style={{ marginLeft: "10px" }}
-        >
-          {uploading ? "Uploading..." : "Upload Evidence"}
-        </button>
+        <textarea value={effectiveness} onChange={(e) => setEffectiveness(e.target.value)} rows={4} style={{ width: "100%", maxWidth: "800px" }} />
 
         <div style={{ marginTop: "12px" }}>
-          <label>Evidence URL</label><br />
-          <input
-            value={evidenceUrl}
-            onChange={(e) => setEvidenceUrl(e.target.value)}
-            style={{ padding: "8px", width: "100%", maxWidth: "800px" }}
-          />
+          <label>Effectiveness Rating</label><br />
+          <select
+            value={effectivenessRating}
+            onChange={(e) => setEffectivenessRating(e.target.value)}
+            style={{ padding: "8px", minWidth: "240px" }}
+          >
+            <option value="">Select rating</option>
+            <option value="effective">Effective</option>
+            <option value="partially_effective">Partially Effective</option>
+            <option value="not_effective">Not Effective</option>
+          </select>
         </div>
 
-        <div style={{ marginTop: "12px" }}>
-          <label>Evidence Notes</label><br />
-          <textarea
-            value={evidenceNotes}
-            onChange={(e) => setEvidenceNotes(e.target.value)}
-            rows={3}
-            style={{ width: "100%", maxWidth: "800px" }}
-          />
-        </div>
+        {(effectivenessRating === "partially_effective" || effectivenessRating === "not_effective") ? (
+          <div style={{ marginTop: "12px" }}>
+            <label>Follow-up Action</label><br />
+            <textarea
+              value={effectivenessFollowupAction}
+              onChange={(e) => setEffectivenessFollowupAction(e.target.value)}
+              placeholder="Required for Partially Effective or Not Effective."
+              rows={3}
+              style={{ width: "100%", maxWidth: "800px" }}
+            />
+          </div>
+        ) : null}
 
-        {record.evidence_url ? (
-          <p>
-            <strong>Saved Evidence:</strong>{" "}
-            <a href={record.evidence_url} target="_blank" rel="noreferrer">
-              Open Evidence
-            </a>
-          </p>
+        {effectivenessRating === "not_effective" && !record.followup_capa_id ? (
+          <div style={{ marginTop: "12px" }}>
+            <button onClick={createFollowupCapa}>
+              Create Follow-up CAPA
+            </button>
+          </div>
         ) : null}
       </section>
 
       <section style={{ marginBottom: "20px" }}>
-        <h2>8. Approval / Closure</h2>
+        <h2>7. Approval / Closure</h2>
 
         {record.signed_by ? (
           <div>
