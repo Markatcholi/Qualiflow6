@@ -24,6 +24,7 @@ export default function NcmrDetailPage() {
   const [correctiveAction, setCorrectiveAction] = useState("");
   const [riskAssessment, setRiskAssessment] = useState("");
   const [severity, setSeverity] = useState("not_assessed");
+  const [capaJustification, setCapaJustification] = useState("");
   const [productDisposition, setProductDisposition] = useState("");
   const [dispositionJustification, setDispositionJustification] = useState("");
   const [correctionImplementation, setCorrectionImplementation] = useState("");
@@ -95,6 +96,7 @@ export default function NcmrDetailPage() {
     setCorrectiveAction(data.corrective_action || "");
     setRiskAssessment(data.risk_assessment || "");
     setSeverity(data.severity || "not_assessed");
+    setCapaJustification(data.capa_justification || "");
     setProductDisposition(data.product_disposition || data.disposition || "");
     setDispositionJustification(data.disposition_justification || "");
     setCorrectionImplementation(data.correction_implementation || "");
@@ -133,6 +135,7 @@ export default function NcmrDetailPage() {
         linked_ncmr_title: record.title,
         problem_description:
           problemDescription || record.issue_description || record.title,
+        investigation_summary: investigationSummary,
         root_cause: rootCause,
         corrective_action_plan: correctiveAction,
         action_plan: correctiveAction,
@@ -150,6 +153,7 @@ export default function NcmrDetailPage() {
       .update({
         capa_id: capaData.id,
         capa_required: true,
+        capa_justification: null,
       })
       .eq("id", id);
 
@@ -196,6 +200,11 @@ export default function NcmrDetailPage() {
   };
 
   const saveWorkflow = async () => {
+    if (severity === "major" && !record?.capa_id && !capaJustification) {
+      alert("For Major severity, CAPA is required OR justification must be provided.");
+      return;
+    }
+
     const payload: any = {
       investigator,
       problem_description: problemDescription,
@@ -206,6 +215,7 @@ export default function NcmrDetailPage() {
       corrective_action: correctiveAction,
       risk_assessment: riskAssessment,
       severity,
+      capa_justification: capaJustification,
       product_disposition: productDisposition,
       disposition: productDisposition,
       disposition_justification: dispositionJustification,
@@ -227,6 +237,78 @@ export default function NcmrDetailPage() {
     }
 
     await addAuditLog("workflow_saved", "NCMR workflow fields saved.");
+
+    if (severity === "critical" && !record?.capa_id) {
+      const { data: capaData, error: capaError } = await supabase
+        .from("capas")
+        .insert({
+          title: `CAPA for ${record.title}`,
+          status: "open",
+          source_type: "ncmr",
+          capa_source: "Severity-based trigger: critical",
+          ncmr_id: id,
+          linked_ncmr_title: record.title,
+          problem_description:
+            problemDescription || record.issue_description || record.title,
+          investigation_summary: investigationSummary,
+          root_cause: rootCause,
+          corrective_action_plan: correctiveAction,
+          action_plan: correctiveAction,
+        })
+        .select()
+        .single();
+
+      if (capaError) {
+        alert(capaError.message);
+        return;
+      }
+
+      const { error: ncmrUpdateError } = await supabase
+        .from("ncmrs")
+        .update({
+          capa_id: capaData.id,
+          capa_required: true,
+          capa_justification: null,
+        })
+        .eq("id", id);
+
+      if (ncmrUpdateError) {
+        alert(ncmrUpdateError.message);
+        return;
+      }
+
+      await addAuditLog(
+        "critical_severity_capa_trigger",
+        "CAPA automatically created because NCMR severity was assessed as critical."
+      );
+
+      alert("NCMR saved. CAPA automatically created because severity is Critical.");
+      fetchRecord();
+      return;
+    }
+
+    if (severity === "major" && !record?.capa_id && capaJustification) {
+      await supabase
+        .from("ncmrs")
+        .update({
+          capa_required: false,
+          capa_justification: capaJustification,
+        })
+        .eq("id", id);
+
+      await addAuditLog(
+        "major_severity_no_capa_justification",
+        `Major severity assessed with no CAPA. Justification: ${capaJustification}`
+      );
+    }
+
+    if (severity === "major" && record?.capa_id) {
+      await supabase
+        .from("ncmrs")
+        .update({ capa_required: true })
+        .eq("id", id);
+    }
+
     alert("NCMR workflow saved");
     fetchRecord();
   };
@@ -239,24 +321,34 @@ export default function NcmrDetailPage() {
 
     if (!riskAssessment) return alert("Risk assessment is required before MRB approval.");
     if (severity === "not_assessed") return alert("Severity must be assessed before MRB approval.");
+
+    if (severity === "major" && !record?.capa_id && !capaJustification) {
+      return alert("For Major severity, CAPA is required OR justification must be provided before MRB approval.");
+    }
+
+    if (severity === "critical" && !record?.capa_id) {
+      return alert("Critical severity requires a linked CAPA before MRB approval. Save workflow first to auto-create CAPA.");
+    }
+
     if (!productDisposition) return alert("Product disposition is required before MRB approval.");
     if (!dispositionJustification) return alert("Disposition justification is required before MRB approval.");
 
     const confirmed = window.confirm(
-      "Electronic Signature:\n\nI have reviewed the nonconformance, risk assessment, severity, and proposed disposition, and approve the MRB decision."
+      "Electronic Signature:\n\nI have reviewed the nonconformance, risk assessment, severity, CAPA decision, and proposed disposition, and approve the MRB decision."
     );
 
     if (!confirmed) return;
 
     const now = new Date().toISOString();
     const meaning =
-      "I have reviewed the nonconformance, risk assessment, severity, and proposed disposition, and approve the MRB decision.";
+      "I have reviewed the nonconformance, risk assessment, severity, CAPA decision, and proposed disposition, and approve the MRB decision.";
 
     const { error } = await supabase
       .from("ncmrs")
       .update({
         risk_assessment: riskAssessment,
         severity,
+        capa_justification: capaJustification,
         product_disposition: productDisposition,
         disposition: productDisposition,
         disposition_justification: dispositionJustification,
@@ -314,23 +406,33 @@ export default function NcmrDetailPage() {
     if (!correctiveAction) return alert("Corrective action recommendation is required.");
     if (!riskAssessment) return alert("Risk assessment is required.");
     if (severity === "not_assessed") return alert("Severity must be assessed.");
+
+    if (severity === "major" && !record?.capa_id && !capaJustification) {
+      return alert("For Major severity, CAPA is required OR justification must be provided before closure.");
+    }
+
+    if (severity === "critical" && !record?.capa_id) {
+      return alert("Critical severity requires a linked CAPA before closure.");
+    }
+
     if (!productDisposition) return alert("Product disposition is required.");
     if (!dispositionJustification) return alert("Disposition justification is required.");
     if (!record?.mrb_approved_by) return alert("MRB approval is required before closure.");
     if (!correctionImplementation) return alert("Correction implementation is required.");
+
     if (!record?.correction_implemented_by) {
       return alert("Correction implementation must be formally recorded before closure.");
     }
 
     const confirmed = window.confirm(
-      "Electronic Signature:\n\nI confirm this NCMR investigation, risk assessment, severity assessment, disposition, MRB approval, correction implementation, and closure review are complete."
+      "Electronic Signature:\n\nI confirm this NCMR investigation, risk assessment, severity assessment, CAPA decision, disposition, MRB approval, correction implementation, and closure review are complete."
     );
 
     if (!confirmed) return;
 
     const now = new Date().toISOString();
     const meaning =
-      "I confirm this NCMR investigation, risk assessment, severity assessment, disposition, MRB approval, correction implementation, and closure review are complete.";
+      "I confirm this NCMR investigation, risk assessment, severity assessment, CAPA decision, disposition, MRB approval, correction implementation, and closure review are complete.";
 
     const { error } = await supabase
       .from("ncmrs")
@@ -388,8 +490,9 @@ export default function NcmrDetailPage() {
         <p><strong>Lot Number:</strong> {record.lot_number || "N/A"}</p>
         <p><strong>Work Order:</strong> {record.workorder_number || "N/A"}</p>
         <p><strong>Severity:</strong> {record.severity || "not_assessed"}</p>
-        <p><strong>Status:</strong> {record.status}</p>
         <p><strong>CAPA Required:</strong> {record.capa_required ? "Yes" : "No"}</p>
+        <p><strong>CAPA Justification:</strong> {record.capa_justification || "N/A"}</p>
+        <p><strong>Status:</strong> {record.status}</p>
 
         {linkedCapa ? (
           <p>
@@ -521,6 +624,25 @@ export default function NcmrDetailPage() {
             <option value="critical">Critical</option>
           </select>
         </div>
+
+        {severity === "major" && !linkedCapa ? (
+          <div style={{ marginTop: "12px" }}>
+            <label>Justification for No CAPA</label><br />
+            <textarea
+              value={capaJustification}
+              onChange={(e) => setCapaJustification(e.target.value)}
+              placeholder="Required if severity is Major and no CAPA is linked."
+              rows={3}
+              style={{ width: "100%", maxWidth: "800px" }}
+            />
+          </div>
+        ) : null}
+
+        {severity === "critical" && !linkedCapa ? (
+          <p style={{ color: "red", marginTop: "12px" }}>
+            Critical severity requires CAPA. Save Workflow will automatically create one.
+          </p>
+        ) : null}
       </section>
 
       <section style={{ marginBottom: "20px" }}>
