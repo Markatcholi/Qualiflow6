@@ -314,59 +314,124 @@ export default function NcmrDetailPage() {
   };
 
   const approveMrb = async () => {
-    if (userRole !== "approver") {
-      alert("Only an approver can approve MRB disposition.");
-      return;
-    }
+  const isApprover = userRole === "approver" || userRole === "vp_quality";
+  const isVpQuality = userRole === "vp_quality";
 
-    if (!riskAssessment) return alert("Risk assessment is required before MRB approval.");
-    if (severity === "not_assessed") return alert("Severity must be assessed before MRB approval.");
+  if (!isApprover) {
+    alert("Only an approver or VP Quality can approve MRB disposition.");
+    return;
+  }
 
-    if (severity === "major" && !record?.capa_id && !capaJustification) {
-      return alert("For Major severity, CAPA is required OR justification must be provided before MRB approval.");
-    }
+  if (!riskAssessment) {
+    alert("Risk assessment is required before MRB approval.");
+    return;
+  }
 
-    if (severity === "critical" && !record?.capa_id) {
-      return alert("Critical severity requires a linked CAPA before MRB approval. Save workflow first to auto-create CAPA.");
-    }
+  if (severity === "not_assessed") {
+    alert("Severity must be assessed before MRB approval.");
+    return;
+  }
 
-    if (!productDisposition) return alert("Product disposition is required before MRB approval.");
-    if (!dispositionJustification) return alert("Disposition justification is required before MRB approval.");
+  if (!productDisposition) {
+    alert("Product disposition is required before MRB approval.");
+    return;
+  }
 
-    const confirmed = window.confirm(
-      "Electronic Signature:\n\nI have reviewed the nonconformance, risk assessment, severity, CAPA decision, and proposed disposition, and approve the MRB decision."
+  if (!dispositionJustification) {
+    alert("Disposition justification is required before MRB approval.");
+    return;
+  }
+
+  if (severity === "critical" && !record?.capa_id) {
+    alert(
+      "Critical severity requires a linked CAPA before MRB approval. Save workflow first to auto-create CAPA."
     );
+    return;
+  }
 
-    if (!confirmed) return;
+  if (
+    (severity === "critical" || severity === "major") &&
+    productDisposition === "use_as_is" &&
+    !isVpQuality
+  ) {
+    alert(
+      "MRB rule: Use As Is disposition for Major or Critical severity requires VP Quality approval."
+    );
+    return;
+  }
 
-    const now = new Date().toISOString();
-    const meaning =
-      "I have reviewed the nonconformance, risk assessment, severity, CAPA decision, and proposed disposition, and approve the MRB decision.";
+  if (
+    severity === "major" &&
+    !record?.capa_id &&
+    !capaJustification
+  ) {
+    alert(
+      "MRB rule: Major severity requires either a linked CAPA or justification for no CAPA."
+    );
+    return;
+  }
 
-    const { error } = await supabase
-      .from("ncmrs")
-      .update({
-        risk_assessment: riskAssessment,
-        severity,
-        capa_justification: capaJustification,
-        product_disposition: productDisposition,
-        disposition: productDisposition,
-        disposition_justification: dispositionJustification,
-        mrb_approved_by: userEmail,
-        mrb_approved_at: now,
-        mrb_signature_meaning: meaning,
-      })
-      .eq("id", id);
+  if (
+    severity === "major" &&
+    productDisposition === "use_as_is" &&
+    dispositionJustification.trim().length < 50
+  ) {
+    alert(
+      "MRB rule: Major severity with Use As Is requires a stronger disposition justification."
+    );
+    return;
+  }
 
-    if (error) {
-      alert(error.message);
-      return;
-    }
+  if (
+    severity === "critical" &&
+    productDisposition === "use_as_is" &&
+    dispositionJustification.trim().length < 75
+  ) {
+    alert(
+      "MRB rule: Critical severity with Use As Is requires a detailed VP Quality justification."
+    );
+    return;
+  }
 
-    await addAuditLog("mrb_approved", `MRB approved. Meaning: ${meaning}`);
-    alert("MRB approved");
-    fetchRecord();
-  };
+  const confirmed = window.confirm(
+    "Electronic Signature:\n\nI have reviewed the nonconformance, risk assessment, severity, CAPA decision, product disposition, MRB rules, and approve the MRB decision."
+  );
+
+  if (!confirmed) return;
+
+  const now = new Date().toISOString();
+
+  const meaning =
+    "I have reviewed the nonconformance, risk assessment, severity, CAPA decision, product disposition, MRB rules, and approve the MRB decision.";
+
+  const { error } = await supabase
+    .from("ncmrs")
+    .update({
+      risk_assessment: riskAssessment,
+      severity,
+      capa_justification: capaJustification,
+      product_disposition: productDisposition,
+      disposition: productDisposition,
+      disposition_justification: dispositionJustification,
+      mrb_approved_by: userEmail,
+      mrb_approved_at: now,
+      mrb_signature_meaning: meaning,
+    })
+    .eq("id", id);
+
+  if (error) {
+    alert(error.message);
+    return;
+  }
+
+  await addAuditLog(
+    "mrb_approved",
+    `MRB approved after decision-rule check. Severity: ${severity}. Disposition: ${productDisposition}. Approved by role: ${userRole}. Meaning: ${meaning}`
+  );
+
+  alert("MRB approved");
+  fetchRecord();
+};
 
   const markCorrectionImplemented = async () => {
     if (!correctionImplementation) {
