@@ -10,6 +10,7 @@ export default function NcmrDetailPage() {
 
   const [record, setRecord] = useState<any>(null);
   const [linkedCapa, setLinkedCapa] = useState<any>(null);
+  const [mrbApprovers, setMrbApprovers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [userEmail, setUserEmail] = useState("");
@@ -29,6 +30,9 @@ export default function NcmrDetailPage() {
   const [dispositionJustification, setDispositionJustification] = useState("");
   const [correctionImplementation, setCorrectionImplementation] = useState("");
   const [reviewStatus, setReviewStatus] = useState("draft");
+
+  const [mrbSignatureEmail, setMrbSignatureEmail] = useState("");
+  const [additionalMrbApprovers, setAdditionalMrbApprovers] = useState("");
 
   const [evidenceUrl, setEvidenceUrl] = useState("");
   const [evidenceNotes, setEvidenceNotes] = useState("");
@@ -66,6 +70,21 @@ export default function NcmrDetailPage() {
     setLinkedCapa(data || null);
   };
 
+  const fetchMrbApprovers = async () => {
+    const { data, error } = await supabase
+      .from("ncmr_mrb_approvers")
+      .select("*")
+      .eq("ncmr_id", id)
+      .order("created_at", { ascending: true });
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    setMrbApprovers(data || []);
+  };
+
   const fetchRecord = async () => {
     const { data, error } = await supabase
       .from("ncmrs")
@@ -101,10 +120,13 @@ export default function NcmrDetailPage() {
     setDispositionJustification(data.disposition_justification || "");
     setCorrectionImplementation(data.correction_implementation || "");
     setReviewStatus(data.review_status || "draft");
+    setMrbSignatureEmail("");
+    setAdditionalMrbApprovers(data.mrb_additional_approvers || "");
     setEvidenceUrl(data.evidence_url || "");
     setEvidenceNotes(data.evidence_notes || "");
 
     await fetchLinkedCapa(data.capa_id || null);
+    await fetchMrbApprovers();
     setLoading(false);
   };
 
@@ -314,124 +336,130 @@ export default function NcmrDetailPage() {
   };
 
   const approveMrb = async () => {
-  const isApprover = userRole === "approver" || userRole === "vp_quality";
-  const isVpQuality = userRole === "vp_quality";
+    const isApprover = userRole === "approver" || userRole === "vp_quality";
+    const isVpQuality = userRole === "vp_quality";
 
-  if (!isApprover) {
-    alert("Only an approver or VP Quality can approve MRB disposition.");
-    return;
-  }
+    if (!isApprover) {
+      alert("Only an approver or VP Quality can approve MRB disposition.");
+      return;
+    }
 
-  if (!riskAssessment) {
-    alert("Risk assessment is required before MRB approval.");
-    return;
-  }
+    if (!mrbSignatureEmail) {
+      alert("Please re-enter your email before signing MRB approval.");
+      return;
+    }
 
-  if (severity === "not_assessed") {
-    alert("Severity must be assessed before MRB approval.");
-    return;
-  }
+    if (mrbSignatureEmail.trim().toLowerCase() !== userEmail.trim().toLowerCase()) {
+      alert("Electronic signature email does not match the logged-in user.");
+      return;
+    }
 
-  if (!productDisposition) {
-    alert("Product disposition is required before MRB approval.");
-    return;
-  }
+    if (!riskAssessment) return alert("Risk assessment is required before MRB approval.");
+    if (severity === "not_assessed") return alert("Severity must be assessed before MRB approval.");
 
-  if (!dispositionJustification) {
-    alert("Disposition justification is required before MRB approval.");
-    return;
-  }
+    if (severity === "major" && !record?.capa_id && !capaJustification) {
+      return alert("For Major severity, CAPA is required OR justification must be provided before MRB approval.");
+    }
 
-  if (severity === "critical" && !record?.capa_id) {
-    alert(
-      "Critical severity requires a linked CAPA before MRB approval. Save workflow first to auto-create CAPA."
+    if (severity === "critical" && !record?.capa_id) {
+      return alert("Critical severity requires a linked CAPA before MRB approval. Save workflow first to auto-create CAPA.");
+    }
+
+    if (!productDisposition) return alert("Product disposition is required before MRB approval.");
+    if (!dispositionJustification) return alert("Disposition justification is required before MRB approval.");
+
+    if (
+      (severity === "critical" || severity === "major") &&
+      productDisposition === "use_as_is" &&
+      !isVpQuality
+    ) {
+      alert("MRB rule: Use As Is disposition for Major or Critical severity requires VP Quality approval.");
+      return;
+    }
+
+    if (
+      severity === "major" &&
+      productDisposition === "use_as_is" &&
+      dispositionJustification.trim().length < 50
+    ) {
+      alert("MRB rule: Major severity with Use As Is requires a stronger disposition justification.");
+      return;
+    }
+
+    if (
+      severity === "critical" &&
+      productDisposition === "use_as_is" &&
+      dispositionJustification.trim().length < 75
+    ) {
+      alert("MRB rule: Critical severity with Use As Is requires a detailed VP Quality justification.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Electronic Signature:\n\nI have reviewed the nonconformance, risk assessment, severity, CAPA decision, product disposition, MRB rules, and approve the MRB decision."
     );
-    return;
-  }
 
-  if (
-    (severity === "critical" || severity === "major") &&
-    productDisposition === "use_as_is" &&
-    !isVpQuality
-  ) {
-    alert(
-      "MRB rule: Use As Is disposition for Major or Critical severity requires VP Quality approval."
+    if (!confirmed) return;
+
+    const now = new Date().toISOString();
+
+    const meaning =
+      "I have reviewed the nonconformance, risk assessment, severity, CAPA decision, product disposition, MRB rules, and approve the MRB decision.";
+
+    const { error } = await supabase
+      .from("ncmrs")
+      .update({
+        risk_assessment: riskAssessment,
+        severity,
+        capa_justification: capaJustification,
+        product_disposition: productDisposition,
+        disposition: productDisposition,
+        disposition_justification: dispositionJustification,
+        mrb_approved_by: userEmail,
+        mrb_approved_at: now,
+        mrb_signature_meaning: meaning,
+        mrb_signature_email_entered: mrbSignatureEmail,
+        mrb_additional_approvers: additionalMrbApprovers,
+      })
+      .eq("id", id);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    const approverEmails = additionalMrbApprovers
+      .split(",")
+      .map((email) => email.trim().toLowerCase())
+      .filter((email) => email && email !== userEmail.toLowerCase());
+
+    if (approverEmails.length > 0) {
+      const approverRows = approverEmails.map((email) => ({
+        ncmr_id: id,
+        approver_email: email,
+        approver_role: "additional_mrb_approver",
+        approval_status: "pending",
+        signature_meaning: "Additional MRB approval requested.",
+      }));
+
+      const { error: approverError } = await supabase
+        .from("ncmr_mrb_approvers")
+        .insert(approverRows);
+
+      if (approverError) {
+        alert(approverError.message);
+        return;
+      }
+    }
+
+    await addAuditLog(
+      "mrb_approved",
+      `MRB approved after enhanced e-signature. Severity: ${severity}. Disposition: ${productDisposition}. Approved by role: ${userRole}. Meaning: ${meaning}`
     );
-    return;
-  }
 
-  if (
-    severity === "major" &&
-    !record?.capa_id &&
-    !capaJustification
-  ) {
-    alert(
-      "MRB rule: Major severity requires either a linked CAPA or justification for no CAPA."
-    );
-    return;
-  }
-
-  if (
-    severity === "major" &&
-    productDisposition === "use_as_is" &&
-    dispositionJustification.trim().length < 50
-  ) {
-    alert(
-      "MRB rule: Major severity with Use As Is requires a stronger disposition justification."
-    );
-    return;
-  }
-
-  if (
-    severity === "critical" &&
-    productDisposition === "use_as_is" &&
-    dispositionJustification.trim().length < 75
-  ) {
-    alert(
-      "MRB rule: Critical severity with Use As Is requires a detailed VP Quality justification."
-    );
-    return;
-  }
-
-  const confirmed = window.confirm(
-    "Electronic Signature:\n\nI have reviewed the nonconformance, risk assessment, severity, CAPA decision, product disposition, MRB rules, and approve the MRB decision."
-  );
-
-  if (!confirmed) return;
-
-  const now = new Date().toISOString();
-
-  const meaning =
-    "I have reviewed the nonconformance, risk assessment, severity, CAPA decision, product disposition, MRB rules, and approve the MRB decision.";
-
-  const { error } = await supabase
-    .from("ncmrs")
-    .update({
-      risk_assessment: riskAssessment,
-      severity,
-      capa_justification: capaJustification,
-      product_disposition: productDisposition,
-      disposition: productDisposition,
-      disposition_justification: dispositionJustification,
-      mrb_approved_by: userEmail,
-      mrb_approved_at: now,
-      mrb_signature_meaning: meaning,
-    })
-    .eq("id", id);
-
-  if (error) {
-    alert(error.message);
-    return;
-  }
-
-  await addAuditLog(
-    "mrb_approved",
-    `MRB approved after decision-rule check. Severity: ${severity}. Disposition: ${productDisposition}. Approved by role: ${userRole}. Meaning: ${meaning}`
-  );
-
-  alert("MRB approved");
-  fetchRecord();
-};
+    alert("MRB approved with electronic signature");
+    fetchRecord();
+  };
 
   const markCorrectionImplemented = async () => {
     if (!correctionImplementation) {
@@ -461,7 +489,9 @@ export default function NcmrDetailPage() {
   };
 
   const closeNcmr = async () => {
-    if (userRole !== "approver") return alert("Only an approver can close NCMR.");
+    if (userRole !== "approver" && userRole !== "vp_quality") {
+      return alert("Only an approver or VP Quality can close NCMR.");
+    }
 
     if (!problemDescription) return alert("Problem description is required.");
     if (!containmentAction) return alert("Containment action is required.");
@@ -740,6 +770,27 @@ export default function NcmrDetailPage() {
         />
 
         <div style={{ marginTop: "12px" }}>
+          <label>Re-enter Your Email for MRB E-Signature</label><br />
+          <input
+            value={mrbSignatureEmail}
+            onChange={(e) => setMrbSignatureEmail(e.target.value)}
+            placeholder={userEmail || "your.email@company.com"}
+            style={{ width: "100%", maxWidth: "500px", padding: "8px" }}
+          />
+        </div>
+
+        <div style={{ marginTop: "12px" }}>
+          <label>Additional MRB Approvers</label><br />
+          <textarea
+            value={additionalMrbApprovers}
+            onChange={(e) => setAdditionalMrbApprovers(e.target.value)}
+            placeholder="Enter comma-separated approver emails"
+            rows={3}
+            style={{ width: "100%", maxWidth: "800px" }}
+          />
+        </div>
+
+        <div style={{ marginTop: "12px" }}>
           <button onClick={approveMrb}>Approve MRB Decision</button>
         </div>
 
@@ -747,7 +798,21 @@ export default function NcmrDetailPage() {
           <div style={{ marginTop: "12px" }}>
             <strong>MRB Approved By:</strong> {record.mrb_approved_by}<br />
             <strong>MRB Approved At:</strong> {record.mrb_approved_at}<br />
+            <strong>Signature Email Entered:</strong> {record.mrb_signature_email_entered || "N/A"}<br />
             <strong>Signature Meaning:</strong> {record.mrb_signature_meaning}
+          </div>
+        ) : null}
+
+        {mrbApprovers.length > 0 ? (
+          <div style={{ marginTop: "12px" }}>
+            <strong>Additional MRB Approvers:</strong>
+            <ul>
+              {mrbApprovers.map((approver) => (
+                <li key={approver.id}>
+                  {approver.approver_email} — {approver.approval_status}
+                </li>
+              ))}
+            </ul>
           </div>
         ) : null}
       </section>
