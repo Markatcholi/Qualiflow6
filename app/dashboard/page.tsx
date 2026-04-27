@@ -14,6 +14,11 @@ type NotificationItem = {
   link: string;
 };
 
+type SupplierCount = {
+  supplier: string;
+  count: number;
+};
+
 export default function DashboardPage() {
   const [ncmrOpen, setNcmrOpen] = useState(0);
   const [ncmrInvestigation, setNcmrInvestigation] = useState(0);
@@ -34,6 +39,11 @@ export default function DashboardPage() {
   const [capaAwaitingEffectiveness, setCapaAwaitingEffectiveness] = useState(0);
   const [capaEffectivenessOverdue, setCapaEffectivenessOverdue] = useState(0);
   const [capaEffectivenessDueSoon, setCapaEffectivenessDueSoon] = useState(0);
+
+  const [supplierScarRequired, setSupplierScarRequired] = useState(0);
+  const [openSupplierCapas, setOpenSupplierCapas] = useState(0);
+  const [openScars, setOpenScars] = useState(0);
+  const [topSuppliers, setTopSuppliers] = useState<SupplierCount[]>([]);
 
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
 
@@ -91,6 +101,25 @@ export default function DashboardPage() {
     return Math.floor((now - start) / (1000 * 60 * 60 * 24));
   };
 
+  const buildSupplierCounts = (allNcmrs: any[]) => {
+    const supplierMap: Record<string, number> = {};
+
+    allNcmrs.forEach((ncmr: any) => {
+      const supplier = (ncmr.supplier_name || "").trim();
+
+      if (!supplier) return;
+
+      supplierMap[supplier] = (supplierMap[supplier] || 0) + 1;
+    });
+
+    const sorted = Object.entries(supplierMap)
+      .map(([supplier, count]) => ({ supplier, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+
+    setTopSuppliers(sorted);
+  };
+
   const buildNotifications = (allNcmrs: any[], allCapas: any[]) => {
     const alerts: NotificationItem[] = [];
 
@@ -128,6 +157,17 @@ export default function DashboardPage() {
         alerts.push({
           type: "Follow-up CAPA Needed",
           message: `CAPA rated Not Effective and needs follow-up CAPA: ${capa.title || "Untitled CAPA"}.`,
+          link: `/capa/${capa.id}`,
+        });
+      }
+
+      if (
+        capa.status !== "closed" &&
+        (capa.capa_type === "supplier_capa" || capa.capa_type === "scar")
+      ) {
+        alerts.push({
+          type: "Open Supplier CAPA / SCAR",
+          message: `${capa.capa_type === "scar" ? "SCAR" : "Supplier CAPA"} open for supplier ${capa.supplier_name || "N/A"}: ${capa.title || "Untitled"}.`,
           link: `/capa/${capa.id}`,
         });
       }
@@ -182,6 +222,30 @@ export default function DashboardPage() {
           link: `/ncmrs/${ncmr.id}`,
         });
       }
+
+      if (
+        ncmr.status !== "closed" &&
+        ncmr.supplier_capa_required &&
+        !ncmr.capa_id
+      ) {
+        alerts.push({
+          type: "Supplier SCAR Required",
+          message: `Supplier CAPA/SCAR required for ${ncmr.supplier_name || "supplier"}: ${ncmr.supplier_capa_reason || ncmr.title || "Untitled NCMR"}.`,
+          link: `/ncmrs/${ncmr.id}`,
+        });
+      }
+
+      if (
+        ncmr.status !== "closed" &&
+        ncmr.supplier_capa_required &&
+        ncmr.capa_id
+      ) {
+        alerts.push({
+          type: "Supplier SCAR Linked",
+          message: `Supplier CAPA/SCAR has been triggered for ${ncmr.supplier_name || "supplier"}: ${ncmr.title || "Untitled NCMR"}.`,
+          link: `/ncmrs/${ncmr.id}`,
+        });
+      }
     });
 
     setNotifications(alerts);
@@ -210,6 +274,13 @@ export default function DashboardPage() {
       (item: any) => item.status === "investigation"
     );
     setNcmrInvestigation(investigationNcmrs.length);
+
+    const supplierScarNcmrs = allNcmrs.filter((item: any) => {
+      return item.supplier_capa_required;
+    });
+    setSupplierScarRequired(supplierScarNcmrs.length);
+
+    buildSupplierCounts(allNcmrs);
 
     const ncmrDurations = closedNcmrs
       .filter((item: any) => item.created_at && item.closed_at)
@@ -248,6 +319,16 @@ export default function DashboardPage() {
 
     const activeCapas = allCapas.filter((item: any) => item.status !== "closed");
     setCapaOpen(activeCapas.length);
+
+    const supplierCapas = allCapas.filter((item: any) => {
+      return item.status !== "closed" && item.capa_type === "supplier_capa";
+    });
+    setOpenSupplierCapas(supplierCapas.length);
+
+    const scars = allCapas.filter((item: any) => {
+      return item.status !== "closed" && item.capa_type === "scar";
+    });
+    setOpenScars(scars.length);
 
     const today = new Date();
     const todayStr = today.toISOString().split("T")[0];
@@ -422,6 +503,34 @@ export default function DashboardPage() {
 
         <div style={{ padding: "15px", border: "1px solid #ccc" }}>
           <strong>Average NCMR Close Time:</strong> {avgNcmrCloseDays} days
+        </div>
+
+        <div style={{ padding: "15px", border: "1px solid purple" }}>
+          <strong>Supplier CAPA / SCAR Required NCMRs:</strong>{" "}
+          {supplierScarRequired}
+        </div>
+
+        <div style={{ padding: "15px", border: "1px solid purple" }}>
+          <strong>Open Supplier CAPAs:</strong> {openSupplierCapas}
+        </div>
+
+        <div style={{ padding: "15px", border: "1px solid purple" }}>
+          <strong>Open SCARs:</strong> {openScars}
+        </div>
+
+        <div style={{ padding: "15px", border: "1px solid purple" }}>
+          <strong>Top Suppliers by NCMR Count:</strong>
+          {topSuppliers.length === 0 ? (
+            <p>No supplier NCMR data yet.</p>
+          ) : (
+            <ol>
+              {topSuppliers.map((item) => (
+                <li key={item.supplier}>
+                  {item.supplier}: {item.count}
+                </li>
+              ))}
+            </ol>
+          )}
         </div>
 
         <div style={{ padding: "15px", border: "1px solid #ccc" }}>
