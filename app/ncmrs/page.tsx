@@ -37,6 +37,8 @@ type Ncmr = {
   immediate_correction: string | null;
   recurring_issue: boolean | null;
   recurrence_reason: string | null;
+  supplier_capa_required: boolean | null;
+  supplier_capa_reason: string | null;
   severity: string | null;
   owner: string | null;
   status: string | null;
@@ -202,6 +204,38 @@ export default function NcmrPage() {
     return { recurring: false, reason: "" };
   };
 
+  const checkSupplierScar = async () => {
+    if (!supplierName.trim()) {
+      return { required: false, reason: "" };
+    }
+
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    const { data, error } = await supabase
+      .from("ncmrs")
+      .select("id")
+      .ilike("supplier_name", supplierName.trim())
+      .gte("created_at", thirtyDaysAgo.toISOString());
+
+    if (error) {
+      alert(error.message);
+      return { required: false, reason: "" };
+    }
+
+    const priorCount = data?.length || 0;
+    const totalWithNewRecord = priorCount + 1;
+
+    if (totalWithNewRecord >= 3) {
+      return {
+        required: true,
+        reason: `Supplier CAPA/SCAR required: ${supplierName} has ${totalWithNewRecord} NCMR(s) in the last 30 days.`,
+      };
+    }
+
+    return { required: false, reason: "" };
+  };
+
   const addNcmr = async () => {
     if (!title) {
       alert("Title is required.");
@@ -209,6 +243,9 @@ export default function NcmrPage() {
     }
 
     const recurrence = await checkRecurrence();
+    const supplierScar = await checkSupplierScar();
+
+    const capaRequired = recurrence.recurring || supplierScar.required;
 
     const { data, error } = await supabase
       .from("ncmrs")
@@ -235,10 +272,12 @@ export default function NcmrPage() {
         owner,
         status: "open",
         severity: "not_assessed",
-        capa_required: recurrence.recurring,
+        capa_required: capaRequired,
         recurring_issue: recurrence.recurring,
         recurrence_reason: recurrence.reason,
         recurrence_checked_at: new Date().toISOString(),
+        supplier_capa_required: supplierScar.required,
+        supplier_capa_reason: supplierScar.reason,
       })
       .select()
       .single();
@@ -252,7 +291,50 @@ export default function NcmrPage() {
 
     if (recurrence.recurring) {
       await addAuditLog("ncmr", data.id, "recurrence_detected", recurrence.reason);
+    }
 
+    if (supplierScar.required) {
+      await addAuditLog("ncmr", data.id, "supplier_scar_required", supplierScar.reason);
+
+      const { data: scarData, error: scarError } = await supabase
+        .from("capas")
+        .insert({
+          ncmr_id: data.id,
+          title: `SCAR for ${supplierName}`,
+          linked_ncmr_title: title,
+          source_type: "supplier_quality",
+          capa_source: "Supplier recurrence",
+          capa_type: "scar",
+          supplier_name: supplierName,
+          scar_required: true,
+          scar_reason: supplierScar.reason,
+          problem_description:
+            issueDescription || `Supplier recurrence identified for ${supplierName}`,
+          status: "open",
+        })
+        .select()
+        .single();
+
+      if (scarError) {
+        alert(scarError.message);
+        return;
+      }
+
+      await supabase
+        .from("ncmrs")
+        .update({
+          capa_id: scarData.id,
+          capa_required: true,
+        })
+        .eq("id", data.id);
+
+      await addAuditLog(
+        "ncmr",
+        data.id,
+        "scar_created",
+        `Supplier CAPA/SCAR automatically created for supplier: ${supplierName}`
+      );
+    } else if (recurrence.recurring) {
       const { data: capaData, error: capaError } = await supabase
         .from("capas")
         .insert({
@@ -261,6 +343,7 @@ export default function NcmrPage() {
           linked_ncmr_title: title,
           source_type: "ncmr",
           capa_source: "Recurring NCMR",
+          capa_type: "internal_capa",
           problem_description: issueDescription || title,
           status: "open",
         })
@@ -272,7 +355,10 @@ export default function NcmrPage() {
         return;
       }
 
-      await supabase.from("ncmrs").update({ capa_id: capaData.id }).eq("id", data.id);
+      await supabase
+        .from("ncmrs")
+        .update({ capa_id: capaData.id })
+        .eq("id", data.id);
 
       await addAuditLog(
         "ncmr",
@@ -623,6 +709,12 @@ export default function NcmrPage() {
                 </span>
               ) : null}
 
+              {item.supplier_capa_required ? (
+                <span style={{ color: "purple", marginLeft: "10px" }}>
+                  Supplier CAPA / SCAR Required
+                </span>
+              ) : null}
+
               <div style={{ marginTop: "8px" }}>
                 <div><strong>Issue Description:</strong> {item.issue_description || "N/A"}</div>
                 <div><strong>Part Number:</strong> {item.product_part_number || "N/A"}</div>
@@ -646,6 +738,8 @@ export default function NcmrPage() {
                 <div><strong>Severity:</strong> {item.severity || "not_assessed"}</div>
                 <div><strong>Recurring:</strong> {item.recurring_issue ? "Yes" : "No"}</div>
                 <div><strong>Recurrence Reason:</strong> {item.recurrence_reason || "N/A"}</div>
+                <div><strong>Supplier CAPA / SCAR Required:</strong> {item.supplier_capa_required ? "Yes" : "No"}</div>
+                <div><strong>Supplier CAPA / SCAR Reason:</strong> {item.supplier_capa_reason || "N/A"}</div>
               </div>
 
               <div style={{ marginTop: "10px" }}>
