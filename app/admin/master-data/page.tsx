@@ -220,7 +220,7 @@ export default function MasterDataPage() {
     return <main style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>Loading...</main>;
   }
 
-  if (userRole !== "approver") {
+  if (!["approver", "vp_quality"].includes(userRole)) {
     return (
       <main style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
         <h1>Access Denied</h1>
