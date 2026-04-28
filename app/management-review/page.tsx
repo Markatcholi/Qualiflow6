@@ -66,6 +66,7 @@ export default function ManagementReviewPage() {
         <a href="/dashboard">Dashboard</a> |{" "}
         <a href="/ncmrs">NCMRs</a> |{" "}
         <a href="/capa">CAPAs</a> |{" "}
+        <a href="/management-review">Management Review</a>
         <strong>Management Review</strong>
       </div>
 
