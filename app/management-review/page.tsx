@@ -60,6 +60,15 @@ export default function ManagementReviewPage() {
 
   return (
     <main style={{ padding: "25px", fontFamily: "Arial, sans-serif" }}>
+      
+      {/* 🔷 NAVIGATION HEADER */}
+      <div style={{ marginBottom: "20px" }}>
+        <a href="/dashboard">Dashboard</a> |{" "}
+        <a href="/ncmrs">NCMRs</a> |{" "}
+        <a href="/capa">CAPAs</a> |{" "}
+        <strong>Management Review</strong>
+      </div>
+
       <button onClick={() => window.print()} className="no-print">
         Print / Save as PDF
       </button>
@@ -81,15 +90,15 @@ export default function ManagementReviewPage() {
         <p><strong>Overdue CAPAs:</strong> {overdueCapas.length}</p>
       </section>
 
-      {/* Risk & Escalation */}
+      {/* Risk */}
       <section style={sectionStyle}>
         <h2>Risk & Escalation</h2>
-        <p><strong>Overdue CAPAs:</strong> {overdueCapas.length}</p>
         <p><strong>Critical NCMRs:</strong> {ncmrs.filter(x => x.severity === "critical").length}</p>
         <p><strong>Major NCMRs:</strong> {ncmrs.filter(x => x.severity === "major").length}</p>
+        <p><strong>Overdue CAPAs:</strong> {overdueCapas.length}</p>
       </section>
 
-      {/* CAPA Effectiveness */}
+      {/* Effectiveness */}
       <section style={sectionStyle}>
         <h2>CAPA Effectiveness</h2>
         <p>Effective: {effectiveness.effective}</p>
@@ -97,30 +106,23 @@ export default function ManagementReviewPage() {
         <p>Not Effective: {effectiveness.notEffective}</p>
       </section>
 
-      {/* Supplier Quality */}
+      {/* Supplier */}
       <section style={sectionStyle}>
         <h2>Supplier Quality</h2>
         <p><strong>Total SCARs:</strong> {scars.length}</p>
 
-        <h3>Top Suppliers (by NCMR)</h3>
+        <h3>Top Suppliers</h3>
         {topSuppliers.length === 0 ? (
           <p>No supplier data</p>
         ) : (
           <ul>
             {topSuppliers.map(([supplier, count]) => (
               <li key={supplier}>
-                {supplier}: {count} NCMR(s)
+                {supplier}: {count}
               </li>
             ))}
           </ul>
         )}
-      </section>
-
-      {/* Trends (simple counts) */}
-      <section style={sectionStyle}>
-        <h2>Trend Summary</h2>
-        <p>Recurring NCMRs: {ncmrs.filter(x => x.recurring_issue).length}</p>
-        <p>Supplier CAPA Required: {ncmrs.filter(x => x.supplier_capa_required).length}</p>
       </section>
 
       <style jsx global>{`
