@@ -61,14 +61,7 @@ export default function ManagementReviewPage() {
   return (
     <main style={{ padding: "25px", fontFamily: "Arial, sans-serif" }}>
       
-      {/* 🔷 NAVIGATION HEADER */}
-      <div style={{ marginBottom: "20px" }}>
-        <a href="/dashboard">Dashboard</a> |{" "}
-        <a href="/ncmrs">NCMRs</a> |{" "}
-        <a href="/capa">CAPAs</a> |{" "}
-        <a href="/management-review">Management Review</a>
-        <strong>Management Review</strong>
-      </div>
+      
 
       <button onClick={() => window.print()} className="no-print">
         Print / Save as PDF
