@@ -16,6 +16,7 @@ type DefectSubcategoryOption = {
 
 type Ncmr = {
   id: string;
+  ncmr_number: string | null;
   title: string | null;
   issue_description: string | null;
   product_part_number: string | null;
@@ -695,8 +696,7 @@ export default function NcmrPage() {
                 borderRadius: "8px",
               }}
             >
-              <strong>{item.title}</strong> — {item.status}
-
+              <strong>{item.ncmr_number || "NCMR-PENDING"} - {item.title}</strong> — {item.status}
               {item.recurring_issue ? (
                 <span style={{ color: "orange", marginLeft: "10px" }}>
                   Recurring Issue
