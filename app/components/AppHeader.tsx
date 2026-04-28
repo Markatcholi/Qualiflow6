@@ -52,6 +52,7 @@ export default function AppHeader() {
 </a>
         <a href="/ncmrs" style={{ marginRight: "12px" }}>NCMRs</a>
         <a href="/capa" style={{ marginRight: "12px" }}>CAPA</a>
+        <a href="/audits" style={{ marginRight: "12px" }}>Audits</a>
         <a href="/audit" style={{ marginRight: "12px" }}>Audit Trail</a>
         <a href="/admin/master-data">Admin Master Data</a>
       </nav>
