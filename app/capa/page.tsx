@@ -5,20 +5,34 @@ import { supabase } from "../../lib/supabaseClient";
 
 type Capa = {
   id: string;
+  capa_number: string | null;
+
   title: string | null;
   status: string | null;
+
   owner: string | null;
   due_date: string | null;
+
   effectiveness_check: string | null;
+
   approved_by: string | null;
   approved_at: string | null;
+
   closed_at: string | null;
+
   signature_meaning: string | null;
   signed_by: string | null;
   signed_at: string | null;
+
   linked_ncmr_title: string | null;
+
   source_type: string | null;
   capa_source: string | null;
+
+  capa_type: string | null;
+  supplier_name: string | null;
+
+  scar_required: boolean | null;
 };
 
 export default function CapaPage() {
@@ -269,7 +283,7 @@ export default function CapaPage() {
           {list.map((item) => (
             <li key={item.id} style={{ marginBottom: "18px" }}>
               <a href={`/capa/${item.id}`}>
-                <strong>{item.title}</strong>
+                <strong>{item.capa_number || "CAPA-PENDING"} - {item.title}</strong>
               </a>{" "}
               — {item.status}
 
