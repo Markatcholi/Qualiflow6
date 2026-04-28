@@ -47,9 +47,11 @@ export default function AppHeader() {
     >
       <nav>
         <a href="/dashboard" style={{ marginRight: "12px" }}>Dashboard</a>
+       <a href="/management-review" style={{ marginRight: "15px" }}>
+ Management Review
+</a>
         <a href="/ncmrs" style={{ marginRight: "12px" }}>NCMRs</a>
         <a href="/capa" style={{ marginRight: "12px" }}>CAPA</a>
-        <a href="/management-review">Management Review</a>
         <a href="/audit" style={{ marginRight: "12px" }}>Audit Trail</a>
         <a href="/admin/master-data">Admin Master Data</a>
       </nav>
