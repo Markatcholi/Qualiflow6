@@ -6,6 +6,8 @@ import { supabase } from "../../lib/supabaseClient";
 export default function ManagementReviewPage() {
   const [ncmrs, setNcmrs] = useState<any[]>([]);
   const [capas, setCapas] = useState<any[]>([]);
+  const [audits, setAudits] = useState<any[]>([]);
+  const [auditFindings, setAuditFindings] = useState<any[]>([]);
   const [savedReports, setSavedReports] = useState<any[]>([]);
 
   const [reportTitle, setReportTitle] = useState("Management Review Report");
@@ -14,6 +16,9 @@ export default function ManagementReviewPage() {
   const fetchData = async () => {
     const ncmrRes = await supabase.from("ncmrs").select("*");
     const capaRes = await supabase.from("capas").select("*");
+    const auditRes = await supabase.from("audits").select("*");
+    const findingsRes = await supabase.from("audit_findings").select("*");
+
     const reportsRes = await supabase
       .from("management_review_reports")
       .select("*")
@@ -21,10 +26,14 @@ export default function ManagementReviewPage() {
 
     if (ncmrRes.error) alert(ncmrRes.error.message);
     if (capaRes.error) alert(capaRes.error.message);
+    if (auditRes.error) alert(auditRes.error.message);
+    if (findingsRes.error) alert(findingsRes.error.message);
     if (reportsRes.error) alert(reportsRes.error.message);
 
     setNcmrs(ncmrRes.data || []);
     setCapas(capaRes.data || []);
+    setAudits(auditRes.data || []);
+    setAuditFindings(findingsRes.data || []);
     setSavedReports(reportsRes.data || []);
   };
 
@@ -32,13 +41,13 @@ export default function ManagementReviewPage() {
     fetchData();
   }, []);
 
+  const todayStr = new Date().toISOString().split("T")[0];
+
   const closedNcmrs = ncmrs.filter((x) => x.status === "closed");
   const openNcmrs = ncmrs.filter((x) => x.status !== "closed");
 
   const closedCapas = capas.filter((x) => x.status === "closed");
   const openCapas = capas.filter((x) => x.status !== "closed");
-
-  const todayStr = new Date().toISOString().split("T")[0];
 
   const overdueCapas = capas.filter(
     (x) => x.status !== "closed" && x.due_date && x.due_date < todayStr
@@ -52,12 +61,33 @@ export default function ManagementReviewPage() {
     notEffective: capas.filter((x) => x.effectiveness_rating === "not_effective").length,
   };
 
+  const totalAudits = audits.length;
+  const openAudits = audits.filter((a) => a.status !== "closed").length;
+  const closedAudits = audits.filter((a) => a.status === "closed").length;
+
+  const overdueAudits = audits.filter(
+    (a) => a.status !== "closed" && a.audit_date && a.audit_date < todayStr
+  ).length;
+
+  const totalFindings = auditFindings.length;
+  const openFindings = auditFindings.filter((f) => f.finding_status !== "closed").length;
+  const closedFindings = auditFindings.filter((f) => f.finding_status === "closed").length;
+
+  const minorFindings = auditFindings.filter((f) => f.finding_severity === "minor").length;
+  const majorFindings = auditFindings.filter((f) => f.finding_severity === "major").length;
+  const criticalFindings = auditFindings.filter((f) => f.finding_severity === "critical").length;
+
+  const capaFindings = auditFindings.filter((f) => f.capa_required).length;
+
+  const capaFindingsPercent =
+    totalFindings > 0 ? ((capaFindings / totalFindings) * 100).toFixed(1) : "0.0";
+
   const supplierMap = new Map<string, number>();
 
   ncmrs.forEach((n) => {
-    const s = n.supplier_name || "";
-    if (!s) return;
-    supplierMap.set(s, (supplierMap.get(s) || 0) + 1);
+    const supplier = n.supplier_name || "";
+    if (!supplier) return;
+    supplierMap.set(supplier, (supplierMap.get(supplier) || 0) + 1);
   });
 
   const topSuppliers = Array.from(supplierMap.entries())
@@ -94,6 +124,20 @@ export default function ManagementReviewPage() {
           supplier,
           count,
         })),
+      },
+      audit_metrics: {
+        total_audits: totalAudits,
+        open_audits: openAudits,
+        closed_audits: closedAudits,
+        overdue_audits: overdueAudits,
+        total_findings: totalFindings,
+        open_findings: openFindings,
+        closed_findings: closedFindings,
+        minor_findings: minorFindings,
+        major_findings: majorFindings,
+        critical_findings: criticalFindings,
+        findings_requiring_capa: capaFindings,
+        percent_findings_requiring_capa: capaFindingsPercent,
       },
     };
   };
@@ -166,10 +210,12 @@ export default function ManagementReviewPage() {
         <h2>Executive Summary</h2>
         <p><strong>Total NCMRs:</strong> {ncmrs.length}</p>
         <p><strong>Open NCMRs:</strong> {openNcmrs.length}</p>
+        <p><strong>Closed NCMRs:</strong> {closedNcmrs.length}</p>
         <p><strong>NCMR Closure Rate:</strong> {closureRate(closedNcmrs.length, ncmrs.length)}%</p>
 
         <p><strong>Total CAPAs:</strong> {capas.length}</p>
         <p><strong>Open CAPAs:</strong> {openCapas.length}</p>
+        <p><strong>Closed CAPAs:</strong> {closedCapas.length}</p>
         <p><strong>CAPA Closure Rate:</strong> {closureRate(closedCapas.length, capas.length)}%</p>
         <p><strong>Overdue CAPAs:</strong> {overdueCapas.length}</p>
       </section>
@@ -205,6 +251,27 @@ export default function ManagementReviewPage() {
             ))}
           </ul>
         )}
+      </section>
+
+      <section style={sectionStyle}>
+        <h2>Audit Metrics</h2>
+
+        <p><strong>Total Audits:</strong> {totalAudits}</p>
+        <p><strong>Open Audits:</strong> {openAudits}</p>
+        <p><strong>Closed Audits:</strong> {closedAudits}</p>
+        <p><strong>Overdue Audits:</strong> {overdueAudits}</p>
+
+        <h3>Findings</h3>
+        <p><strong>Total Findings:</strong> {totalFindings}</p>
+        <p><strong>Open Findings:</strong> {openFindings}</p>
+        <p><strong>Closed Findings:</strong> {closedFindings}</p>
+        <p><strong>Minor Findings:</strong> {minorFindings}</p>
+        <p><strong>Major Findings:</strong> {majorFindings}</p>
+        <p><strong>Critical Findings:</strong> {criticalFindings}</p>
+
+        <h3>CAPA Linkage</h3>
+        <p><strong>Findings Requiring CAPA:</strong> {capaFindings}</p>
+        <p><strong>% Findings Requiring CAPA:</strong> {capaFindingsPercent}%</p>
       </section>
 
       <section style={sectionStyle} className="no-print">
