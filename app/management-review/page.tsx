@@ -3,6 +3,17 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
 
+type MonthTrend = {
+  key: string;
+  label: string;
+  created: number;
+  closed: number;
+  closureRate: number;
+  recurring: number;
+  overdue: number;
+  findings: number;
+};
+
 export default function ManagementReviewPage() {
   const [ncmrs, setNcmrs] = useState<any[]>([]);
   const [capas, setCapas] = useState<any[]>([]);
@@ -92,33 +103,83 @@ export default function ManagementReviewPage() {
   const closureRate = (closed: number, total: number) =>
     total > 0 ? ((closed / total) * 100).toFixed(1) : "0.0";
 
-  const buildMonthlyTrend = (items: any[]) => {
-    const months: { key: string; label: string; count: number }[] = [];
+  const getLast6Months = () => {
+    const months: MonthTrend[] = [];
     const now = new Date();
 
     for (let i = 5; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+
       months.push({
         key,
         label: d.toLocaleString("en-US", { month: "short", year: "2-digit" }),
-        count: 0,
+        created: 0,
+        closed: 0,
+        closureRate: 0,
+        recurring: 0,
+        overdue: 0,
+        findings: 0,
       });
     }
 
-    items.forEach((item) => {
-      if (!item.created_at) return;
-      const d = new Date(item.created_at);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-      const match = months.find((m) => m.key === key);
-      if (match) match.count += 1;
+    return months;
+  };
+
+  const monthKey = (dateString: string) => {
+    const d = new Date(dateString);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  };
+
+  const buildRecordTrend = (items: any[], type: "ncmr" | "capa") => {
+    const months = getLast6Months();
+
+    months.forEach((month) => {
+      const createdThisMonth = items.filter(
+        (item) => item.created_at && monthKey(item.created_at) === month.key
+      );
+
+      const closedThisMonth = items.filter(
+        (item) => item.closed_at && monthKey(item.closed_at) === month.key
+      );
+
+      month.created = createdThisMonth.length;
+      month.closed = closedThisMonth.length;
+      month.closureRate =
+        createdThisMonth.length > 0
+          ? Number(((closedThisMonth.length / createdThisMonth.length) * 100).toFixed(1))
+          : 0;
+
+      if (type === "ncmr") {
+        month.recurring = createdThisMonth.filter((item) => item.recurring_issue).length;
+      }
+
+      if (type === "capa") {
+        month.overdue = createdThisMonth.filter(
+          (item) => item.status !== "closed" && item.due_date && item.due_date < todayStr
+        ).length;
+      }
     });
 
     return months;
   };
 
-  const ncmrTrend = buildMonthlyTrend(ncmrs);
-  const capaTrend = buildMonthlyTrend(capas);
+  const buildAuditFindingTrend = () => {
+    const months = getLast6Months();
+
+    months.forEach((month) => {
+      month.findings = auditFindings.filter(
+        (finding) =>
+          finding.created_at && monthKey(finding.created_at) === month.key
+      ).length;
+    });
+
+    return months;
+  };
+
+  const ncmrTrend = buildRecordTrend(ncmrs, "ncmr");
+  const capaTrend = buildRecordTrend(capas, "capa");
+  const auditFindingTrend = buildAuditFindingTrend();
 
   const buildReportData = () => {
     return {
@@ -137,6 +198,7 @@ export default function ManagementReviewPage() {
       charts: {
         ncmr_trend: ncmrTrend,
         capa_trend: capaTrend,
+        audit_finding_trend: auditFindingTrend,
         findings_by_severity: {
           minor: minorFindings,
           major: majorFindings,
@@ -146,6 +208,28 @@ export default function ManagementReviewPage() {
         top_suppliers: topSuppliers.map(([supplier, count]) => ({
           supplier,
           count,
+        })),
+      },
+      trend_over_time: {
+        ncmr_monthly_closure_rate: ncmrTrend.map((m) => ({
+          label: m.label,
+          closureRate: m.closureRate,
+        })),
+        capa_monthly_closure_rate: capaTrend.map((m) => ({
+          label: m.label,
+          closureRate: m.closureRate,
+        })),
+        ncmr_monthly_recurrence: ncmrTrend.map((m) => ({
+          label: m.label,
+          recurring: m.recurring,
+        })),
+        capa_monthly_overdue: capaTrend.map((m) => ({
+          label: m.label,
+          overdue: m.overdue,
+        })),
+        audit_monthly_findings: auditFindingTrend.map((m) => ({
+          label: m.label,
+          findings: m.findings,
         })),
       },
       risk_escalation: {
@@ -237,28 +321,40 @@ export default function ManagementReviewPage() {
     fetchData();
   };
 
-  const Bar = ({ label, value, max }: { label: string; value: number; max: number }) => (
-    <div style={{ marginBottom: "10px" }}>
-      <div>
-        {label}: {value}
-      </div>
-      <div style={{ background: "#eee", width: "100%", maxWidth: "500px", height: "16px" }}>
+  const Bar = ({ label, value, max }: { label: string; value: number; max: number }) => {
+    const percent = max > 0 ? (value / max) * 100 : 0;
+
+    return (
+      <div style={{ marginBottom: "10px" }}>
+        <div>{label}: {value}</div>
         <div
           style={{
-            background: "#3b82f6",
-            width: `${max > 0 ? (value / max) * 100 : 0}%`,
-            height: "16px",
+            background: "#ddd",
+            width: "100%",
+            maxWidth: "500px",
+            height: "18px",
+            borderRadius: "4px",
+            overflow: "hidden",
+            border: "1px solid #bbb",
           }}
-        />
+        >
+          <div
+            style={{
+              background: "#2563eb",
+              width: `${value > 0 ? Math.max(percent, 5) : 0}%`,
+              height: "100%",
+            }}
+          />
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
-  const maxTrend = Math.max(
-    ...ncmrTrend.map((x) => x.count),
-    ...capaTrend.map((x) => x.count),
-    1
-  );
+  const maxNcmrClosureRate = Math.max(...ncmrTrend.map((x) => x.closureRate), 100);
+  const maxCapaClosureRate = Math.max(...capaTrend.map((x) => x.closureRate), 100);
+  const maxRecurring = Math.max(...ncmrTrend.map((x) => x.recurring), 1);
+  const maxOverdue = Math.max(...capaTrend.map((x) => x.overdue), 1);
+  const maxAuditFindings = Math.max(...auditFindingTrend.map((x) => x.findings), 1);
 
   const maxFinding = Math.max(minorFindings, majorFindings, criticalFindings, 1);
   const maxEffectiveness = Math.max(
@@ -276,16 +372,13 @@ export default function ManagementReviewPage() {
       </button>
 
       <h1>Management Review Dashboard</h1>
-      <p>
-        <strong>Date:</strong> {new Date().toLocaleDateString()}
-      </p>
+      <p><strong>Date:</strong> {new Date().toLocaleDateString()}</p>
 
       <section style={sectionStyle} className="no-print">
         <h2>Generate Saved Management Review Report</h2>
 
         <div style={{ marginBottom: "10px" }}>
-          <label>Report Title</label>
-          <br />
+          <label>Report Title</label><br />
           <input
             value={reportTitle}
             onChange={(e) => setReportTitle(e.target.value)}
@@ -294,8 +387,7 @@ export default function ManagementReviewPage() {
         </div>
 
         <div style={{ marginBottom: "10px" }}>
-          <label>Report Period</label>
-          <br />
+          <label>Report Period</label><br />
           <input
             value={reportPeriod}
             onChange={(e) => setReportPeriod(e.target.value)}
@@ -322,22 +414,61 @@ export default function ManagementReviewPage() {
       </section>
 
       <section style={sectionStyle}>
-        <h2>Executive Charts</h2>
+        <h2>Trend Over Time</h2>
 
-        <h3>Closure Status</h3>
-        <Bar label="Closed NCMRs" value={closedNcmrs.length} max={Math.max(ncmrs.length, 1)} />
-        <Bar label="Open NCMRs" value={openNcmrs.length} max={Math.max(ncmrs.length, 1)} />
-        <Bar label="Closed CAPAs" value={closedCapas.length} max={Math.max(capas.length, 1)} />
-        <Bar label="Open CAPAs" value={openCapas.length} max={Math.max(capas.length, 1)} />
-
-        <h3>Monthly NCMR / CAPA Trend</h3>
-        {ncmrTrend.map((item, index) => (
-          <div key={item.key} style={{ marginBottom: "12px" }}>
-            <strong>{item.label}</strong>
-            <Bar label="NCMR" value={item.count} max={maxTrend} />
-            <Bar label="CAPA" value={capaTrend[index]?.count || 0} max={maxTrend} />
-          </div>
+        <h3>Monthly NCMR Closure Rate</h3>
+        {ncmrTrend.map((item) => (
+          <Bar
+            key={`ncmr-close-${item.key}`}
+            label={`${item.label} Closure Rate %`}
+            value={item.closureRate}
+            max={maxNcmrClosureRate}
+          />
         ))}
+
+        <h3>Monthly CAPA Closure Rate</h3>
+        {capaTrend.map((item) => (
+          <Bar
+            key={`capa-close-${item.key}`}
+            label={`${item.label} Closure Rate %`}
+            value={item.closureRate}
+            max={maxCapaClosureRate}
+          />
+        ))}
+
+        <h3>Monthly NCMR Recurrence</h3>
+        {ncmrTrend.map((item) => (
+          <Bar
+            key={`ncmr-rec-${item.key}`}
+            label={`${item.label} Recurring NCMRs`}
+            value={item.recurring}
+            max={maxRecurring}
+          />
+        ))}
+
+        <h3>Monthly CAPA Overdue</h3>
+        {capaTrend.map((item) => (
+          <Bar
+            key={`capa-overdue-${item.key}`}
+            label={`${item.label} Overdue CAPAs`}
+            value={item.overdue}
+            max={maxOverdue}
+          />
+        ))}
+
+        <h3>Monthly Audit Findings</h3>
+        {auditFindingTrend.map((item) => (
+          <Bar
+            key={`audit-find-${item.key}`}
+            label={`${item.label} Findings`}
+            value={item.findings}
+            max={maxAuditFindings}
+          />
+        ))}
+      </section>
+
+      <section style={sectionStyle}>
+        <h2>Executive Charts</h2>
 
         <h3>Audit Findings by Severity</h3>
         <Bar label="Minor" value={minorFindings} max={maxFinding} />
@@ -422,6 +553,17 @@ export default function ManagementReviewPage() {
         @media print {
           .no-print {
             display: none;
+          }
+
+          body {
+            color: black;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
+
+          * {
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
           }
         }
       `}</style>
