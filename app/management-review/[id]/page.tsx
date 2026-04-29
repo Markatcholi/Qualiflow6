@@ -271,15 +271,23 @@ export default function SavedManagementReviewReportPage() {
       </div>
 
       <style jsx global>{`
-        @media print {
-          .no-print {
-            display: none;
-          }
-          body {
-            color: black;
-          }
-        }
-      `}</style>
+  @media print {
+    .no-print {
+      display: none;
+    }
+
+    body {
+      color: black;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    * {
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+  }
+`}</style>
     </main>
   );
 }
