@@ -134,6 +134,20 @@ export default function ManagementReviewPage() {
         capa_closure_rate: closureRate(closedCapas.length, capas.length),
         overdue_capas: overdueCapas.length,
       },
+      charts: {
+        ncmr_trend: ncmrTrend,
+        capa_trend: capaTrend,
+        findings_by_severity: {
+          minor: minorFindings,
+          major: majorFindings,
+          critical: criticalFindings,
+        },
+        capa_effectiveness: effectiveness,
+        top_suppliers: topSuppliers.map(([supplier, count]) => ({
+          supplier,
+          count,
+        })),
+      },
       risk_escalation: {
         critical_ncmrs: ncmrs.filter((x) => x.severity === "critical").length,
         major_ncmrs: ncmrs.filter((x) => x.severity === "major").length,
@@ -143,7 +157,10 @@ export default function ManagementReviewPage() {
       capa_effectiveness: effectiveness,
       supplier_quality: {
         total_scars: scars.length,
-        top_suppliers: topSuppliers.map(([supplier, count]) => ({ supplier, count })),
+        top_suppliers: topSuppliers.map(([supplier, count]) => ({
+          supplier,
+          count,
+        })),
       },
       audit_metrics: {
         total_audits: totalAudits,
@@ -163,17 +180,52 @@ export default function ManagementReviewPage() {
   };
 
   const saveReport = async () => {
-    if (!reportTitle) return alert("Report title is required.");
-    if (!reportPeriod) return alert("Report period is required.");
+    if (!reportTitle) {
+      alert("Report title is required.");
+      return;
+    }
+
+    if (!reportPeriod) {
+      alert("Report period is required.");
+      return;
+    }
 
     const { data: userData } = await supabase.auth.getUser();
     const email = userData?.user?.email || "unknown";
+
+    const enteredEmail = window.prompt(
+      "Electronic Signature Required\n\nRe-enter your email to generate and save this Management Review report:"
+    );
+
+    if (!enteredEmail) {
+      alert("Report generation cancelled. Email re-entry is required.");
+      return;
+    }
+
+    if (enteredEmail.trim().toLowerCase() !== email.trim().toLowerCase()) {
+      alert("Electronic signature email does not match logged-in user.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Electronic Signature:\n\nI confirm this Management Review report snapshot is accurate at the time of generation."
+    );
+
+    if (!confirmed) return;
+
+    const now = new Date().toISOString();
+    const signatureMeaning =
+      "I confirm this Management Review report snapshot is accurate at the time of generation.";
 
     const { error } = await supabase.from("management_review_reports").insert({
       report_title: reportTitle,
       report_period: reportPeriod,
       report_data: buildReportData(),
       created_by: email,
+      signed_by: email,
+      signed_at: now,
+      signature_email_entered: enteredEmail,
+      signature_meaning: signatureMeaning,
     });
 
     if (error) {
@@ -181,13 +233,15 @@ export default function ManagementReviewPage() {
       return;
     }
 
-    alert("Management Review report saved.");
+    alert("Management Review report saved with electronic signature.");
     fetchData();
   };
 
   const Bar = ({ label, value, max }: { label: string; value: number; max: number }) => (
     <div style={{ marginBottom: "10px" }}>
-      <div>{label}: {value}</div>
+      <div>
+        {label}: {value}
+      </div>
       <div style={{ background: "#eee", width: "100%", maxWidth: "500px", height: "16px" }}>
         <div
           style={{
@@ -207,7 +261,12 @@ export default function ManagementReviewPage() {
   );
 
   const maxFinding = Math.max(minorFindings, majorFindings, criticalFindings, 1);
-  const maxEffectiveness = Math.max(effectiveness.effective, effectiveness.partial, effectiveness.notEffective, 1);
+  const maxEffectiveness = Math.max(
+    effectiveness.effective,
+    effectiveness.partial,
+    effectiveness.notEffective,
+    1
+  );
   const maxSupplier = Math.max(...topSuppliers.map((x) => x[1]), 1);
 
   return (
@@ -217,13 +276,16 @@ export default function ManagementReviewPage() {
       </button>
 
       <h1>Management Review Dashboard</h1>
-      <p><strong>Date:</strong> {new Date().toLocaleDateString()}</p>
+      <p>
+        <strong>Date:</strong> {new Date().toLocaleDateString()}
+      </p>
 
       <section style={sectionStyle} className="no-print">
         <h2>Generate Saved Management Review Report</h2>
 
         <div style={{ marginBottom: "10px" }}>
-          <label>Report Title</label><br />
+          <label>Report Title</label>
+          <br />
           <input
             value={reportTitle}
             onChange={(e) => setReportTitle(e.target.value)}
@@ -232,7 +294,8 @@ export default function ManagementReviewPage() {
         </div>
 
         <div style={{ marginBottom: "10px" }}>
-          <label>Report Period</label><br />
+          <label>Report Period</label>
+          <br />
           <input
             value={reportPeriod}
             onChange={(e) => setReportPeriod(e.target.value)}
@@ -331,6 +394,7 @@ export default function ManagementReviewPage() {
 
       <section style={sectionStyle} className="no-print">
         <h2>Saved Management Review Reports</h2>
+
         {savedReports.length === 0 ? (
           <p>No saved reports yet.</p>
         ) : (
@@ -342,6 +406,10 @@ export default function ManagementReviewPage() {
                 Created: {report.created_at}
                 <br />
                 Created By: {report.created_by || "unknown"}
+                <br />
+                Signed By: {report.signed_by || "Not signed"}
+                <br />
+                Signed At: {report.signed_at || "N/A"}
                 <br />
                 <a href={`/management-review/${report.id}`}>Open Saved Report</a>
               </li>
