@@ -220,15 +220,55 @@ export default function AuditsPage() {
   };
 
   const updateAuditStatus = async (audit: Audit, status: string) => {
-    const payload: any = { status };
+  const auditFindings = findingsForAudit(audit.id);
+  const openFindings = auditFindings.filter(
+    (finding) => finding.finding_status !== "closed"
+  );
 
-    if (status === "closed") {
-      payload.closed_at = new Date().toISOString();
+  if (status === "closed" && openFindings.length > 0) {
+    alert("Cannot close audit while findings remain open.");
+    return;
+  }
+
+  if (status === "closed") {
+    const { data: userData } = await supabase.auth.getUser();
+    const email = userData?.user?.email || "";
+
+    const enteredEmail = window.prompt(
+      "Electronic Signature Required\n\nRe-enter your email to close this audit:"
+    );
+
+    if (!enteredEmail) {
+      alert("Audit closure cancelled. Email re-entry is required.");
+      return;
     }
+
+    if (enteredEmail.trim().toLowerCase() !== email.trim().toLowerCase()) {
+      alert("Electronic signature email does not match logged-in user.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Electronic Signature:\n\nI confirm this audit has been reviewed, findings have been addressed or appropriately documented, and the audit is approved for closure."
+    );
+
+    if (!confirmed) return;
+
+    const now = new Date().toISOString();
+    const meaning =
+      "I confirm this audit has been reviewed, findings have been addressed or appropriately documented, and the audit is approved for closure.";
 
     const { error } = await supabase
       .from("audits")
-      .update(payload)
+      .update({
+        status: "closed",
+        closed_at: now,
+        closed_by: email,
+        signed_by: email,
+        signed_at: now,
+        signature_email_entered: enteredEmail,
+        signature_meaning: meaning,
+      })
       .eq("id", audit.id);
 
     if (error) {
@@ -239,11 +279,41 @@ export default function AuditsPage() {
     await addAuditLog(
       "audit",
       audit.id,
-      "status_changed",
-      `Audit status changed to ${status}`
+      "audit_closed_signature",
+      `Audit closed with e-signature. Meaning: ${meaning}`
     );
 
     fetchData();
+    return;
+  }
+
+  const { error } = await supabase
+    .from("audits")
+    .update({
+      status,
+      closed_at: null,
+      closed_by: null,
+      signed_by: null,
+      signed_at: null,
+      signature_email_entered: null,
+      signature_meaning: null,
+    })
+    .eq("id", audit.id);
+
+  if (error) {
+    alert(error.message);
+    return;
+  }
+
+  await addAuditLog(
+    "audit",
+    audit.id,
+    "status_changed",
+    `Audit status changed to ${status}`
+  );
+
+  fetchData();
+};
   };
 
   const closeFinding = async (finding: AuditFinding) => {
