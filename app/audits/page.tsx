@@ -314,7 +314,6 @@ export default function AuditsPage() {
 
   fetchData();
 };
-  };
 
   const closeFinding = async (finding: AuditFinding) => {
     const { error } = await supabase
