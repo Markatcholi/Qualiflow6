@@ -18,7 +18,6 @@ export default function ManagementReviewPage() {
     const capaRes = await supabase.from("capas").select("*");
     const auditRes = await supabase.from("audits").select("*");
     const findingsRes = await supabase.from("audit_findings").select("*");
-
     const reportsRes = await supabase
       .from("management_review_reports")
       .select("*")
@@ -64,7 +63,6 @@ export default function ManagementReviewPage() {
   const totalAudits = audits.length;
   const openAudits = audits.filter((a) => a.status !== "closed").length;
   const closedAudits = audits.filter((a) => a.status === "closed").length;
-
   const overdueAudits = audits.filter(
     (a) => a.status !== "closed" && a.audit_date && a.audit_date < todayStr
   ).length;
@@ -72,18 +70,15 @@ export default function ManagementReviewPage() {
   const totalFindings = auditFindings.length;
   const openFindings = auditFindings.filter((f) => f.finding_status !== "closed").length;
   const closedFindings = auditFindings.filter((f) => f.finding_status === "closed").length;
-
   const minorFindings = auditFindings.filter((f) => f.finding_severity === "minor").length;
   const majorFindings = auditFindings.filter((f) => f.finding_severity === "major").length;
   const criticalFindings = auditFindings.filter((f) => f.finding_severity === "critical").length;
-
   const capaFindings = auditFindings.filter((f) => f.capa_required).length;
 
   const capaFindingsPercent =
     totalFindings > 0 ? ((capaFindings / totalFindings) * 100).toFixed(1) : "0.0";
 
   const supplierMap = new Map<string, number>();
-
   ncmrs.forEach((n) => {
     const supplier = n.supplier_name || "";
     if (!supplier) return;
@@ -96,6 +91,34 @@ export default function ManagementReviewPage() {
 
   const closureRate = (closed: number, total: number) =>
     total > 0 ? ((closed / total) * 100).toFixed(1) : "0.0";
+
+  const buildMonthlyTrend = (items: any[]) => {
+    const months: { key: string; label: string; count: number }[] = [];
+    const now = new Date();
+
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      months.push({
+        key,
+        label: d.toLocaleString("en-US", { month: "short", year: "2-digit" }),
+        count: 0,
+      });
+    }
+
+    items.forEach((item) => {
+      if (!item.created_at) return;
+      const d = new Date(item.created_at);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      const match = months.find((m) => m.key === key);
+      if (match) match.count += 1;
+    });
+
+    return months;
+  };
+
+  const ncmrTrend = buildMonthlyTrend(ncmrs);
+  const capaTrend = buildMonthlyTrend(capas);
 
   const buildReportData = () => {
     return {
@@ -120,10 +143,7 @@ export default function ManagementReviewPage() {
       capa_effectiveness: effectiveness,
       supplier_quality: {
         total_scars: scars.length,
-        top_suppliers: topSuppliers.map(([supplier, count]) => ({
-          supplier,
-          count,
-        })),
+        top_suppliers: topSuppliers.map(([supplier, count]) => ({ supplier, count })),
       },
       audit_metrics: {
         total_audits: totalAudits,
@@ -143,15 +163,8 @@ export default function ManagementReviewPage() {
   };
 
   const saveReport = async () => {
-    if (!reportTitle) {
-      alert("Report title is required.");
-      return;
-    }
-
-    if (!reportPeriod) {
-      alert("Report period is required, for example Q1 2026 or January 2026.");
-      return;
-    }
+    if (!reportTitle) return alert("Report title is required.");
+    if (!reportPeriod) return alert("Report period is required.");
 
     const { data: userData } = await supabase.auth.getUser();
     const email = userData?.user?.email || "unknown";
@@ -171,6 +184,31 @@ export default function ManagementReviewPage() {
     alert("Management Review report saved.");
     fetchData();
   };
+
+  const Bar = ({ label, value, max }: { label: string; value: number; max: number }) => (
+    <div style={{ marginBottom: "10px" }}>
+      <div>{label}: {value}</div>
+      <div style={{ background: "#eee", width: "100%", maxWidth: "500px", height: "16px" }}>
+        <div
+          style={{
+            background: "#3b82f6",
+            width: `${max > 0 ? (value / max) * 100 : 0}%`,
+            height: "16px",
+          }}
+        />
+      </div>
+    </div>
+  );
+
+  const maxTrend = Math.max(
+    ...ncmrTrend.map((x) => x.count),
+    ...capaTrend.map((x) => x.count),
+    1
+  );
+
+  const maxFinding = Math.max(minorFindings, majorFindings, criticalFindings, 1);
+  const maxEffectiveness = Math.max(effectiveness.effective, effectiveness.partial, effectiveness.notEffective, 1);
+  const maxSupplier = Math.max(...topSuppliers.map((x) => x[1]), 1);
 
   return (
     <main style={{ padding: "25px", fontFamily: "Arial, sans-serif" }}>
@@ -221,6 +259,44 @@ export default function ManagementReviewPage() {
       </section>
 
       <section style={sectionStyle}>
+        <h2>Executive Charts</h2>
+
+        <h3>Closure Status</h3>
+        <Bar label="Closed NCMRs" value={closedNcmrs.length} max={Math.max(ncmrs.length, 1)} />
+        <Bar label="Open NCMRs" value={openNcmrs.length} max={Math.max(ncmrs.length, 1)} />
+        <Bar label="Closed CAPAs" value={closedCapas.length} max={Math.max(capas.length, 1)} />
+        <Bar label="Open CAPAs" value={openCapas.length} max={Math.max(capas.length, 1)} />
+
+        <h3>Monthly NCMR / CAPA Trend</h3>
+        {ncmrTrend.map((item, index) => (
+          <div key={item.key} style={{ marginBottom: "12px" }}>
+            <strong>{item.label}</strong>
+            <Bar label="NCMR" value={item.count} max={maxTrend} />
+            <Bar label="CAPA" value={capaTrend[index]?.count || 0} max={maxTrend} />
+          </div>
+        ))}
+
+        <h3>Audit Findings by Severity</h3>
+        <Bar label="Minor" value={minorFindings} max={maxFinding} />
+        <Bar label="Major" value={majorFindings} max={maxFinding} />
+        <Bar label="Critical" value={criticalFindings} max={maxFinding} />
+
+        <h3>CAPA Effectiveness</h3>
+        <Bar label="Effective" value={effectiveness.effective} max={maxEffectiveness} />
+        <Bar label="Partially Effective" value={effectiveness.partial} max={maxEffectiveness} />
+        <Bar label="Not Effective" value={effectiveness.notEffective} max={maxEffectiveness} />
+
+        <h3>Top Suppliers by NCMR Count</h3>
+        {topSuppliers.length === 0 ? (
+          <p>No supplier data.</p>
+        ) : (
+          topSuppliers.map(([supplier, count]) => (
+            <Bar key={supplier} label={supplier} value={count} max={maxSupplier} />
+          ))
+        )}
+      </section>
+
+      <section style={sectionStyle}>
         <h2>Risk & Escalation</h2>
         <p><strong>Critical NCMRs:</strong> {ncmrs.filter((x) => x.severity === "critical").length}</p>
         <p><strong>Major NCMRs:</strong> {ncmrs.filter((x) => x.severity === "major").length}</p>
@@ -238,45 +314,23 @@ export default function ManagementReviewPage() {
       <section style={sectionStyle}>
         <h2>Supplier Quality</h2>
         <p><strong>Total SCARs:</strong> {scars.length}</p>
-
-        <h3>Top Suppliers by NCMR Count</h3>
-        {topSuppliers.length === 0 ? (
-          <p>No supplier data.</p>
-        ) : (
-          <ul>
-            {topSuppliers.map(([supplier, count]) => (
-              <li key={supplier}>
-                {supplier}: {count} NCMR(s)
-              </li>
-            ))}
-          </ul>
-        )}
       </section>
 
       <section style={sectionStyle}>
         <h2>Audit Metrics</h2>
-
         <p><strong>Total Audits:</strong> {totalAudits}</p>
         <p><strong>Open Audits:</strong> {openAudits}</p>
         <p><strong>Closed Audits:</strong> {closedAudits}</p>
         <p><strong>Overdue Audits:</strong> {overdueAudits}</p>
-
-        <h3>Findings</h3>
         <p><strong>Total Findings:</strong> {totalFindings}</p>
         <p><strong>Open Findings:</strong> {openFindings}</p>
         <p><strong>Closed Findings:</strong> {closedFindings}</p>
-        <p><strong>Minor Findings:</strong> {minorFindings}</p>
-        <p><strong>Major Findings:</strong> {majorFindings}</p>
-        <p><strong>Critical Findings:</strong> {criticalFindings}</p>
-
-        <h3>CAPA Linkage</h3>
         <p><strong>Findings Requiring CAPA:</strong> {capaFindings}</p>
         <p><strong>% Findings Requiring CAPA:</strong> {capaFindingsPercent}%</p>
       </section>
 
       <section style={sectionStyle} className="no-print">
         <h2>Saved Management Review Reports</h2>
-
         {savedReports.length === 0 ? (
           <p>No saved reports yet.</p>
         ) : (
