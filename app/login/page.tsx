@@ -5,42 +5,52 @@ import { supabase } from "../../lib/supabaseClient";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
 
-  const handleLogin = async () => {
-    if (!email) {
-      alert("Please enter your email");
+  const login = async () => {
+    if (!email || !password) {
+      alert("Email and password are required.");
       return;
     }
 
-    const { error } = await supabase.auth.signInWithOtp({
+    const { error } = await supabase.auth.signInWithPassword({
       email,
-      options: {
-        emailRedirectTo: "https://qualiflow6.vercel.app/dashboard",
-      },
+      password,
     });
 
     if (error) {
       alert(error.message);
-    } else {
-      alert("Check your email for login link");
+      return;
     }
+
+    window.location.href = "/dashboard";
   };
 
   return (
-    <main style={{ padding: "20px", fontFamily: "Arial" }}>
+    <main style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
       <h1>Login</h1>
 
-      <input
-        type="email"
-        placeholder="Enter your email"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        style={{ padding: "8px", marginRight: "10px" }}
-      />
+      <div style={{ marginBottom: "10px" }}>
+        <input
+          type="email"
+          placeholder="Enter your email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          style={{ padding: "8px", width: "250px" }}
+        />
+      </div>
 
-      <button onClick={handleLogin}>
-        Send Login Link
-      </button>
+      <div style={{ marginBottom: "10px" }}>
+        <input
+          type="password"
+          placeholder="Enter your password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          style={{ padding: "8px", width: "250px" }}
+        />
+      </div>
+
+      <button onClick={login}>Login</button>
     </main>
   );
 }
