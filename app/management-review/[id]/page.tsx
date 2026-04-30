@@ -32,6 +32,14 @@ export default function SavedManagementReviewReportPage() {
   const data = report.report_data || {};
   const charts = data.charts || {};
 
+  const ncmrTrend = charts.ncmr_trend || [];
+  const capaTrend = charts.capa_trend || [];
+  const auditFindingTrend = charts.audit_finding_trend || [];
+
+  const findings = charts.findings_by_severity || {};
+  const effectiveness = charts.capa_effectiveness || {};
+  const topSuppliers = charts.top_suppliers || [];
+
   const Bar = ({
     label,
     value,
@@ -44,11 +52,8 @@ export default function SavedManagementReviewReportPage() {
     const percent = max > 0 ? (value / max) * 100 : 0;
 
     return (
-      <div style={{ marginBottom: "12px" }}>
-        <div style={{ fontSize: "14px", marginBottom: "4px" }}>
-          {label}: {value}
-        </div>
-
+      <div style={{ marginBottom: "10px" }}>
+        <div>{label}: {value}</div>
         <div
           style={{
             background: "#ddd",
@@ -72,15 +77,22 @@ export default function SavedManagementReviewReportPage() {
     );
   };
 
-  const ncmrTrend = charts.ncmr_trend || [];
-  const capaTrend = charts.capa_trend || [];
-  const findings = charts.findings_by_severity || {};
-  const effectiveness = charts.capa_effectiveness || {};
-  const topSuppliers = charts.top_suppliers || [];
+  const maxNcmrCreatedClosed = Math.max(
+    ...ncmrTrend.map((x: any) => x.created || 0),
+    ...ncmrTrend.map((x: any) => x.closed || 0),
+    1
+  );
 
-  const maxTrend = Math.max(
-    ...ncmrTrend.map((x: any) => x.count || 0),
-    ...capaTrend.map((x: any) => x.count || 0),
+  const maxCapaCreatedClosed = Math.max(
+    ...capaTrend.map((x: any) => x.created || 0),
+    ...capaTrend.map((x: any) => x.closed || 0),
+    1
+  );
+
+  const maxRecurring = Math.max(...ncmrTrend.map((x: any) => x.recurring || 0), 1);
+  const maxOverdue = Math.max(...capaTrend.map((x: any) => x.overdue || 0), 1);
+  const maxAuditFindings = Math.max(
+    ...auditFindingTrend.map((x: any) => x.findings || 0),
     1
   );
 
@@ -98,10 +110,7 @@ export default function SavedManagementReviewReportPage() {
     1
   );
 
-  const maxSupplier = Math.max(
-    ...topSuppliers.map((x: any) => x.count || 0),
-    1
-  );
+  const maxSupplier = Math.max(...topSuppliers.map((x: any) => x.count || 0), 1);
 
   return (
     <main style={{ padding: "25px", fontFamily: "Arial, sans-serif" }}>
@@ -130,46 +139,124 @@ export default function SavedManagementReviewReportPage() {
       </section>
 
       <section style={sectionStyle}>
-        <h2>Executive Charts</h2>
+        <h2>Trend Over Time</h2>
 
-        <h3>Closure Status</h3>
-        <Bar
-          label="Closed NCMRs"
-          value={data.executive_summary?.closed_ncmrs || 0}
-          max={Math.max(data.executive_summary?.total_ncmrs || 0, 1)}
-        />
-        <Bar
-          label="Open NCMRs"
-          value={data.executive_summary?.open_ncmrs || 0}
-          max={Math.max(data.executive_summary?.total_ncmrs || 0, 1)}
-        />
-        <Bar
-          label="Closed CAPAs"
-          value={data.executive_summary?.closed_capas || 0}
-          max={Math.max(data.executive_summary?.total_capas || 0, 1)}
-        />
-        <Bar
-          label="Open CAPAs"
-          value={data.executive_summary?.open_capas || 0}
-          max={Math.max(data.executive_summary?.total_capas || 0, 1)}
-        />
-
-        <h3>Monthly NCMR / CAPA Trend</h3>
+        <h3>Monthly NCMR Created vs Closed</h3>
         {ncmrTrend.length === 0 ? (
-          <p>No trend data saved.</p>
+          <p>No NCMR trend data saved.</p>
         ) : (
-          ncmrTrend.map((item: any, index: number) => (
-            <div key={item.key || index} style={{ marginBottom: "12px" }}>
+          ncmrTrend.map((item: any) => (
+            <div key={`ncmr-${item.key}`} style={{ marginBottom: "12px" }}>
               <strong>{item.label}</strong>
-              <Bar label="NCMR" value={item.count || 0} max={maxTrend} />
               <Bar
-                label="CAPA"
-                value={capaTrend[index]?.count || 0}
-                max={maxTrend}
+                label="Created"
+                value={item.created || 0}
+                max={maxNcmrCreatedClosed}
+              />
+              <Bar
+                label="Closed"
+                value={item.closed || 0}
+                max={maxNcmrCreatedClosed}
               />
             </div>
           ))
         )}
+
+        <h3>Monthly CAPA Created vs Closed</h3>
+        {capaTrend.length === 0 ? (
+          <p>No CAPA trend data saved.</p>
+        ) : (
+          capaTrend.map((item: any) => (
+            <div key={`capa-${item.key}`} style={{ marginBottom: "12px" }}>
+              <strong>{item.label}</strong>
+              <Bar
+                label="Created"
+                value={item.created || 0}
+                max={maxCapaCreatedClosed}
+              />
+              <Bar
+                label="Closed"
+                value={item.closed || 0}
+                max={maxCapaCreatedClosed}
+              />
+            </div>
+          ))
+        )}
+
+        <h3>NCMR Backlog Trend</h3>
+        {ncmrTrend.length === 0 ? (
+          <p>No backlog data saved.</p>
+        ) : (
+          ncmrTrend.map((item: any, index: number) => {
+            const backlog = ncmrTrend
+              .slice(0, index + 1)
+              .reduce(
+                (acc: number, m: any) =>
+                  acc + (m.created || 0) - (m.closed || 0),
+                0
+              );
+
+            const maxBacklog = Math.max(
+              ...ncmrTrend.map((_: any, i: number) =>
+                ncmrTrend
+                  .slice(0, i + 1)
+                  .reduce(
+                    (acc: number, m: any) =>
+                      acc + (m.created || 0) - (m.closed || 0),
+                    0
+                  )
+              ),
+              1
+            );
+
+            return (
+              <Bar
+                key={`backlog-${item.key}`}
+                label={`${item.label} Backlog`}
+                value={backlog}
+                max={maxBacklog}
+              />
+            );
+          })
+        )}
+
+        <h3>Monthly NCMR Recurrence</h3>
+        {ncmrTrend.map((item: any) => (
+          <Bar
+            key={`recurring-${item.key}`}
+            label={`${item.label} Recurring NCMRs`}
+            value={item.recurring || 0}
+            max={maxRecurring}
+          />
+        ))}
+
+        <h3>Monthly CAPA Overdue</h3>
+        {capaTrend.map((item: any) => (
+          <Bar
+            key={`overdue-${item.key}`}
+            label={`${item.label} Overdue CAPAs`}
+            value={item.overdue || 0}
+            max={maxOverdue}
+          />
+        ))}
+
+        <h3>Monthly Audit Findings</h3>
+        {auditFindingTrend.length === 0 ? (
+          <p>No audit finding trend data saved.</p>
+        ) : (
+          auditFindingTrend.map((item: any) => (
+            <Bar
+              key={`audit-${item.key}`}
+              label={`${item.label} Findings`}
+              value={item.findings || 0}
+              max={maxAuditFindings}
+            />
+          ))
+        )}
+      </section>
+
+      <section style={sectionStyle}>
+        <h2>Executive Charts</h2>
 
         <h3>Audit Findings by Severity</h3>
         <Bar label="Minor" value={findings.minor || 0} max={maxFinding} />
@@ -271,23 +358,23 @@ export default function SavedManagementReviewReportPage() {
       </div>
 
       <style jsx global>{`
-  @media print {
-    .no-print {
-      display: none;
-    }
+        @media print {
+          .no-print {
+            display: none;
+          }
 
-    body {
-      color: black;
-      -webkit-print-color-adjust: exact;
-      print-color-adjust: exact;
-    }
+          body {
+            color: black;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
 
-    * {
-      -webkit-print-color-adjust: exact;
-      print-color-adjust: exact;
-    }
-  }
-`}</style>
+          * {
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
+        }
+      `}</style>
     </main>
   );
 }
