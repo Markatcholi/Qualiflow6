@@ -346,12 +346,15 @@ export default function SavedManagementReviewReportPage() {
       </section>
 
       <section style={sectionStyle}>
-        <h2>Electronic Signature</h2>
-        <p><strong>Signed By:</strong> {report.signed_by || "N/A"}</p>
-        <p><strong>Signed At:</strong> {report.signed_at || "N/A"}</p>
-        <p><strong>Signature Email Entered:</strong> {report.signature_email_entered || "N/A"}</p>
-        <p><strong>Signature Meaning:</strong> {report.signature_meaning || "N/A"}</p>
-      </section>
+  <h2>Electronic Signature</h2>
+
+  <p><strong>Signed By:</strong> {report.signed_by || "N/A"}</p>
+  <p><strong>Signed At:</strong> {report.signed_at || "N/A"}</p>
+  <p><strong>Signature Email Entered:</strong> {report.signature_email_entered || "N/A"}</p>
+  <p><strong>Signature Method:</strong> {report.signature_method || "email_confirm"}</p>
+  <p><strong>Re-authenticated:</strong> {report.auth_reverified ? "Yes" : "No"}</p>
+  <p><strong>Signature Meaning:</strong> {report.signature_meaning || "N/A"}</p>
+</section>
 
       <div className="no-print">
         <a href="/management-review">Back to Management Review</a>
