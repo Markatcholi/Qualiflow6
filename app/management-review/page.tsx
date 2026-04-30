@@ -416,25 +416,39 @@ export default function ManagementReviewPage() {
       <section style={sectionStyle}>
         <h2>Trend Over Time</h2>
 
-        <h3>Monthly NCMR Closure Rate</h3>
-        {ncmrTrend.map((item) => (
-          <Bar
-            key={`ncmr-close-${item.key}`}
-            label={`${item.label} Closure Rate %`}
-            value={item.closureRate}
-            max={maxNcmrClosureRate}
-          />
-        ))}
+       <h3>Monthly NCMR Created vs Closed</h3>
+{ncmrTrend.map((item) => (
+  <div key={item.key} style={{ marginBottom: "12px" }}>
+    <strong>{item.label}</strong>
+    <Bar
+      label="Created"
+      value={item.created}
+      max={Math.max(...ncmrTrend.map((x) => x.created), 1)}
+    />
+    <Bar
+      label="Closed"
+      value={item.closed}
+      max={Math.max(...ncmrTrend.map((x) => x.created), 1)}
+    />
+  </div>
+))}
 
-        <h3>Monthly CAPA Closure Rate</h3>
-        {capaTrend.map((item) => (
-          <Bar
-            key={`capa-close-${item.key}`}
-            label={`${item.label} Closure Rate %`}
-            value={item.closureRate}
-            max={maxCapaClosureRate}
-          />
-        ))}
+       <h3>Monthly CAPA Created vs Closed</h3>
+{capaTrend.map((item) => (
+  <div key={item.key} style={{ marginBottom: "12px" }}>
+    <strong>{item.label}</strong>
+    <Bar
+      label="Created"
+      value={item.created}
+      max={Math.max(...capaTrend.map((x) => x.created), 1)}
+    />
+    <Bar
+      label="Closed"
+      value={item.closed}
+      max={Math.max(...capaTrend.map((x) => x.created), 1)}
+    />
+  </div>
+))}
 
         <h3>Monthly NCMR Recurrence</h3>
         {ncmrTrend.map((item) => (
@@ -456,6 +470,22 @@ export default function ManagementReviewPage() {
           />
         ))}
 
+        <h3>NCMR Backlog Trend</h3>
+{ncmrTrend.map((item, index) => {
+  const backlog =
+    ncmrTrend
+      .slice(0, index + 1)
+      .reduce((acc, m) => acc + m.created - m.closed, 0);
+
+  return (
+    <Bar
+      key={item.key}
+      label={`${item.label} Backlog`}
+      value={backlog}
+      max={Math.max(...ncmrTrend.map((x) => x.created), 1)}
+    />
+  );
+})}
         <h3>Monthly Audit Findings</h3>
         {auditFindingTrend.map((item) => (
           <Bar
