@@ -278,28 +278,48 @@ export default function ManagementReviewPage() {
     const email = userData?.user?.email || "unknown";
 
     const enteredEmail = window.prompt(
-      "Electronic Signature Required\n\nRe-enter your email to generate and save this Management Review report:"
-    );
+  "Electronic Signature Required\n\nRe-enter your email:"
+);
 
-    if (!enteredEmail) {
-      alert("Report generation cancelled. Email re-entry is required.");
-      return;
-    }
+if (!enteredEmail) {
+  alert("Signature cancelled.");
+  return;
+}
 
-    if (enteredEmail.trim().toLowerCase() !== email.trim().toLowerCase()) {
-      alert("Electronic signature email does not match logged-in user.");
-      return;
-    }
+if (enteredEmail.trim().toLowerCase() !== email.trim().toLowerCase()) {
+  alert("Email mismatch.");
+  return;
+}
 
-    const confirmed = window.confirm(
-      "Electronic Signature:\n\nI confirm this Management Review report snapshot is accurate at the time of generation."
-    );
+const password = window.prompt(
+  "Enter your password to confirm electronic signature:"
+);
 
-    if (!confirmed) return;
+if (!password) {
+  alert("Password is required.");
+  return;
+}
 
-    const now = new Date().toISOString();
-    const signatureMeaning =
-      "I confirm this Management Review report snapshot is accurate at the time of generation.";
+const { error: authError } = await supabase.auth.signInWithPassword({
+  email,
+  password,
+});
+
+if (authError) {
+  alert("Authentication failed. Signature not applied.");
+  return;
+}
+
+const confirmed = window.confirm(
+  "Electronic Signature:\n\nI confirm this Management Review report snapshot is accurate and approved."
+);
+
+if (!confirmed) return;
+
+const now = new Date().toISOString();
+
+const signatureMeaning =
+  "I confirm this Management Review report snapshot is accurate and approved.";
 
     const { error } = await supabase.from("management_review_reports").insert({
       report_title: reportTitle,
@@ -310,6 +330,8 @@ export default function ManagementReviewPage() {
       signed_at: now,
       signature_email_entered: enteredEmail,
       signature_meaning: signatureMeaning,
+      signature_method: "password_reauth",
+       auth_reverified: true,
     });
 
     if (error) {
