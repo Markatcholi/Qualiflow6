@@ -264,84 +264,56 @@ export default function ManagementReviewPage() {
   };
 
   const saveReport = async () => {
-    if (!reportTitle) {
-      alert("Report title is required.");
-      return;
-    }
+  if (!reportTitle) {
+    alert("Report title is required.");
+    return;
+  }
 
-    if (!reportPeriod) {
-      alert("Report period is required.");
-      return;
-    }
+  if (!reportPeriod) {
+    alert("Report period is required.");
+    return;
+  }
 
-    const { data: userData } = await supabase.auth.getUser();
-    const email = userData?.user?.email || "unknown";
+  const { data: userData } = await supabase.auth.getUser();
+  const email = userData?.user?.email || "unknown";
 
-    const enteredEmail = window.prompt(
-  "Electronic Signature Required\n\nRe-enter your email:"
-);
+  if (!email || email === "unknown") {
+    alert("You must be logged in to sign this report.");
+    return;
+  }
 
-if (!enteredEmail) {
-  alert("Signature cancelled.");
-  return;
-}
+  const confirmed = window.confirm(
+    "Electronic Signature:\n\nI confirm this Management Review report snapshot is accurate at the time of generation.\n\nBy clicking OK, my active login session will be used as my electronic signature."
+  );
 
-if (enteredEmail.trim().toLowerCase() !== email.trim().toLowerCase()) {
-  alert("Email mismatch.");
-  return;
-}
+  if (!confirmed) return;
 
-const password = window.prompt(
-  "Enter your password to confirm electronic signature:"
-);
+  const now = new Date().toISOString();
 
-if (!password) {
-  alert("Password is required.");
-  return;
-}
+  const signatureMeaning =
+    "I confirm this Management Review report snapshot is accurate at the time of generation.";
 
-const { error: authError } = await supabase.auth.signInWithPassword({
-  email,
-  password,
-});
+  const { error } = await supabase.from("management_review_reports").insert({
+    report_title: reportTitle,
+    report_period: reportPeriod,
+    report_data: buildReportData(),
+    created_by: email,
+    signed_by: email,
+    signed_at: now,
+    signature_email_entered: email,
+    signature_meaning: signatureMeaning,
+    signature_method: "session_confirm",
+    auth_reverified: false,
+  });
 
-if (authError) {
-  alert("Authentication failed. Signature not applied.");
-  return;
-}
+  if (error) {
+    alert(error.message);
+    return;
+  }
 
-const confirmed = window.confirm(
-  "Electronic Signature:\n\nI confirm this Management Review report snapshot is accurate and approved."
-);
-
-if (!confirmed) return;
-
-const now = new Date().toISOString();
-
-const signatureMeaning =
-  "I confirm this Management Review report snapshot is accurate and approved.";
-
-    const { error } = await supabase.from("management_review_reports").insert({
-      report_title: reportTitle,
-      report_period: reportPeriod,
-      report_data: buildReportData(),
-      created_by: email,
-      signed_by: email,
-      signed_at: now,
-      signature_email_entered: enteredEmail,
-      signature_meaning: signatureMeaning,
-      signature_method: "password_reauth",
-       auth_reverified: true,
-    });
-
-    if (error) {
-      alert(error.message);
-      return;
-    }
-
-    alert("Management Review report saved with electronic signature.");
-    fetchData();
-  };
+  alert("Management Review report saved with session-based electronic signature.");
+  fetchData();
+};
 
   const Bar = ({ label, value, max }: { label: string; value: number; max: number }) => {
     const percent = max > 0 ? (value / max) * 100 : 0;
