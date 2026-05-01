@@ -45,10 +45,19 @@ export default function DashboardPage() {
   const [openScars, setOpenScars] = useState(0);
   const [topSuppliers, setTopSuppliers] = useState<SupplierCount[]>([]);
 
+  const [oosTotal, setOosTotal] = useState(0);
+  const [oosOpen, setOosOpen] = useState(0);
+  const [oosClosed, setOosClosed] = useState(0);
+  const [oosProductImpact, setOosProductImpact] = useState(0);
+  const [oosNcmrRequired, setOosNcmrRequired] = useState(0);
+  const [oosSystemicIssues, setOosSystemicIssues] = useState(0);
+  const [oosEscalations, setOosEscalations] = useState(0);
+
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
 
   const [ncmrTrend, setNcmrTrend] = useState<TrendItem[]>([]);
   const [capaTrend, setCapaTrend] = useState<TrendItem[]>([]);
+  const [oosTrend, setOosTrend] = useState<TrendItem[]>([]);
 
   const getLast6Months = () => {
     const months: { key: string; label: string }[] = [];
@@ -106,9 +115,7 @@ export default function DashboardPage() {
 
     allNcmrs.forEach((ncmr: any) => {
       const supplier = (ncmr.supplier_name || "").trim();
-
       if (!supplier) return;
-
       supplierMap[supplier] = (supplierMap[supplier] || 0) + 1;
     });
 
@@ -120,7 +127,7 @@ export default function DashboardPage() {
     setTopSuppliers(sorted);
   };
 
-  const buildNotifications = (allNcmrs: any[], allCapas: any[]) => {
+  const buildNotifications = (allNcmrs: any[], allCapas: any[], allOos: any[]) => {
     const alerts: NotificationItem[] = [];
 
     const today = new Date();
@@ -186,11 +193,7 @@ export default function DashboardPage() {
         });
       }
 
-      if (
-        ncmr.status !== "closed" &&
-        ncmr.severity === "critical" &&
-        !ncmr.capa_id
-      ) {
+      if (ncmr.status !== "closed" && ncmr.severity === "critical" && !ncmr.capa_id) {
         alerts.push({
           type: "Critical NCMR Missing CAPA",
           message: `Critical NCMR requires CAPA: ${ncmr.title || "Untitled NCMR"}.`,
@@ -211,11 +214,7 @@ export default function DashboardPage() {
         });
       }
 
-      if (
-        ncmr.status !== "closed" &&
-        ncmr.recurring_issue &&
-        !ncmr.capa_id
-      ) {
+      if (ncmr.status !== "closed" && ncmr.recurring_issue && !ncmr.capa_id) {
         alerts.push({
           type: "Recurring NCMR Missing CAPA",
           message: `Recurring NCMR should be reviewed for CAPA: ${ncmr.title || "Untitled NCMR"}.`,
@@ -223,11 +222,7 @@ export default function DashboardPage() {
         });
       }
 
-      if (
-        ncmr.status !== "closed" &&
-        ncmr.supplier_capa_required &&
-        !ncmr.capa_id
-      ) {
+      if (ncmr.status !== "closed" && ncmr.supplier_capa_required && !ncmr.capa_id) {
         alerts.push({
           type: "Supplier SCAR Required",
           message: `Supplier CAPA/SCAR required for ${ncmr.supplier_name || "supplier"}: ${ncmr.supplier_capa_reason || ncmr.title || "Untitled NCMR"}.`,
@@ -235,15 +230,29 @@ export default function DashboardPage() {
         });
       }
 
-      if (
-        ncmr.status !== "closed" &&
-        ncmr.supplier_capa_required &&
-        ncmr.capa_id
-      ) {
+      if (ncmr.status !== "closed" && ncmr.supplier_capa_required && ncmr.capa_id) {
         alerts.push({
           type: "Supplier SCAR Linked",
           message: `Supplier CAPA/SCAR has been triggered for ${ncmr.supplier_name || "supplier"}: ${ncmr.title || "Untitled NCMR"}.`,
           link: `/ncmrs/${ncmr.id}`,
+        });
+      }
+    });
+
+    allOos.forEach((item: any) => {
+      if (item.status !== "closed" && item.product_impact && item.ncmr_required && !item.linked_ncmr_number) {
+        alerts.push({
+          type: "OOS/OOT Missing NCMR Link",
+          message: `${item.investigation_number || "OOS/OOT"} has product impact and requires NCMR linkage.`,
+          link: `/oos-oot/${item.id}`,
+        });
+      }
+
+      if (item.status !== "closed" && item.systemic_issue && item.escalation_required) {
+        alerts.push({
+          type: "OOS/OOT Escalation Required",
+          message: `${item.investigation_number || "OOS/OOT"} has systemic issue requiring escalation.`,
+          link: `/oos-oot/${item.id}`,
         });
       }
     });
@@ -270,14 +279,10 @@ export default function DashboardPage() {
     const openNcmrs = allNcmrs.filter((item: any) => item.status === "open");
     setNcmrOpen(openNcmrs.length);
 
-    const investigationNcmrs = allNcmrs.filter(
-      (item: any) => item.status === "investigation"
-    );
+    const investigationNcmrs = allNcmrs.filter((item: any) => item.status === "investigation");
     setNcmrInvestigation(investigationNcmrs.length);
 
-    const supplierScarNcmrs = allNcmrs.filter((item: any) => {
-      return item.supplier_capa_required;
-    });
+    const supplierScarNcmrs = allNcmrs.filter((item: any) => item.supplier_capa_required);
     setSupplierScarRequired(supplierScarNcmrs.length);
 
     buildSupplierCounts(allNcmrs);
@@ -291,10 +296,7 @@ export default function DashboardPage() {
       });
 
     if (ncmrDurations.length > 0) {
-      const avg =
-        ncmrDurations.reduce((sum: number, d: number) => sum + d, 0) /
-        ncmrDurations.length;
-
+      const avg = ncmrDurations.reduce((sum: number, d: number) => sum + d, 0) / ncmrDurations.length;
       setAvgNcmrCloseDays(avg.toFixed(1));
     } else {
       setAvgNcmrCloseDays("0.0");
@@ -320,14 +322,10 @@ export default function DashboardPage() {
     const activeCapas = allCapas.filter((item: any) => item.status !== "closed");
     setCapaOpen(activeCapas.length);
 
-    const supplierCapas = allCapas.filter((item: any) => {
-      return item.status !== "closed" && item.capa_type === "supplier_capa";
-    });
+    const supplierCapas = allCapas.filter((item: any) => item.status !== "closed" && item.capa_type === "supplier_capa");
     setOpenSupplierCapas(supplierCapas.length);
 
-    const scars = allCapas.filter((item: any) => {
-      return item.status !== "closed" && item.capa_type === "scar";
-    });
+    const scars = allCapas.filter((item: any) => item.status !== "closed" && item.capa_type === "scar");
     setOpenScars(scars.length);
 
     const today = new Date();
@@ -337,49 +335,35 @@ export default function DashboardPage() {
     next7.setDate(today.getDate() + 7);
     const next7Str = next7.toISOString().split("T")[0];
 
-    const overdueCapas = activeCapas.filter((item: any) => {
-      return item.due_date && item.due_date < todayStr;
-    });
+    const overdueCapas = activeCapas.filter((item: any) => item.due_date && item.due_date < todayStr);
     setCapaOverdue(overdueCapas.length);
 
-    const overdueRate =
-      activeCapas.length > 0
-        ? ((overdueCapas.length / activeCapas.length) * 100).toFixed(1)
-        : "0.0";
-
+    const overdueRate = activeCapas.length > 0 ? ((overdueCapas.length / activeCapas.length) * 100).toFixed(1) : "0.0";
     setCapaOverdueRate(overdueRate);
 
-    const dueSoonCapas = activeCapas.filter((item: any) => {
-      return item.due_date && item.due_date >= todayStr && item.due_date <= next7Str;
-    });
+    const dueSoonCapas = activeCapas.filter((item: any) => item.due_date && item.due_date >= todayStr && item.due_date <= next7Str);
     setCapaDueSoon(dueSoonCapas.length);
 
-    const awaitingEffectiveness = allCapas.filter((item: any) => {
-      return item.status !== "closed" && item.implemented_by && !item.effectiveness_check;
-    });
+    const awaitingEffectiveness = allCapas.filter((item: any) => item.status !== "closed" && item.implemented_by && !item.effectiveness_check);
     setCapaAwaitingEffectiveness(awaitingEffectiveness.length);
 
-    const overdueEffectiveness = allCapas.filter((item: any) => {
-      return (
-        item.status !== "closed" &&
-        item.implemented_by &&
-        !item.effectiveness_check &&
-        item.effectiveness_due_date &&
-        item.effectiveness_due_date < todayStr
-      );
-    });
+    const overdueEffectiveness = allCapas.filter((item: any) =>
+      item.status !== "closed" &&
+      item.implemented_by &&
+      !item.effectiveness_check &&
+      item.effectiveness_due_date &&
+      item.effectiveness_due_date < todayStr
+    );
     setCapaEffectivenessOverdue(overdueEffectiveness.length);
 
-    const dueSoonEffectiveness = allCapas.filter((item: any) => {
-      return (
-        item.status !== "closed" &&
-        item.implemented_by &&
-        !item.effectiveness_check &&
-        item.effectiveness_due_date &&
-        item.effectiveness_due_date >= todayStr &&
-        item.effectiveness_due_date <= next7Str
-      );
-    });
+    const dueSoonEffectiveness = allCapas.filter((item: any) =>
+      item.status !== "closed" &&
+      item.implemented_by &&
+      !item.effectiveness_check &&
+      item.effectiveness_due_date &&
+      item.effectiveness_due_date >= todayStr &&
+      item.effectiveness_due_date <= next7Str
+    );
     setCapaEffectivenessDueSoon(dueSoonEffectiveness.length);
 
     const capaDurations = closedCapas
@@ -391,28 +375,43 @@ export default function DashboardPage() {
       });
 
     if (capaDurations.length > 0) {
-      const avg =
-        capaDurations.reduce((sum: number, d: number) => sum + d, 0) /
-        capaDurations.length;
-
+      const avg = capaDurations.reduce((sum: number, d: number) => sum + d, 0) / capaDurations.length;
       setAvgCapaCloseDays(avg.toFixed(1));
     } else {
       setAvgCapaCloseDays("0.0");
     }
 
     setCapaTrend(buildTrend(allCapas));
-    buildNotifications(allNcmrs, allCapas);
+
+    const { data: oosData, error: oosError } = await supabase
+      .from("oos_oot_investigations")
+      .select("*");
+
+    if (oosError) {
+      alert(oosError.message);
+      return;
+    }
+
+    const allOos = oosData || [];
+    setOosTotal(allOos.length);
+    setOosOpen(allOos.filter((item: any) => item.status !== "closed").length);
+    setOosClosed(allOos.filter((item: any) => item.status === "closed").length);
+    setOosProductImpact(allOos.filter((item: any) => item.product_impact).length);
+    setOosNcmrRequired(allOos.filter((item: any) => item.ncmr_required).length);
+    setOosSystemicIssues(allOos.filter((item: any) => item.systemic_issue).length);
+    setOosEscalations(allOos.filter((item: any) => item.escalation_required).length);
+    setOosTrend(buildTrend(allOos));
+
+    buildNotifications(allNcmrs, allCapas, allOos);
   };
 
   useEffect(() => {
     fetchData();
   }, []);
 
-  const ncmrClosureRate =
-    ncmrTotal > 0 ? ((ncmrClosed / ncmrTotal) * 100).toFixed(1) : "0.0";
-
-  const capaClosureRate =
-    capaTotal > 0 ? ((capaClosed / capaTotal) * 100).toFixed(1) : "0.0";
+  const ncmrClosureRate = ncmrTotal > 0 ? ((ncmrClosed / ncmrTotal) * 100).toFixed(1) : "0.0";
+  const capaClosureRate = capaTotal > 0 ? ((capaClosed / capaTotal) * 100).toFixed(1) : "0.0";
+  const oosClosureRate = oosTotal > 0 ? ((oosClosed / oosTotal) * 100).toFixed(1) : "0.0";
 
   const renderTrend = (title: string, data: TrendItem[]) => {
     const max = Math.max(...data.map((d) => d.count), 1);
@@ -428,19 +427,12 @@ export default function DashboardPage() {
                 {item.label}: {item.count}
               </div>
 
-              <div
-                style={{
-                  background: "#eee",
-                  height: "12px",
-                  width: "100%",
-                  maxWidth: "300px",
-                }}
-              >
+              <div style={{ background: "#eee", height: "12px", width: "100%", maxWidth: "300px" }}>
                 <div
                   style={{
                     background: "#3b82f6",
                     height: "12px",
-                    width: `${(item.count / max) * 100}%`,
+                    width: `${item.count > 0 ? Math.max((item.count / max) * 100, 5) : 0}%`,
                   }}
                 />
               </div>
@@ -472,8 +464,7 @@ export default function DashboardPage() {
           <ul>
             {notifications.map((alert, index) => (
               <li key={index} style={{ marginBottom: "10px" }}>
-                <strong>{alert.type}:</strong> {alert.message}{" "}
-                <a href={alert.link}>Open</a>
+                <strong>{alert.type}:</strong> {alert.message} <a href={alert.link}>Open</a>
               </li>
             ))}
           </ul>
@@ -481,42 +472,16 @@ export default function DashboardPage() {
       </section>
 
       <div style={{ display: "grid", gap: "15px", maxWidth: "750px" }}>
-        <div style={{ padding: "15px", border: "1px solid #ccc" }}>
-          <strong>Total NCMRs:</strong> {ncmrTotal}
-        </div>
+        <div style={{ padding: "15px", border: "1px solid #ccc" }}><strong>Total NCMRs:</strong> {ncmrTotal}</div>
+        <div style={{ padding: "15px", border: "1px solid #ccc" }}><strong>Open NCMRs:</strong> {ncmrOpen}</div>
+        <div style={{ padding: "15px", border: "1px solid #ccc" }}><strong>NCMRs in Investigation:</strong> {ncmrInvestigation}</div>
+        <div style={{ padding: "15px", border: "1px solid #ccc" }}><strong>Closed NCMRs:</strong> {ncmrClosed}</div>
+        <div style={{ padding: "15px", border: "1px solid #ccc" }}><strong>NCMR Closure Rate:</strong> {ncmrClosureRate}%</div>
+        <div style={{ padding: "15px", border: "1px solid #ccc" }}><strong>Average NCMR Close Time:</strong> {avgNcmrCloseDays} days</div>
 
-        <div style={{ padding: "15px", border: "1px solid #ccc" }}>
-          <strong>Open NCMRs:</strong> {ncmrOpen}
-        </div>
-
-        <div style={{ padding: "15px", border: "1px solid #ccc" }}>
-          <strong>NCMRs in Investigation:</strong> {ncmrInvestigation}
-        </div>
-
-        <div style={{ padding: "15px", border: "1px solid #ccc" }}>
-          <strong>Closed NCMRs:</strong> {ncmrClosed}
-        </div>
-
-        <div style={{ padding: "15px", border: "1px solid #ccc" }}>
-          <strong>NCMR Closure Rate:</strong> {ncmrClosureRate}%
-        </div>
-
-        <div style={{ padding: "15px", border: "1px solid #ccc" }}>
-          <strong>Average NCMR Close Time:</strong> {avgNcmrCloseDays} days
-        </div>
-
-        <div style={{ padding: "15px", border: "1px solid purple" }}>
-          <strong>Supplier CAPA / SCAR Required NCMRs:</strong>{" "}
-          {supplierScarRequired}
-        </div>
-
-        <div style={{ padding: "15px", border: "1px solid purple" }}>
-          <strong>Open Supplier CAPAs:</strong> {openSupplierCapas}
-        </div>
-
-        <div style={{ padding: "15px", border: "1px solid purple" }}>
-          <strong>Open SCARs:</strong> {openScars}
-        </div>
+        <div style={{ padding: "15px", border: "1px solid purple" }}><strong>Supplier CAPA / SCAR Required NCMRs:</strong> {supplierScarRequired}</div>
+        <div style={{ padding: "15px", border: "1px solid purple" }}><strong>Open Supplier CAPAs:</strong> {openSupplierCapas}</div>
+        <div style={{ padding: "15px", border: "1px solid purple" }}><strong>Open SCARs:</strong> {openScars}</div>
 
         <div style={{ padding: "15px", border: "1px solid purple" }}>
           <strong>Top Suppliers by NCMR Count:</strong>
@@ -525,69 +490,44 @@ export default function DashboardPage() {
           ) : (
             <ol>
               {topSuppliers.map((item) => (
-                <li key={item.supplier}>
-                  {item.supplier}: {item.count}
-                </li>
+                <li key={item.supplier}>{item.supplier}: {item.count}</li>
               ))}
             </ol>
           )}
         </div>
 
-        <div style={{ padding: "15px", border: "1px solid #ccc" }}>
-          <strong>Total CAPAs:</strong> {capaTotal}
-        </div>
+        <div style={{ padding: "15px", border: "1px solid #ccc" }}><strong>Total CAPAs:</strong> {capaTotal}</div>
+        <div style={{ padding: "15px", border: "1px solid #ccc" }}><strong>Active CAPAs:</strong> {capaOpen}</div>
+        <div style={{ padding: "15px", border: "1px solid #ccc" }}><strong>Closed CAPAs:</strong> {capaClosed}</div>
+        <div style={{ padding: "15px", border: "1px solid #ccc" }}><strong>CAPA Closure Rate:</strong> {capaClosureRate}%</div>
+        <div style={{ padding: "15px", border: "1px solid #ccc" }}><strong>Average CAPA Close Time:</strong> {avgCapaCloseDays} days</div>
+        <div style={{ padding: "15px", border: "1px solid red" }}><strong>Overdue CAPAs:</strong> {capaOverdue}</div>
+        <div style={{ padding: "15px", border: "1px solid #cc8800" }}><strong>Overdue CAPA Rate:</strong> {capaOverdueRate}%</div>
+        <div style={{ padding: "15px", border: "1px solid #cc8800" }}><strong>CAPAs Due in Next 7 Days:</strong> {capaDueSoon}</div>
+        <div style={{ padding: "15px", border: "1px solid #cc8800" }}><strong>CAPAs Awaiting Effectiveness:</strong> {capaAwaitingEffectiveness}</div>
+        <div style={{ padding: "15px", border: "1px solid red" }}><strong>CAPAs Overdue for Effectiveness:</strong> {capaEffectivenessOverdue}</div>
+        <div style={{ padding: "15px", border: "1px solid #cc8800" }}><strong>CAPA Effectiveness Due in Next 7 Days:</strong> {capaEffectivenessDueSoon}</div>
 
-        <div style={{ padding: "15px", border: "1px solid #ccc" }}>
-          <strong>Active CAPAs:</strong> {capaOpen}
-        </div>
-
-        <div style={{ padding: "15px", border: "1px solid #ccc" }}>
-          <strong>Closed CAPAs:</strong> {capaClosed}
-        </div>
-
-        <div style={{ padding: "15px", border: "1px solid #ccc" }}>
-          <strong>CAPA Closure Rate:</strong> {capaClosureRate}%
-        </div>
-
-        <div style={{ padding: "15px", border: "1px solid #ccc" }}>
-          <strong>Average CAPA Close Time:</strong> {avgCapaCloseDays} days
-        </div>
-
-        <div style={{ padding: "15px", border: "1px solid red" }}>
-          <strong>Overdue CAPAs:</strong> {capaOverdue}
-        </div>
-
-        <div style={{ padding: "15px", border: "1px solid #cc8800" }}>
-          <strong>Overdue CAPA Rate:</strong> {capaOverdueRate}%
-        </div>
-
-        <div style={{ padding: "15px", border: "1px solid #cc8800" }}>
-          <strong>CAPAs Due in Next 7 Days:</strong> {capaDueSoon}
-        </div>
-
-        <div style={{ padding: "15px", border: "1px solid #cc8800" }}>
-          <strong>CAPAs Awaiting Effectiveness:</strong>{" "}
-          {capaAwaitingEffectiveness}
-        </div>
-
-        <div style={{ padding: "15px", border: "1px solid red" }}>
-          <strong>CAPAs Overdue for Effectiveness:</strong>{" "}
-          {capaEffectivenessOverdue}
-        </div>
-
-        <div style={{ padding: "15px", border: "1px solid #cc8800" }}>
-          <strong>CAPA Effectiveness Due in Next 7 Days:</strong>{" "}
-          {capaEffectivenessDueSoon}
-        </div>
+        <div style={{ padding: "15px", border: "1px solid #0f766e" }}><strong>Total OOS/OOT Investigations:</strong> {oosTotal}</div>
+        <div style={{ padding: "15px", border: "1px solid #0f766e" }}><strong>Open OOS/OOT Investigations:</strong> {oosOpen}</div>
+        <div style={{ padding: "15px", border: "1px solid #0f766e" }}><strong>Closed OOS/OOT Investigations:</strong> {oosClosed}</div>
+        <div style={{ padding: "15px", border: "1px solid #0f766e" }}><strong>OOS/OOT Closure Rate:</strong> {oosClosureRate}%</div>
+        <div style={{ padding: "15px", border: "1px solid red" }}><strong>OOS/OOT Product Impact Cases:</strong> {oosProductImpact}</div>
+        <div style={{ padding: "15px", border: "1px solid red" }}><strong>OOS/OOT NCMR Required:</strong> {oosNcmrRequired}</div>
+        <div style={{ padding: "15px", border: "1px solid red" }}><strong>OOS/OOT Systemic Issues:</strong> {oosSystemicIssues}</div>
+        <div style={{ padding: "15px", border: "1px solid red" }}><strong>OOS/OOT Escalations:</strong> {oosEscalations}</div>
 
         {renderTrend("NCMR Monthly Trend (Last 6 Months)", ncmrTrend)}
         {renderTrend("CAPA Monthly Trend (Last 6 Months)", capaTrend)}
+        {renderTrend("OOS/OOT Monthly Trend (Last 6 Months)", oosTrend)}
       </div>
 
       <div style={{ marginTop: "20px" }}>
         <a href="/ncmrs">Go to NCMRs</a>
         {" | "}
         <a href="/capa">Go to CAPAs</a>
+        {" | "}
+        <a href="/oos-oot">Go to OOS/OOT</a>
         {" | "}
         <a href="/audit">Go to Audit Trail</a>
         {" | "}
