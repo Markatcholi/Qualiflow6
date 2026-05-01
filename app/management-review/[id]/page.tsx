@@ -35,10 +35,13 @@ export default function SavedManagementReviewReportPage() {
   const ncmrTrend = charts.ncmr_trend || [];
   const capaTrend = charts.capa_trend || [];
   const auditFindingTrend = charts.audit_finding_trend || [];
+  const oosTrend = charts.oos_oot_trend || [];
 
   const findings = charts.findings_by_severity || {};
   const effectiveness = charts.capa_effectiveness || {};
   const topSuppliers = charts.top_suppliers || [];
+
+  const oosMetrics = data.oos_oot_metrics || {};
 
   const Bar = ({
     label,
@@ -89,6 +92,12 @@ export default function SavedManagementReviewReportPage() {
     1
   );
 
+  const maxOosCreatedClosed = Math.max(
+    ...oosTrend.map((x: any) => x.created || x.count || 0),
+    ...oosTrend.map((x: any) => x.closed || 0),
+    1
+  );
+
   const maxRecurring = Math.max(...ncmrTrend.map((x: any) => x.recurring || 0), 1);
   const maxOverdue = Math.max(...capaTrend.map((x: any) => x.overdue || 0), 1);
   const maxAuditFindings = Math.max(
@@ -111,6 +120,15 @@ export default function SavedManagementReviewReportPage() {
   );
 
   const maxSupplier = Math.max(...topSuppliers.map((x: any) => x.count || 0), 1);
+
+  const maxOosRisk = Math.max(
+    oosMetrics.total || 0,
+    oosMetrics.product_impact || 0,
+    oosMetrics.systemic_issues || 0,
+    oosMetrics.ncmr_linked || 0,
+    oosMetrics.escalation_required || 0,
+    1
+  );
 
   return (
     <main style={{ padding: "25px", fontFamily: "Arial, sans-serif" }}>
@@ -139,6 +157,24 @@ export default function SavedManagementReviewReportPage() {
       </section>
 
       <section style={sectionStyle}>
+        <h2>OOS / OOT / Environmental Monitoring Summary</h2>
+        <p><strong>Total OOS/OOT/EM Investigations:</strong> {oosMetrics.total ?? "N/A"}</p>
+        <p><strong>Open OOS/OOT/EM Investigations:</strong> {oosMetrics.open ?? "N/A"}</p>
+        <p><strong>Closed OOS/OOT/EM Investigations:</strong> {oosMetrics.closed ?? "N/A"}</p>
+        <p><strong>Product Impact Cases:</strong> {oosMetrics.product_impact ?? "N/A"}</p>
+        <p><strong>NCMR Linked / Required:</strong> {oosMetrics.ncmr_linked ?? "N/A"}</p>
+        <p><strong>Systemic Issues:</strong> {oosMetrics.systemic_issues ?? "N/A"}</p>
+        <p><strong>Escalation Required:</strong> {oosMetrics.escalation_required ?? "N/A"}</p>
+
+        <h3>OOS/OOT Impact Summary</h3>
+        <Bar label="Total OOS/OOT/EM" value={oosMetrics.total || 0} max={maxOosRisk} />
+        <Bar label="Product Impact" value={oosMetrics.product_impact || 0} max={maxOosRisk} />
+        <Bar label="NCMR Required" value={oosMetrics.ncmr_linked || 0} max={maxOosRisk} />
+        <Bar label="Systemic Issue" value={oosMetrics.systemic_issues || 0} max={maxOosRisk} />
+        <Bar label="Escalation Required" value={oosMetrics.escalation_required || 0} max={maxOosRisk} />
+      </section>
+
+      <section style={sectionStyle}>
         <h2>Trend Over Time</h2>
 
         <h3>Monthly NCMR Created vs Closed</h3>
@@ -148,16 +184,8 @@ export default function SavedManagementReviewReportPage() {
           ncmrTrend.map((item: any) => (
             <div key={`ncmr-${item.key}`} style={{ marginBottom: "12px" }}>
               <strong>{item.label}</strong>
-              <Bar
-                label="Created"
-                value={item.created || 0}
-                max={maxNcmrCreatedClosed}
-              />
-              <Bar
-                label="Closed"
-                value={item.closed || 0}
-                max={maxNcmrCreatedClosed}
-              />
+              <Bar label="Created" value={item.created || 0} max={maxNcmrCreatedClosed} />
+              <Bar label="Closed" value={item.closed || 0} max={maxNcmrCreatedClosed} />
             </div>
           ))
         )}
@@ -169,16 +197,21 @@ export default function SavedManagementReviewReportPage() {
           capaTrend.map((item: any) => (
             <div key={`capa-${item.key}`} style={{ marginBottom: "12px" }}>
               <strong>{item.label}</strong>
-              <Bar
-                label="Created"
-                value={item.created || 0}
-                max={maxCapaCreatedClosed}
-              />
-              <Bar
-                label="Closed"
-                value={item.closed || 0}
-                max={maxCapaCreatedClosed}
-              />
+              <Bar label="Created" value={item.created || 0} max={maxCapaCreatedClosed} />
+              <Bar label="Closed" value={item.closed || 0} max={maxCapaCreatedClosed} />
+            </div>
+          ))
+        )}
+
+        <h3>Monthly OOS/OOT/EM Created vs Closed</h3>
+        {oosTrend.length === 0 ? (
+          <p>No OOS/OOT/EM trend data saved.</p>
+        ) : (
+          oosTrend.map((item: any) => (
+            <div key={`oos-${item.key || item.label}`} style={{ marginBottom: "12px" }}>
+              <strong>{item.label}</strong>
+              <Bar label="Created" value={item.created || item.count || 0} max={maxOosCreatedClosed} />
+              <Bar label="Closed" value={item.closed || 0} max={maxOosCreatedClosed} />
             </div>
           ))
         )}
@@ -264,21 +297,9 @@ export default function SavedManagementReviewReportPage() {
         <Bar label="Critical" value={findings.critical || 0} max={maxFinding} />
 
         <h3>CAPA Effectiveness</h3>
-        <Bar
-          label="Effective"
-          value={effectiveness.effective || 0}
-          max={maxEffectiveness}
-        />
-        <Bar
-          label="Partially Effective"
-          value={effectiveness.partial || 0}
-          max={maxEffectiveness}
-        />
-        <Bar
-          label="Not Effective"
-          value={effectiveness.notEffective || 0}
-          max={maxEffectiveness}
-        />
+        <Bar label="Effective" value={effectiveness.effective || 0} max={maxEffectiveness} />
+        <Bar label="Partially Effective" value={effectiveness.partial || 0} max={maxEffectiveness} />
+        <Bar label="Not Effective" value={effectiveness.notEffective || 0} max={maxEffectiveness} />
 
         <h3>Top Suppliers by NCMR Count</h3>
         {topSuppliers.length === 0 ? (
@@ -346,15 +367,14 @@ export default function SavedManagementReviewReportPage() {
       </section>
 
       <section style={sectionStyle}>
-  <h2>Electronic Signature</h2>
-
-  <p><strong>Signed By:</strong> {report.signed_by || "N/A"}</p>
-  <p><strong>Signed At:</strong> {report.signed_at || "N/A"}</p>
-  <p><strong>Signature Email Entered:</strong> {report.signature_email_entered || "N/A"}</p>
-  <p><strong>Signature Method:</strong> {report.signature_method || "email_confirm"}</p>
-  <p><strong>Re-authenticated:</strong> {report.auth_reverified ? "Yes" : "No"}</p>
-  <p><strong>Signature Meaning:</strong> {report.signature_meaning || "N/A"}</p>
-</section>
+        <h2>Electronic Signature</h2>
+        <p><strong>Signed By:</strong> {report.signed_by || "N/A"}</p>
+        <p><strong>Signed At:</strong> {report.signed_at || "N/A"}</p>
+        <p><strong>Signature Email Entered:</strong> {report.signature_email_entered || "N/A"}</p>
+        <p><strong>Signature Method:</strong> {report.signature_method || "email_confirm"}</p>
+        <p><strong>Re-authenticated:</strong> {report.auth_reverified ? "Yes" : "No"}</p>
+        <p><strong>Signature Meaning:</strong> {report.signature_meaning || "N/A"}</p>
+      </section>
 
       <div className="no-print">
         <a href="/management-review">Back to Management Review</a>
