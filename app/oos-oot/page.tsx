@@ -148,7 +148,6 @@ export default function OosOotPage() {
       .insert({
         investigation_source: investigationSource,
         event_type: eventType,
-
         test_name: testName,
         test_method: testMethod,
         area_room_equipment: areaRoomEquipment,
@@ -157,28 +156,23 @@ export default function OosOotPage() {
         sample_id: sampleId,
         date_detected: dateDetected || null,
         detected_by: detectedBy,
-
         observed_result: observedResult,
         specification_limit: specificationLimit,
         unit_of_measure: unitOfMeasure,
-
         immediate_action: immediateAction,
         product_affected: productAffected === "yes",
         material_on_hold: materialOnHold === "yes",
         room_equipment_impacted: roomEquipmentImpacted === "yes",
         containment_owner: containmentOwner,
         quarantined_quantity: quarantinedQuantity ? Number(quarantinedQuantity) : null,
-
         product_impact: productImpact === "yes",
         ncmr_required: ncmrRequired === "yes",
         linked_ncmr_number: linkedNcmrNumber,
         affected_product_lot_quantity: affectedProductLotQuantity,
         no_product_impact_justification: noProductImpactJustification,
-
         systemic_issue: systemicIssue === "yes",
         escalation_required: escalationRequired === "yes",
         escalation_notes: escalationNotes,
-
         status: "open",
       })
       .select()
@@ -232,6 +226,107 @@ export default function OosOotPage() {
   useEffect(() => {
     fetchData();
   }, []);
+
+  const buildMonthlyTrend = () => {
+    const months: { key: string; label: string; count: number }[] = [];
+    const now = new Date();
+
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+
+      months.push({
+        key,
+        label: d.toLocaleString("en-US", { month: "short", year: "2-digit" }),
+        count: 0,
+      });
+    }
+
+    records.forEach((item) => {
+      if (!item.created_at) return;
+
+      const d = new Date(item.created_at);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      const match = months.find((m) => m.key === key);
+
+      if (match) match.count += 1;
+    });
+
+    return months;
+  };
+
+  const countByField = (field: keyof Investigation) => {
+    const map = new Map<string, number>();
+
+    records.forEach((item) => {
+      const value = String(item[field] || "Unknown");
+      map.set(value, (map.get(value) || 0) + 1);
+    });
+
+    return Array.from(map.entries())
+      .map(([label, count]) => ({ label, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 8);
+  };
+
+  const monthlyTrend = buildMonthlyTrend();
+  const sourceTrend = countByField("investigation_source");
+  const eventTypeTrend = countByField("event_type");
+  const areaTrend = countByField("area_room_equipment");
+
+  const productImpactCount = records.filter((x) => x.product_impact).length;
+  const ncmrRequiredCount = records.filter((x) => x.ncmr_required).length;
+  const systemicIssueCount = records.filter((x) => x.systemic_issue).length;
+  const escalationRequiredCount = records.filter((x) => x.escalation_required).length;
+
+  const maxMonthly = Math.max(...monthlyTrend.map((x) => x.count), 1);
+  const maxSource = Math.max(...sourceTrend.map((x) => x.count), 1);
+  const maxEvent = Math.max(...eventTypeTrend.map((x) => x.count), 1);
+  const maxArea = Math.max(...areaTrend.map((x) => x.count), 1);
+  const maxRisk = Math.max(
+    productImpactCount,
+    ncmrRequiredCount,
+    systemicIssueCount,
+    escalationRequiredCount,
+    1
+  );
+
+  const Bar = ({
+    label,
+    value,
+    max,
+  }: {
+    label: string;
+    value: number;
+    max: number;
+  }) => {
+    const percent = max > 0 ? (value / max) * 100 : 0;
+
+    return (
+      <div style={{ marginBottom: "10px" }}>
+        <div>{label}: {value}</div>
+        <div
+          style={{
+            background: "#ddd",
+            width: "100%",
+            maxWidth: "550px",
+            height: "18px",
+            borderRadius: "4px",
+            overflow: "hidden",
+            border: "1px solid #bbb",
+          }}
+        >
+          <div
+            style={{
+              background: "#2563eb",
+              width: `${value > 0 ? Math.max(percent, 5) : 0}%`,
+              height: "100%",
+            }}
+          />
+        </div>
+      </div>
+    );
+  };
 
   return (
     <main style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
@@ -472,6 +567,48 @@ export default function OosOotPage() {
       <button onClick={createInvestigation} style={{ padding: "10px 16px", marginBottom: "25px" }}>
         Create Investigation
       </button>
+
+      <section style={sectionStyle}>
+        <h2>OOS / OOT / EM Trend Charts</h2>
+
+        <h3>Monthly Investigation Trend</h3>
+        {monthlyTrend.map((item) => (
+          <Bar key={item.key} label={item.label} value={item.count} max={maxMonthly} />
+        ))}
+
+        <h3>Investigation Source Breakdown</h3>
+        {sourceTrend.length === 0 ? (
+          <p>No source data yet.</p>
+        ) : (
+          sourceTrend.map((item) => (
+            <Bar key={item.label} label={item.label} value={item.count} max={maxSource} />
+          ))
+        )}
+
+        <h3>Event Type Breakdown</h3>
+        {eventTypeTrend.length === 0 ? (
+          <p>No event type data yet.</p>
+        ) : (
+          eventTypeTrend.map((item) => (
+            <Bar key={item.label} label={item.label} value={item.count} max={maxEvent} />
+          ))
+        )}
+
+        <h3>Top Area / Room / Equipment</h3>
+        {areaTrend.length === 0 ? (
+          <p>No area / room / equipment data yet.</p>
+        ) : (
+          areaTrend.map((item) => (
+            <Bar key={item.label} label={item.label} value={item.count} max={maxArea} />
+          ))
+        )}
+
+        <h3>Impact / Escalation Summary</h3>
+        <Bar label="Product Impact" value={productImpactCount} max={maxRisk} />
+        <Bar label="NCMR Required" value={ncmrRequiredCount} max={maxRisk} />
+        <Bar label="Systemic Issue" value={systemicIssueCount} max={maxRisk} />
+        <Bar label="Escalation Required" value={escalationRequiredCount} max={maxRisk} />
+      </section>
 
       <h2>Existing OOS / OOT / EM Investigations</h2>
 
