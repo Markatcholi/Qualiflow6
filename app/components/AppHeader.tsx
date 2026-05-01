@@ -47,6 +47,7 @@ export default function AppHeader() {
     >
       <nav>
         <a href="/dashboard" style={{ marginRight: "12px" }}>Dashboard</a>
+        
        <a href="/management-review" style={{ marginRight: "15px" }}>
  Management Review
 </a>
