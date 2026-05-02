@@ -47,6 +47,10 @@ export default function AuditsPage() {
   const [evidence, setEvidence] = useState("");
   const [capaRequired, setCapaRequired] = useState("no");
 
+  const [auditSearch, setAuditSearch] = useState("");
+  const [auditStatusFilter, setAuditStatusFilter] = useState("");
+  const [auditTypeFilter, setAuditTypeFilter] = useState("");
+
   const fetchData = async () => {
     const auditRes = await supabase
       .from("audits")
@@ -347,6 +351,57 @@ export default function AuditsPage() {
     return findings.filter((f) => f.audit_id === auditId);
   };
 
+  const filteredAudits = audits.filter((audit) => {
+    const searchText = `${audit.audit_number || ""} ${audit.audit_title || ""} ${audit.auditor || ""} ${audit.audit_scope || ""}`.toLowerCase();
+    const matchesSearch = searchText.includes(auditSearch.toLowerCase());
+    const matchesStatus = auditStatusFilter ? audit.status === auditStatusFilter : true;
+    const matchesType = auditTypeFilter ? audit.audit_type === auditTypeFilter : true;
+
+    return matchesSearch && matchesStatus && matchesType;
+  });
+
+  const totalOpenFindings = findings.filter((f) => f.finding_status !== "closed").length;
+  const totalCapaRequiredFindings = findings.filter((f) => f.capa_required).length;
+
+  const auditStatusColor = (status: string | null) => {
+    if (status === "closed") return "#16a34a";
+    if (status === "in_progress") return "#f59e0b";
+    return "#2563eb";
+  };
+
+  const findingSeverityColor = (severity: string | null) => {
+    if (severity === "critical") return "#dc2626";
+    if (severity === "major") return "#f59e0b";
+    return "#16a34a";
+  };
+
+  const summaryCardStyle: React.CSSProperties = {
+    border: "1px solid #d1d5db",
+    borderRadius: "10px",
+    padding: "14px",
+    background: "#f9fafb",
+  };
+
+  const summaryLabelStyle: React.CSSProperties = {
+    fontSize: "13px",
+    color: "#4b5563",
+    marginBottom: "4px",
+  };
+
+  const summaryValueStyle: React.CSSProperties = {
+    fontSize: "24px",
+    fontWeight: "bold",
+  };
+
+  const badgeStyle: React.CSSProperties = {
+    color: "white",
+    padding: "4px 8px",
+    borderRadius: "999px",
+    fontSize: "12px",
+    fontWeight: 600,
+    display: "inline-block",
+  };
+
   return (
     <main style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
       <h1>Audit Module</h1>
@@ -515,86 +570,260 @@ export default function AuditsPage() {
       <section style={sectionStyle}>
         <h2>Existing Audits</h2>
 
-        {audits.length === 0 ? (
-          <p>No audits created yet.</p>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+            gap: "12px",
+            marginBottom: "20px",
+          }}
+        >
+          <div style={summaryCardStyle}>
+            <div style={summaryLabelStyle}>Total Audits</div>
+            <div style={summaryValueStyle}>{audits.length}</div>
+          </div>
+          <div style={summaryCardStyle}>
+            <div style={summaryLabelStyle}>Open / Active</div>
+            <div style={summaryValueStyle}>{audits.filter((x) => x.status !== "closed").length}</div>
+          </div>
+          <div style={summaryCardStyle}>
+            <div style={summaryLabelStyle}>Total Findings</div>
+            <div style={summaryValueStyle}>{findings.length}</div>
+          </div>
+          <div style={summaryCardStyle}>
+            <div style={summaryLabelStyle}>Open Findings</div>
+            <div style={summaryValueStyle}>{totalOpenFindings}</div>
+          </div>
+          <div style={summaryCardStyle}>
+            <div style={summaryLabelStyle}>Findings Requiring CAPA</div>
+            <div style={summaryValueStyle}>{totalCapaRequiredFindings}</div>
+          </div>
+        </div>
+
+        <div
+          style={{
+            border: "1px solid #d1d5db",
+            borderRadius: "10px",
+            padding: "14px",
+            marginBottom: "20px",
+            background: "#f9fafb",
+          }}
+        >
+          <h3 style={{ marginTop: 0 }}>Filters</h3>
+
+          <input
+            placeholder="Search audit title, number, auditor, scope"
+            value={auditSearch}
+            onChange={(e) => setAuditSearch(e.target.value)}
+            style={{ padding: "8px", marginRight: "8px", marginBottom: "8px", minWidth: "280px" }}
+          />
+
+          <select
+            value={auditStatusFilter}
+            onChange={(e) => setAuditStatusFilter(e.target.value)}
+            style={{ padding: "8px", marginRight: "8px", marginBottom: "8px" }}
+          >
+            <option value="">All Status</option>
+            <option value="open">Open</option>
+            <option value="in_progress">In Progress</option>
+            <option value="closed">Closed</option>
+          </select>
+
+          <select
+            value={auditTypeFilter}
+            onChange={(e) => setAuditTypeFilter(e.target.value)}
+            style={{ padding: "8px", marginRight: "8px", marginBottom: "8px" }}
+          >
+            <option value="">All Audit Types</option>
+            <option value="internal_audit">Internal Audit</option>
+            <option value="supplier_audit">Supplier Audit</option>
+            <option value="process_audit">Process Audit</option>
+            <option value="qms_audit">QMS Audit</option>
+            <option value="regulatory_audit">Regulatory Audit</option>
+          </select>
+
+          <button
+            onClick={() => {
+              setAuditSearch("");
+              setAuditStatusFilter("");
+              setAuditTypeFilter("");
+            }}
+          >
+            Clear Filters
+          </button>
+
+          <div style={{ marginTop: "10px", fontSize: "14px" }}>
+            Showing {filteredAudits.length} of {audits.length} audits
+          </div>
+        </div>
+
+        {filteredAudits.length === 0 ? (
+          <p>No audits match the current filters.</p>
         ) : (
-          <ul>
-            {audits.map((audit) => {
+          <div style={{ display: "grid", gap: "16px" }}>
+            {filteredAudits.map((audit) => {
               const auditFindings = findingsForAudit(audit.id);
+              const openFindings = auditFindings.filter(
+                (finding) => finding.finding_status !== "closed"
+              );
+              const capaRequiredFindings = auditFindings.filter(
+                (finding) => finding.capa_required
+              );
 
               return (
-                <li key={audit.id} style={cardStyle}>
-                  <strong>
-                    {audit.audit_number || "AUD-PENDING"} - {audit.audit_title}
-                  </strong>{" "}
-                  — {audit.status}
+                <article
+                  key={audit.id}
+                  style={{
+                    border: openFindings.length > 0 ? "2px solid #f59e0b" : "1px solid #d1d5db",
+                    borderRadius: "12px",
+                    padding: "16px",
+                    background: "#fff",
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: "12px",
+                      alignItems: "flex-start",
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <div>
+                      <h3 style={{ margin: "0 0 6px 0" }}>
+                        {audit.audit_number || "AUD-PENDING"} — {audit.audit_title || "Untitled Audit"}
+                      </h3>
+                      <div style={{ color: "#4b5563", fontSize: "14px" }}>
+                        {audit.audit_scope || "No audit scope provided."}
+                      </div>
+                    </div>
 
-                  <div style={{ marginTop: "8px" }}>
-                    <div><strong>Type:</strong> {audit.audit_type || "N/A"}</div>
-                    <div><strong>Scope:</strong> {audit.audit_scope || "N/A"}</div>
-                    <div><strong>Auditor:</strong> {audit.auditor || "N/A"}</div>
-                    <div><strong>Audit Date:</strong> {audit.audit_date || "N/A"}</div>
-                    <div><strong>Findings:</strong> {auditFindings.length}</div>
+                    <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                      <span style={{ ...badgeStyle, background: auditStatusColor(audit.status) }}>
+                        {audit.status || "unknown"}
+                      </span>
+                      <span style={{ ...badgeStyle, background: "#2563eb" }}>
+                        {audit.audit_type || "type_not_set"}
+                      </span>
+                      {openFindings.length > 0 ? (
+                        <span style={{ ...badgeStyle, background: "#f59e0b" }}>
+                          Open Findings: {openFindings.length}
+                        </span>
+                      ) : null}
+                      {capaRequiredFindings.length > 0 ? (
+                        <span style={{ ...badgeStyle, background: "#dc2626" }}>
+                          CAPA Required: {capaRequiredFindings.length}
+                        </span>
+                      ) : null}
+                    </div>
                   </div>
 
-                  <div style={{ marginTop: "10px" }}>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                      gap: "8px",
+                      marginTop: "14px",
+                      fontSize: "14px",
+                    }}
+                  >
+                    <div><strong>Auditor:</strong> {audit.auditor || "N/A"}</div>
+                    <div><strong>Audit Date:</strong> {audit.audit_date || "N/A"}</div>
+                    <div><strong>Total Findings:</strong> {auditFindings.length}</div>
+                    <div><strong>Open Findings:</strong> {openFindings.length}</div>
+                  </div>
+
+                  <div style={{ marginTop: "14px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
                     <button
                       onClick={() => updateAuditStatus(audit, "in_progress")}
-                      style={{ marginRight: "8px" }}
                     >
                       In Progress
                     </button>
 
                     <button
                       onClick={() => updateAuditStatus(audit, "closed")}
-                      style={{ marginRight: "8px" }}
                     >
                       Close Audit
                     </button>
 
-                    <a href={`/audits/${audit.id}/report`}>Audit Report</a>
+                    <a
+                      href={`/audits/${audit.id}/report`}
+                      style={{
+                        display: "inline-block",
+                        background: "#2563eb",
+                        color: "white",
+                        padding: "8px 12px",
+                        borderRadius: "8px",
+                        textDecoration: "none",
+                      }}
+                    >
+                      Audit Report
+                    </a>
                   </div>
 
                   {auditFindings.length > 0 ? (
-                    <div style={{ marginTop: "12px" }}>
+                    <div
+                      style={{
+                        marginTop: "14px",
+                        padding: "12px",
+                        background: "#f9fafb",
+                        borderRadius: "10px",
+                      }}
+                    >
                       <strong>Findings</strong>
-                      <ul>
+                      <div style={{ display: "grid", gap: "10px", marginTop: "10px" }}>
                         {auditFindings.map((finding) => (
-                          <li key={finding.id} style={{ marginTop: "8px" }}>
-                            <strong>{finding.finding_title}</strong> —{" "}
-                            {finding.finding_severity} — {finding.finding_status}
-                            <br />
-                            Clause: {finding.clause_reference || "N/A"}
-                            <br />
-                            CAPA Required: {finding.capa_required ? "Yes" : "No"}
-                            <br />
-                            {finding.capa_id ? (
-                              <>
-                                Linked CAPA:{" "}
-                                <a href={`/capa/${finding.capa_id}`}>
-                                  Open CAPA
-                                </a>
-                                <br />
-                              </>
-                            ) : null}
+                          <div
+                            key={finding.id}
+                            style={{
+                              border: "1px solid #e5e7eb",
+                              borderRadius: "8px",
+                              padding: "10px",
+                              background: "white",
+                            }}
+                          >
+                            <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: "8px" }}>
+                              <strong>{finding.finding_title}</strong>
+                              <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+                                <span style={{ ...badgeStyle, background: findingSeverityColor(finding.finding_severity) }}>
+                                  {finding.finding_severity || "severity_not_set"}
+                                </span>
+                                <span style={{ ...badgeStyle, background: finding.finding_status === "closed" ? "#16a34a" : "#f59e0b" }}>
+                                  {finding.finding_status || "open"}
+                                </span>
+                                {finding.capa_required ? (
+                                  <span style={{ ...badgeStyle, background: "#dc2626" }}>CAPA Required</span>
+                                ) : null}
+                              </div>
+                            </div>
 
-                            {finding.finding_status !== "closed" ? (
-                              <button
-                                onClick={() => closeFinding(finding)}
-                                style={{ marginTop: "5px" }}
-                              >
-                                Close Finding
-                              </button>
-                            ) : null}
-                          </li>
+                            <div style={{ marginTop: "8px", fontSize: "14px" }}>
+                              <div><strong>Clause:</strong> {finding.clause_reference || "N/A"}</div>
+                              <div><strong>Description:</strong> {finding.finding_description || "N/A"}</div>
+                              <div><strong>Evidence:</strong> {finding.evidence || "N/A"}</div>
+                            </div>
+
+                            <div style={{ marginTop: "8px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                              {finding.capa_id ? (
+                                <a href={`/capa/${finding.capa_id}`}>Open CAPA</a>
+                              ) : null}
+
+                              {finding.finding_status !== "closed" ? (
+                                <button onClick={() => closeFinding(finding)}>
+                                  Close Finding
+                                </button>
+                              ) : null}
+                            </div>
+                          </div>
                         ))}
-                      </ul>
+                      </div>
                     </div>
                   ) : null}
-                </li>
+                </article>
               );
             })}
-          </ul>
+          </div>
         )}
       </section>
     </main>
