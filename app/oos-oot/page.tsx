@@ -60,6 +60,12 @@ export default function OosOotPage() {
   const [escalationRequired, setEscalationRequired] = useState("no");
   const [escalationNotes, setEscalationNotes] = useState("");
 
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [sourceFilter, setSourceFilter] = useState("");
+  const [eventTypeFilter, setEventTypeFilter] = useState("");
+  const [impactFilter, setImpactFilter] = useState("");
+
   const fieldStyle: React.CSSProperties = {
     width: "100%",
     maxWidth: "500px",
@@ -83,6 +89,33 @@ export default function OosOotPage() {
 
   const rowStyle: React.CSSProperties = {
     marginBottom: "12px",
+  };
+
+  const summaryCardStyle: React.CSSProperties = {
+    border: "1px solid #d1d5db",
+    borderRadius: "10px",
+    padding: "14px",
+    background: "#f9fafb",
+  };
+
+  const summaryLabelStyle: React.CSSProperties = {
+    fontSize: "13px",
+    color: "#4b5563",
+    marginBottom: "4px",
+  };
+
+  const summaryValueStyle: React.CSSProperties = {
+    fontSize: "24px",
+    fontWeight: "bold",
+  };
+
+  const badgeBaseStyle: React.CSSProperties = {
+    color: "white",
+    padding: "4px 8px",
+    borderRadius: "999px",
+    fontSize: "12px",
+    fontWeight: 600,
+    display: "inline-block",
   };
 
   const fetchData = async () => {
@@ -326,6 +359,60 @@ export default function OosOotPage() {
         </div>
       </div>
     );
+  };
+
+  const filteredRecords = records.filter((item) => {
+    const searchableText = [
+      item.investigation_number,
+      item.investigation_source,
+      item.event_type,
+      item.test_name,
+      item.area_room_equipment,
+      item.product_part_number,
+      item.lot_batch_number,
+      item.observed_result,
+      item.specification_limit,
+      item.linked_ncmr_number,
+    ]
+      .join(" ")
+      .toLowerCase();
+
+    const matchesSearch = searchableText.includes(search.toLowerCase());
+    const matchesStatus = statusFilter ? item.status === statusFilter : true;
+    const matchesSource = sourceFilter ? item.investigation_source === sourceFilter : true;
+    const matchesEventType = eventTypeFilter ? item.event_type === eventTypeFilter : true;
+
+    let matchesImpact = true;
+    if (impactFilter === "product_impact") matchesImpact = !!item.product_impact;
+    if (impactFilter === "ncmr_required") matchesImpact = !!item.ncmr_required;
+    if (impactFilter === "systemic_issue") matchesImpact = !!item.systemic_issue;
+    if (impactFilter === "escalation_required") matchesImpact = !!item.escalation_required;
+
+    return matchesSearch && matchesStatus && matchesSource && matchesEventType && matchesImpact;
+  });
+
+  const uniqueStatuses = Array.from(
+    new Set(records.map((item) => item.status).filter(Boolean))
+  ) as string[];
+
+  const uniqueSources = Array.from(
+    new Set(records.map((item) => item.investigation_source).filter(Boolean))
+  ) as string[];
+
+  const uniqueEventTypes = Array.from(
+    new Set(records.map((item) => item.event_type).filter(Boolean))
+  ) as string[];
+
+  const badgeColor = (kind: string) => {
+    if (kind === "closed") return "#16a34a";
+    if (kind === "open") return "#2563eb";
+    if (kind === "OOS - Out of Specification") return "#dc2626";
+    if (kind === "OOT - Out of Trend") return "#f59e0b";
+    if (kind === "Action Limit Exceeded") return "#dc2626";
+    if (kind === "Alert Limit Exceeded") return "#f59e0b";
+    if (kind === "Calibration Out of Tolerance") return "#7c3aed";
+    if (kind === "Environmental Excursion") return "#0f766e";
+    return "#6b7280";
   };
 
   return (
@@ -612,36 +699,218 @@ export default function OosOotPage() {
 
       <h2>Existing OOS / OOT / EM Investigations</h2>
 
-      {records.length === 0 ? (
-        <p>No investigations created yet.</p>
-      ) : (
-        <ul>
-          {records.map((item) => (
-            <li key={item.id} style={{ marginBottom: "18px", border: "1px solid #ddd", padding: "12px", borderRadius: "8px" }}>
-              <strong>{item.investigation_number || "PENDING"} - {item.test_name}</strong> — {item.status}
+      <section
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+          gap: "12px",
+          marginBottom: "20px",
+        }}
+      >
+        <div style={summaryCardStyle}>
+          <div style={summaryLabelStyle}>Total Investigations</div>
+          <div style={summaryValueStyle}>{records.length}</div>
+        </div>
+        <div style={summaryCardStyle}>
+          <div style={summaryLabelStyle}>Open / Active</div>
+          <div style={summaryValueStyle}>{records.filter((x) => x.status !== "closed").length}</div>
+        </div>
+        <div style={summaryCardStyle}>
+          <div style={summaryLabelStyle}>Product Impact</div>
+          <div style={summaryValueStyle}>{productImpactCount}</div>
+        </div>
+        <div style={summaryCardStyle}>
+          <div style={summaryLabelStyle}>Systemic Issues</div>
+          <div style={summaryValueStyle}>{systemicIssueCount}</div>
+        </div>
+      </section>
 
-              <div style={{ marginTop: "8px" }}>
-                <div><strong>Source:</strong> {item.investigation_source || "N/A"}</div>
-                <div><strong>Event Type:</strong> {item.event_type || "N/A"}</div>
-                <div><strong>Area / Room / Equipment:</strong> {item.area_room_equipment || "N/A"}</div>
-                <div><strong>Product / Part:</strong> {item.product_part_number || "N/A"}</div>
-                <div><strong>Lot / Batch:</strong> {item.lot_batch_number || "N/A"}</div>
-                <div><strong>Date Detected:</strong> {item.date_detected || "N/A"}</div>
-                <div><strong>Observed Result:</strong> {item.observed_result || "N/A"}</div>
-                <div><strong>Limit:</strong> {item.specification_limit || "N/A"}</div>
-                <div><strong>Product Impact:</strong> {item.product_impact ? "Yes" : "No"}</div>
-                <div><strong>NCMR Required:</strong> {item.ncmr_required ? "Yes" : "No"}</div>
-                <div><strong>Linked NCMR:</strong> {item.linked_ncmr_number || "N/A"}</div>
-                <div><strong>Systemic Issue:</strong> {item.systemic_issue ? "Yes" : "No"}</div>
-                <div><strong>Escalation Required:</strong> {item.escalation_required ? "Yes" : "No"}</div>
-              </div>
+      <section style={{ marginBottom: "20px" }}>
+        <h3>Filters</h3>
 
-              <div style={{ marginTop: "10px" }}>
-                <a href={`/oos-oot/${item.id}`}>Open Investigation</a>
-              </div>
-            </li>
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search number, test, source, event, area, part, lot, NCMR"
+          style={{
+            padding: "8px",
+            marginRight: "8px",
+            marginBottom: "8px",
+            minWidth: "330px",
+          }}
+        />
+
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          style={{ padding: "8px", marginRight: "8px", marginBottom: "8px" }}
+        >
+          <option value="">All Status</option>
+          {uniqueStatuses.map((status) => (
+            <option key={status} value={status}>
+              {status}
+            </option>
           ))}
-        </ul>
+        </select>
+
+        <select
+          value={sourceFilter}
+          onChange={(e) => setSourceFilter(e.target.value)}
+          style={{ padding: "8px", marginRight: "8px", marginBottom: "8px" }}
+        >
+          <option value="">All Sources</option>
+          {uniqueSources.map((source) => (
+            <option key={source} value={source}>
+              {source}
+            </option>
+          ))}
+        </select>
+
+        <select
+          value={eventTypeFilter}
+          onChange={(e) => setEventTypeFilter(e.target.value)}
+          style={{ padding: "8px", marginRight: "8px", marginBottom: "8px" }}
+        >
+          <option value="">All Event Types</option>
+          {uniqueEventTypes.map((event) => (
+            <option key={event} value={event}>
+              {event}
+            </option>
+          ))}
+        </select>
+
+        <select
+          value={impactFilter}
+          onChange={(e) => setImpactFilter(e.target.value)}
+          style={{ padding: "8px", marginRight: "8px", marginBottom: "8px" }}
+        >
+          <option value="">All Impact / Escalation</option>
+          <option value="product_impact">Product Impact</option>
+          <option value="ncmr_required">NCMR Required</option>
+          <option value="systemic_issue">Systemic Issue</option>
+          <option value="escalation_required">Escalation Required</option>
+        </select>
+
+        <button
+          onClick={() => {
+            setSearch("");
+            setStatusFilter("");
+            setSourceFilter("");
+            setEventTypeFilter("");
+            setImpactFilter("");
+          }}
+          style={{ padding: "8px", marginBottom: "8px" }}
+        >
+          Clear Filters
+        </button>
+
+        <div style={{ marginTop: "6px", fontSize: "14px", color: "#4b5563" }}>
+          Showing {filteredRecords.length} of {records.length} investigations
+        </div>
+      </section>
+
+      {filteredRecords.length === 0 ? (
+        <p>No investigations match the current filters.</p>
+      ) : (
+        <div style={{ display: "grid", gap: "16px" }}>
+          {filteredRecords.map((item) => {
+            const statusColor = badgeColor(item.status || "");
+            const eventColor = badgeColor(item.event_type || "");
+
+            return (
+              <article
+                key={item.id}
+                style={{
+                  border: item.product_impact ? "2px solid #dc2626" : "1px solid #d1d5db",
+                  borderRadius: "12px",
+                  padding: "16px",
+                  background: "#fff",
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: "12px",
+                    alignItems: "flex-start",
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <div>
+                    <h3 style={{ margin: "0 0 6px 0" }}>
+                      {item.investigation_number || "PENDING"} — {item.test_name || "Untitled Investigation"}
+                    </h3>
+                    <div style={{ color: "#4b5563", fontSize: "14px" }}>
+                      {item.investigation_source || "N/A"} | {item.area_room_equipment || "No area / room / equipment"}
+                    </div>
+                  </div>
+
+                  <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                    <span style={{ ...badgeBaseStyle, background: statusColor }}>
+                      {item.status || "unknown"}
+                    </span>
+                    <span style={{ ...badgeBaseStyle, background: eventColor }}>
+                      {item.event_type || "event not set"}
+                    </span>
+                  </div>
+                </div>
+
+                <div style={{ marginTop: "10px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                  {item.product_impact ? (
+                    <span style={{ ...badgeBaseStyle, background: "#dc2626" }}>Product Impact</span>
+                  ) : null}
+                  {item.ncmr_required ? (
+                    <span style={{ ...badgeBaseStyle, background: "#f59e0b" }}>NCMR Required</span>
+                  ) : null}
+                  {item.systemic_issue ? (
+                    <span style={{ ...badgeBaseStyle, background: "#7c3aed" }}>Systemic Issue</span>
+                  ) : null}
+                  {item.escalation_required ? (
+                    <span style={{ ...badgeBaseStyle, background: "#0f766e" }}>Escalation Required</span>
+                  ) : null}
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                    gap: "8px",
+                    marginTop: "14px",
+                    fontSize: "14px",
+                  }}
+                >
+                  <div><strong>Source:</strong> {item.investigation_source || "N/A"}</div>
+                  <div><strong>Event Type:</strong> {item.event_type || "N/A"}</div>
+                  <div><strong>Area / Room / Equipment:</strong> {item.area_room_equipment || "N/A"}</div>
+                  <div><strong>Product / Part:</strong> {item.product_part_number || "N/A"}</div>
+                  <div><strong>Lot / Batch:</strong> {item.lot_batch_number || "N/A"}</div>
+                  <div><strong>Date Detected:</strong> {item.date_detected || "N/A"}</div>
+                  <div><strong>Observed Result:</strong> {item.observed_result || "N/A"}</div>
+                  <div><strong>Limit:</strong> {item.specification_limit || "N/A"}</div>
+                  <div><strong>Linked NCMR:</strong> {item.linked_ncmr_number || "N/A"}</div>
+                  <div><strong>Status:</strong> {item.status || "N/A"}</div>
+                </div>
+
+                <div style={{ marginTop: "14px" }}>
+                  <a
+                    href={`/oos-oot/${item.id}`}
+                    style={{
+                      display: "inline-block",
+                      background: "#2563eb",
+                      color: "white",
+                      padding: "8px 12px",
+                      borderRadius: "8px",
+                      textDecoration: "none",
+                    }}
+                  >
+                    Open Investigation
+                  </a>
+                </div>
+              </article>
+            );
+          })}
+        </div>
       )}
     </main>
   );
