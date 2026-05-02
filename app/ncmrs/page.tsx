@@ -419,6 +419,32 @@ export default function NcmrPage() {
       </option>
     ));
 
+  const summaryCardStyle: React.CSSProperties = {
+    border: "1px solid #d1d5db",
+    borderRadius: "10px",
+    padding: "14px",
+    background: "#f9fafb",
+  };
+
+  const summaryLabelStyle: React.CSSProperties = {
+    fontSize: "13px",
+    color: "#4b5563",
+    marginBottom: "4px",
+  };
+
+  const summaryValueStyle: React.CSSProperties = {
+    fontSize: "24px",
+    fontWeight: "bold",
+  };
+
+  const badgeStyle: React.CSSProperties = {
+    color: "white",
+    padding: "4px 8px",
+    borderRadius: "999px",
+    fontSize: "12px",
+    fontWeight: 600,
+  };
+
   return (
     <main style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
       <h1>NCMR Initiation</h1>
@@ -682,72 +708,165 @@ export default function NcmrPage() {
 
       <h2>Existing NCMRs</h2>
 
+      <section
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+          gap: "12px",
+          marginBottom: "20px",
+        }}
+      >
+        <div style={summaryCardStyle}>
+          <div style={summaryLabelStyle}>Total NCMRs</div>
+          <div style={summaryValueStyle}>{list.length}</div>
+        </div>
+        <div style={summaryCardStyle}>
+          <div style={summaryLabelStyle}>Open / Active</div>
+          <div style={summaryValueStyle}>{list.filter((x) => x.status !== "closed").length}</div>
+        </div>
+        <div style={summaryCardStyle}>
+          <div style={summaryLabelStyle}>CAPA Required</div>
+          <div style={summaryValueStyle}>{list.filter((x) => x.capa_required).length}</div>
+        </div>
+        <div style={summaryCardStyle}>
+          <div style={summaryLabelStyle}>Recurring Issues</div>
+          <div style={summaryValueStyle}>{list.filter((x) => x.recurring_issue).length}</div>
+        </div>
+      </section>
+
       {list.length === 0 ? (
         <p>No NCMRs created yet.</p>
       ) : (
-        <ul>
-          {list.map((item) => (
-            <li
-              key={item.id}
-              style={{
-                marginBottom: "18px",
-                border: "1px solid #ddd",
-                padding: "12px",
-                borderRadius: "8px",
-              }}
-            >
-              <strong>{item.ncmr_number || "NCMR-PENDING"} - {item.title}</strong> — {item.status}
-              {item.recurring_issue ? (
-                <span style={{ color: "orange", marginLeft: "10px" }}>
-                  Recurring Issue
-                </span>
-              ) : null}
+        <div style={{ display: "grid", gap: "16px" }}>
+          {list.map((item) => {
+            const statusColor =
+              item.status === "closed"
+                ? "#16a34a"
+                : item.status === "open"
+                ? "#2563eb"
+                : "#f59e0b";
 
-              {item.capa_required ? (
-                <span style={{ color: "red", marginLeft: "10px" }}>
-                  CAPA Required
-                </span>
-              ) : null}
+            const severityColor =
+              item.severity === "critical"
+                ? "#dc2626"
+                : item.severity === "major"
+                ? "#f59e0b"
+                : item.severity === "minor"
+                ? "#16a34a"
+                : "#6b7280";
 
-              {item.supplier_capa_required ? (
-                <span style={{ color: "purple", marginLeft: "10px" }}>
-                  Supplier CAPA / SCAR Required
-                </span>
-              ) : null}
+            return (
+              <article
+                key={item.id}
+                style={{
+                  border: "1px solid #d1d5db",
+                  borderRadius: "12px",
+                  padding: "16px",
+                  background: "#fff",
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: "12px",
+                    alignItems: "flex-start",
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <div>
+                    <h3 style={{ margin: "0 0 6px 0" }}>
+                      {item.ncmr_number || "NCMR-PENDING"} — {item.title || "Untitled NCMR"}
+                    </h3>
+                    <div style={{ color: "#4b5563", fontSize: "14px" }}>
+                      {item.issue_description || "No issue description provided."}
+                    </div>
+                  </div>
 
-              <div style={{ marginTop: "8px" }}>
-                <div><strong>Issue Description:</strong> {item.issue_description || "N/A"}</div>
-                <div><strong>Part Number:</strong> {item.product_part_number || "N/A"}</div>
-                <div><strong>Lot Number:</strong> {item.lot_number || "N/A"}</div>
-                <div><strong>Work Order:</strong> {item.workorder_number || "N/A"}</div>
-                <div><strong>Source:</strong> {item.source_of_detection || "N/A"}</div>
-                <div><strong>Department:</strong> {item.department || "N/A"}</div>
-                <div><strong>Date Detected:</strong> {item.date_detected || "N/A"}</div>
-                <div><strong>Quantity Affected:</strong> {item.quantity_affected ?? "N/A"}</div>
-                <div><strong>Containment Action:</strong> {item.containment_action || "N/A"}</div>
-                <div><strong>Containment Owner:</strong> {item.containment_owner || "N/A"}</div>
-                <div><strong>Material Status:</strong> {item.material_status || "N/A"}</div>
-                <div><strong>Quarantined Quantity:</strong> {item.quarantined_quantity ?? "N/A"}</div>
-                <div><strong>Defect Category:</strong> {item.defect_category || "N/A"}</div>
-                <div><strong>Defect Subcategory:</strong> {item.defect_subcategory || "N/A"}</div>
-                <div><strong>Supplier Name:</strong> {item.supplier_name || "N/A"}</div>
-                <div><strong>Supplier Lot:</strong> {item.supplier_lot || "N/A"}</div>
-                <div><strong>Site / Location:</strong> {item.site_location || "N/A"}</div>
-                <div><strong>Immediate Correction:</strong> {item.immediate_correction || "N/A"}</div>
-                <div><strong>Owner:</strong> {item.owner || "N/A"}</div>
-                <div><strong>Severity:</strong> {item.severity || "not_assessed"}</div>
-                <div><strong>Recurring:</strong> {item.recurring_issue ? "Yes" : "No"}</div>
-                <div><strong>Recurrence Reason:</strong> {item.recurrence_reason || "N/A"}</div>
-                <div><strong>Supplier CAPA / SCAR Required:</strong> {item.supplier_capa_required ? "Yes" : "No"}</div>
-                <div><strong>Supplier CAPA / SCAR Reason:</strong> {item.supplier_capa_reason || "N/A"}</div>
-              </div>
+                  <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                    <span style={{ ...badgeStyle, background: statusColor }}>
+                      {item.status || "unknown"}
+                    </span>
+                    <span style={{ ...badgeStyle, background: severityColor }}>
+                      {item.severity || "not_assessed"}
+                    </span>
+                  </div>
+                </div>
 
-              <div style={{ marginTop: "10px" }}>
-                <a href={`/ncmrs/${item.id}`}>Open Workflow</a>
-              </div>
-            </li>
-          ))}
-        </ul>
+                <div style={{ marginTop: "10px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                  {item.recurring_issue ? (
+                    <span style={{ ...badgeStyle, background: "#f59e0b" }}>Recurring</span>
+                  ) : null}
+                  {item.capa_required ? (
+                    <span style={{ ...badgeStyle, background: "#dc2626" }}>CAPA Required</span>
+                  ) : null}
+                  {item.supplier_capa_required ? (
+                    <span style={{ ...badgeStyle, background: "#7c3aed" }}>Supplier CAPA / SCAR</span>
+                  ) : null}
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                    gap: "8px",
+                    marginTop: "14px",
+                    fontSize: "14px",
+                  }}
+                >
+                  <div><strong>Part:</strong> {item.product_part_number || "N/A"}</div>
+                  <div><strong>Lot:</strong> {item.lot_number || "N/A"}</div>
+                  <div><strong>Work Order:</strong> {item.workorder_number || "N/A"}</div>
+                  <div><strong>Source:</strong> {item.source_of_detection || "N/A"}</div>
+                  <div><strong>Department:</strong> {item.department || "N/A"}</div>
+                  <div><strong>Detected:</strong> {item.date_detected || "N/A"}</div>
+                  <div><strong>Qty Affected:</strong> {item.quantity_affected ?? "N/A"}</div>
+                  <div><strong>Material Status:</strong> {item.material_status || "N/A"}</div>
+                  <div><strong>Defect:</strong> {item.defect_category || "N/A"}</div>
+                  <div><strong>Subcategory:</strong> {item.defect_subcategory || "N/A"}</div>
+                  <div><strong>Supplier:</strong> {item.supplier_name || "N/A"}</div>
+                  <div><strong>Owner:</strong> {item.owner || "N/A"}</div>
+                </div>
+
+                {(item.recurrence_reason || item.supplier_capa_reason) ? (
+                  <div
+                    style={{
+                      marginTop: "12px",
+                      padding: "10px",
+                      background: "#f9fafb",
+                      borderRadius: "8px",
+                      fontSize: "14px",
+                    }}
+                  >
+                    {item.recurrence_reason ? (
+                      <div><strong>Recurrence Reason:</strong> {item.recurrence_reason}</div>
+                    ) : null}
+                    {item.supplier_capa_reason ? (
+                      <div><strong>Supplier CAPA / SCAR Reason:</strong> {item.supplier_capa_reason}</div>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                <div style={{ marginTop: "14px" }}>
+                  <a
+                    href={`/ncmrs/${item.id}`}
+                    style={{
+                      display: "inline-block",
+                      background: "#2563eb",
+                      color: "white",
+                      padding: "8px 12px",
+                      borderRadius: "8px",
+                      textDecoration: "none",
+                    }}
+                  >
+                    Open Workflow
+                  </a>
+                </div>
+              </article>
+            );
+          })}
+        </div>
       )}
     </main>
   );
