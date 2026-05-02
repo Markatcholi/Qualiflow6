@@ -71,6 +71,10 @@ export default function NcmrPage() {
 
   const [list, setList] = useState<Ncmr[]>([]);
 
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [severityFilter, setSeverityFilter] = useState("");
+
   const [partNumberOptions, setPartNumberOptions] = useState<MasterOption[]>([]);
   const [detectionSourceOptions, setDetectionSourceOptions] = useState<MasterOption[]>([]);
   const [departmentOptions, setDepartmentOptions] = useState<MasterOption[]>([]);
@@ -445,6 +449,32 @@ export default function NcmrPage() {
     fontWeight: 600,
   };
 
+  const filteredList = list.filter((item) => {
+    const searchableText = [
+      item.ncmr_number,
+      item.title,
+      item.issue_description,
+      item.product_part_number,
+      item.lot_number,
+      item.workorder_number,
+      item.supplier_name,
+      item.department,
+      item.owner,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+
+    const matchesSearch = search
+      ? searchableText.includes(search.trim().toLowerCase())
+      : true;
+
+    const matchesStatus = statusFilter ? item.status === statusFilter : true;
+    const matchesSeverity = severityFilter ? item.severity === severityFilter : true;
+
+    return matchesSearch && matchesStatus && matchesSeverity;
+  });
+
   return (
     <main style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
       <h1>NCMR Initiation</h1>
@@ -708,6 +738,55 @@ export default function NcmrPage() {
 
       <h2>Existing NCMRs</h2>
 
+      <section style={sectionStyle}>
+        <h3>Search / Filters</h3>
+
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search by title, NCMR number, part, lot, supplier, owner"
+          style={{ ...fieldStyle, maxWidth: "650px", marginRight: "10px" }}
+        />
+
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          style={{ padding: "8px", marginRight: "10px", marginBottom: "8px" }}
+        >
+          <option value="">All Statuses</option>
+          <option value="open">Open</option>
+          <option value="investigation">Investigation</option>
+          <option value="in_review">In Review</option>
+          <option value="closed">Closed</option>
+        </select>
+
+        <select
+          value={severityFilter}
+          onChange={(e) => setSeverityFilter(e.target.value)}
+          style={{ padding: "8px", marginRight: "10px", marginBottom: "8px" }}
+        >
+          <option value="">All Severities</option>
+          <option value="not_assessed">Not Assessed</option>
+          <option value="minor">Minor</option>
+          <option value="major">Major</option>
+          <option value="critical">Critical</option>
+        </select>
+
+        <button
+          onClick={() => {
+            setSearch("");
+            setStatusFilter("");
+            setSeverityFilter("");
+          }}
+        >
+          Clear Filters
+        </button>
+
+        <div style={{ marginTop: "10px", fontSize: "14px", color: "#4b5563" }}>
+          Showing {filteredList.length} of {list.length} NCMR record(s)
+        </div>
+      </section>
+
       <section
         style={{
           display: "grid",
@@ -736,9 +815,11 @@ export default function NcmrPage() {
 
       {list.length === 0 ? (
         <p>No NCMRs created yet.</p>
+      ) : filteredList.length === 0 ? (
+        <p>No NCMRs match the selected filters.</p>
       ) : (
         <div style={{ display: "grid", gap: "16px" }}>
-          {list.map((item) => {
+          {filteredList.map((item) => {
             const statusColor =
               item.status === "closed"
                 ? "#16a34a"
