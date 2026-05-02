@@ -443,48 +443,153 @@ export default function DashboardPage() {
     );
   };
 
+  const totalHighPriorityAlerts = notifications.length;
+
+  const getStatusColor = (value: number, riskType: "risk" | "warning" = "risk") => {
+    if (value === 0) return "#15803d";
+    if (riskType === "warning") return "#b45309";
+    return "#b91c1c";
+  };
+
+  const cardStyle = (borderColor: string): React.CSSProperties => ({
+    border: `2px solid ${borderColor}`,
+    borderRadius: "10px",
+    padding: "16px",
+    background: "#fff",
+    boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+  });
+
+  const sectionStyle: React.CSSProperties = {
+    border: "1px solid #d1d5db",
+    borderRadius: "10px",
+    padding: "18px",
+    marginBottom: "20px",
+    background: "#fff",
+  };
+
+  const gridStyle: React.CSSProperties = {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
+    gap: "14px",
+    marginBottom: "20px",
+  };
+
+  const KpiCard = ({
+    title,
+    value,
+    subtitle,
+    color,
+  }: {
+    title: string;
+    value: string | number;
+    subtitle?: string;
+    color: string;
+  }) => (
+    <div style={cardStyle(color)}>
+      <div style={{ fontSize: "13px", fontWeight: 700, color: "#374151", marginBottom: "8px" }}>
+        {title}
+      </div>
+      <div style={{ fontSize: "30px", fontWeight: 800, color }}>{value}</div>
+      {subtitle ? <div style={{ marginTop: "6px", fontSize: "12px", color: "#6b7280" }}>{subtitle}</div> : null}
+    </div>
+  );
+
   return (
-    <main style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
-      <h1>Quality Dashboard</h1>
+    <main style={{ padding: "24px", fontFamily: "Arial, sans-serif", background: "#f8fafc", minHeight: "100vh" }}>
+      <div style={{ marginBottom: "22px" }}>
+        <h1 style={{ marginBottom: "4px" }}>Executive Quality Dashboard</h1>
+        <p style={{ margin: 0, color: "#4b5563" }}>
+          NCMR, CAPA, Supplier Quality, and OOS/OOT performance overview
+        </p>
+      </div>
 
       <section
         style={{
-          border: notifications.length > 0 ? "2px solid red" : "1px solid #ccc",
-          padding: "16px",
-          marginBottom: "20px",
-          borderRadius: "8px",
-          maxWidth: "900px",
+          ...sectionStyle,
+          border: totalHighPriorityAlerts > 0 ? "2px solid #b91c1c" : "2px solid #15803d",
         }}
       >
-        <h2>Notification Panel</h2>
+        <h2 style={{ marginTop: 0 }}>Notification Panel</h2>
 
         {notifications.length === 0 ? (
-          <p>No active quality alerts.</p>
+          <p style={{ color: "#15803d", fontWeight: 700 }}>No active quality alerts.</p>
         ) : (
-          <ul>
+          <ul style={{ paddingLeft: "20px" }}>
             {notifications.map((alert, index) => (
               <li key={index} style={{ marginBottom: "10px" }}>
-                <strong>{alert.type}:</strong> {alert.message} <a href={alert.link}>Open</a>
+                <strong style={{ color: "#b91c1c" }}>{alert.type}:</strong> {alert.message} <a href={alert.link}>Open</a>
               </li>
             ))}
           </ul>
         )}
       </section>
 
-      <div style={{ display: "grid", gap: "15px", maxWidth: "750px" }}>
-        <div style={{ padding: "15px", border: "1px solid #ccc" }}><strong>Total NCMRs:</strong> {ncmrTotal}</div>
-        <div style={{ padding: "15px", border: "1px solid #ccc" }}><strong>Open NCMRs:</strong> {ncmrOpen}</div>
-        <div style={{ padding: "15px", border: "1px solid #ccc" }}><strong>NCMRs in Investigation:</strong> {ncmrInvestigation}</div>
-        <div style={{ padding: "15px", border: "1px solid #ccc" }}><strong>Closed NCMRs:</strong> {ncmrClosed}</div>
-        <div style={{ padding: "15px", border: "1px solid #ccc" }}><strong>NCMR Closure Rate:</strong> {ncmrClosureRate}%</div>
-        <div style={{ padding: "15px", border: "1px solid #ccc" }}><strong>Average NCMR Close Time:</strong> {avgNcmrCloseDays} days</div>
+      <section style={sectionStyle}>
+        <h2 style={{ marginTop: 0 }}>Executive Risk Snapshot</h2>
+        <div style={gridStyle}>
+          <KpiCard title="Active Alerts" value={totalHighPriorityAlerts} color={getStatusColor(totalHighPriorityAlerts)} />
+          <KpiCard title="Overdue CAPAs" value={capaOverdue} color={getStatusColor(capaOverdue)} />
+          <KpiCard title="OOS/OOT Product Impact" value={oosProductImpact} color={getStatusColor(oosProductImpact)} />
+          <KpiCard title="OOS/OOT Systemic Issues" value={oosSystemicIssues} color={getStatusColor(oosSystemicIssues)} />
+        </div>
+      </section>
 
-        <div style={{ padding: "15px", border: "1px solid purple" }}><strong>Supplier CAPA / SCAR Required NCMRs:</strong> {supplierScarRequired}</div>
-        <div style={{ padding: "15px", border: "1px solid purple" }}><strong>Open Supplier CAPAs:</strong> {openSupplierCapas}</div>
-        <div style={{ padding: "15px", border: "1px solid purple" }}><strong>Open SCARs:</strong> {openScars}</div>
+      <section style={sectionStyle}>
+        <h2 style={{ marginTop: 0 }}>NCMR Performance</h2>
+        <div style={gridStyle}>
+          <KpiCard title="Total NCMRs" value={ncmrTotal} color="#2563eb" />
+          <KpiCard title="Open NCMRs" value={ncmrOpen} color={getStatusColor(ncmrOpen, "warning")} />
+          <KpiCard title="In Investigation" value={ncmrInvestigation} color={getStatusColor(ncmrInvestigation, "warning")} />
+          <KpiCard title="Closed NCMRs" value={ncmrClosed} color="#15803d" />
+          <KpiCard title="Closure Rate" value={`${ncmrClosureRate}%`} color="#2563eb" />
+          <KpiCard title="Avg Close Time" value={`${avgNcmrCloseDays} d`} color="#374151" />
+        </div>
+        {renderTrend("NCMR Monthly Trend (Last 6 Months)", ncmrTrend)}
+      </section>
 
-        <div style={{ padding: "15px", border: "1px solid purple" }}>
-          <strong>Top Suppliers by NCMR Count:</strong>
+      <section style={sectionStyle}>
+        <h2 style={{ marginTop: 0 }}>CAPA Performance</h2>
+        <div style={gridStyle}>
+          <KpiCard title="Total CAPAs" value={capaTotal} color="#2563eb" />
+          <KpiCard title="Active CAPAs" value={capaOpen} color={getStatusColor(capaOpen, "warning")} />
+          <KpiCard title="Closed CAPAs" value={capaClosed} color="#15803d" />
+          <KpiCard title="Closure Rate" value={`${capaClosureRate}%`} color="#2563eb" />
+          <KpiCard title="Overdue CAPAs" value={capaOverdue} color={getStatusColor(capaOverdue)} />
+          <KpiCard title="Overdue Rate" value={`${capaOverdueRate}%`} color={getStatusColor(capaOverdue)} />
+          <KpiCard title="Due Next 7 Days" value={capaDueSoon} color={getStatusColor(capaDueSoon, "warning")} />
+          <KpiCard title="Awaiting Effectiveness" value={capaAwaitingEffectiveness} color={getStatusColor(capaAwaitingEffectiveness, "warning")} />
+          <KpiCard title="Effectiveness Overdue" value={capaEffectivenessOverdue} color={getStatusColor(capaEffectivenessOverdue)} />
+          <KpiCard title="Effectiveness Due Soon" value={capaEffectivenessDueSoon} color={getStatusColor(capaEffectivenessDueSoon, "warning")} />
+          <KpiCard title="Avg Close Time" value={`${avgCapaCloseDays} d`} color="#374151" />
+        </div>
+        {renderTrend("CAPA Monthly Trend (Last 6 Months)", capaTrend)}
+      </section>
+
+      <section style={sectionStyle}>
+        <h2 style={{ marginTop: 0 }}>OOS / OOT / Environmental Monitoring</h2>
+        <div style={gridStyle}>
+          <KpiCard title="Total Investigations" value={oosTotal} color="#0f766e" />
+          <KpiCard title="Open Investigations" value={oosOpen} color={getStatusColor(oosOpen, "warning")} />
+          <KpiCard title="Closed Investigations" value={oosClosed} color="#15803d" />
+          <KpiCard title="Closure Rate" value={`${oosClosureRate}%`} color="#0f766e" />
+          <KpiCard title="Product Impact" value={oosProductImpact} color={getStatusColor(oosProductImpact)} />
+          <KpiCard title="NCMR Required" value={oosNcmrRequired} color={getStatusColor(oosNcmrRequired)} />
+          <KpiCard title="Systemic Issues" value={oosSystemicIssues} color={getStatusColor(oosSystemicIssues)} />
+          <KpiCard title="Escalations" value={oosEscalations} color={getStatusColor(oosEscalations)} />
+        </div>
+        {renderTrend("OOS/OOT Monthly Trend (Last 6 Months)", oosTrend)}
+      </section>
+
+      <section style={sectionStyle}>
+        <h2 style={{ marginTop: 0 }}>Supplier Quality</h2>
+        <div style={gridStyle}>
+          <KpiCard title="Supplier CAPA / SCAR Required NCMRs" value={supplierScarRequired} color={getStatusColor(supplierScarRequired, "warning")} />
+          <KpiCard title="Open Supplier CAPAs" value={openSupplierCapas} color={getStatusColor(openSupplierCapas, "warning")} />
+          <KpiCard title="Open SCARs" value={openScars} color={getStatusColor(openScars, "warning")} />
+        </div>
+
+        <div style={{ marginTop: "12px" }}>
+          <strong>Top Suppliers by NCMR Count</strong>
           {topSuppliers.length === 0 ? (
             <p>No supplier NCMR data yet.</p>
           ) : (
@@ -495,44 +600,22 @@ export default function DashboardPage() {
             </ol>
           )}
         </div>
+      </section>
 
-        <div style={{ padding: "15px", border: "1px solid #ccc" }}><strong>Total CAPAs:</strong> {capaTotal}</div>
-        <div style={{ padding: "15px", border: "1px solid #ccc" }}><strong>Active CAPAs:</strong> {capaOpen}</div>
-        <div style={{ padding: "15px", border: "1px solid #ccc" }}><strong>Closed CAPAs:</strong> {capaClosed}</div>
-        <div style={{ padding: "15px", border: "1px solid #ccc" }}><strong>CAPA Closure Rate:</strong> {capaClosureRate}%</div>
-        <div style={{ padding: "15px", border: "1px solid #ccc" }}><strong>Average CAPA Close Time:</strong> {avgCapaCloseDays} days</div>
-        <div style={{ padding: "15px", border: "1px solid red" }}><strong>Overdue CAPAs:</strong> {capaOverdue}</div>
-        <div style={{ padding: "15px", border: "1px solid #cc8800" }}><strong>Overdue CAPA Rate:</strong> {capaOverdueRate}%</div>
-        <div style={{ padding: "15px", border: "1px solid #cc8800" }}><strong>CAPAs Due in Next 7 Days:</strong> {capaDueSoon}</div>
-        <div style={{ padding: "15px", border: "1px solid #cc8800" }}><strong>CAPAs Awaiting Effectiveness:</strong> {capaAwaitingEffectiveness}</div>
-        <div style={{ padding: "15px", border: "1px solid red" }}><strong>CAPAs Overdue for Effectiveness:</strong> {capaEffectivenessOverdue}</div>
-        <div style={{ padding: "15px", border: "1px solid #cc8800" }}><strong>CAPA Effectiveness Due in Next 7 Days:</strong> {capaEffectivenessDueSoon}</div>
-
-        <div style={{ padding: "15px", border: "1px solid #0f766e" }}><strong>Total OOS/OOT Investigations:</strong> {oosTotal}</div>
-        <div style={{ padding: "15px", border: "1px solid #0f766e" }}><strong>Open OOS/OOT Investigations:</strong> {oosOpen}</div>
-        <div style={{ padding: "15px", border: "1px solid #0f766e" }}><strong>Closed OOS/OOT Investigations:</strong> {oosClosed}</div>
-        <div style={{ padding: "15px", border: "1px solid #0f766e" }}><strong>OOS/OOT Closure Rate:</strong> {oosClosureRate}%</div>
-        <div style={{ padding: "15px", border: "1px solid red" }}><strong>OOS/OOT Product Impact Cases:</strong> {oosProductImpact}</div>
-        <div style={{ padding: "15px", border: "1px solid red" }}><strong>OOS/OOT NCMR Required:</strong> {oosNcmrRequired}</div>
-        <div style={{ padding: "15px", border: "1px solid red" }}><strong>OOS/OOT Systemic Issues:</strong> {oosSystemicIssues}</div>
-        <div style={{ padding: "15px", border: "1px solid red" }}><strong>OOS/OOT Escalations:</strong> {oosEscalations}</div>
-
-        {renderTrend("NCMR Monthly Trend (Last 6 Months)", ncmrTrend)}
-        {renderTrend("CAPA Monthly Trend (Last 6 Months)", capaTrend)}
-        {renderTrend("OOS/OOT Monthly Trend (Last 6 Months)", oosTrend)}
-      </div>
-
-      <div style={{ marginTop: "20px" }}>
-        <a href="/ncmrs">Go to NCMRs</a>
+      <section style={sectionStyle}>
+        <h2 style={{ marginTop: 0 }}>Quick Actions</h2>
+        <a href="/ncmrs">NCMRs</a>
         {" | "}
-        <a href="/capa">Go to CAPAs</a>
+        <a href="/capa">CAPAs</a>
         {" | "}
-        <a href="/oos-oot">Go to OOS/OOT</a>
+        <a href="/oos-oot">OOS/OOT</a>
         {" | "}
-        <a href="/audit">Go to Audit Trail</a>
+        <a href="/management-review">Management Review</a>
+        {" | "}
+        <a href="/audit">Audit Trail</a>
         {" | "}
         <a href="/admin/master-data">Admin Master Data</a>
-      </div>
+      </section>
     </main>
   );
 }
