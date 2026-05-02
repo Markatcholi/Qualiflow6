@@ -214,6 +214,32 @@ export default function CapaPage() {
     fetchData();
   }, []);
 
+  const summaryCardStyle: React.CSSProperties = {
+    border: "1px solid #d1d5db",
+    borderRadius: "10px",
+    padding: "14px",
+    background: "#f9fafb",
+  };
+
+  const summaryLabelStyle: React.CSSProperties = {
+    fontSize: "13px",
+    color: "#4b5563",
+    marginBottom: "4px",
+  };
+
+  const summaryValueStyle: React.CSSProperties = {
+    fontSize: "24px",
+    fontWeight: "bold",
+  };
+
+  const badgeStyle: React.CSSProperties = {
+    color: "white",
+    padding: "4px 8px",
+    borderRadius: "999px",
+    fontSize: "12px",
+    fontWeight: 600,
+  };
+
   return (
     <main style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
       <h1>CAPA Records</h1>
@@ -276,67 +302,159 @@ export default function CapaPage() {
 
       <h2>Existing CAPAs</h2>
 
+      <section
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+          gap: "12px",
+          marginBottom: "20px",
+        }}
+      >
+        <div style={summaryCardStyle}>
+          <div style={summaryLabelStyle}>Total CAPAs</div>
+          <div style={summaryValueStyle}>{list.length}</div>
+        </div>
+        <div style={summaryCardStyle}>
+          <div style={summaryLabelStyle}>Open / Active</div>
+          <div style={summaryValueStyle}>{list.filter((x) => x.status !== "closed").length}</div>
+        </div>
+        <div style={summaryCardStyle}>
+          <div style={summaryLabelStyle}>Closed</div>
+          <div style={summaryValueStyle}>{list.filter((x) => x.status === "closed").length}</div>
+        </div>
+        <div style={summaryCardStyle}>
+          <div style={summaryLabelStyle}>SCARs</div>
+          <div style={summaryValueStyle}>{list.filter((x) => x.capa_type === "scar" || x.scar_required).length}</div>
+        </div>
+      </section>
+
       {list.length === 0 ? (
         <p>No CAPA records yet.</p>
       ) : (
-        <ul>
-          {list.map((item) => (
-            <li key={item.id} style={{ marginBottom: "18px" }}>
-              <a href={`/capa/${item.id}`}>
-                <strong>{item.capa_number || "CAPA-PENDING"} - {item.title}</strong>
-              </a>{" "}
-              — {item.status}
+        <div style={{ display: "grid", gap: "16px" }}>
+          {list.map((item) => {
+            const statusColor =
+              item.status === "closed"
+                ? "#16a34a"
+                : item.status === "open"
+                ? "#2563eb"
+                : item.status === "effectiveness_check"
+                ? "#7c3aed"
+                : "#f59e0b";
 
-              <br />
-              Source Type: {item.source_type || "NCMR-linked"}
-              <br />
-              CAPA Source: {item.capa_source || "NCMR"}
-              <br />
-              Linked NCMR: {item.linked_ncmr_title || "None"}
-              <br />
-              Owner: {item.owner || "Not assigned"}
-              <br />
-              Due Date: {item.due_date || "Not set"}
-              <br />
-              Effectiveness: {item.effectiveness_check || "Not done"}
+            const isOverdue =
+              item.status !== "closed" &&
+              item.due_date &&
+              item.due_date < new Date().toISOString().split("T")[0];
 
-              {item.signed_by && (
-                <>
-                  <br />
-                  <strong>Electronic Signature:</strong>
-                  <br />
-                  Signed by: {item.signed_by}
-                  <br />
-                  Signed at: {item.signed_at}
-                  <br />
-                  Meaning: {item.signature_meaning}
-                </>
-              )}
-
-              <div style={{ marginTop: "8px" }}>
-                <button
-                  onClick={() => updateStatus(item, "in_progress")}
-                  style={{ marginRight: "8px" }}
+            return (
+              <article
+                key={item.id}
+                style={{
+                  border: isOverdue ? "2px solid #dc2626" : "1px solid #d1d5db",
+                  borderRadius: "12px",
+                  padding: "16px",
+                  background: "#fff",
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: "12px",
+                    alignItems: "flex-start",
+                    flexWrap: "wrap",
+                  }}
                 >
-                  In Progress
-                </button>
+                  <div>
+                    <h3 style={{ margin: "0 0 6px 0" }}>
+                      {item.capa_number || "CAPA-PENDING"} — {item.title || "Untitled CAPA"}
+                    </h3>
+                    <div style={{ color: "#4b5563", fontSize: "14px" }}>
+                      Source: {item.capa_source || "N/A"} | Type: {item.source_type || "N/A"}
+                    </div>
+                  </div>
 
-                <button
-                  onClick={() => updateStatus(item, "effectiveness_check")}
-                  style={{ marginRight: "8px" }}
+                  <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                    <span style={{ ...badgeStyle, background: statusColor }}>
+                      {item.status || "unknown"}
+                    </span>
+                    {isOverdue ? (
+                      <span style={{ ...badgeStyle, background: "#dc2626" }}>Overdue</span>
+                    ) : null}
+                    {(item.capa_type === "scar" || item.scar_required) ? (
+                      <span style={{ ...badgeStyle, background: "#7c3aed" }}>SCAR</span>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                    gap: "8px",
+                    marginTop: "14px",
+                    fontSize: "14px",
+                  }}
                 >
-                  Effectiveness
-                </button>
+                  <div><strong>Owner:</strong> {item.owner || "Not assigned"}</div>
+                  <div><strong>Due Date:</strong> {item.due_date || "Not set"}</div>
+                  <div><strong>Linked NCMR:</strong> {item.linked_ncmr_title || "None"}</div>
+                  <div><strong>Supplier:</strong> {item.supplier_name || "N/A"}</div>
+                  <div><strong>Effectiveness:</strong> {item.effectiveness_check ? "Completed" : "Not done"}</div>
+                  <div><strong>Closed At:</strong> {item.closed_at || "N/A"}</div>
+                </div>
 
-                <button onClick={() => updateStatus(item, "closed")}>
-                  Close with E-Signature
-                </button>
-              </div>
-            </li>
-          ))}
-        </ul>
+                {item.signed_by ? (
+                  <div
+                    style={{
+                      marginTop: "12px",
+                      padding: "10px",
+                      background: "#f9fafb",
+                      borderRadius: "8px",
+                      fontSize: "14px",
+                    }}
+                  >
+                    <strong>Electronic Signature:</strong><br />
+                    Signed by: {item.signed_by}<br />
+                    Signed at: {item.signed_at}<br />
+                    Meaning: {item.signature_meaning}
+                  </div>
+                ) : null}
+
+                <div style={{ marginTop: "14px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                  <a
+                    href={`/capa/${item.id}`}
+                    style={{
+                      display: "inline-block",
+                      background: "#2563eb",
+                      color: "white",
+                      padding: "8px 12px",
+                      borderRadius: "8px",
+                      textDecoration: "none",
+                    }}
+                  >
+                    Open Workflow
+                  </a>
+
+                  <button onClick={() => updateStatus(item, "in_progress")}>
+                    In Progress
+                  </button>
+
+                  <button onClick={() => updateStatus(item, "effectiveness_check")}>
+                    Effectiveness
+                  </button>
+
+                  <button onClick={() => updateStatus(item, "closed")}>
+                    Close with E-Signature
+                  </button>
+                </div>
+              </article>
+            );
+          })}
+        </div>
       )}
-
       <br />
       <a href="/dashboard">Back to Dashboard</a>
     </main>
