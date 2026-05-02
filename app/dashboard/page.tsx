@@ -59,6 +59,19 @@ export default function DashboardPage() {
   const [capaTrend, setCapaTrend] = useState<TrendItem[]>([]);
   const [oosTrend, setOosTrend] = useState<TrendItem[]>([]);
 
+  const [auditTotal, setAuditTotal] = useState(0);
+  const [auditOpen, setAuditOpen] = useState(0);
+  const [auditClosed, setAuditClosed] = useState(0);
+  const [auditOverdue, setAuditOverdue] = useState(0);
+  const [findingTotal, setFindingTotal] = useState(0);
+  const [findingOpen, setFindingOpen] = useState(0);
+  const [findingClosed, setFindingClosed] = useState(0);
+  const [majorFindings, setMajorFindings] = useState(0);
+  const [criticalFindings, setCriticalFindings] = useState(0);
+  const [findingsRequiringCapa, setFindingsRequiringCapa] = useState(0);
+  const [auditTrend, setAuditTrend] = useState<TrendItem[]>([]);
+  const [findingTrend, setFindingTrend] = useState<TrendItem[]>([]);
+
   const getLast6Months = () => {
     const months: { key: string; label: string }[] = [];
     const now = new Date();
@@ -127,7 +140,13 @@ export default function DashboardPage() {
     setTopSuppliers(sorted);
   };
 
-  const buildNotifications = (allNcmrs: any[], allCapas: any[], allOos: any[]) => {
+  const buildNotifications = (
+    allNcmrs: any[],
+    allCapas: any[],
+    allOos: any[],
+    allAudits: any[],
+    allFindings: any[]
+  ) => {
     const alerts: NotificationItem[] = [];
 
     const today = new Date();
@@ -253,6 +272,34 @@ export default function DashboardPage() {
           type: "OOS/OOT Escalation Required",
           message: `${item.investigation_number || "OOS/OOT"} has systemic issue requiring escalation.`,
           link: `/oos-oot/${item.id}`,
+        });
+      }
+    });
+
+    allAudits.forEach((audit: any) => {
+      if (audit.status !== "closed" && audit.audit_date && audit.audit_date < todayStr) {
+        alerts.push({
+          type: "Audit Overdue / Past Due",
+          message: `Audit past due or still open: ${audit.audit_number || "AUD"} - ${audit.audit_title || "Untitled Audit"}.`,
+          link: `/audits/${audit.id}/report`,
+        });
+      }
+    });
+
+    allFindings.forEach((finding: any) => {
+      if (finding.finding_status !== "closed" && finding.finding_severity === "critical") {
+        alerts.push({
+          type: "Critical Audit Finding Open",
+          message: `Critical audit finding open: ${finding.finding_title || "Untitled Finding"}.`,
+          link: finding.capa_id ? `/capa/${finding.capa_id}` : "/audits",
+        });
+      }
+
+      if (finding.finding_status !== "closed" && finding.capa_required && !finding.capa_id) {
+        alerts.push({
+          type: "Audit Finding Missing CAPA",
+          message: `Audit finding requires CAPA but has no linked CAPA: ${finding.finding_title || "Untitled Finding"}.`,
+          link: "/audits",
         });
       }
     });
@@ -402,7 +449,42 @@ export default function DashboardPage() {
     setOosEscalations(allOos.filter((item: any) => item.escalation_required).length);
     setOosTrend(buildTrend(allOos));
 
-    buildNotifications(allNcmrs, allCapas, allOos);
+    const { data: auditData, error: auditError } = await supabase
+      .from("audits")
+      .select("*");
+
+    if (auditError) {
+      alert(auditError.message);
+      return;
+    }
+
+    const { data: findingData, error: findingError } = await supabase
+      .from("audit_findings")
+      .select("*");
+
+    if (findingError) {
+      alert(findingError.message);
+      return;
+    }
+
+    const allAudits = auditData || [];
+    const allFindings = findingData || [];
+
+    setAuditTotal(allAudits.length);
+    setAuditOpen(allAudits.filter((item: any) => item.status !== "closed").length);
+    setAuditClosed(allAudits.filter((item: any) => item.status === "closed").length);
+    setAuditOverdue(allAudits.filter((item: any) => item.status !== "closed" && item.audit_date && item.audit_date < todayStr).length);
+
+    setFindingTotal(allFindings.length);
+    setFindingOpen(allFindings.filter((item: any) => item.finding_status !== "closed").length);
+    setFindingClosed(allFindings.filter((item: any) => item.finding_status === "closed").length);
+    setMajorFindings(allFindings.filter((item: any) => item.finding_severity === "major").length);
+    setCriticalFindings(allFindings.filter((item: any) => item.finding_severity === "critical").length);
+    setFindingsRequiringCapa(allFindings.filter((item: any) => item.capa_required).length);
+    setAuditTrend(buildTrend(allAudits));
+    setFindingTrend(buildTrend(allFindings));
+
+    buildNotifications(allNcmrs, allCapas, allOos, allAudits, allFindings);
   };
 
   useEffect(() => {
@@ -412,6 +494,8 @@ export default function DashboardPage() {
   const ncmrClosureRate = ncmrTotal > 0 ? ((ncmrClosed / ncmrTotal) * 100).toFixed(1) : "0.0";
   const capaClosureRate = capaTotal > 0 ? ((capaClosed / capaTotal) * 100).toFixed(1) : "0.0";
   const oosClosureRate = oosTotal > 0 ? ((oosClosed / oosTotal) * 100).toFixed(1) : "0.0";
+  const auditClosureRate = auditTotal > 0 ? ((auditClosed / auditTotal) * 100).toFixed(1) : "0.0";
+  const findingClosureRate = findingTotal > 0 ? ((findingClosed / findingTotal) * 100).toFixed(1) : "0.0";
 
   const renderTrend = (title: string, data: TrendItem[]) => {
     const max = Math.max(...data.map((d) => d.count), 1);
@@ -444,6 +528,31 @@ export default function DashboardPage() {
   };
 
   const totalHighPriorityAlerts = notifications.length;
+  const totalOpenQualityItems = ncmrOpen + ncmrInvestigation + capaOpen + oosOpen + auditOpen + findingOpen;
+  const totalRiskEvents = capaOverdue + capaEffectivenessOverdue + oosProductImpact + oosSystemicIssues + auditOverdue + criticalFindings + majorFindings;
+  const overallClosureRate =
+    ncmrTotal + capaTotal + oosTotal + auditTotal + findingTotal > 0
+      ? (((ncmrClosed + capaClosed + oosClosed + auditClosed + findingClosed) /
+          (ncmrTotal + capaTotal + oosTotal + auditTotal + findingTotal)) * 100).toFixed(1)
+      : "0.0";
+  const executiveRiskScore =
+    capaOverdue * 3 +
+    capaEffectivenessOverdue * 3 +
+    oosProductImpact * 4 +
+    oosSystemicIssues * 5 +
+    auditOverdue * 2 +
+    criticalFindings * 5 +
+    majorFindings * 3 +
+    ncmrInvestigation * 1;
+
+  const executiveHealth =
+    executiveRiskScore === 0
+      ? "Controlled"
+      : executiveRiskScore < 10
+      ? "Watch"
+      : executiveRiskScore < 25
+      ? "Elevated"
+      : "Critical";
 
   const getStatusColor = (value: number, riskType: "risk" | "warning" = "risk") => {
     if (value === 0) return "#15803d";
@@ -499,9 +608,19 @@ export default function DashboardPage() {
       <div style={{ marginBottom: "22px" }}>
         <h1 style={{ marginBottom: "4px" }}>Executive Quality Dashboard</h1>
         <p style={{ margin: 0, color: "#4b5563" }}>
-          NCMR, CAPA, Supplier Quality, and OOS/OOT performance overview
+          NCMR, CAPA, OOS/OOT, Audit, Supplier Quality, and executive risk overview
         </p>
       </div>
+
+      <section style={sectionStyle}>
+        <h2 style={{ marginTop: 0 }}>Executive Summary</h2>
+        <div style={gridStyle}>
+          <KpiCard title="Quality Health" value={executiveHealth} color={getStatusColor(executiveRiskScore)} subtitle={`Risk score: ${executiveRiskScore}`} />
+          <KpiCard title="Total Open Quality Items" value={totalOpenQualityItems} color={getStatusColor(totalOpenQualityItems, "warning")} />
+          <KpiCard title="Total Risk Events" value={totalRiskEvents} color={getStatusColor(totalRiskEvents)} />
+          <KpiCard title="Overall Closure Rate" value={`${overallClosureRate}%`} color="#2563eb" />
+        </div>
+      </section>
 
       <section
         style={{
@@ -531,6 +650,8 @@ export default function DashboardPage() {
           <KpiCard title="Overdue CAPAs" value={capaOverdue} color={getStatusColor(capaOverdue)} />
           <KpiCard title="OOS/OOT Product Impact" value={oosProductImpact} color={getStatusColor(oosProductImpact)} />
           <KpiCard title="OOS/OOT Systemic Issues" value={oosSystemicIssues} color={getStatusColor(oosSystemicIssues)} />
+          <KpiCard title="Open Audit Findings" value={findingOpen} color={getStatusColor(findingOpen, "warning")} />
+          <KpiCard title="Critical / Major Findings" value={criticalFindings + majorFindings} color={getStatusColor(criticalFindings + majorFindings)} />
         </div>
       </section>
 
@@ -581,6 +702,27 @@ export default function DashboardPage() {
       </section>
 
       <section style={sectionStyle}>
+        <h2 style={{ marginTop: 0 }}>Audit Performance</h2>
+        <div style={gridStyle}>
+          <KpiCard title="Total Audits" value={auditTotal} color="#2563eb" />
+          <KpiCard title="Open Audits" value={auditOpen} color={getStatusColor(auditOpen, "warning")} />
+          <KpiCard title="Closed Audits" value={auditClosed} color="#15803d" />
+          <KpiCard title="Audit Closure Rate" value={`${auditClosureRate}%`} color="#2563eb" />
+          <KpiCard title="Overdue / Past Due Audits" value={auditOverdue} color={getStatusColor(auditOverdue)} />
+          <KpiCard title="Total Findings" value={findingTotal} color="#374151" />
+          <KpiCard title="Open Findings" value={findingOpen} color={getStatusColor(findingOpen, "warning")} />
+          <KpiCard title="Findings Closure Rate" value={`${findingClosureRate}%`} color="#2563eb" />
+          <KpiCard title="Major Findings" value={majorFindings} color={getStatusColor(majorFindings)} />
+          <KpiCard title="Critical Findings" value={criticalFindings} color={getStatusColor(criticalFindings)} />
+          <KpiCard title="Findings Requiring CAPA" value={findingsRequiringCapa} color={getStatusColor(findingsRequiringCapa, "warning")} />
+        </div>
+        {renderTrend("Audit Monthly Trend (Last 6 Months)", auditTrend)}
+        <div style={{ marginTop: "14px" }}>
+          {renderTrend("Audit Finding Monthly Trend (Last 6 Months)", findingTrend)}
+        </div>
+      </section>
+
+      <section style={sectionStyle}>
         <h2 style={{ marginTop: 0 }}>Supplier Quality</h2>
         <div style={gridStyle}>
           <KpiCard title="Supplier CAPA / SCAR Required NCMRs" value={supplierScarRequired} color={getStatusColor(supplierScarRequired, "warning")} />
@@ -609,6 +751,8 @@ export default function DashboardPage() {
         <a href="/capa">CAPAs</a>
         {" | "}
         <a href="/oos-oot">OOS/OOT</a>
+        {" | "}
+        <a href="/audits">Audits</a>
         {" | "}
         <a href="/management-review">Management Review</a>
         {" | "}
