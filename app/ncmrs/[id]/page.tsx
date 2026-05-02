@@ -21,6 +21,8 @@ export default function NcmrDetailPage() {
   const [containmentAction, setContainmentAction] = useState("");
   const [investigationSummary, setInvestigationSummary] = useState("");
   const [rootCause, setRootCause] = useState("");
+  const [rootCauseCategory, setRootCauseCategory] = useState("");
+  const [rootCauseOptions, setRootCauseOptions] = useState<any[]>([]);
   const [correctionActionProposal, setCorrectionActionProposal] = useState("");
   const [correctiveAction, setCorrectiveAction] = useState("");
   const [riskAssessment, setRiskAssessment] = useState("");
@@ -53,6 +55,21 @@ export default function NcmrDetailPage() {
       .maybeSingle();
 
     setUserRole(data?.role || "");
+  };
+
+  const fetchRootCauseOptions = async () => {
+    const { data, error } = await supabase
+      .from("md_root_cause_categories")
+      .select("*")
+      .eq("is_active", true)
+      .order("label");
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    setRootCauseOptions(data || []);
   };
 
   const fetchLinkedCapa = async (capaId: string | null) => {
@@ -111,6 +128,7 @@ export default function NcmrDetailPage() {
     setContainmentAction(data.containment_action || "");
     setInvestigationSummary(data.investigation_summary || "");
     setRootCause(data.root_cause || "");
+    setRootCauseCategory(data.root_cause_category || "");
     setCorrectionActionProposal(data.correction_action_proposal || "");
     setCorrectiveAction(data.corrective_action || "");
     setRiskAssessment(data.risk_assessment || "");
@@ -159,6 +177,7 @@ export default function NcmrDetailPage() {
           problemDescription || record.issue_description || record.title,
         investigation_summary: investigationSummary,
         root_cause: rootCause,
+        root_cause_category: rootCauseCategory,
         corrective_action_plan: correctiveAction,
         action_plan: correctiveAction,
       })
@@ -233,6 +252,7 @@ export default function NcmrDetailPage() {
       containment_action: containmentAction,
       investigation_summary: investigationSummary,
       root_cause: rootCause,
+      root_cause_category: rootCauseCategory,
       correction_action_proposal: correctionActionProposal,
       corrective_action: correctiveAction,
       risk_assessment: riskAssessment,
@@ -496,6 +516,7 @@ export default function NcmrDetailPage() {
     if (!problemDescription) return alert("Problem description is required.");
     if (!containmentAction) return alert("Containment action is required.");
     if (!investigationSummary) return alert("Investigation summary is required.");
+    if (!rootCauseCategory) return alert("Root cause category is required.");
     if (!rootCause) return alert("Root cause is required.");
     if (!correctionActionProposal) return alert("Correction / corrective action proposal is required.");
     if (!correctiveAction) return alert("Corrective action recommendation is required.");
@@ -559,6 +580,7 @@ export default function NcmrDetailPage() {
     if (id) {
       fetchUserRole();
       fetchRecord();
+      fetchRootCauseOptions();
     }
   }, [id]);
 
@@ -649,6 +671,21 @@ export default function NcmrDetailPage() {
           rows={4}
           style={{ width: "100%", maxWidth: "800px", marginBottom: "12px" }}
         />
+
+        <br />
+        <label>Root Cause Category</label><br />
+        <select
+          value={rootCauseCategory}
+          onChange={(e) => setRootCauseCategory(e.target.value)}
+          style={{ padding: "8px", minWidth: "300px", marginBottom: "12px" }}
+        >
+          <option value="">Select category</option>
+          {rootCauseOptions.map((opt) => (
+            <option key={opt.id} value={opt.code}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
 
         <br />
         <label>Root Cause</label><br />
