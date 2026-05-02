@@ -45,6 +45,11 @@ export default function CapaPage() {
   const [dueDate, setDueDate] = useState("");
   const [capaSource, setCapaSource] = useState("direct");
 
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [sourceFilter, setSourceFilter] = useState("");
+  const [typeFilter, setTypeFilter] = useState("");
+
   const fetchUserRole = async () => {
     const { data: userData } = await supabase.auth.getUser();
     const email = userData?.user?.email || "";
@@ -240,6 +245,32 @@ export default function CapaPage() {
     fontWeight: 600,
   };
 
+  const filteredList = list.filter((item) => {
+    const searchableText = [
+      item.capa_number,
+      item.title,
+      item.owner,
+      item.linked_ncmr_title,
+      item.capa_source,
+      item.source_type,
+      item.capa_type,
+      item.supplier_name,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+
+    const matchesSearch = search
+      ? searchableText.includes(search.trim().toLowerCase())
+      : true;
+
+    const matchesStatus = statusFilter ? item.status === statusFilter : true;
+    const matchesSource = sourceFilter ? item.capa_source === sourceFilter : true;
+    const matchesType = typeFilter ? item.capa_type === typeFilter : true;
+
+    return matchesSearch && matchesStatus && matchesSource && matchesType;
+  });
+
   return (
     <main style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
       <h1>CAPA Records</h1>
@@ -302,6 +333,71 @@ export default function CapaPage() {
 
       <h2>Existing CAPAs</h2>
 
+      <section style={{ border: "1px solid #ccc", padding: "15px", marginBottom: "20px", borderRadius: "8px" }}>
+        <h3>Search / Filters</h3>
+
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search by title, CAPA number, owner, supplier, NCMR"
+          style={{ padding: "8px", width: "100%", maxWidth: "650px", marginRight: "10px", marginBottom: "8px" }}
+        />
+
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          style={{ padding: "8px", marginRight: "10px", marginBottom: "8px" }}
+        >
+          <option value="">All Statuses</option>
+          <option value="open">Open</option>
+          <option value="in_progress">In Progress</option>
+          <option value="effectiveness_check">Effectiveness Check</option>
+          <option value="closed">Closed</option>
+        </select>
+
+        <select
+          value={sourceFilter}
+          onChange={(e) => setSourceFilter(e.target.value)}
+          style={{ padding: "8px", marginRight: "10px", marginBottom: "8px" }}
+        >
+          <option value="">All Sources</option>
+          <option value="direct">Direct</option>
+          <option value="audit">Audit</option>
+          <option value="complaint">Complaint</option>
+          <option value="trend">Trend</option>
+          <option value="management_review">Management Review</option>
+          <option value="supplier_issue">Supplier Issue</option>
+          <option value="Supplier recurrence">Supplier Recurrence</option>
+          <option value="Recurring NCMR">Recurring NCMR</option>
+        </select>
+
+        <select
+          value={typeFilter}
+          onChange={(e) => setTypeFilter(e.target.value)}
+          style={{ padding: "8px", marginRight: "10px", marginBottom: "8px" }}
+        >
+          <option value="">All CAPA Types</option>
+          <option value="internal_capa">Internal CAPA</option>
+          <option value="supplier_capa">Supplier CAPA</option>
+          <option value="scar">SCAR</option>
+        </select>
+
+        <button
+          onClick={() => {
+            setSearch("");
+            setStatusFilter("");
+            setSourceFilter("");
+            setTypeFilter("");
+          }}
+        >
+          Clear Filters
+        </button>
+
+        <div style={{ marginTop: "10px", fontSize: "14px", color: "#4b5563" }}>
+          Showing {filteredList.length} of {list.length} CAPA record(s)
+        </div>
+      </section>
+
       <section
         style={{
           display: "grid",
@@ -330,9 +426,11 @@ export default function CapaPage() {
 
       {list.length === 0 ? (
         <p>No CAPA records yet.</p>
+      ) : filteredList.length === 0 ? (
+        <p>No CAPA records match the selected filters.</p>
       ) : (
         <div style={{ display: "grid", gap: "16px" }}>
-          {list.map((item) => {
+          {filteredList.map((item) => {
             const statusColor =
               item.status === "closed"
                 ? "#16a34a"
