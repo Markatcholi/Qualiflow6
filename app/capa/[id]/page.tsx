@@ -20,6 +20,8 @@ export default function CapaDetailPage() {
   const [problemDescription, setProblemDescription] = useState("");
   const [investigationSummary, setInvestigationSummary] = useState("");
   const [rootCause, setRootCause] = useState("");
+  const [rootCauseCategory, setRootCauseCategory] = useState("");
+  const [rootCauseOptions, setRootCauseOptions] = useState<any[]>([]);
   const [correctiveActionPlan, setCorrectiveActionPlan] = useState("");
   const [implementationDetails, setImplementationDetails] = useState("");
   const [effectiveness, setEffectiveness] = useState("");
@@ -40,6 +42,21 @@ export default function CapaDetailPage() {
       .maybeSingle();
 
     setUserRole(data?.role || "");
+  };
+
+  const fetchRootCauseOptions = async () => {
+    const { data, error } = await supabase
+      .from("md_root_cause_categories")
+      .select("*")
+      .eq("is_active", true)
+      .order("label");
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    setRootCauseOptions(data || []);
   };
 
   const fetchRecord = async () => {
@@ -69,6 +86,7 @@ export default function CapaDetailPage() {
     setProblemDescription(data.problem_description || "");
     setInvestigationSummary(data.investigation_summary || "");
     setRootCause(data.root_cause || "");
+    setRootCauseCategory(data.root_cause_category || "");
     setCorrectiveActionPlan(data.corrective_action_plan || data.action_plan || "");
     setImplementationDetails(data.implementation_details || "");
     setEffectiveness(data.effectiveness_check || "");
@@ -97,6 +115,7 @@ export default function CapaDetailPage() {
         problem_description: problemDescription,
         investigation_summary: investigationSummary,
         root_cause: rootCause,
+        root_cause_category: rootCauseCategory,
         corrective_action_plan: correctiveActionPlan,
         action_plan: correctiveActionPlan,
         implementation_details: implementationDetails,
@@ -166,6 +185,7 @@ export default function CapaDetailPage() {
         problem_description: `Original CAPA was rated Not Effective. Original CAPA: ${record.title}`,
         investigation_summary: effectiveness,
         root_cause: rootCause,
+        root_cause_category: rootCauseCategory,
         corrective_action_plan: effectivenessFollowupAction,
         action_plan: effectivenessFollowupAction,
         linked_ncmr_title: record.linked_ncmr_title || null,
@@ -209,6 +229,7 @@ export default function CapaDetailPage() {
 
     if (!problemDescription) return alert("Problem description is required.");
     if (!investigationSummary) return alert("Investigation summary is required.");
+    if (!rootCauseCategory) return alert("Root cause category is required.");
     if (!rootCause) return alert("Root cause is required.");
     if (!correctiveActionPlan) return alert("Corrective action plan is required.");
     if (!implementationDetails) return alert("Implementation details are required.");
@@ -252,6 +273,7 @@ export default function CapaDetailPage() {
         problem_description: problemDescription,
         investigation_summary: investigationSummary,
         root_cause: rootCause,
+        root_cause_category: rootCauseCategory,
         corrective_action_plan: correctiveActionPlan,
         action_plan: correctiveActionPlan,
         implementation_details: implementationDetails,
@@ -287,6 +309,7 @@ export default function CapaDetailPage() {
     if (id) {
       fetchUserRole();
       fetchRecord();
+      fetchRootCauseOptions();
     }
   }, [id]);
 
@@ -336,6 +359,23 @@ export default function CapaDetailPage() {
 
       <section style={{ marginBottom: "20px" }}>
         <h2>3. Root Cause</h2>
+
+        <label>Root Cause Category</label><br />
+        <select
+          value={rootCauseCategory}
+          onChange={(e) => setRootCauseCategory(e.target.value)}
+          style={{ padding: "8px", minWidth: "300px", marginBottom: "12px" }}
+        >
+          <option value="">Select category</option>
+          {rootCauseOptions.map((opt) => (
+            <option key={opt.id} value={opt.code}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+
+        <br />
+        <label>Root Cause</label><br />
         <textarea value={rootCause} onChange={(e) => setRootCause(e.target.value)} rows={4} style={{ width: "100%", maxWidth: "800px" }} />
       </section>
 
