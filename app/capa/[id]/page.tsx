@@ -319,6 +319,11 @@ export default function CapaDetailPage() {
   return (
     <main style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
       <h1>CAPA Controlled Workflow</h1>
+      <button
+  onClick={() => window.open(`/capa/${id}/report`, "_blank")}
+>
+  📄 Print Full CAPA Report
+</button>
 
       <p><strong>Logged-in:</strong> {userEmail || "none"}</p>
       <p><strong>Role:</strong> {userRole || "none"}</p>
