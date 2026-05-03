@@ -284,6 +284,11 @@ export default function OosOotDetailPage() {
   return (
     <main style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
       <h1>OOS / OOT Investigation Workflow</h1>
+      <button
+  onClick={() => window.open(`/oos-oot/${id}/report`, "_blank")}
+>
+  📄 Print Full OOS/OOT Report
+</button>
 
       <p><strong>Logged-in:</strong> {userEmail || "none"}</p>
 
