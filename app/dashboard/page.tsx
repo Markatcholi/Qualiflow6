@@ -610,6 +610,38 @@ export default function DashboardPage() {
         <p style={{ margin: 0, color: "#4b5563" }}>
           NCMR, CAPA, OOS/OOT, Audit, Supplier Quality, and executive risk overview
         </p>
+
+        <div style={{ marginTop: "16px", display: "flex", gap: "10px", flexWrap: "wrap" }}>
+          <button
+            onClick={() => window.open("/management-review/print", "_blank")}
+            style={{
+              padding: "10px 14px",
+              background: "#2563eb",
+              color: "white",
+              borderRadius: "8px",
+              border: "none",
+              cursor: "pointer",
+              fontWeight: 700,
+            }}
+          >
+            Generate Management Review Report
+          </button>
+
+          <button
+            onClick={() => window.print()}
+            style={{
+              padding: "10px 14px",
+              background: "#374151",
+              color: "white",
+              borderRadius: "8px",
+              border: "none",
+              cursor: "pointer",
+              fontWeight: 700,
+            }}
+          >
+            Print Dashboard
+          </button>
+        </div>
       </div>
 
       <section style={sectionStyle}>
@@ -755,6 +787,8 @@ export default function DashboardPage() {
         <a href="/audits">Audits</a>
         {" | "}
         <a href="/management-review">Management Review</a>
+        {" | "}
+        <a href="/management-review/print">Create MR Report</a>
         {" | "}
         <a href="/audit">Audit Trail</a>
         {" | "}
