@@ -682,3 +682,11 @@ const signatureBoxStyle: React.CSSProperties = {
   padding: "12px",
   marginBottom: "12px",
 };
+
+const legendDotStyle: React.CSSProperties = {
+  display: "inline-block",
+  width: "10px",
+  height: "10px",
+  borderRadius: "50%",
+  marginRight: "4px",
+};
