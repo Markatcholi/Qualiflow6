@@ -26,6 +26,7 @@ export default function PrintManagementReview() {
   const [userRole, setUserRole] = useState("");
   const [locked, setLocked] = useState(false);
   const [signatures, setSignatures] = useState<SignatureRecord[]>([]);
+  const [snapshotFrozen, setSnapshotFrozen] = useState(false);
 
   const signatureMeaning =
     "I confirm this Management Review report snapshot has been reviewed and is accurate at the time of approval.";
@@ -47,6 +48,10 @@ export default function PrintManagementReview() {
   };
 
   const fetchData = async () => {
+    if (snapshotFrozen || locked || reportId) {
+      return;
+    }
+
     const { data: ncmr } = await supabase.from("ncmrs").select("*");
     const { data: capa } = await supabase.from("capas").select("*");
     const { data: oos } = await supabase.from("oos_oot_investigations").select("*");
@@ -63,6 +68,7 @@ export default function PrintManagementReview() {
 
     setData({
       generated_at: new Date().toISOString(),
+      snapshot_status: "Live preview - not frozen",
 
       ncmrTotal: ncmrList.length,
       ncmrOpen: ncmrList.filter((x: any) => x.status !== "closed").length,
@@ -132,12 +138,20 @@ export default function PrintManagementReview() {
       return "";
     }
 
+    const frozenSnapshot = {
+      ...data,
+      generated_at: data.generated_at || new Date().toISOString(),
+      frozen_at: new Date().toISOString(),
+      snapshot_status: "Frozen at first electronic signature",
+      frozen_by: userEmail || null,
+    };
+
     const { data: inserted, error } = await supabase
       .from("printable_management_reviews")
       .insert({
         report_title: reportTitle,
         report_period: reportPeriod,
-        report_data: data,
+        report_data: frozenSnapshot,
         is_locked: false,
         created_by: userEmail || null,
         company_name: companyName,
@@ -152,6 +166,8 @@ export default function PrintManagementReview() {
     }
 
     setReportId(inserted.id);
+    setData(inserted.report_data || frozenSnapshot);
+    setSnapshotFrozen(true);
     return inserted.id;
   };
 
@@ -327,6 +343,8 @@ export default function PrintManagementReview() {
           <div><strong>QMS Reference:</strong> {qmsReference}</div>
           <div><strong>Report ID:</strong> {reportId || "Draft - not yet saved"}</div>
           <div><strong>Record Status:</strong> {locked ? "Locked / Controlled Record" : "Draft / Pending Lock"}</div>
+          <div><strong>Snapshot Status:</strong> {data.snapshot_status || (snapshotFrozen ? "Frozen" : "Live preview")}</div>
+          <div><strong>Frozen At:</strong> {data.frozen_at || "Not frozen until first signature"}</div>
         </div>
 
         <div style={{ textAlign: "right" }}>
@@ -342,7 +360,7 @@ export default function PrintManagementReview() {
         <input
           value={companyName}
           onChange={(e) => setCompanyName(e.target.value)}
-          disabled={locked}
+          disabled={locked || snapshotFrozen}
           style={inputStyle}
         />
 
@@ -354,7 +372,7 @@ export default function PrintManagementReview() {
         <input
           value={qmsReference}
           onChange={(e) => setQmsReference(e.target.value)}
-          disabled={locked}
+          disabled={locked || snapshotFrozen}
           style={inputStyle}
         />
 
@@ -366,7 +384,7 @@ export default function PrintManagementReview() {
         <input
           value={reportTitle}
           onChange={(e) => setReportTitle(e.target.value)}
-          disabled={locked}
+          disabled={locked || snapshotFrozen}
           style={inputStyle}
         />
 
@@ -378,7 +396,7 @@ export default function PrintManagementReview() {
         <input
           value={reportPeriod}
           onChange={(e) => setReportPeriod(e.target.value)}
-          disabled={locked}
+          disabled={locked || snapshotFrozen}
           placeholder="Example: Q2 2026"
           style={inputStyle}
         />
@@ -392,6 +410,12 @@ export default function PrintManagementReview() {
           <Metric label="Total Risk Events" value={totalRiskEvents} />
           <Metric label="Overdue CAPAs" value={data.capaOverdue || 0} />
           <Metric label="OOS/OOT Product Impact Events" value={data.oosImpact || 0} />
+        </div>
+
+        <div style={{ marginTop: "8px", marginBottom: "8px", fontSize: "12px" }}>
+          <span style={{ ...legendDotStyle, background: "#15803d" }} /> Controlled / Closed &nbsp;
+          <span style={{ ...legendDotStyle, background: "#b45309" }} /> Watch / Low Count Risk &nbsp;
+          <span style={{ ...legendDotStyle, background: "#b91c1c" }} /> Elevated Risk
         </div>
 
         <p>
@@ -462,6 +486,9 @@ export default function PrintManagementReview() {
 
       <section style={sectionStyle}>
         <h2>Electronic Signatures</h2>
+        <p><strong>Snapshot Freeze Rule:</strong> Report data is frozen at the first electronic signature.</p>
+        <p><strong>Snapshot Status:</strong> {data.snapshot_status || "Live preview"}</p>
+        <p><strong>Frozen At:</strong> {data.frozen_at || "Not frozen yet"}</p>
 
         <SignatureBlock
           title="VP Quality Approval"
@@ -533,10 +560,46 @@ export default function PrintManagementReview() {
 }
 
 function Metric({ label, value }: { label: string; value: string | number }) {
+  const numericValue = typeof value === "number" ? value : Number(value);
+  const lowerLabel = label.toLowerCase();
+
+  const isRiskMetric =
+    lowerLabel.includes("open") ||
+    lowerLabel.includes("overdue") ||
+    lowerLabel.includes("critical") ||
+    lowerLabel.includes("major") ||
+    lowerLabel.includes("impact") ||
+    lowerLabel.includes("systemic") ||
+    lowerLabel.includes("escalation") ||
+    lowerLabel.includes("capa required") ||
+    lowerLabel.includes("recurring");
+
+  let color = "#2563eb";
+  let background = "#eff6ff";
+  let border = "#bfdbfe";
+
+  if (isRiskMetric && numericValue > 0) {
+    color = numericValue >= 5 ? "#b91c1c" : "#b45309";
+    background = numericValue >= 5 ? "#fef2f2" : "#fffbeb";
+    border = numericValue >= 5 ? "#fecaca" : "#fde68a";
+  }
+
+  if (lowerLabel.includes("closed") || lowerLabel.includes("total")) {
+    color = "#15803d";
+    background = "#f0fdf4";
+    border = "#bbf7d0";
+  }
+
   return (
-    <div style={metricStyle}>
+    <div
+      style={{
+        ...metricStyle,
+        border: `1px solid ${border}`,
+        background,
+      }}
+    >
       <div style={{ fontSize: "12px", color: "#555" }}>{label}</div>
-      <div style={{ fontSize: "22px", fontWeight: "bold" }}>{value}</div>
+      <div style={{ fontSize: "22px", fontWeight: "bold", color }}>{value}</div>
     </div>
   );
 }
