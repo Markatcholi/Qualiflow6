@@ -608,7 +608,20 @@ export default function NcmrDetailPage() {
       fontWeight: "600"
     }}
   >
-    📄 Print Full NCMR Report
+    <button
+  onClick={() => window.open(`/ncmrs/${id}/report`, "_blank")}
+  style={{
+    padding: "10px 14px",
+    background: "#2563eb",
+    color: "white",
+    border: "none",
+    borderRadius: "6px",
+    cursor: "pointer",
+    fontWeight: "600"
+  }}
+>
+  NCMR Report
+</button>
   </button>
 </div>
 
