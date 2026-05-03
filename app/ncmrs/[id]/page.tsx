@@ -595,6 +595,22 @@ export default function NcmrDetailPage() {
   return (
     <main style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
       <h1>NCMR Controlled Workflow</h1>
+      <div style={{ marginBottom: "16px" }}>
+  <button
+    onClick={() => window.open(`/ncmrs/${id}/report`, "_blank")}
+    style={{
+      padding: "10px 14px",
+      background: "#2563eb",
+      color: "white",
+      border: "none",
+      borderRadius: "6px",
+      cursor: "pointer",
+      fontWeight: "600"
+    }}
+  >
+    📄 Print Full NCMR Report
+  </button>
+</div>
 
       <p><strong>Logged-in:</strong> {userEmail || "none"}</p>
       <p><strong>Role:</strong> {userRole || "none"}</p>
