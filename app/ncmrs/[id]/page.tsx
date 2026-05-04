@@ -621,11 +621,11 @@ export default function NcmrDetailPage() {
     return <main style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>Loading...</main>;
   }
 
-  const isLocked = record?.is_locked === true;
-
   if (!record) {
     return <main style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>Record not found</main>;
   }
+
+  const isLocked = record?.is_locked === true;
 
   return (
     <main style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
