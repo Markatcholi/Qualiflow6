@@ -337,9 +337,9 @@ export default function CapaDetailPage() {
   }, [id]);
 
   if (loading) return <main style={{ padding: "20px" }}>Loading...</main>;
-  const isLocked = record?.is_locked === true;
-
   if (!record) return <main style={{ padding: "20px" }}>CAPA not found</main>;
+
+  const isLocked = record?.is_locked === true;
 
   return (
     <main style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
@@ -347,7 +347,7 @@ export default function CapaDetailPage() {
 
       {isLocked ? (
         <div
-          style={
+          style={{
             padding: "12px",
             background: "#f3f4f6",
             border: "1px solid #9ca3af",
@@ -355,7 +355,7 @@ export default function CapaDetailPage() {
             marginBottom: "16px",
             color: "#374151",
             fontWeight: 600,
-          }
+          }}
         >
           🔒 This record is locked after electronic signature and cannot be edited.
           <br />
