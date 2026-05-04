@@ -536,6 +536,22 @@ export default function CapaPage() {
                     Open Workflow
                   </a>
 
+                  <a
+                    href={`/capa/${item.id}/report`}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{
+                      display: "inline-block",
+                      background: "#3b82f6",
+                      color: "white",
+                      padding: "8px 12px",
+                      borderRadius: "8px",
+                      textDecoration: "none",
+                    }}
+                  >
+                    CAPA Report
+                  </a>
+
                   <button onClick={() => updateStatus(item, "in_progress")}>
                     In Progress
                   </button>
