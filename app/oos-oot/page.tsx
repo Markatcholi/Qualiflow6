@@ -892,7 +892,7 @@ export default function OosOotPage() {
                   <div><strong>Status:</strong> {item.status || "N/A"}</div>
                 </div>
 
-                <div style={{ marginTop: "14px" }}>
+                <div style={{ marginTop: "14px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
                   <a
                     href={`/oos-oot/${item.id}`}
                     style={{
@@ -905,6 +905,22 @@ export default function OosOotPage() {
                     }}
                   >
                     Open Investigation
+                  </a>
+
+                  <a
+                    href={`/oos-oot/${item.id}/report`}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{
+                      display: "inline-block",
+                      background: "#3b82f6",
+                      color: "white",
+                      padding: "8px 12px",
+                      borderRadius: "8px",
+                      textDecoration: "none",
+                    }}
+                  >
+                    OOS/OOT Report
                   </a>
                 </div>
               </article>
