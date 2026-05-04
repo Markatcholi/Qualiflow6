@@ -929,7 +929,7 @@ export default function NcmrPage() {
                   </div>
                 ) : null}
 
-                <div style={{ marginTop: "14px" }}>
+                <div style={{ marginTop: "14px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
                   <a
                     href={`/ncmrs/${item.id}`}
                     style={{
@@ -942,6 +942,22 @@ export default function NcmrPage() {
                     }}
                   >
                     Open Workflow
+                  </a>
+
+                  <a
+                    href={`/ncmrs/${item.id}/report`}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{
+                      display: "inline-block",
+                      background: "#3b82f6",
+                      color: "white",
+                      padding: "8px 12px",
+                      borderRadius: "8px",
+                      textDecoration: "none",
+                    }}
+                  >
+                    NCMR Report
                   </a>
                 </div>
               </article>
