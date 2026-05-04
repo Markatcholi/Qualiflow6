@@ -747,7 +747,6 @@ export default function AuditsPage() {
                       Close Audit
                     </button>
 
-                    <a
                       <a
   href={`/audits/${audit.id}/report`}
   target="_blank"
