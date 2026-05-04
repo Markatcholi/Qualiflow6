@@ -272,6 +272,9 @@ export default function AuditsPage() {
         signed_at: now,
         signature_email_entered: enteredEmail,
         signature_meaning: meaning,
+        is_locked: true,
+        locked_at: now,
+        locked_by: email,
       })
       .eq("id", audit.id);
 
@@ -747,27 +750,26 @@ export default function AuditsPage() {
                       Close Audit
                     </button>
 
-                      <a
-  href={`/audits/${audit.id}/report`}
-  target="_blank"
-  rel="noreferrer"
-  style={{
-    padding: "8px 14px",
-    background:
-      audit.status === "closed"
-        ? "#16a34a"
-        : audit.status === "draft"
-        ? "#6b7280"
-        : "#2563eb",
-    color: "white",
-    borderRadius: "6px",
-    textDecoration: "none",
-    fontWeight: "600",
-    display: "inline-block"
-  }}
->
-  Audit Report
-                        
+                    <a
+                      href={`/audits/${audit.id}/report`}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{
+                        padding: "8px 14px",
+                        background:
+                          audit.status === "closed"
+                            ? "#16a34a"
+                            : audit.status === "draft"
+                            ? "#6b7280"
+                            : "#2563eb",
+                        color: "white",
+                        borderRadius: "6px",
+                        textDecoration: "none",
+                        fontWeight: "600",
+                        display: "inline-block",
+                      }}
+                    >
+                      Audit Report
                     </a>
                   </div>
 
