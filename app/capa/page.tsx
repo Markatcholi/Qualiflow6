@@ -271,7 +271,6 @@ export default function CapaPage() {
     return matchesSearch && matchesStatus && matchesSource && matchesType;
   });
 
-
   return (
     <main style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
       <h1>CAPA Records</h1>
@@ -541,14 +540,19 @@ export default function CapaPage() {
                     href={`/capa/${item.id}/report`}
                     target="_blank"
                     rel="noreferrer"
-                    style={
+                    style={{
                       display: "inline-block",
-                      background: item.status === "closed" || item.status === "completed" ? "#16a34a" : item.status === "draft" ? "#6b7280" : "#3b82f6",
+                      background:
+                        item.status === "closed"
+                          ? "#16a34a"
+                          : item.status === "draft"
+                          ? "#6b7280"
+                          : "#3b82f6",
                       color: "white",
                       padding: "8px 12px",
                       borderRadius: "8px",
                       textDecoration: "none",
-                    }
+                    }}
                   >
                     CAPA Report
                   </a>
