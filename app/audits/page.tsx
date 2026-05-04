@@ -748,17 +748,27 @@ export default function AuditsPage() {
                     </button>
 
                     <a
-                      href={`/audits/${audit.id}/report`}
-                      style={{
-                        display: "inline-block",
-                        background: "#2563eb",
-                        color: "white",
-                        padding: "8px 12px",
-                        borderRadius: "8px",
-                        textDecoration: "none",
-                      }}
-                    >
-                      Audit Report
+                      <a
+  href={`/audits/${audit.id}/report`}
+  target="_blank"
+  rel="noreferrer"
+  style={{
+    padding: "8px 14px",
+    background:
+      audit.status === "closed"
+        ? "#16a34a"
+        : audit.status === "draft"
+        ? "#6b7280"
+        : "#2563eb",
+    color: "white",
+    borderRadius: "6px",
+    textDecoration: "none",
+    fontWeight: "600",
+    display: "inline-block"
+  }}
+>
+  Audit Report
+</a>
                     </a>
                   </div>
 
