@@ -322,7 +322,11 @@ export default function CapaDetailPage() {
       <button
   onClick={() => window.open(`/capa/${id}/report`, "_blank")}
 >
-  📄 Print Full CAPA Report
+  📄 <button
+  onClick={() => window.open(`/capa/${id}/report`, "_blank")}
+>
+  CAPA Report
+</button>
 </button>
 
       <p><strong>Logged-in:</strong> {userEmail || "none"}</p>
