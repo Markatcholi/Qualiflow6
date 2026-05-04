@@ -335,8 +335,7 @@ export default function OosOotPage() {
   }) => {
     const percent = max > 0 ? (value / max) * 100 : 0;
 
-  
-  return (
+    return (
       <div style={{ marginBottom: "10px" }}>
         <div>{label}: {value}</div>
         <div
@@ -912,14 +911,19 @@ export default function OosOotPage() {
                     href={`/oos-oot/${item.id}/report`}
                     target="_blank"
                     rel="noreferrer"
-                    style={
+                    style={{
                       display: "inline-block",
-                      background: item.status === "closed" || item.status === "completed" ? "#16a34a" : item.status === "draft" ? "#6b7280" : "#3b82f6",
+                      background:
+                        item.status === "closed"
+                          ? "#16a34a"
+                          : item.status === "draft"
+                          ? "#6b7280"
+                          : "#3b82f6",
                       color: "white",
                       padding: "8px 12px",
                       borderRadius: "8px",
                       textDecoration: "none",
-                    }
+                    }}
                   >
                     OOS/OOT Report
                   </a>
