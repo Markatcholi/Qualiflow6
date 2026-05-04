@@ -633,7 +633,7 @@ export default function NcmrDetailPage() {
 
       {isLocked ? (
         <div
-          style={
+          style={{
             padding: "12px",
             background: "#f3f4f6",
             border: "1px solid #9ca3af",
@@ -641,7 +641,7 @@ export default function NcmrDetailPage() {
             marginBottom: "16px",
             color: "#374151",
             fontWeight: 600,
-          }
+          }}
         >
           🔒 This record is locked after electronic signature and cannot be edited.
           <br />
