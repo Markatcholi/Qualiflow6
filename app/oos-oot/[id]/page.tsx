@@ -287,7 +287,11 @@ export default function OosOotDetailPage() {
       <button
   onClick={() => window.open(`/oos-oot/${id}/report`, "_blank")}
 >
-  📄 Print Full OOS/OOT Report
+  📄 <button
+  onClick={() => window.open(`/oos-oot/${id}/report`, "_blank")}
+>
+  OOS/OOT Report
+</button>
 </button>
 
       <p><strong>Logged-in:</strong> {userEmail || "none"}</p>
