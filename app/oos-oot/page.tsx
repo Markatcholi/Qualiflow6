@@ -335,7 +335,39 @@ export default function OosOotPage() {
   }) => {
     const percent = max > 0 ? (value / max) * 100 : 0;
 
-    return (
+  
+  const getReportButtonColor = (status: string | null | undefined) => {
+    const normalized = (status || "").toLowerCase();
+
+    if (normalized === "closed" || normalized === "completed") return "#16a34a";
+    if (normalized === "draft") return "#6b7280";
+    if (
+      normalized === "open" ||
+      normalized === "in_progress" ||
+      normalized === "investigation" ||
+      normalized === "in_review" ||
+      normalized === "effectiveness_check"
+    ) return "#2563eb";
+
+    return "#3b82f6";
+  };
+
+  const isReportLocked = (item: any) => {
+    return item?.is_locked === true || item?.locked === true || item?.record_locked === true;
+  };
+
+  const reportButtonStyle = (item: any): React.CSSProperties => ({
+    display: "inline-block",
+    background: isReportLocked(item) ? "#9ca3af" : getReportButtonColor(item.status),
+    color: "white",
+    padding: "8px 12px",
+    borderRadius: "8px",
+    textDecoration: "none",
+    cursor: isReportLocked(item) ? "not-allowed" : "pointer",
+    opacity: isReportLocked(item) ? 0.65 : 1,
+  });
+
+  return (
       <div style={{ marginBottom: "10px" }}>
         <div>{label}: {value}</div>
         <div
@@ -907,21 +939,20 @@ export default function OosOotPage() {
                     Open Investigation
                   </a>
 
-                  <a
-                    href={`/oos-oot/${item.id}/report`}
-                    target="_blank"
-                    rel="noreferrer"
-                    style={{
-                      display: "inline-block",
-                      background: "#3b82f6",
-                      color: "white",
-                      padding: "8px 12px",
-                      borderRadius: "8px",
-                      textDecoration: "none",
-                    }}
-                  >
-                    OOS/OOT Report
-                  </a>
+                  {isReportLocked(item) ? (
+                    <span style={reportButtonStyle(item)}>
+                      OOS/OOT Report Locked
+                    </span>
+                  ) : (
+                    <a
+                      href={`/oos-oot/${item.id}/report`}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={reportButtonStyle(item)}
+                    >
+                      OOS/OOT Report
+                    </a>
+                  )}
                 </div>
               </article>
             );
