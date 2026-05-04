@@ -37,10 +37,10 @@ export default function AuditDetailPage() {
 
   if (!audit) return <main style={{ padding: 20 }}>Loading audit...</main>;
 
+  const isLocked = audit?.is_locked === true;
+
   return (
     <main style={{ padding: 30, fontFamily: "Arial, sans-serif" }}>
-      
-      {/* ✅ PRINT BUTTON */}
       <div style={{ marginBottom: "16px" }}>
         <button
           onClick={() => window.open(`/audits/${id}/report`, "_blank")}
@@ -51,14 +51,34 @@ export default function AuditDetailPage() {
             border: "none",
             borderRadius: "6px",
             cursor: "pointer",
-            fontWeight: "600"
+            fontWeight: "600",
           }}
         >
-          📄 Print Full Audit Report
+          Audit Report
         </button>
       </div>
 
       <h1>Audit Workflow</h1>
+
+      {isLocked ? (
+        <div
+          style={{
+            padding: "12px",
+            background: "#f3f4f6",
+            border: "1px solid #9ca3af",
+            borderRadius: "8px",
+            marginBottom: "16px",
+            color: "#374151",
+            fontWeight: 600,
+          }}
+        >
+          🔒 This record is locked after electronic signature and cannot be edited.
+          <br />
+          <span style={{ fontWeight: 400 }}>
+            Locked At: {audit.locked_at || "N/A"} | Locked By: {audit.locked_by || "N/A"}
+          </span>
+        </div>
+      ) : null}
 
       <h2>Audit Summary</h2>
       <p><strong>Audit Number:</strong> {audit.audit_number}</p>
