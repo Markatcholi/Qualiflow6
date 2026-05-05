@@ -344,26 +344,6 @@ export default function CapaDetailPage() {
   return (
     <main style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
       <h1>CAPA Controlled Workflow</h1>
-
-      {isLocked ? (
-        <div
-          style={{
-            padding: "12px",
-            background: "#f3f4f6",
-            border: "1px solid #9ca3af",
-            borderRadius: "8px",
-            marginBottom: "16px",
-            color: "#374151",
-            fontWeight: 600,
-          }}
-        >
-          🔒 This record is locked after electronic signature and cannot be edited.
-          <br />
-          <span style={ fontWeight: 400 }>
-            Locked At: {record.locked_at || "N/A"} | Locked By: {record.locked_by || "N/A"}
-          </span>
-        </div>
-      ) : null}
       <div style={{ marginBottom: "16px" }}>
         <button
           onClick={() => window.open(`/capa/${id}/report`, "_blank")}
@@ -402,27 +382,27 @@ export default function CapaDetailPage() {
         <h2>1. Initiation</h2>
 
         <label>Owner</label><br />
-        <input disabled={isLocked} value={owner} onChange={(e) => setOwner(e.target.value)} style={{ padding: "8px", width: "300px", marginBottom: "12px" }} />
+        <input value={owner} onChange={(e) => setOwner(e.target.value)} style={{ padding: "8px", width: "300px", marginBottom: "12px" }} />
 
         <br />
         <label>CAPA Due Date</label><br />
-        <input disabled={isLocked} type="date" value={dueDate || ""} onChange={(e) => setDueDate(e.target.value)} style={{ padding: "8px", marginBottom: "12px" }} />
+        <input type="date" value={dueDate || ""} onChange={(e) => setDueDate(e.target.value)} style={{ padding: "8px", marginBottom: "12px" }} />
 
         <br />
         <label>Problem Description</label><br />
-        <textarea disabled={isLocked} value={problemDescription} onChange={(e) => setProblemDescription(e.target.value)} rows={4} style={{ width: "100%", maxWidth: "800px" }} />
+        <textarea value={problemDescription} onChange={(e) => setProblemDescription(e.target.value)} rows={4} style={{ width: "100%", maxWidth: "800px" }} />
       </section>
 
       <section style={{ marginBottom: "20px" }}>
         <h2>2. Investigation</h2>
-        <textarea disabled={isLocked} value={investigationSummary} onChange={(e) => setInvestigationSummary(e.target.value)} rows={4} style={{ width: "100%", maxWidth: "800px" }} />
+        <textarea value={investigationSummary} onChange={(e) => setInvestigationSummary(e.target.value)} rows={4} style={{ width: "100%", maxWidth: "800px" }} />
       </section>
 
       <section style={{ marginBottom: "20px" }}>
         <h2>3. Root Cause</h2>
 
         <label>Root Cause Category</label><br />
-        <select disabled={isLocked}
+        <select
           value={rootCauseCategory}
           onChange={(e) => setRootCauseCategory(e.target.value)}
           style={{ padding: "8px", minWidth: "300px", marginBottom: "12px" }}
@@ -437,26 +417,26 @@ export default function CapaDetailPage() {
 
         <br />
         <label>Root Cause</label><br />
-        <textarea disabled={isLocked} value={rootCause} onChange={(e) => setRootCause(e.target.value)} rows={4} style={{ width: "100%", maxWidth: "800px" }} />
+        <textarea value={rootCause} onChange={(e) => setRootCause(e.target.value)} rows={4} style={{ width: "100%", maxWidth: "800px" }} />
       </section>
 
       <section style={{ marginBottom: "20px" }}>
         <h2>4. Corrective Action Plan</h2>
-        <textarea disabled={isLocked} value={correctiveActionPlan} onChange={(e) => setCorrectiveActionPlan(e.target.value)} rows={4} style={{ width: "100%", maxWidth: "800px" }} />
+        <textarea value={correctiveActionPlan} onChange={(e) => setCorrectiveActionPlan(e.target.value)} rows={4} style={{ width: "100%", maxWidth: "800px" }} />
       </section>
 
       <section style={{ marginBottom: "20px" }}>
         <h2>5. Implementation</h2>
 
-        <textarea disabled={isLocked} value={implementationDetails} onChange={(e) => setImplementationDetails(e.target.value)} rows={4} style={{ width: "100%", maxWidth: "800px" }} />
+        <textarea value={implementationDetails} onChange={(e) => setImplementationDetails(e.target.value)} rows={4} style={{ width: "100%", maxWidth: "800px" }} />
 
         <div style={{ marginTop: "12px" }}>
           <label>Effectiveness Due Date</label><br />
-          <input disabled={isLocked} type="date" value={effectivenessDueDate || ""} onChange={(e) => setEffectivenessDueDate(e.target.value)} style={{ padding: "8px" }} />
+          <input type="date" value={effectivenessDueDate || ""} onChange={(e) => setEffectivenessDueDate(e.target.value)} style={{ padding: "8px" }} />
         </div>
 
         <div style={{ marginTop: "12px" }}>
-          <button onClick={markImplemented}>Mark Implementation Complete</button>
+          <button onClick={markImplemented} disabled={isLocked}>Mark Implementation Complete</button>
         </div>
 
         {record.implemented_by ? (
@@ -472,11 +452,11 @@ export default function CapaDetailPage() {
         <h2>6. Effectiveness Check</h2>
 
         <label>Effectiveness Check</label><br />
-        <textarea disabled={isLocked} value={effectiveness} onChange={(e) => setEffectiveness(e.target.value)} rows={4} style={{ width: "100%", maxWidth: "800px" }} />
+        <textarea value={effectiveness} onChange={(e) => setEffectiveness(e.target.value)} rows={4} style={{ width: "100%", maxWidth: "800px" }} />
 
         <div style={{ marginTop: "12px" }}>
           <label>Effectiveness Rating</label><br />
-          <select disabled={isLocked}
+          <select
             value={effectivenessRating}
             onChange={(e) => setEffectivenessRating(e.target.value)}
             style={{ padding: "8px", minWidth: "240px" }}
@@ -491,7 +471,7 @@ export default function CapaDetailPage() {
         {(effectivenessRating === "partially_effective" || effectivenessRating === "not_effective") ? (
           <div style={{ marginTop: "12px" }}>
             <label>Follow-up Action</label><br />
-            <textarea disabled={isLocked}
+            <textarea
               value={effectivenessFollowupAction}
               onChange={(e) => setEffectivenessFollowupAction(e.target.value)}
               placeholder="Required for Partially Effective or Not Effective."
@@ -503,7 +483,7 @@ export default function CapaDetailPage() {
 
         {effectivenessRating === "not_effective" && !record.followup_capa_id ? (
           <div style={{ marginTop: "12px" }}>
-            <button onClick={createFollowupCapa}>
+            <button onClick={createFollowupCapa} disabled={isLocked}>
               Create Follow-up CAPA
             </button>
           </div>
@@ -525,11 +505,11 @@ export default function CapaDetailPage() {
         )}
       </section>
 
-      <button onClick={saveCapaWorkflow} style={{ marginRight: "10px" }}>
+      <button onClick={saveCapaWorkflow} disabled={isLocked} style={{ marginRight: "10px" }}>
         Save CAPA Workflow
       </button>
 
-      <button onClick={closeCapa} style={{ marginRight: "10px" }}>
+      <button onClick={closeCapa} disabled={isLocked} style={{ marginRight: "10px" }}>
         Close CAPA with E-Signature
       </button>
 
