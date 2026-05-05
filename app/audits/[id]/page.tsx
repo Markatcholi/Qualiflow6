@@ -60,7 +60,7 @@ export default function AuditDetailPage() {
 
       <h1>Audit Workflow</h1>
 
-      {isLocked ? (
+      {isLocked && (
         <div
           style={{
             padding: "12px",
@@ -78,7 +78,7 @@ export default function AuditDetailPage() {
             Locked At: {audit.locked_at || "N/A"} | Locked By: {audit.locked_by || "N/A"}
           </span>
         </div>
-      ) : null}
+      )}
 
       <h2>Audit Summary</h2>
       <p><strong>Audit Number:</strong> {audit.audit_number}</p>
