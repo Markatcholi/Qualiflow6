@@ -14,6 +14,15 @@ type DefectSubcategoryOption = {
   label: string;
 };
 
+type AffectedItemInput = {
+  product_part_number: string;
+  lot_number: string;
+  workorder_number: string;
+  quantity_affected: string;
+  quarantined_quantity: string;
+  product_disposition: string;
+};
+
 type Ncmr = {
   id: string;
   ncmr_number: string | null;
@@ -68,6 +77,17 @@ export default function NcmrPage() {
   const [siteLocation, setSiteLocation] = useState("");
   const [immediateCorrection, setImmediateCorrection] = useState("");
   const [owner, setOwner] = useState("");
+
+  const [affectedItems, setAffectedItems] = useState<AffectedItemInput[]>([
+    {
+      product_part_number: "",
+      lot_number: "",
+      workorder_number: "",
+      quantity_affected: "",
+      quarantined_quantity: "",
+      product_disposition: "",
+    },
+  ]);
 
   const [list, setList] = useState<Ncmr[]>([]);
 
@@ -241,6 +261,53 @@ export default function NcmrPage() {
     return { required: false, reason: "" };
   };
 
+  const addAffectedItem = () => {
+    setAffectedItems([
+      ...affectedItems,
+      {
+        product_part_number: "",
+        lot_number: "",
+        workorder_number: "",
+        quantity_affected: "",
+        quarantined_quantity: "",
+        product_disposition: "",
+      },
+    ]);
+  };
+
+  const updateAffectedItem = (
+    index: number,
+    field: keyof AffectedItemInput,
+    value: string
+  ) => {
+    const updated = [...affectedItems];
+    updated[index] = {
+      ...updated[index],
+      [field]: value,
+    };
+    setAffectedItems(updated);
+  };
+
+  const removeAffectedItem = (index: number) => {
+    if (affectedItems.length === 1) {
+      setAffectedItems([
+        {
+          product_part_number: "",
+          lot_number: "",
+          workorder_number: "",
+          quantity_affected: "",
+          quarantined_quantity: "",
+          product_disposition: "",
+        },
+      ]);
+      return;
+    }
+
+    const updated = [...affectedItems];
+    updated.splice(index, 1);
+    setAffectedItems(updated);
+  };
+
   const addNcmr = async () => {
     if (!title) {
       alert("Title is required.");
@@ -293,6 +360,48 @@ export default function NcmrPage() {
     }
 
     await addAuditLog("ncmr", data.id, "created", `Created NCMR: ${title}`);
+
+    const validAffectedItems = affectedItems.filter(
+      (item) =>
+        item.product_part_number ||
+        item.lot_number ||
+        item.workorder_number ||
+        item.quantity_affected ||
+        item.quarantined_quantity ||
+        item.product_disposition
+    );
+
+    if (validAffectedItems.length > 0) {
+      const itemsToInsert = validAffectedItems.map((item) => ({
+        ncmr_id: data.id,
+        product_part_number: item.product_part_number || null,
+        lot_number: item.lot_number || null,
+        workorder_number: item.workorder_number || null,
+        quantity_affected: item.quantity_affected
+          ? Number(item.quantity_affected)
+          : null,
+        quarantined_quantity: item.quarantined_quantity
+          ? Number(item.quarantined_quantity)
+          : null,
+        product_disposition: item.product_disposition || null,
+      }));
+
+      const { error: affectedItemsError } = await supabase
+        .from("ncmr_affected_items")
+        .insert(itemsToInsert);
+
+      if (affectedItemsError) {
+        alert(affectedItemsError.message);
+        return;
+      }
+
+      await addAuditLog(
+        "ncmr",
+        data.id,
+        "affected_items_added",
+        `Added ${itemsToInsert.length} affected item(s) during NCMR initiation.`
+      );
+    }
 
     if (recurrence.recurring) {
       await addAuditLog("ncmr", data.id, "recurrence_detected", recurrence.reason);
@@ -393,6 +502,16 @@ export default function NcmrPage() {
     setSiteLocation("");
     setImmediateCorrection("");
     setOwner("");
+    setAffectedItems([
+      {
+        product_part_number: "",
+        lot_number: "",
+        workorder_number: "",
+        quantity_affected: "",
+        quarantined_quantity: "",
+        product_disposition: "",
+      },
+    ]);
 
     fetchData();
   };
@@ -587,6 +706,136 @@ export default function NcmrPage() {
             placeholder="Quantity affected"
             style={fieldStyle}
           />
+        </div>
+
+        <div style={{ marginTop: "18px" }}>
+          <h3>Affected Items / Multiple Parts and Lots</h3>
+          <p style={{ color: "#4b5563", fontSize: "14px" }}>
+            Use this section when more than one part number, lot number, work order, or disposition may be impacted.
+            The first row can match the primary part/lot above.
+          </p>
+
+          {affectedItems.map((item, index) => (
+            <div
+              key={index}
+              style={{
+                border: "1px solid #d1d5db",
+                borderRadius: "8px",
+                padding: "12px",
+                marginBottom: "12px",
+                background: "#f9fafb",
+              }}
+            >
+              <strong>Affected Item {index + 1}</strong>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                  gap: "10px",
+                  marginTop: "10px",
+                }}
+              >
+                <div>
+                  <label>Part Number</label>
+                  <br />
+                  <select
+                    value={item.product_part_number}
+                    onChange={(e) =>
+                      updateAffectedItem(index, "product_part_number", e.target.value)
+                    }
+                    style={{ width: "100%", padding: "8px" }}
+                  >
+                    <option value="">Select part number</option>
+                    {renderOptions(partNumberOptions)}
+                  </select>
+                </div>
+
+                <div>
+                  <label>Lot Number</label>
+                  <br />
+                  <input
+                    value={item.lot_number}
+                    onChange={(e) => updateAffectedItem(index, "lot_number", e.target.value)}
+                    placeholder="Lot number"
+                    style={{ width: "100%", padding: "8px" }}
+                  />
+                </div>
+
+                <div>
+                  <label>Work Order</label>
+                  <br />
+                  <input
+                    value={item.workorder_number}
+                    onChange={(e) =>
+                      updateAffectedItem(index, "workorder_number", e.target.value)
+                    }
+                    placeholder="Work order"
+                    style={{ width: "100%", padding: "8px" }}
+                  />
+                </div>
+
+                <div>
+                  <label>Qty Affected</label>
+                  <br />
+                  <input
+                    type="number"
+                    value={item.quantity_affected}
+                    onChange={(e) =>
+                      updateAffectedItem(index, "quantity_affected", e.target.value)
+                    }
+                    style={{ width: "100%", padding: "8px" }}
+                  />
+                </div>
+
+                <div>
+                  <label>Qty Quarantined</label>
+                  <br />
+                  <input
+                    type="number"
+                    value={item.quarantined_quantity}
+                    onChange={(e) =>
+                      updateAffectedItem(index, "quarantined_quantity", e.target.value)
+                    }
+                    style={{ width: "100%", padding: "8px" }}
+                  />
+                </div>
+
+                <div>
+                  <label>Disposition</label>
+                  <br />
+                  <select
+                    value={item.product_disposition}
+                    onChange={(e) =>
+                      updateAffectedItem(index, "product_disposition", e.target.value)
+                    }
+                    style={{ width: "100%", padding: "8px" }}
+                  >
+                    <option value="">Select disposition</option>
+                    <option value="use_as_is">Use As Is</option>
+                    <option value="rework">Rework</option>
+                    <option value="repair">Repair</option>
+                    <option value="scrap">Scrap</option>
+                    <option value="return_to_supplier">Return to Supplier</option>
+                    <option value="sort_screen">Sort / Screen</option>
+                    <option value="hold_pending_decision">Hold Pending Decision</option>
+                  </select>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => removeAffectedItem(index)}
+                style={{ marginTop: "10px" }}
+              >
+                Remove Item
+              </button>
+            </div>
+          ))}
+
+          <button type="button" onClick={addAffectedItem}>
+            + Add Another Affected Item
+          </button>
         </div>
       </section>
 
