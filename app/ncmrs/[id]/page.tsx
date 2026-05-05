@@ -586,12 +586,12 @@ export default function NcmrDetailPage() {
         status: "closed",
         review_status: "completed",
         closed_at: now,
-        is_locked: true,
-        locked_at: now,
-        locked_by: userEmail,
         ncmr_closed_by: userEmail,
         ncmr_signature_meaning: meaning,
         investigation_completed_at: now,
+        is_locked: true,
+        locked_at: now,
+        locked_by: userEmail,
       })
       .eq("id", id);
 
@@ -630,26 +630,6 @@ export default function NcmrDetailPage() {
   return (
     <main style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
       <h1>NCMR Controlled Workflow</h1>
-
-      {isLocked ? (
-        <div
-          style={{
-            padding: "12px",
-            background: "#f3f4f6",
-            border: "1px solid #9ca3af",
-            borderRadius: "8px",
-            marginBottom: "16px",
-            color: "#374151",
-            fontWeight: 600,
-          }}
-        >
-          🔒 This record is locked after electronic signature and cannot be edited.
-          <br />
-          <span style={ fontWeight: 400 }>
-            Locked At: {record.locked_at || "N/A"} | Locked By: {record.locked_by || "N/A"}
-          </span>
-        </div>
-      ) : null}
       <div style={{ marginBottom: "16px" }}>
         <button
           onClick={() => window.open(`/ncmrs/${id}/report`, "_blank")}
@@ -692,7 +672,7 @@ export default function NcmrDetailPage() {
         )}
 
         {!linkedCapa ? (
-          <button onClick={createCapaFromNcmr}>
+          <button onClick={createCapaFromNcmr} disabled={isLocked}>
             Create CAPA from this NCMR
           </button>
         ) : null}
@@ -707,7 +687,7 @@ export default function NcmrDetailPage() {
         <h2>2. Containment</h2>
 
         <label>Investigator</label><br />
-        <input disabled={isLocked}
+        <input
           value={investigator}
           onChange={(e) => setInvestigator(e.target.value)}
           style={{ width: "100%", maxWidth: "500px", padding: "8px", marginBottom: "12px" }}
@@ -715,7 +695,7 @@ export default function NcmrDetailPage() {
 
         <br />
         <label>Problem Description</label><br />
-        <textarea disabled={isLocked}
+        <textarea
           value={problemDescription}
           onChange={(e) => setProblemDescription(e.target.value)}
           rows={4}
@@ -724,7 +704,7 @@ export default function NcmrDetailPage() {
 
         <br />
         <label>Containment Action</label><br />
-        <textarea disabled={isLocked}
+        <textarea
           value={containmentAction}
           onChange={(e) => setContainmentAction(e.target.value)}
           rows={4}
@@ -736,7 +716,7 @@ export default function NcmrDetailPage() {
         <h2>3. Investigation / Root Cause</h2>
 
         <label>Investigation Summary</label><br />
-        <textarea disabled={isLocked}
+        <textarea
           value={investigationSummary}
           onChange={(e) => setInvestigationSummary(e.target.value)}
           rows={4}
@@ -745,7 +725,7 @@ export default function NcmrDetailPage() {
 
         <br />
         <label>Root Cause Category</label><br />
-        <select disabled={isLocked}
+        <select
           value={rootCauseCategory}
           onChange={(e) => setRootCauseCategory(e.target.value)}
           style={{ padding: "8px", minWidth: "300px", marginBottom: "12px" }}
@@ -760,7 +740,7 @@ export default function NcmrDetailPage() {
 
         <br />
         <label>Root Cause</label><br />
-        <textarea disabled={isLocked}
+        <textarea
           value={rootCause}
           onChange={(e) => setRootCause(e.target.value)}
           rows={4}
@@ -772,7 +752,7 @@ export default function NcmrDetailPage() {
         <h2>4. Correction / Corrective Action Proposal</h2>
 
         <label>Correction / Corrective Action Proposal</label><br />
-        <select disabled={isLocked}
+        <select
           value={correctionActionProposal}
           onChange={(e) => setCorrectionActionProposal(e.target.value)}
           style={{ padding: "8px", minWidth: "330px", marginBottom: "12px" }}
@@ -794,7 +774,7 @@ export default function NcmrDetailPage() {
 
         <br />
         <label>Corrective Action Recommendation</label><br />
-        <textarea disabled={isLocked}
+        <textarea
           value={correctiveAction}
           onChange={(e) => setCorrectiveAction(e.target.value)}
           rows={4}
@@ -806,7 +786,7 @@ export default function NcmrDetailPage() {
         <h2>5. Risk Assessment</h2>
 
         <label>Risk Assessment</label><br />
-        <textarea disabled={isLocked}
+        <textarea
           value={riskAssessment}
           onChange={(e) => setRiskAssessment(e.target.value)}
           placeholder="Assess product, process, patient/user, regulatory, and quality risk."
@@ -816,7 +796,7 @@ export default function NcmrDetailPage() {
 
         <div style={{ marginTop: "12px" }}>
           <label>Severity</label><br />
-          <select disabled={isLocked}
+          <select
             value={severity}
             onChange={(e) => setSeverity(e.target.value)}
             style={{ padding: "8px", minWidth: "180px" }}
@@ -831,7 +811,7 @@ export default function NcmrDetailPage() {
         {severity === "major" && !linkedCapa ? (
           <div style={{ marginTop: "12px" }}>
             <label>Justification for No CAPA</label><br />
-            <textarea disabled={isLocked}
+            <textarea
               value={capaJustification}
               onChange={(e) => setCapaJustification(e.target.value)}
               placeholder="Required if severity is Major and no CAPA is linked."
@@ -852,7 +832,7 @@ export default function NcmrDetailPage() {
         <h2>6. Product Disposition / MRB Decision</h2>
 
         <label>Product Disposition</label><br />
-        <select disabled={isLocked}
+        <select
           value={productDisposition}
           onChange={(e) => setProductDisposition(e.target.value)}
           style={{ padding: "8px", minWidth: "240px", marginBottom: "12px" }}
@@ -869,7 +849,7 @@ export default function NcmrDetailPage() {
 
         <br />
         <label>Disposition Justification</label><br />
-        <textarea disabled={isLocked}
+        <textarea
           value={dispositionJustification}
           onChange={(e) => setDispositionJustification(e.target.value)}
           placeholder="Justify disposition based on risk assessment and investigation."
@@ -879,7 +859,7 @@ export default function NcmrDetailPage() {
 
         <div style={{ marginTop: "12px" }}>
           <label>Re-enter Your Email for MRB E-Signature</label><br />
-          <input disabled={isLocked}
+          <input
             value={mrbSignatureEmail}
             onChange={(e) => setMrbSignatureEmail(e.target.value)}
             placeholder={userEmail || "your.email@company.com"}
@@ -889,7 +869,7 @@ export default function NcmrDetailPage() {
 
         <div style={{ marginTop: "12px" }}>
           <label>Additional MRB Approvers</label><br />
-          <textarea disabled={isLocked}
+          <textarea
             value={additionalMrbApprovers}
             onChange={(e) => setAdditionalMrbApprovers(e.target.value)}
             placeholder="Enter comma-separated approver emails"
@@ -899,7 +879,7 @@ export default function NcmrDetailPage() {
         </div>
 
         <div style={{ marginTop: "12px" }}>
-          <button onClick={approveMrb}>Approve MRB Decision</button>
+          <button onClick={approveMrb} disabled={isLocked}>Approve MRB Decision</button>
         </div>
 
         {record.mrb_approved_by ? (
@@ -928,7 +908,7 @@ export default function NcmrDetailPage() {
       <section style={{ marginBottom: "20px" }}>
         <h2>7. Correction Implementation</h2>
 
-        <textarea disabled={isLocked}
+        <textarea
           value={correctionImplementation}
           onChange={(e) => setCorrectionImplementation(e.target.value)}
           placeholder="Describe how the correction was implemented."
@@ -937,7 +917,7 @@ export default function NcmrDetailPage() {
         />
 
         <div style={{ marginTop: "12px" }}>
-          <button onClick={markCorrectionImplemented}>
+          <button onClick={markCorrectionImplemented} disabled={isLocked}>
             Mark Correction Implemented
           </button>
         </div>
@@ -953,7 +933,7 @@ export default function NcmrDetailPage() {
       <section style={{ marginBottom: "20px" }}>
         <h2>8. Evidence</h2>
 
-        <input disabled={isLocked}
+        <input
           type="file"
           onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
         />
@@ -967,7 +947,7 @@ export default function NcmrDetailPage() {
 
         <div style={{ marginTop: "12px" }}>
           <label>Evidence URL</label><br />
-          <input disabled={isLocked}
+          <input
             value={evidenceUrl}
             onChange={(e) => setEvidenceUrl(e.target.value)}
             style={{ width: "100%", maxWidth: "800px", padding: "8px" }}
@@ -976,7 +956,7 @@ export default function NcmrDetailPage() {
 
         <div style={{ marginTop: "12px" }}>
           <label>Evidence Notes</label><br />
-          <textarea disabled={isLocked}
+          <textarea
             value={evidenceNotes}
             onChange={(e) => setEvidenceNotes(e.target.value)}
             rows={3}
@@ -998,7 +978,7 @@ export default function NcmrDetailPage() {
         <h2>9. Closure</h2>
 
         <label>Review Status</label><br />
-        <select disabled={isLocked}
+        <select
           value={reviewStatus}
           onChange={(e) => setReviewStatus(e.target.value)}
           style={{ padding: "8px", marginBottom: "12px" }}
@@ -1017,11 +997,11 @@ export default function NcmrDetailPage() {
         ) : null}
       </section>
 
-      <button onClick={saveWorkflow} style={{ marginRight: "10px" }}>
+      <button onClick={saveWorkflow} disabled={isLocked} style={{ marginRight: "10px" }}>
         Save Workflow
       </button>
 
-      <button onClick={closeNcmr} style={{ marginRight: "10px" }}>
+      <button onClick={closeNcmr} disabled={isLocked} style={{ marginRight: "10px" }}>
         Close NCMR with E-Signature
       </button>
 
