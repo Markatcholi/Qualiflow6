@@ -11,6 +11,7 @@ export default function NcmrDetailPage() {
   const [record, setRecord] = useState<any>(null);
   const [linkedCapa, setLinkedCapa] = useState<any>(null);
   const [mrbApprovers, setMrbApprovers] = useState<any[]>([]);
+  const [affectedItems, setAffectedItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [userEmail, setUserEmail] = useState("");
@@ -102,6 +103,21 @@ export default function NcmrDetailPage() {
     setMrbApprovers(data || []);
   };
 
+  const fetchAffectedItems = async () => {
+    const { data, error } = await supabase
+      .from("ncmr_affected_items")
+      .select("*")
+      .eq("ncmr_id", id)
+      .order("created_at", { ascending: true });
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    setAffectedItems(data || []);
+  };
+
   const fetchRecord = async () => {
     const { data, error } = await supabase
       .from("ncmrs")
@@ -145,6 +161,7 @@ export default function NcmrDetailPage() {
 
     await fetchLinkedCapa(data.capa_id || null);
     await fetchMrbApprovers();
+    await fetchAffectedItems();
     setLoading(false);
   };
 
@@ -156,6 +173,37 @@ export default function NcmrDetailPage() {
       details,
       user_email: userEmail || "unknown",
     });
+  };
+
+  const updateAffectedItemDisposition = async (
+    itemId: string,
+    productDisposition: string,
+    dispositionJustification: string
+  ) => {
+    if (record?.is_locked) {
+      alert("This record is locked after electronic signature and cannot be edited.");
+      return;
+    }
+
+    const { error } = await supabase
+      .from("ncmr_affected_items")
+      .update({
+        product_disposition: productDisposition || null,
+        disposition_justification: dispositionJustification || null,
+      })
+      .eq("id", itemId);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    await addAuditLog(
+      "affected_item_disposition_updated",
+      "Affected item disposition updated."
+    );
+
+    fetchAffectedItems();
   };
 
   const createCapaFromNcmr = async () => {
@@ -681,6 +729,23 @@ export default function NcmrDetailPage() {
       <section style={{ marginBottom: "20px" }}>
         <h2>1. Initiation</h2>
         <p>This section is created from the NCMR initiation page.</p>
+
+        <h3>Affected Items / Multiple Parts, Lots, and Dispositions</h3>
+
+        {affectedItems.length === 0 ? (
+          <p>No additional affected items recorded.</p>
+        ) : (
+          <div style={{ display: "grid", gap: "12px" }}>
+            {affectedItems.map((item) => (
+              <AffectedItemCard
+                key={item.id}
+                item={item}
+                isLocked={isLocked}
+                onSave={updateAffectedItemDisposition}
+              />
+            ))}
+          </div>
+        )}
       </section>
 
       <section style={{ marginBottom: "20px" }}>
@@ -1007,5 +1072,98 @@ export default function NcmrDetailPage() {
 
       <a href="/ncmrs">Back to NCMRs</a>
     </main>
+  );
+}
+
+
+function AffectedItemCard({
+  item,
+  isLocked,
+  onSave,
+}: {
+  item: any;
+  isLocked: boolean;
+  onSave: (
+    itemId: string,
+    productDisposition: string,
+    dispositionJustification: string
+  ) => void;
+}) {
+  const [productDisposition, setProductDisposition] = useState(
+    item.product_disposition || ""
+  );
+  const [dispositionJustification, setDispositionJustification] = useState(
+    item.disposition_justification || ""
+  );
+
+  useEffect(() => {
+    setProductDisposition(item.product_disposition || "");
+    setDispositionJustification(item.disposition_justification || "");
+  }, [item.product_disposition, item.disposition_justification]);
+
+  return (
+    <div
+      style={{
+        border: "1px solid #d1d5db",
+        borderRadius: "8px",
+        padding: "12px",
+        background: "#f9fafb",
+      }}
+    >
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+          gap: "8px",
+          marginBottom: "10px",
+        }}
+      >
+        <div><strong>Part Number:</strong> {item.product_part_number || "N/A"}</div>
+        <div><strong>Lot Number:</strong> {item.lot_number || "N/A"}</div>
+        <div><strong>Work Order:</strong> {item.workorder_number || "N/A"}</div>
+        <div><strong>Qty Affected:</strong> {item.quantity_affected ?? "N/A"}</div>
+        <div><strong>Qty Quarantined:</strong> {item.quarantined_quantity ?? "N/A"}</div>
+      </div>
+
+      <label>Item Disposition</label>
+      <br />
+      <select
+        value={productDisposition}
+        onChange={(e) => setProductDisposition(e.target.value)}
+        disabled={isLocked}
+        style={{ padding: "8px", minWidth: "240px", marginBottom: "8px" }}
+      >
+        <option value="">Select disposition</option>
+        <option value="use_as_is">Use As Is</option>
+        <option value="rework">Rework</option>
+        <option value="repair">Repair</option>
+        <option value="scrap">Scrap</option>
+        <option value="return_to_supplier">Return to Supplier</option>
+        <option value="sort_screen">Sort / Screen</option>
+        <option value="hold_pending_decision">Hold Pending Decision</option>
+      </select>
+
+      <br />
+      <label>Item Disposition Justification</label>
+      <br />
+      <textarea
+        value={dispositionJustification}
+        onChange={(e) => setDispositionJustification(e.target.value)}
+        disabled={isLocked}
+        rows={3}
+        style={{ width: "100%", maxWidth: "800px", marginBottom: "8px" }}
+      />
+
+      <br />
+      <button
+        type="button"
+        disabled={isLocked}
+        onClick={() =>
+          onSave(item.id, productDisposition, dispositionJustification)
+        }
+      >
+        Save Item Disposition
+      </button>
+    </div>
   );
 }
