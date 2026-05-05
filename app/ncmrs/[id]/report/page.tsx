@@ -11,6 +11,7 @@ export default function NcmrFullRecordReportPage() {
   const [record, setRecord] = useState<any>(null);
   const [linkedCapa, setLinkedCapa] = useState<any>(null);
   const [mrbApprovers, setMrbApprovers] = useState<any[]>([]);
+  const [affectedItems, setAffectedItems] = useState<any[]>([]);
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -48,6 +49,14 @@ export default function NcmrFullRecordReportPage() {
         .order("created_at", { ascending: true });
 
       if (!approverRes.error) setMrbApprovers(approverRes.data || []);
+
+      const affectedItemsRes = await supabase
+        .from("ncmr_affected_items")
+        .select("*")
+        .eq("ncmr_id", id)
+        .order("created_at", { ascending: true });
+
+      if (!affectedItemsRes.error) setAffectedItems(affectedItemsRes.data || []);
 
       const logRes = await supabase
         .from("audit_logs")
@@ -129,7 +138,42 @@ export default function NcmrFullRecordReportPage() {
       </section>
 
       <section style={sectionStyle}>
-        <h2>3. Containment / Immediate Correction</h2>
+        <h2>3. Affected Items / Multi-Part, Multi-Lot, Multi-Disposition</h2>
+
+        {affectedItems.length === 0 ? (
+          <p>No additional affected items recorded.</p>
+        ) : (
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
+            <thead>
+              <tr>
+                <th style={thStyle}>Part Number</th>
+                <th style={thStyle}>Lot Number</th>
+                <th style={thStyle}>Work Order</th>
+                <th style={thStyle}>Qty Affected</th>
+                <th style={thStyle}>Qty Quarantined</th>
+                <th style={thStyle}>Disposition</th>
+                <th style={thStyle}>Disposition Justification</th>
+              </tr>
+            </thead>
+            <tbody>
+              {affectedItems.map((item) => (
+                <tr key={item.id}>
+                  <td style={tdStyle}>{displayValue(item.product_part_number)}</td>
+                  <td style={tdStyle}>{displayValue(item.lot_number)}</td>
+                  <td style={tdStyle}>{displayValue(item.workorder_number)}</td>
+                  <td style={tdStyle}>{displayValue(item.quantity_affected)}</td>
+                  <td style={tdStyle}>{displayValue(item.quarantined_quantity)}</td>
+                  <td style={tdStyle}>{displayValue(item.product_disposition)}</td>
+                  <td style={tdStyle}>{displayValue(item.disposition_justification)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
+
+      <section style={sectionStyle}>
+        <h2>4. Containment / Immediate Correction</h2>
         <Field label="Containment Action" value={record.containment_action} />
         <Field label="Containment Owner" value={record.containment_owner} />
         <Field label="Material Status" value={record.material_status} />
@@ -138,7 +182,7 @@ export default function NcmrFullRecordReportPage() {
       </section>
 
       <section style={sectionStyle}>
-        <h2>4. Investigation / Root Cause</h2>
+        <h2>5. Investigation / Root Cause</h2>
         <Field label="Problem Description" value={record.problem_description} />
         <Field label="Investigation Summary" value={record.investigation_summary} />
         <Field label="Root Cause Category" value={record.root_cause_category} />
@@ -148,7 +192,7 @@ export default function NcmrFullRecordReportPage() {
       </section>
 
       <section style={sectionStyle}>
-        <h2>5. Risk Assessment / CAPA Decision</h2>
+        <h2>6. Risk Assessment / CAPA Decision</h2>
         <div style={gridStyle}>
           <Field label="Risk Assessment" value={record.risk_assessment} />
           <Field label="Severity" value={record.severity} />
@@ -162,7 +206,7 @@ export default function NcmrFullRecordReportPage() {
       </section>
 
       <section style={sectionStyle}>
-        <h2>6. Disposition / MRB Decision</h2>
+        <h2>7. Disposition / MRB Decision</h2>
         <Field label="Product Disposition" value={record.product_disposition || record.disposition} />
         <Field label="Disposition Justification" value={record.disposition_justification} />
 
@@ -193,7 +237,7 @@ export default function NcmrFullRecordReportPage() {
       </section>
 
       <section style={sectionStyle}>
-        <h2>7. Implementation / Evidence</h2>
+        <h2>8. Implementation / Evidence</h2>
         <Field label="Correction Implementation" value={record.correction_implementation} />
         <Field label="Implemented By" value={record.correction_implemented_by} />
         <Field label="Implemented At" value={record.correction_implemented_at} />
@@ -202,7 +246,7 @@ export default function NcmrFullRecordReportPage() {
       </section>
 
       <section style={sectionStyle}>
-        <h2>8. Linked Records</h2>
+        <h2>9. Linked Records</h2>
         <Field label="Linked CAPA ID" value={record.capa_id} />
         <Field label="Linked CAPA Number" value={linkedCapa?.capa_number} />
         <Field label="Linked CAPA Title" value={linkedCapa?.title} />
@@ -210,7 +254,7 @@ export default function NcmrFullRecordReportPage() {
       </section>
 
       <section style={sectionStyle}>
-        <h2>9. Closure / Electronic Signature</h2>
+        <h2>10. Closure / Electronic Signature</h2>
         <div style={signatureStyle}>
           <Field label="Closed By" value={record.ncmr_closed_by} />
           <Field label="Closed At" value={record.closed_at} />
@@ -221,7 +265,7 @@ export default function NcmrFullRecordReportPage() {
       </section>
 
       <section style={sectionStyle}>
-        <h2>10. Audit Trail Summary</h2>
+        <h2>11. Audit Trail Summary</h2>
         {auditLogs.length === 0 ? (
           <p>No audit log entries found for this NCMR.</p>
         ) : (
@@ -328,4 +372,17 @@ const signatureStyle: React.CSSProperties = {
   padding: "12px",
   marginTop: "10px",
   background: "#f8fafc",
+};
+
+const thStyle: React.CSSProperties = {
+  border: "1px solid #cbd5e1",
+  padding: "8px",
+  textAlign: "left",
+  background: "#f1f5f9",
+};
+
+const tdStyle: React.CSSProperties = {
+  border: "1px solid #cbd5e1",
+  padding: "8px",
+  verticalAlign: "top",
 };
