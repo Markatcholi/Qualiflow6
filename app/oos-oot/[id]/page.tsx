@@ -299,26 +299,6 @@ export default function OosOotDetailPage() {
   return (
     <main style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
       <h1>OOS / OOT Investigation Workflow</h1>
-
-      {isLocked ? (
-        <div
-          style={{
-            padding: "12px",
-            background: "#f3f4f6",
-            border: "1px solid #9ca3af",
-            borderRadius: "8px",
-            marginBottom: "16px",
-            color: "#374151",
-            fontWeight: 600,
-          }}
-        >
-          🔒 This record is locked after electronic signature and cannot be edited.
-          <br />
-          <span style={ fontWeight: 400 }>
-            Locked At: {record.locked_at || "N/A"} | Locked By: {record.locked_by || "N/A"}
-          </span>
-        </div>
-      ) : null}
       <div style={{ marginBottom: "16px" }}>
         <button
           onClick={() => window.open(`/oos-oot/${id}/report`, "_blank")}
@@ -365,26 +345,26 @@ export default function OosOotDetailPage() {
         <SelectYN label="Retest Justified?" value={retestJustified} setValue={setRetestJustified} />
 
         <label>Phase 1 Conclusion</label><br />
-        <textarea disabled={isLocked} value={phase1Conclusion} onChange={(e) => setPhase1Conclusion(e.target.value)} rows={4} style={textAreaStyle} />
+        <textarea value={phase1Conclusion} onChange={(e) => setPhase1Conclusion(e.target.value)} rows={4} style={textAreaStyle} />
       </section>
 
       <section style={sectionStyle}>
         <h2>2. Phase 2 Full Investigation</h2>
 
         <label>Expanded Scope</label><br />
-        <textarea disabled={isLocked} value={expandedScope} onChange={(e) => setExpandedScope(e.target.value)} rows={3} style={textAreaStyle} />
+        <textarea value={expandedScope} onChange={(e) => setExpandedScope(e.target.value)} rows={3} style={textAreaStyle} />
 
         <br /><br />
         <label>Historical Trend Review</label><br />
-        <textarea disabled={isLocked} value={historicalTrendReview} onChange={(e) => setHistoricalTrendReview(e.target.value)} rows={3} style={textAreaStyle} />
+        <textarea value={historicalTrendReview} onChange={(e) => setHistoricalTrendReview(e.target.value)} rows={3} style={textAreaStyle} />
 
         <br /><br />
         <label>Other Lots / Rooms / Equipment Affected</label><br />
-        <textarea disabled={isLocked} value={otherAffected} onChange={(e) => setOtherAffected(e.target.value)} rows={3} style={textAreaStyle} />
+        <textarea value={otherAffected} onChange={(e) => setOtherAffected(e.target.value)} rows={3} style={textAreaStyle} />
 
         <br /><br />
         <label>Root Cause Category</label><br />
-        <select disabled={isLocked} value={rootCauseCategory} onChange={(e) => setRootCauseCategory(e.target.value)} style={fieldStyle}>
+        <select value={rootCauseCategory} onChange={(e) => setRootCauseCategory(e.target.value)} style={fieldStyle}>
           <option value="">Select category</option>
           <option value="laboratory_error">Laboratory Error</option>
           <option value="method_issue">Method Issue</option>
@@ -398,22 +378,22 @@ export default function OosOotDetailPage() {
 
         <br /><br />
         <label>Root Cause Description</label><br />
-        <textarea disabled={isLocked} value={rootCauseDescription} onChange={(e) => setRootCauseDescription(e.target.value)} rows={4} style={textAreaStyle} />
+        <textarea value={rootCauseDescription} onChange={(e) => setRootCauseDescription(e.target.value)} rows={4} style={textAreaStyle} />
 
         <br /><br />
         <label>Impact Assessment</label><br />
-        <textarea disabled={isLocked} value={impactAssessment} onChange={(e) => setImpactAssessment(e.target.value)} rows={4} style={textAreaStyle} />
+        <textarea value={impactAssessment} onChange={(e) => setImpactAssessment(e.target.value)} rows={4} style={textAreaStyle} />
 
         <br /><br />
         <label>Risk Assessment</label><br />
-        <textarea disabled={isLocked} value={riskAssessment} onChange={(e) => setRiskAssessment(e.target.value)} rows={4} style={textAreaStyle} />
+        <textarea value={riskAssessment} onChange={(e) => setRiskAssessment(e.target.value)} rows={4} style={textAreaStyle} />
       </section>
 
       <section style={sectionStyle}>
         <h2>3. Disposition / Decision</h2>
 
         <label>Disposition Decision</label><br />
-        <select disabled={isLocked} value={dispositionDecision} onChange={(e) => setDispositionDecision(e.target.value)} style={fieldStyle}>
+        <select value={dispositionDecision} onChange={(e) => setDispositionDecision(e.target.value)} style={fieldStyle}>
           <option value="">Select decision</option>
           <option value="accept_valid_no_impact">Accept as valid - no impact</option>
           <option value="accept_with_justification">Accept with justification</option>
@@ -430,7 +410,7 @@ export default function OosOotDetailPage() {
 
         <br /><br />
         <label>Disposition Justification</label><br />
-        <textarea disabled={isLocked} value={dispositionJustification} onChange={(e) => setDispositionJustification(e.target.value)} rows={4} style={textAreaStyle} />
+        <textarea value={dispositionJustification} onChange={(e) => setDispositionJustification(e.target.value)} rows={4} style={textAreaStyle} />
       </section>
 
       <section style={sectionStyle}>
@@ -443,16 +423,16 @@ export default function OosOotDetailPage() {
             <SelectYN label="NCMR Required?" value={ncmrRequired} setValue={setNcmrRequired} />
 
             <label>Linked NCMR Number</label><br />
-            <input disabled={isLocked} value={linkedNcmrNumber} onChange={(e) => setLinkedNcmrNumber(e.target.value)} placeholder="Example: NCMR0000001" style={fieldStyle} />
+            <input value={linkedNcmrNumber} onChange={(e) => setLinkedNcmrNumber(e.target.value)} placeholder="Example: NCMR0000001" style={fieldStyle} />
 
             <br /><br />
             <label>Affected Product / Lot / Quantity</label><br />
-            <textarea disabled={isLocked} value={affectedProductLotQuantity} onChange={(e) => setAffectedProductLotQuantity(e.target.value)} rows={3} style={textAreaStyle} />
+            <textarea value={affectedProductLotQuantity} onChange={(e) => setAffectedProductLotQuantity(e.target.value)} rows={3} style={textAreaStyle} />
           </>
         ) : (
           <>
             <label>No Product Impact Justification</label><br />
-            <textarea disabled={isLocked} value={noProductImpactJustification} onChange={(e) => setNoProductImpactJustification(e.target.value)} rows={3} style={textAreaStyle} />
+            <textarea value={noProductImpactJustification} onChange={(e) => setNoProductImpactJustification(e.target.value)} rows={3} style={textAreaStyle} />
           </>
         )}
       </section>
@@ -464,14 +444,14 @@ export default function OosOotDetailPage() {
         <SelectYN label="Escalation Required?" value={escalationRequired} setValue={setEscalationRequired} />
 
         <label>Escalation Notes</label><br />
-        <textarea disabled={isLocked} value={escalationNotes} onChange={(e) => setEscalationNotes(e.target.value)} rows={3} style={textAreaStyle} />
+        <textarea value={escalationNotes} onChange={(e) => setEscalationNotes(e.target.value)} rows={3} style={textAreaStyle} />
       </section>
 
       <section style={sectionStyle}>
         <h2>6. Closure</h2>
 
         <label>Closure Summary</label><br />
-        <textarea disabled={isLocked} value={closureSummary} onChange={(e) => setClosureSummary(e.target.value)} rows={4} style={textAreaStyle} />
+        <textarea value={closureSummary} onChange={(e) => setClosureSummary(e.target.value)} rows={4} style={textAreaStyle} />
 
         {record.signed_by ? (
           <div style={{ marginTop: "12px" }}>
@@ -484,11 +464,11 @@ export default function OosOotDetailPage() {
         ) : null}
       </section>
 
-      <button onClick={saveWorkflow} style={{ marginRight: "10px" }}>
+      <button onClick={saveWorkflow} disabled={isLocked} style={{ marginRight: "10px" }}>
         Save Investigation
       </button>
 
-      <button onClick={closeInvestigation} style={{ marginRight: "10px" }}>
+      <button onClick={closeInvestigation} disabled={isLocked} style={{ marginRight: "10px" }}>
         Close with E-Signature
       </button>
 
@@ -509,7 +489,7 @@ function SelectYN({
   return (
     <div style={{ marginBottom: "12px" }}>
       <label>{label}</label><br />
-      <select disabled={isLocked} value={value} onChange={(e) => setValue(e.target.value)} style={fieldStyle}>
+      <select value={value} onChange={(e) => setValue(e.target.value)} style={fieldStyle}>
         <option value="no">No</option>
         <option value="yes">Yes</option>
       </select>
