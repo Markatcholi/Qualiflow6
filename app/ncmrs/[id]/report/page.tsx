@@ -152,7 +152,12 @@ export default function NcmrFullRecordReportPage() {
                 <th style={thStyle}>Qty Affected</th>
                 <th style={thStyle}>Qty Quarantined</th>
                 <th style={thStyle}>Disposition</th>
+                <th style={thStyle}>Qty Accepted</th>
+                <th style={thStyle}>Qty Rejected</th>
                 <th style={thStyle}>Disposition Justification</th>
+                <th style={thStyle}>Final Disposition After Rework</th>
+                <th style={thStyle}>Final Rework Qty Accepted</th>
+                <th style={thStyle}>Final Rework Qty Rejected</th>
               </tr>
             </thead>
             <tbody>
@@ -164,7 +169,12 @@ export default function NcmrFullRecordReportPage() {
                   <td style={tdStyle}>{displayValue(item.quantity_affected)}</td>
                   <td style={tdStyle}>{displayValue(item.quarantined_quantity)}</td>
                   <td style={tdStyle}>{displayValue(item.product_disposition)}</td>
+                  <td style={tdStyle}>{displayValue(item.quantity_accepted)}</td>
+                  <td style={tdStyle}>{displayValue(item.quantity_rejected)}</td>
                   <td style={tdStyle}>{displayValue(item.disposition_justification)}</td>
+                  <td style={tdStyle}>{displayValue(item.final_disposition_after_rework)}</td>
+                  <td style={tdStyle}>{displayValue(item.final_rework_quantity_accepted)}</td>
+                  <td style={tdStyle}>{displayValue(item.final_rework_quantity_rejected)}</td>
                 </tr>
               ))}
             </tbody>
