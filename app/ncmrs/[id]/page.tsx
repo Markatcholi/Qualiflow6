@@ -789,19 +789,36 @@ export default function NcmrDetailPage() {
         <h2>1. Initiation</h2>
         <p>This section is created from the NCMR initiation page.</p>
 
-        <h3>Affected Items / Multiple Parts, Lots, and Dispositions</h3>
+        <h3>Affected Materials / Multiple Parts and Lots</h3>
 
         {affectedItems.length === 0 ? (
           <p>No additional affected items recorded.</p>
         ) : (
-          <div style={{ display: "grid", gap: "12px" }}>
+          <div style={{ display: "grid", gap: "10px" }}>
             {affectedItems.map((item) => (
-              <AffectedItemCard
+              <div
                 key={item.id}
-                item={item}
-                isLocked={isLocked}
-                onSave={updateAffectedItemDisposition}
-              />
+                style={{
+                  border: "1px solid #d1d5db",
+                  borderRadius: "8px",
+                  padding: "12px",
+                  background: "#f9fafb",
+                }}
+              >
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                    gap: "8px",
+                  }}
+                >
+                  <div><strong>Part Number:</strong> {item.product_part_number || "N/A"}</div>
+                  <div><strong>Lot Number:</strong> {item.lot_number || "N/A"}</div>
+                  <div><strong>Work Order:</strong> {item.workorder_number || "N/A"}</div>
+                  <div><strong>Qty Affected:</strong> {item.quantity_affected ?? "N/A"}</div>
+                  <div><strong>Qty Quarantined:</strong> {item.quarantined_quantity ?? "N/A"}</div>
+                </div>
+              </div>
             ))}
           </div>
         )}
@@ -980,6 +997,30 @@ export default function NcmrDetailPage() {
           rows={4}
           style={{ width: "100%", maxWidth: "800px" }}
         />
+
+        <div style={{ marginTop: "18px" }}>
+          <h3>Disposition by Affected Item</h3>
+          <p style={{ color: "#4b5563", fontSize: "14px" }}>
+            Add one disposition decision per affected item. Include quantity accepted and quantity rejected.
+            If disposition is Rework, document the final disposition after rework with final accepted/rejected quantities.
+            Overall MRB approval approves all saved item dispositions.
+          </p>
+
+          {affectedItems.length === 0 ? (
+            <p>No additional affected items recorded.</p>
+          ) : (
+            <div style={{ display: "grid", gap: "12px" }}>
+              {affectedItems.map((item) => (
+                <AffectedItemCard
+                  key={item.id}
+                  item={item}
+                  isLocked={isLocked}
+                  onSave={updateAffectedItemDisposition}
+                />
+              ))}
+            </div>
+          )}
+        </div>
 
         <div style={{ marginTop: "12px" }}>
           <label>Re-enter Your Email for MRB E-Signature</label><br />
