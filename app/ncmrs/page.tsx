@@ -1,465 +1,436 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { supabase } from "../../lib/supabaseClient";
+import { useEffect, useState } from "react";
+import { useParams } from "next/navigation";
+import { supabase } from "../../../lib/supabaseClient";
 
-type MasterOption = {
-  code: string;
-  label: string;
-};
+export default function NcmrDetailPage() {
+  const params = useParams<{ id: string }>();
+  const id = params.id;
 
-type DefectSubcategoryOption = {
-  category_code: string;
-  code: string;
-  label: string;
-};
+  const [record, setRecord] = useState<any>(null);
+  const [linkedCapa, setLinkedCapa] = useState<any>(null);
+  const [mrbApprovers, setMrbApprovers] = useState<any[]>([]);
+  const [affectedItems, setAffectedItems] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
-type AffectedItemInput = {
-  product_part_number: string;
-  lot_number: string;
-  workorder_number: string;
-  quantity_affected: string;
-  quarantined_quantity: string;
-  product_disposition: string;
-};
+  const [userEmail, setUserEmail] = useState("");
+  const [userRole, setUserRole] = useState("");
 
-type Ncmr = {
-  id: string;
-  ncmr_number: string | null;
-  title: string | null;
-  issue_description: string | null;
-  product_part_number: string | null;
-  lot_number: string | null;
-  workorder_number: string | null;
-  source_of_detection: string | null;
-  department: string | null;
-  date_detected: string | null;
-  quantity_affected: number | null;
-  containment_action: string | null;
-  containment_owner: string | null;
-  material_status: string | null;
-  quarantined_quantity: number | null;
-  defect_category: string | null;
-  defect_subcategory: string | null;
-  supplier_name: string | null;
-  supplier_lot: string | null;
-  site_location: string | null;
-  immediate_correction: string | null;
-  recurring_issue: boolean | null;
-  recurrence_reason: string | null;
-  supplier_capa_required: boolean | null;
-  supplier_capa_reason: string | null;
-  severity: string | null;
-  owner: string | null;
-  status: string | null;
-  capa_required: boolean | null;
-  created_at: string | null;
-};
-
-export default function NcmrPage() {
-  const [title, setTitle] = useState("");
-  const [issueDescription, setIssueDescription] = useState("");
-  const [productPartNumber, setProductPartNumber] = useState("");
-  const [lotNumber, setLotNumber] = useState("");
-  const [workorderNumber, setWorkorderNumber] = useState("");
-  const [sourceOfDetection, setSourceOfDetection] = useState("");
-  const [department, setDepartment] = useState("");
-  const [dateDetected, setDateDetected] = useState("");
-  const [quantityAffected, setQuantityAffected] = useState("");
+  const [investigator, setInvestigator] = useState("");
+  const [problemDescription, setProblemDescription] = useState("");
   const [containmentAction, setContainmentAction] = useState("");
-  const [containmentOwner, setContainmentOwner] = useState("");
-  const [materialStatus, setMaterialStatus] = useState("");
-  const [quarantinedQuantity, setQuarantinedQuantity] = useState("");
-  const [defectCategory, setDefectCategory] = useState("");
-  const [defectSubcategory, setDefectSubcategory] = useState("");
-  const [supplierName, setSupplierName] = useState("");
-  const [supplierLot, setSupplierLot] = useState("");
-  const [siteLocation, setSiteLocation] = useState("");
-  const [immediateCorrection, setImmediateCorrection] = useState("");
-  const [owner, setOwner] = useState("");
+  const [investigationSummary, setInvestigationSummary] = useState("");
+  const [rootCause, setRootCause] = useState("");
+  const [rootCauseCategory, setRootCauseCategory] = useState("");
+  const [rootCauseOptions, setRootCauseOptions] = useState<any[]>([]);
+  const [correctionActionProposal, setCorrectionActionProposal] = useState("");
+  const [correctiveAction, setCorrectiveAction] = useState("");
+  const [riskAssessment, setRiskAssessment] = useState("");
+  const [severity, setSeverity] = useState("not_assessed");
+  const [capaJustification, setCapaJustification] = useState("");
+  const [productDisposition, setProductDisposition] = useState("");
+  const [dispositionJustification, setDispositionJustification] = useState("");
+  const [correctionImplementation, setCorrectionImplementation] = useState("");
+  const [reviewStatus, setReviewStatus] = useState("draft");
 
-  const [affectedItems, setAffectedItems] = useState<AffectedItemInput[]>([
-    {
-      product_part_number: "",
-      lot_number: "",
-      workorder_number: "",
-      quantity_affected: "",
-      quarantined_quantity: "",
-      product_disposition: "",
-    },
-  ]);
+  const [mrbSignatureEmail, setMrbSignatureEmail] = useState("");
+  const [additionalMrbApprovers, setAdditionalMrbApprovers] = useState("");
 
-  const [list, setList] = useState<Ncmr[]>([]);
+  const [evidenceUrl, setEvidenceUrl] = useState("");
+  const [evidenceNotes, setEvidenceNotes] = useState("");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
 
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
-  const [severityFilter, setSeverityFilter] = useState("");
+  const fetchUserRole = async () => {
+    const { data: userData } = await supabase.auth.getUser();
+    const email = userData?.user?.email || "";
+    setUserEmail(email);
 
-  const [partNumberOptions, setPartNumberOptions] = useState<MasterOption[]>([]);
-  const [detectionSourceOptions, setDetectionSourceOptions] = useState<MasterOption[]>([]);
-  const [departmentOptions, setDepartmentOptions] = useState<MasterOption[]>([]);
-  const [materialStatusOptions, setMaterialStatusOptions] = useState<MasterOption[]>([]);
-  const [defectCategoryOptions, setDefectCategoryOptions] = useState<MasterOption[]>([]);
-  const [defectSubcategoryOptions, setDefectSubcategoryOptions] = useState<DefectSubcategoryOption[]>([]);
+    if (!email) return;
 
-  const filteredDefectSubcategories = useMemo(() => {
-    return defectSubcategoryOptions.filter(
-      (item) => item.category_code === defectCategory
-    );
-  }, [defectSubcategoryOptions, defectCategory]);
+    const { data } = await supabase
+      .from("user_roles")
+      .select("role")
+      .eq("user_email", email)
+      .maybeSingle();
 
-  const fieldStyle: React.CSSProperties = {
-    width: "100%",
-    maxWidth: "500px",
-    padding: "8px",
-    marginTop: "4px",
+    setUserRole(data?.role || "");
   };
 
-  const textAreaStyle: React.CSSProperties = {
-    width: "100%",
-    maxWidth: "800px",
-    padding: "8px",
-    marginTop: "4px",
+  const fetchRootCauseOptions = async () => {
+    const { data, error } = await supabase
+      .from("md_root_cause_categories")
+      .select("*")
+      .eq("is_active", true)
+      .order("label");
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    setRootCauseOptions(data || []);
   };
 
-  const sectionStyle: React.CSSProperties = {
-    border: "1px solid #ccc",
-    padding: "16px",
-    marginBottom: "20px",
-    borderRadius: "8px",
+  const fetchLinkedCapa = async (capaId: string | null) => {
+    if (!capaId) {
+      setLinkedCapa(null);
+      return;
+    }
+
+    const { data } = await supabase
+      .from("capas")
+      .select("*")
+      .eq("id", capaId)
+      .maybeSingle();
+
+    setLinkedCapa(data || null);
   };
 
-  const rowStyle: React.CSSProperties = {
-    marginBottom: "12px",
+  const fetchMrbApprovers = async () => {
+    const { data, error } = await supabase
+      .from("ncmr_mrb_approvers")
+      .select("*")
+      .eq("ncmr_id", id)
+      .order("created_at", { ascending: true });
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    setMrbApprovers(data || []);
   };
 
-  const fetchMasterData = async () => {
-    const [
-      partNumbersRes,
-      detectionRes,
-      departmentsRes,
-      materialRes,
-      defectCategoryRes,
-      defectSubcategoryRes,
-    ] = await Promise.all([
-      supabase.from("md_product_part_numbers").select("code, label").order("label"),
-      supabase.from("md_detection_sources").select("code, label").order("label"),
-      supabase.from("md_departments").select("code, label").order("label"),
-      supabase.from("md_material_statuses").select("code, label").order("label"),
-      supabase.from("md_defect_categories").select("code, label").order("label"),
-      supabase.from("md_defect_subcategories").select("category_code, code, label").order("label"),
-    ]);
+  const fetchAffectedItems = async () => {
+    const { data, error } = await supabase
+      .from("ncmr_affected_items")
+      .select("*")
+      .eq("ncmr_id", id)
+      .order("created_at", { ascending: true });
 
-    if (partNumbersRes.error) return alert(partNumbersRes.error.message);
-    if (detectionRes.error) return alert(detectionRes.error.message);
-    if (departmentsRes.error) return alert(departmentsRes.error.message);
-    if (materialRes.error) return alert(materialRes.error.message);
-    if (defectCategoryRes.error) return alert(defectCategoryRes.error.message);
-    if (defectSubcategoryRes.error) return alert(defectSubcategoryRes.error.message);
+    if (error) {
+      alert(error.message);
+      return;
+    }
 
-    setPartNumberOptions(partNumbersRes.data || []);
-    setDetectionSourceOptions(detectionRes.data || []);
-    setDepartmentOptions(departmentsRes.data || []);
-    setMaterialStatusOptions(materialRes.data || []);
-    setDefectCategoryOptions(defectCategoryRes.data || []);
-    setDefectSubcategoryOptions(defectSubcategoryRes.data || []);
+    setAffectedItems(data || []);
   };
 
-  const fetchData = async () => {
+  const fetchRecord = async () => {
     const { data, error } = await supabase
       .from("ncmrs")
       .select("*")
-      .order("created_at", { ascending: false });
+      .eq("id", id)
+      .maybeSingle();
 
     if (error) {
       alert(error.message);
+      setLoading(false);
       return;
     }
 
-    setList((data as Ncmr[]) || []);
+    if (!data) {
+      alert("NCMR record not found.");
+      setRecord(null);
+      setLoading(false);
+      return;
+    }
+
+    setRecord(data);
+    setInvestigator(data.investigator || "");
+    setProblemDescription(data.problem_description || "");
+    setContainmentAction(data.containment_action || "");
+    setInvestigationSummary(data.investigation_summary || "");
+    setRootCause(data.root_cause || "");
+    setRootCauseCategory(data.root_cause_category || "");
+    setCorrectionActionProposal(data.correction_action_proposal || "");
+    setCorrectiveAction(data.corrective_action || "");
+    setRiskAssessment(data.risk_assessment || "");
+    setSeverity(data.severity || "not_assessed");
+    setCapaJustification(data.capa_justification || "");
+    setProductDisposition(data.product_disposition || data.disposition || "");
+    setDispositionJustification(data.disposition_justification || "");
+    setCorrectionImplementation(data.correction_implementation || "");
+    setReviewStatus(data.review_status || "draft");
+    setMrbSignatureEmail("");
+    setAdditionalMrbApprovers(data.mrb_additional_approvers || "");
+    setEvidenceUrl(data.evidence_url || "");
+    setEvidenceNotes(data.evidence_notes || "");
+
+    await fetchLinkedCapa(data.capa_id || null);
+    await fetchMrbApprovers();
+    await fetchAffectedItems();
+    setLoading(false);
   };
 
-  const addAuditLog = async (
-    entityType: string,
-    entityId: string,
-    action: string,
-    details: string
-  ) => {
-    const { data: userData } = await supabase.auth.getUser();
-    const email = userData?.user?.email || "unknown";
-
+  const addAuditLog = async (action: string, details: string) => {
     await supabase.from("audit_logs").insert({
-      entity_type: entityType,
-      entity_id: entityId,
+      entity_type: "ncmr",
+      entity_id: id,
       action,
       details,
-      user_email: email,
+      user_email: userEmail || "unknown",
     });
   };
 
-  const checkRecurrence = async () => {
-    if (!productPartNumber || !defectCategory) {
-      return { recurring: false, reason: "" };
-    }
-
-    const sixtyDaysAgo = new Date();
-    sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
-
-    const { data, error } = await supabase
-      .from("ncmrs")
-      .select("id")
-      .eq("product_part_number", productPartNumber)
-      .eq("defect_category", defectCategory)
-      .gte("created_at", sixtyDaysAgo.toISOString());
-
-    if (error) {
-      alert(error.message);
-      return { recurring: false, reason: "" };
-    }
-
-    const count = data?.length || 0;
-
-    if (count > 0) {
-      return {
-        recurring: true,
-        reason: `Recurring issue detected: ${count} prior NCMR(s) with same part number and defect category in the last 60 days.`,
-      };
-    }
-
-    return { recurring: false, reason: "" };
-  };
-
-  const checkSupplierScar = async () => {
-    if (!supplierName.trim()) {
-      return { required: false, reason: "" };
-    }
-
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
-    const { data, error } = await supabase
-      .from("ncmrs")
-      .select("id")
-      .ilike("supplier_name", supplierName.trim())
-      .gte("created_at", thirtyDaysAgo.toISOString());
-
-    if (error) {
-      alert(error.message);
-      return { required: false, reason: "" };
-    }
-
-    const priorCount = data?.length || 0;
-    const totalWithNewRecord = priorCount + 1;
-
-    if (totalWithNewRecord >= 3) {
-      return {
-        required: true,
-        reason: `Supplier CAPA/SCAR required: ${supplierName} has ${totalWithNewRecord} NCMR(s) in the last 30 days.`,
-      };
-    }
-
-    return { required: false, reason: "" };
-  };
-
-  const addAffectedItem = () => {
-    setAffectedItems([
-      ...affectedItems,
-      {
-        product_part_number: "",
-        lot_number: "",
-        workorder_number: "",
-        quantity_affected: "",
-        quarantined_quantity: "",
-        product_disposition: "",
-      },
-    ]);
-  };
-
-  const updateAffectedItem = (
-    index: number,
-    field: keyof AffectedItemInput,
-    value: string
+  const updateAffectedItemDisposition = async (
+    itemId: string,
+    productDisposition: string,
+    dispositionJustification: string
   ) => {
-    const updated = [...affectedItems];
-    updated[index] = {
-      ...updated[index],
-      [field]: value,
-    };
-    setAffectedItems(updated);
-  };
-
-  const removeAffectedItem = (index: number) => {
-    if (affectedItems.length === 1) {
-      setAffectedItems([
-        {
-          product_part_number: "",
-          lot_number: "",
-          workorder_number: "",
-          quantity_affected: "",
-          quarantined_quantity: "",
-          product_disposition: "",
-        },
-      ]);
+    if (record?.is_locked) {
+      alert("This record is locked after electronic signature and cannot be edited.");
       return;
     }
 
-    const updated = [...affectedItems];
-    updated.splice(index, 1);
-    setAffectedItems(updated);
-  };
+    const { error } = await supabase
+      .from("ncmr_affected_items")
+      .update({
+        product_disposition: productDisposition || null,
+        disposition_justification: dispositionJustification || null,
+      })
+      .eq("id", itemId);
 
-  const addNcmr = async () => {
-    if (!title) {
-      alert("Title is required.");
+    if (error) {
+      alert(error.message);
       return;
     }
 
-    const recurrence = await checkRecurrence();
-    const supplierScar = await checkSupplierScar();
+    await addAuditLog(
+      "affected_item_disposition_updated",
+      "Affected item disposition updated."
+    );
 
-    const capaRequired = recurrence.recurring || supplierScar.required;
+    fetchAffectedItems();
+  };
 
-    const { data, error } = await supabase
-      .from("ncmrs")
+  const approveAffectedItemMrb = async (
+    itemId: string,
+    productDisposition: string,
+    dispositionJustification: string
+  ) => {
+    if (record?.is_locked) {
+      alert("This record is locked after electronic signature and cannot be edited.");
+      return;
+    }
+
+    const isApprover = userRole === "approver" || userRole === "vp_quality";
+    const isVpQuality = userRole === "vp_quality";
+
+    if (!isApprover) {
+      alert("Only an approver or VP Quality can approve affected item MRB disposition.");
+      return;
+    }
+
+    if (!productDisposition) {
+      alert("Disposition is required before item MRB approval.");
+      return;
+    }
+
+    if (!dispositionJustification) {
+      alert("Disposition justification is required before item MRB approval.");
+      return;
+    }
+
+    if (
+      productDisposition === "use_as_is" &&
+      (severity === "major" || severity === "critical") &&
+      !isVpQuality
+    ) {
+      alert("Use As Is for Major or Critical severity requires VP Quality approval.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Electronic Signature:\n\nI have reviewed this affected item, its disposition, and justification, and approve the MRB decision for this item."
+    );
+
+    if (!confirmed) return;
+
+    const now = new Date().toISOString();
+    const meaning =
+      "I have reviewed this affected item, its disposition, and justification, and approve the MRB decision for this item.";
+
+    const { error } = await supabase
+      .from("ncmr_affected_items")
+      .update({
+        product_disposition: productDisposition,
+        disposition_justification: dispositionJustification,
+        mrb_approved_by: userEmail,
+        mrb_approved_at: now,
+        mrb_signature_meaning: meaning,
+      })
+      .eq("id", itemId);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    await addAuditLog(
+      "affected_item_mrb_approved",
+      `Affected item MRB approved by ${userEmail}. Disposition: ${productDisposition}.`
+    );
+
+    alert("Affected item MRB approved.");
+    fetchAffectedItems();
+  };
+
+  const createCapaFromNcmr = async () => {
+    if (record?.is_locked) {
+      alert("This record is locked after electronic signature and cannot be edited.");
+      return;
+    }
+
+    if (record?.capa_id) {
+      alert("This NCMR already has a linked CAPA.");
+      return;
+    }
+
+    const { data: capaData, error: capaError } = await supabase
+      .from("capas")
       .insert({
-        title,
-        issue_description: issueDescription,
-        product_part_number: productPartNumber,
-        lot_number: lotNumber,
-        workorder_number: workorderNumber,
-        source_of_detection: sourceOfDetection,
-        department,
-        date_detected: dateDetected || null,
-        quantity_affected: quantityAffected ? Number(quantityAffected) : null,
-        containment_action: containmentAction,
-        containment_owner: containmentOwner,
-        material_status: materialStatus,
-        quarantined_quantity: quarantinedQuantity ? Number(quarantinedQuantity) : null,
-        defect_category: defectCategory,
-        defect_subcategory: defectSubcategory,
-        supplier_name: supplierName,
-        supplier_lot: supplierLot,
-        site_location: siteLocation,
-        immediate_correction: immediateCorrection,
-        owner,
+        title: `CAPA for ${record.title}`,
         status: "open",
-        severity: "not_assessed",
-        capa_required: capaRequired,
-        recurring_issue: recurrence.recurring,
-        recurrence_reason: recurrence.reason,
-        recurrence_checked_at: new Date().toISOString(),
-        supplier_capa_required: supplierScar.required,
-        supplier_capa_reason: supplierScar.reason,
+        source_type: "ncmr",
+        capa_source: "NCMR",
+        ncmr_id: id,
+        linked_ncmr_title: record.title,
+        problem_description:
+          problemDescription || record.issue_description || record.title,
+        investigation_summary: investigationSummary,
+        root_cause: rootCause,
+        root_cause_category: rootCauseCategory,
+        corrective_action_plan: correctiveAction,
+        action_plan: correctiveAction,
       })
       .select()
       .single();
 
+    if (capaError) {
+      alert(capaError.message);
+      return;
+    }
+
+    const { error: ncmrError } = await supabase
+      .from("ncmrs")
+      .update({
+        capa_id: capaData.id,
+        capa_required: true,
+        capa_justification: null,
+      })
+      .eq("id", id);
+
+    if (ncmrError) {
+      alert(ncmrError.message);
+      return;
+    }
+
+    await addAuditLog(
+      "capa_created_from_ncmr",
+      `CAPA created and linked: ${capaData.title}`
+    );
+
+    alert("CAPA created and linked to this NCMR.");
+    fetchRecord();
+  };
+
+  const uploadEvidence = async () => {
+    if (record?.is_locked) {
+      alert("This record is locked after electronic signature and cannot be edited.");
+      return;
+    }
+
+    if (!selectedFile) {
+      alert("Please choose a file first.");
+      return;
+    }
+
+    setUploading(true);
+
+    const fileExt = selectedFile.name.split(".").pop();
+    const filePath = `ncmrs/${id}/${Date.now()}.${fileExt}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from("evidence")
+      .upload(filePath, selectedFile, { upsert: false });
+
+    if (uploadError) {
+      alert(uploadError.message);
+      setUploading(false);
+      return;
+    }
+
+    const { data } = supabase.storage.from("evidence").getPublicUrl(filePath);
+
+    setEvidenceUrl(data.publicUrl);
+    setUploading(false);
+    alert("Evidence uploaded. Click Save Workflow to store it.");
+  };
+
+  const saveWorkflow = async () => {
+    if (record?.is_locked) {
+      alert("This record is locked after electronic signature and cannot be edited.");
+      return;
+    }
+
+    if (severity === "major" && !record?.capa_id && !capaJustification) {
+      alert("For Major severity, CAPA is required OR justification must be provided.");
+      return;
+    }
+
+    const payload: any = {
+      investigator,
+      problem_description: problemDescription,
+      containment_action: containmentAction,
+      investigation_summary: investigationSummary,
+      root_cause: rootCause,
+      root_cause_category: rootCauseCategory,
+      correction_action_proposal: correctionActionProposal,
+      corrective_action: correctiveAction,
+      risk_assessment: riskAssessment,
+      severity,
+      capa_justification: capaJustification,
+      product_disposition: productDisposition,
+      disposition: productDisposition,
+      disposition_justification: dispositionJustification,
+      correction_implementation: correctionImplementation,
+      review_status: reviewStatus,
+      evidence_url: evidenceUrl,
+      evidence_notes: evidenceNotes,
+    };
+
+    if (!record?.investigation_opened_at) {
+      payload.investigation_opened_at = new Date().toISOString();
+    }
+
+    const { error } = await supabase.from("ncmrs").update(payload).eq("id", id);
+
     if (error) {
       alert(error.message);
       return;
     }
 
-    await addAuditLog("ncmr", data.id, "created", `Created NCMR: ${title}`);
+    await addAuditLog("workflow_saved", "NCMR workflow fields saved.");
 
-    const validAffectedItems = affectedItems.filter(
-      (item) =>
-        item.product_part_number ||
-        item.lot_number ||
-        item.workorder_number ||
-        item.quantity_affected ||
-        item.quarantined_quantity ||
-        item.product_disposition
-    );
-
-    if (validAffectedItems.length > 0) {
-      const itemsToInsert = validAffectedItems.map((item) => ({
-        ncmr_id: data.id,
-        product_part_number: item.product_part_number || null,
-        lot_number: item.lot_number || null,
-        workorder_number: item.workorder_number || null,
-        quantity_affected: item.quantity_affected
-          ? Number(item.quantity_affected)
-          : null,
-        quarantined_quantity: item.quarantined_quantity
-          ? Number(item.quarantined_quantity)
-          : null,
-        product_disposition: item.product_disposition || null,
-      }));
-
-      const { error: affectedItemsError } = await supabase
-        .from("ncmr_affected_items")
-        .insert(itemsToInsert);
-
-      if (affectedItemsError) {
-        alert(affectedItemsError.message);
-        return;
-      }
-
-      await addAuditLog(
-        "ncmr",
-        data.id,
-        "affected_items_added",
-        `Added ${itemsToInsert.length} affected item(s) during NCMR initiation.`
-      );
-    }
-
-    if (recurrence.recurring) {
-      await addAuditLog("ncmr", data.id, "recurrence_detected", recurrence.reason);
-    }
-
-    if (supplierScar.required) {
-      await addAuditLog("ncmr", data.id, "supplier_scar_required", supplierScar.reason);
-
-      const { data: scarData, error: scarError } = await supabase
-        .from("capas")
-        .insert({
-          ncmr_id: data.id,
-          title: `SCAR for ${supplierName}`,
-          linked_ncmr_title: title,
-          source_type: "supplier_quality",
-          capa_source: "Supplier recurrence",
-          capa_type: "scar",
-          supplier_name: supplierName,
-          scar_required: true,
-          scar_reason: supplierScar.reason,
-          problem_description:
-            issueDescription || `Supplier recurrence identified for ${supplierName}`,
-          status: "open",
-        })
-        .select()
-        .single();
-
-      if (scarError) {
-        alert(scarError.message);
-        return;
-      }
-
-      await supabase
-        .from("ncmrs")
-        .update({
-          capa_id: scarData.id,
-          capa_required: true,
-        })
-        .eq("id", data.id);
-
-      await addAuditLog(
-        "ncmr",
-        data.id,
-        "scar_created",
-        `Supplier CAPA/SCAR automatically created for supplier: ${supplierName}`
-      );
-    } else if (recurrence.recurring) {
+    if (severity === "critical" && !record?.capa_id) {
       const { data: capaData, error: capaError } = await supabase
         .from("capas")
         .insert({
-          ncmr_id: data.id,
-          title: `CAPA for ${title}`,
-          linked_ncmr_title: title,
-          source_type: "ncmr",
-          capa_source: "Recurring NCMR",
-          capa_type: "internal_capa",
-          problem_description: issueDescription || title,
+          title: `CAPA for ${record.title}`,
           status: "open",
+          source_type: "ncmr",
+          capa_source: "Severity-based trigger: critical",
+          ncmr_id: id,
+          linked_ncmr_title: record.title,
+          problem_description:
+            problemDescription || record.issue_description || record.title,
+          investigation_summary: investigationSummary,
+          root_cause: rootCause,
+          corrective_action_plan: correctiveAction,
+          action_plan: correctiveAction,
         })
         .select()
         .single();
@@ -469,756 +440,910 @@ export default function NcmrPage() {
         return;
       }
 
-      await supabase
+      const { error: ncmrUpdateError } = await supabase
         .from("ncmrs")
-        .update({ capa_id: capaData.id })
-        .eq("id", data.id);
+        .update({
+          capa_id: capaData.id,
+          capa_required: true,
+          capa_justification: null,
+        })
+        .eq("id", id);
+
+      if (ncmrUpdateError) {
+        alert(ncmrUpdateError.message);
+        return;
+      }
 
       await addAuditLog(
-        "ncmr",
-        data.id,
-        "capa_triggered",
-        "CAPA automatically created due to recurring issue."
+        "critical_severity_capa_trigger",
+        "CAPA automatically created because NCMR severity was assessed as critical."
+      );
+
+      alert("NCMR saved. CAPA automatically created because severity is Critical.");
+      fetchRecord();
+      return;
+    }
+
+    if (severity === "major" && !record?.capa_id && capaJustification) {
+      await supabase
+        .from("ncmrs")
+        .update({
+          capa_required: false,
+          capa_justification: capaJustification,
+        })
+        .eq("id", id);
+
+      await addAuditLog(
+        "major_severity_no_capa_justification",
+        `Major severity assessed with no CAPA. Justification: ${capaJustification}`
       );
     }
 
-    setTitle("");
-    setIssueDescription("");
-    setProductPartNumber("");
-    setLotNumber("");
-    setWorkorderNumber("");
-    setSourceOfDetection("");
-    setDepartment("");
-    setDateDetected("");
-    setQuantityAffected("");
-    setContainmentAction("");
-    setContainmentOwner("");
-    setMaterialStatus("");
-    setQuarantinedQuantity("");
-    setDefectCategory("");
-    setDefectSubcategory("");
-    setSupplierName("");
-    setSupplierLot("");
-    setSiteLocation("");
-    setImmediateCorrection("");
-    setOwner("");
-    setAffectedItems([
-      {
-        product_part_number: "",
-        lot_number: "",
-        workorder_number: "",
-        quantity_affected: "",
-        quarantined_quantity: "",
-        product_disposition: "",
-      },
-    ]);
+    if (severity === "major" && record?.capa_id) {
+      await supabase
+        .from("ncmrs")
+        .update({ capa_required: true })
+        .eq("id", id);
+    }
 
-    fetchData();
+    alert("NCMR workflow saved");
+    fetchRecord();
   };
 
-  useEffect(() => {
-    fetchMasterData();
-    fetchData();
-  }, []);
+  const approveMrb = async () => {
+    if (record?.is_locked) {
+      alert("This record is locked after electronic signature and cannot be edited.");
+      return;
+    }
 
-  useEffect(() => {
-    if (filteredDefectSubcategories.length > 0) {
-      const stillValid = filteredDefectSubcategories.some(
-        (item) => item.code === defectSubcategory
-      );
+    const isApprover = userRole === "approver" || userRole === "vp_quality";
+    const isVpQuality = userRole === "vp_quality";
 
-      if (!stillValid) {
-        setDefectSubcategory(filteredDefectSubcategories[0].code);
+    if (!isApprover) {
+      alert("Only an approver or VP Quality can approve MRB disposition.");
+      return;
+    }
+
+    if (!mrbSignatureEmail) {
+      alert("Please re-enter your email before signing MRB approval.");
+      return;
+    }
+
+    if (mrbSignatureEmail.trim().toLowerCase() !== userEmail.trim().toLowerCase()) {
+      alert("Electronic signature email does not match the logged-in user.");
+      return;
+    }
+
+    if (!riskAssessment) return alert("Risk assessment is required before MRB approval.");
+    if (severity === "not_assessed") return alert("Severity must be assessed before MRB approval.");
+
+    if (severity === "major" && !record?.capa_id && !capaJustification) {
+      return alert("For Major severity, CAPA is required OR justification must be provided before MRB approval.");
+    }
+
+    if (severity === "critical" && !record?.capa_id) {
+      return alert("Critical severity requires a linked CAPA before MRB approval. Save workflow first to auto-create CAPA.");
+    }
+
+    if (!productDisposition) return alert("Product disposition is required before MRB approval.");
+    if (!dispositionJustification) return alert("Disposition justification is required before MRB approval.");
+
+    if (
+      (severity === "critical" || severity === "major") &&
+      productDisposition === "use_as_is" &&
+      !isVpQuality
+    ) {
+      alert("MRB rule: Use As Is disposition for Major or Critical severity requires VP Quality approval.");
+      return;
+    }
+
+    if (
+      severity === "major" &&
+      productDisposition === "use_as_is" &&
+      dispositionJustification.trim().length < 50
+    ) {
+      alert("MRB rule: Major severity with Use As Is requires a stronger disposition justification.");
+      return;
+    }
+
+    if (
+      severity === "critical" &&
+      productDisposition === "use_as_is" &&
+      dispositionJustification.trim().length < 75
+    ) {
+      alert("MRB rule: Critical severity with Use As Is requires a detailed VP Quality justification.");
+      return;
+    }
+
+    if (affectedItems.length > 0) {
+      const unapprovedItems = affectedItems.filter((item) => !item.mrb_approved_by);
+
+      if (unapprovedItems.length > 0) {
+        alert("All affected items must have MRB approval before overall MRB approval.");
+        return;
       }
-    } else {
-      setDefectSubcategory("");
     }
-  }, [defectCategory, defectSubcategoryOptions]);
 
-  const renderOptions = (options: MasterOption[]) =>
-    options.map((option) => (
-      <option key={option.code} value={option.code}>
-        {option.label}
-      </option>
-    ));
+    const confirmed = window.confirm(
+      "Electronic Signature:\n\nI have reviewed the nonconformance, risk assessment, severity, CAPA decision, product disposition, MRB rules, and approve the MRB decision."
+    );
 
-  const summaryCardStyle: React.CSSProperties = {
-    border: "1px solid #d1d5db",
-    borderRadius: "10px",
-    padding: "14px",
-    background: "#f9fafb",
+    if (!confirmed) return;
+
+    const now = new Date().toISOString();
+
+    const meaning =
+      "I have reviewed the nonconformance, risk assessment, severity, CAPA decision, product disposition, MRB rules, and approve the MRB decision.";
+
+    const { error } = await supabase
+      .from("ncmrs")
+      .update({
+        risk_assessment: riskAssessment,
+        severity,
+        capa_justification: capaJustification,
+        product_disposition: productDisposition,
+        disposition: productDisposition,
+        disposition_justification: dispositionJustification,
+        mrb_approved_by: userEmail,
+        mrb_approved_at: now,
+        mrb_signature_meaning: meaning,
+        mrb_signature_email_entered: mrbSignatureEmail,
+        mrb_additional_approvers: additionalMrbApprovers,
+      })
+      .eq("id", id);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    const approverEmails = additionalMrbApprovers
+      .split(",")
+      .map((email) => email.trim().toLowerCase())
+      .filter((email) => email && email !== userEmail.toLowerCase());
+
+    if (approverEmails.length > 0) {
+      const approverRows = approverEmails.map((email) => ({
+        ncmr_id: id,
+        approver_email: email,
+        approver_role: "additional_mrb_approver",
+        approval_status: "pending",
+        signature_meaning: "Additional MRB approval requested.",
+      }));
+
+      const { error: approverError } = await supabase
+        .from("ncmr_mrb_approvers")
+        .insert(approverRows);
+
+      if (approverError) {
+        alert(approverError.message);
+        return;
+      }
+    }
+
+    await addAuditLog(
+      "mrb_approved",
+      `MRB approved after enhanced e-signature. Severity: ${severity}. Disposition: ${productDisposition}. Approved by role: ${userRole}. Meaning: ${meaning}`
+    );
+
+    alert("MRB approved with electronic signature");
+    fetchRecord();
   };
 
-  const summaryLabelStyle: React.CSSProperties = {
-    fontSize: "13px",
-    color: "#4b5563",
-    marginBottom: "4px",
+  const markCorrectionImplemented = async () => {
+    if (record?.is_locked) {
+      alert("This record is locked after electronic signature and cannot be edited.");
+      return;
+    }
+
+    if (!correctionImplementation) {
+      alert("Correction implementation must be documented.");
+      return;
+    }
+
+    const now = new Date().toISOString();
+
+    const { error } = await supabase
+      .from("ncmrs")
+      .update({
+        correction_implementation: correctionImplementation,
+        correction_implemented_by: userEmail,
+        correction_implemented_at: now,
+      })
+      .eq("id", id);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    await addAuditLog("correction_implemented", "Correction implementation documented.");
+    alert("Correction implementation recorded");
+    fetchRecord();
   };
 
-  const summaryValueStyle: React.CSSProperties = {
-    fontSize: "24px",
-    fontWeight: "bold",
+  const closeNcmr = async () => {
+    if (record?.is_locked) {
+      alert("This record is locked after electronic signature and cannot be edited.");
+      return;
+    }
+
+    if (userRole !== "approver" && userRole !== "vp_quality") {
+      return alert("Only an approver or VP Quality can close NCMR.");
+    }
+
+    if (!problemDescription) return alert("Problem description is required.");
+    if (!containmentAction) return alert("Containment action is required.");
+    if (!investigationSummary) return alert("Investigation summary is required.");
+    if (!rootCauseCategory) return alert("Root cause category is required.");
+    if (!rootCause) return alert("Root cause is required.");
+    if (!correctionActionProposal) return alert("Correction / corrective action proposal is required.");
+    if (!correctiveAction) return alert("Corrective action recommendation is required.");
+    if (!riskAssessment) return alert("Risk assessment is required.");
+    if (severity === "not_assessed") return alert("Severity must be assessed.");
+
+    if (severity === "major" && !record?.capa_id && !capaJustification) {
+      return alert("For Major severity, CAPA is required OR justification must be provided before closure.");
+    }
+
+    if (severity === "critical" && !record?.capa_id) {
+      return alert("Critical severity requires a linked CAPA before closure.");
+    }
+
+    if (!productDisposition) return alert("Product disposition is required.");
+    if (!dispositionJustification) return alert("Disposition justification is required.");
+    if (!record?.mrb_approved_by) return alert("MRB approval is required before closure.");
+    if (!correctionImplementation) return alert("Correction implementation is required.");
+
+    if (!record?.correction_implemented_by) {
+      return alert("Correction implementation must be formally recorded before closure.");
+    }
+
+    const confirmed = window.confirm(
+      "Electronic Signature:\n\nI confirm this NCMR investigation, risk assessment, severity assessment, CAPA decision, disposition, MRB approval, correction implementation, and closure review are complete."
+    );
+
+    if (!confirmed) return;
+
+    const now = new Date().toISOString();
+    const meaning =
+      "I confirm this NCMR investigation, risk assessment, severity assessment, CAPA decision, disposition, MRB approval, correction implementation, and closure review are complete.";
+
+    const { error } = await supabase
+      .from("ncmrs")
+      .update({
+        status: "closed",
+        review_status: "completed",
+        closed_at: now,
+        ncmr_closed_by: userEmail,
+        ncmr_signature_meaning: meaning,
+        investigation_completed_at: now,
+        is_locked: true,
+        locked_at: now,
+        locked_by: userEmail,
+      })
+      .eq("id", id);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    await addAuditLog(
+      "ncmr_closed_signature",
+      `NCMR closed with e-signature. Meaning: ${meaning}`
+    );
+
+    alert("NCMR closed");
+    fetchRecord();
   };
 
-  const badgeStyle: React.CSSProperties = {
-    color: "white",
-    padding: "4px 8px",
-    borderRadius: "999px",
-    fontSize: "12px",
-    fontWeight: 600,
-  };
+  useEffect(() => {
+    if (id) {
+      fetchUserRole();
+      fetchRecord();
+      fetchRootCauseOptions();
+    }
+  }, [id]);
 
-  const filteredList = list.filter((item) => {
-    const searchableText = [
-      item.ncmr_number,
-      item.title,
-      item.issue_description,
-      item.product_part_number,
-      item.lot_number,
-      item.workorder_number,
-      item.supplier_name,
-      item.department,
-      item.owner,
-    ]
-      .filter(Boolean)
-      .join(" ")
-      .toLowerCase();
+  if (loading) {
+    return <main style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>Loading...</main>;
+  }
 
-    const matchesSearch = search
-      ? searchableText.includes(search.trim().toLowerCase())
-      : true;
+  if (!record) {
+    return <main style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>Record not found</main>;
+  }
 
-    const matchesStatus = statusFilter ? item.status === statusFilter : true;
-    const matchesSeverity = severityFilter ? item.severity === severityFilter : true;
-
-    return matchesSearch && matchesStatus && matchesSeverity;
-  });
+  const isLocked = record?.is_locked === true;
 
   return (
     <main style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
-      <h1>NCMR Initiation</h1>
-
-      <section style={sectionStyle}>
-        <h2>1. Initiation Information</h2>
-
-        <div style={rowStyle}>
-          <label>Title</label>
-          <br />
-          <input
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="Short NCMR title"
-            style={fieldStyle}
-          />
-        </div>
-
-        <div style={rowStyle}>
-          <label>Issue Description</label>
-          <br />
-          <textarea
-            value={issueDescription}
-            onChange={(e) => setIssueDescription(e.target.value)}
-            placeholder="Describe the issue observed"
-            rows={4}
-            style={textAreaStyle}
-          />
-        </div>
-
-        <div style={rowStyle}>
-          <label>Product Part Number</label>
-          <br />
-          <select
-            value={productPartNumber}
-            onChange={(e) => setProductPartNumber(e.target.value)}
-            style={fieldStyle}
-          >
-            <option value="">Select part number</option>
-            {renderOptions(partNumberOptions)}
-          </select>
-        </div>
-
-        <div style={rowStyle}>
-          <label>Lot Number</label>
-          <br />
-          <input
-            value={lotNumber}
-            onChange={(e) => setLotNumber(e.target.value)}
-            placeholder="Lot number"
-            style={fieldStyle}
-          />
-        </div>
-
-        <div style={rowStyle}>
-          <label>Work Order Number</label>
-          <br />
-          <input
-            value={workorderNumber}
-            onChange={(e) => setWorkorderNumber(e.target.value)}
-            placeholder="Work order number"
-            style={fieldStyle}
-          />
-        </div>
-
-        <div style={rowStyle}>
-          <label>Source of Detection</label>
-          <br />
-          <select
-            value={sourceOfDetection}
-            onChange={(e) => setSourceOfDetection(e.target.value)}
-            style={fieldStyle}
-          >
-            <option value="">Select source</option>
-            {renderOptions(detectionSourceOptions)}
-          </select>
-        </div>
-
-        <div style={rowStyle}>
-          <label>Department</label>
-          <br />
-          <select
-            value={department}
-            onChange={(e) => setDepartment(e.target.value)}
-            style={fieldStyle}
-          >
-            <option value="">Select department</option>
-            {renderOptions(departmentOptions)}
-          </select>
-        </div>
-
-        <div style={rowStyle}>
-          <label>Date Detected</label>
-          <br />
-          <input
-            type="date"
-            value={dateDetected}
-            onChange={(e) => setDateDetected(e.target.value)}
-            style={fieldStyle}
-          />
-        </div>
-
-        <div style={rowStyle}>
-          <label>Quantity Affected</label>
-          <br />
-          <input
-            type="number"
-            value={quantityAffected}
-            onChange={(e) => setQuantityAffected(e.target.value)}
-            placeholder="Quantity affected"
-            style={fieldStyle}
-          />
-        </div>
-
-        <div style={{ marginTop: "18px" }}>
-          <h3>Affected Items / Multiple Parts and Lots</h3>
-          <p style={{ color: "#4b5563", fontSize: "14px" }}>
-            Use this section when more than one part number, lot number, work order, or disposition may be impacted.
-            The first row can match the primary part/lot above.
-          </p>
-
-          {affectedItems.map((item, index) => (
-            <div
-              key={index}
-              style={{
-                border: "1px solid #d1d5db",
-                borderRadius: "8px",
-                padding: "12px",
-                marginBottom: "12px",
-                background: "#f9fafb",
-              }}
-            >
-              <strong>Affected Item {index + 1}</strong>
-
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-                  gap: "10px",
-                  marginTop: "10px",
-                }}
-              >
-                <div>
-                  <label>Part Number</label>
-                  <br />
-                  <select
-                    value={item.product_part_number}
-                    onChange={(e) =>
-                      updateAffectedItem(index, "product_part_number", e.target.value)
-                    }
-                    style={{ width: "100%", padding: "8px" }}
-                  >
-                    <option value="">Select part number</option>
-                    {renderOptions(partNumberOptions)}
-                  </select>
-                </div>
-
-                <div>
-                  <label>Lot Number</label>
-                  <br />
-                  <input
-                    value={item.lot_number}
-                    onChange={(e) => updateAffectedItem(index, "lot_number", e.target.value)}
-                    placeholder="Lot number"
-                    style={{ width: "100%", padding: "8px" }}
-                  />
-                </div>
-
-                <div>
-                  <label>Work Order</label>
-                  <br />
-                  <input
-                    value={item.workorder_number}
-                    onChange={(e) =>
-                      updateAffectedItem(index, "workorder_number", e.target.value)
-                    }
-                    placeholder="Work order"
-                    style={{ width: "100%", padding: "8px" }}
-                  />
-                </div>
-
-                <div>
-                  <label>Qty Affected</label>
-                  <br />
-                  <input
-                    type="number"
-                    value={item.quantity_affected}
-                    onChange={(e) =>
-                      updateAffectedItem(index, "quantity_affected", e.target.value)
-                    }
-                    style={{ width: "100%", padding: "8px" }}
-                  />
-                </div>
-
-                <div>
-                  <label>Qty Quarantined</label>
-                  <br />
-                  <input
-                    type="number"
-                    value={item.quarantined_quantity}
-                    onChange={(e) =>
-                      updateAffectedItem(index, "quarantined_quantity", e.target.value)
-                    }
-                    style={{ width: "100%", padding: "8px" }}
-                  />
-                </div>
-
-                <div>
-                  <label>Disposition</label>
-                  <br />
-                  <select
-                    value={item.product_disposition}
-                    onChange={(e) =>
-                      updateAffectedItem(index, "product_disposition", e.target.value)
-                    }
-                    style={{ width: "100%", padding: "8px" }}
-                  >
-                    <option value="">Select disposition</option>
-                    <option value="use_as_is">Use As Is</option>
-                    <option value="rework">Rework</option>
-                    <option value="repair">Repair</option>
-                    <option value="scrap">Scrap</option>
-                    <option value="return_to_supplier">Return to Supplier</option>
-                    <option value="sort_screen">Sort / Screen</option>
-                    <option value="hold_pending_decision">Hold Pending Decision</option>
-                  </select>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => removeAffectedItem(index)}
-                style={{ marginTop: "10px" }}
-              >
-                Remove Item
-              </button>
-            </div>
-          ))}
-
-          <button type="button" onClick={addAffectedItem}>
-            + Add Another Affected Item
-          </button>
-        </div>
-      </section>
-
-      <section style={sectionStyle}>
-        <h2>2. Containment</h2>
-
-        <div style={rowStyle}>
-          <label>Containment Action</label>
-          <br />
-          <textarea
-            value={containmentAction}
-            onChange={(e) => setContainmentAction(e.target.value)}
-            placeholder="Describe immediate containment action taken"
-            rows={3}
-            style={textAreaStyle}
-          />
-        </div>
-
-        <div style={rowStyle}>
-          <label>Containment Owner</label>
-          <br />
-          <input
-            value={containmentOwner}
-            onChange={(e) => setContainmentOwner(e.target.value)}
-            placeholder="Containment owner"
-            style={fieldStyle}
-          />
-        </div>
-
-        <div style={rowStyle}>
-          <label>Material Status</label>
-          <br />
-          <select
-            value={materialStatus}
-            onChange={(e) => setMaterialStatus(e.target.value)}
-            style={fieldStyle}
-          >
-            <option value="">Select material status</option>
-            {renderOptions(materialStatusOptions)}
-          </select>
-        </div>
-
-        <div style={rowStyle}>
-          <label>Quarantined Quantity</label>
-          <br />
-          <input
-            type="number"
-            value={quarantinedQuantity}
-            onChange={(e) => setQuarantinedQuantity(e.target.value)}
-            placeholder="Quarantined quantity"
-            style={fieldStyle}
-          />
-        </div>
-      </section>
-
-      <section style={sectionStyle}>
-        <h2>3. Defect / Supplier Information</h2>
-
-        <div style={rowStyle}>
-          <label>Defect Category</label>
-          <br />
-          <select
-            value={defectCategory}
-            onChange={(e) => setDefectCategory(e.target.value)}
-            style={fieldStyle}
-          >
-            <option value="">Select defect category</option>
-            {renderOptions(defectCategoryOptions)}
-          </select>
-        </div>
-
-        <div style={rowStyle}>
-          <label>Defect Subcategory</label>
-          <br />
-          <select
-            value={defectSubcategory}
-            onChange={(e) => setDefectSubcategory(e.target.value)}
-            style={fieldStyle}
-          >
-            <option value="">Select defect subcategory</option>
-            {filteredDefectSubcategories.map((option) => (
-              <option key={option.code} value={option.code}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div style={rowStyle}>
-          <label>Supplier Name</label>
-          <br />
-          <input
-            value={supplierName}
-            onChange={(e) => setSupplierName(e.target.value)}
-            placeholder="Supplier name"
-            style={fieldStyle}
-          />
-        </div>
-
-        <div style={rowStyle}>
-          <label>Supplier Lot</label>
-          <br />
-          <input
-            value={supplierLot}
-            onChange={(e) => setSupplierLot(e.target.value)}
-            placeholder="Supplier lot"
-            style={fieldStyle}
-          />
-        </div>
-
-        <div style={rowStyle}>
-          <label>Site / Location</label>
-          <br />
-          <input
-            value={siteLocation}
-            onChange={(e) => setSiteLocation(e.target.value)}
-            placeholder="Site / room / line / location"
-            style={fieldStyle}
-          />
-        </div>
-
-        <div style={rowStyle}>
-          <label>Immediate Correction</label>
-          <br />
-          <textarea
-            value={immediateCorrection}
-            onChange={(e) => setImmediateCorrection(e.target.value)}
-            placeholder="Immediate correction taken"
-            rows={3}
-            style={textAreaStyle}
-          />
-        </div>
-
-        <div style={rowStyle}>
-          <label>Owner</label>
-          <br />
-          <input
-            value={owner}
-            onChange={(e) => setOwner(e.target.value)}
-            placeholder="Owner"
-            style={fieldStyle}
-          />
-        </div>
-      </section>
-
-      <button onClick={addNcmr} style={{ padding: "10px 16px", marginBottom: "25px" }}>
-        Create NCMR
-      </button>
-
-      <h2>Existing NCMRs</h2>
-
-      <section style={sectionStyle}>
-        <h3>Search / Filters</h3>
-
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search by title, NCMR number, part, lot, supplier, owner"
-          style={{ ...fieldStyle, maxWidth: "650px", marginRight: "10px" }}
-        />
-
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          style={{ padding: "8px", marginRight: "10px", marginBottom: "8px" }}
-        >
-          <option value="">All Statuses</option>
-          <option value="open">Open</option>
-          <option value="investigation">Investigation</option>
-          <option value="in_review">In Review</option>
-          <option value="closed">Closed</option>
-        </select>
-
-        <select
-          value={severityFilter}
-          onChange={(e) => setSeverityFilter(e.target.value)}
-          style={{ padding: "8px", marginRight: "10px", marginBottom: "8px" }}
-        >
-          <option value="">All Severities</option>
-          <option value="not_assessed">Not Assessed</option>
-          <option value="minor">Minor</option>
-          <option value="major">Major</option>
-          <option value="critical">Critical</option>
-        </select>
-
+      <h1>NCMR Controlled Workflow</h1>
+      <div style={{ marginBottom: "16px" }}>
         <button
-          onClick={() => {
-            setSearch("");
-            setStatusFilter("");
-            setSeverityFilter("");
+          onClick={() => window.open(`/ncmrs/${id}/report`, "_blank")}
+          style={{
+            padding: "10px 14px",
+            background: "#2563eb",
+            color: "white",
+            border: "none",
+            borderRadius: "6px",
+            cursor: "pointer",
+            fontWeight: "600",
           }}
         >
-          Clear Filters
+          NCMR Report
         </button>
+      </div>
 
-        <div style={{ marginTop: "10px", fontSize: "14px", color: "#4b5563" }}>
-          Showing {filteredList.length} of {list.length} NCMR record(s)
-        </div>
-      </section>
+      <p><strong>Logged-in:</strong> {userEmail || "none"}</p>
+      <p><strong>Role:</strong> {userRole || "none"}</p>
 
-      <section
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-          gap: "12px",
-          marginBottom: "20px",
-        }}
-      >
-        <div style={summaryCardStyle}>
-          <div style={summaryLabelStyle}>Total NCMRs</div>
-          <div style={summaryValueStyle}>{list.length}</div>
-        </div>
-        <div style={summaryCardStyle}>
-          <div style={summaryLabelStyle}>Open / Active</div>
-          <div style={summaryValueStyle}>{list.filter((x) => x.status !== "closed").length}</div>
-        </div>
-        <div style={summaryCardStyle}>
-          <div style={summaryLabelStyle}>CAPA Required</div>
-          <div style={summaryValueStyle}>{list.filter((x) => x.capa_required).length}</div>
-        </div>
-        <div style={summaryCardStyle}>
-          <div style={summaryLabelStyle}>Recurring Issues</div>
-          <div style={summaryValueStyle}>{list.filter((x) => x.recurring_issue).length}</div>
-        </div>
-      </section>
+      <div style={{ marginBottom: "20px", padding: "12px", border: "1px solid #ccc" }}>
+        <h2>Record Summary</h2>
+        <p><strong>Title:</strong> {record.title}</p>
+        <p><strong>Issue Description:</strong> {record.issue_description || "N/A"}</p>
+        <p><strong>Part Number:</strong> {record.product_part_number || "N/A"}</p>
+        <p><strong>Lot Number:</strong> {record.lot_number || "N/A"}</p>
+        <p><strong>Work Order:</strong> {record.workorder_number || "N/A"}</p>
+        <p><strong>Severity:</strong> {record.severity || "not_assessed"}</p>
+        <p><strong>CAPA Required:</strong> {record.capa_required ? "Yes" : "No"}</p>
+        <p><strong>CAPA Justification:</strong> {record.capa_justification || "N/A"}</p>
+        <p><strong>Status:</strong> {record.status}</p>
 
-      {list.length === 0 ? (
-        <p>No NCMRs created yet.</p>
-      ) : filteredList.length === 0 ? (
-        <p>No NCMRs match the selected filters.</p>
-      ) : (
-        <div style={{ display: "grid", gap: "16px" }}>
-          {filteredList.map((item) => {
-            const statusColor =
-              item.status === "closed"
-                ? "#16a34a"
-                : item.status === "open"
-                ? "#2563eb"
-                : "#f59e0b";
+        {linkedCapa ? (
+          <p>
+            <strong>Linked CAPA:</strong>{" "}
+            <a href={`/capa/${linkedCapa.id}`}>{linkedCapa.title}</a>
+          </p>
+        ) : (
+          <p><strong>Linked CAPA:</strong> None</p>
+        )}
 
-            const severityColor =
-              item.severity === "critical"
-                ? "#dc2626"
-                : item.severity === "major"
-                ? "#f59e0b"
-                : item.severity === "minor"
-                ? "#16a34a"
-                : "#6b7280";
+        {!linkedCapa ? (
+          <button onClick={createCapaFromNcmr} disabled={isLocked}>
+            Create CAPA from this NCMR
+          </button>
+        ) : null}
+      </div>
 
-            return (
-              <article
+      <section style={{ marginBottom: "20px" }}>
+        <h2>1. Initiation</h2>
+        <p>This section is created from the NCMR initiation page.</p>
+
+        <h3>Affected Materials / Multiple Parts and Lots</h3>
+
+        {affectedItems.length === 0 ? (
+          <p>No additional affected items recorded.</p>
+        ) : (
+          <div style={{ display: "grid", gap: "10px" }}>
+            {affectedItems.map((item) => (
+              <div
                 key={item.id}
                 style={{
                   border: "1px solid #d1d5db",
-                  borderRadius: "12px",
-                  padding: "16px",
-                  background: "#fff",
-                  boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+                  borderRadius: "8px",
+                  padding: "12px",
+                  background: "#f9fafb",
                 }}
               >
                 <div
                   style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    gap: "12px",
-                    alignItems: "flex-start",
-                    flexWrap: "wrap",
-                  }}
-                >
-                  <div>
-                    <h3 style={{ margin: "0 0 6px 0" }}>
-                      {item.ncmr_number || "NCMR-PENDING"} — {item.title || "Untitled NCMR"}
-                    </h3>
-                    <div style={{ color: "#4b5563", fontSize: "14px" }}>
-                      {item.issue_description || "No issue description provided."}
-                    </div>
-                  </div>
-
-                  <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                    <span style={{ ...badgeStyle, background: statusColor }}>
-                      {item.status || "unknown"}
-                    </span>
-                    <span style={{ ...badgeStyle, background: severityColor }}>
-                      {item.severity || "not_assessed"}
-                    </span>
-                  </div>
-                </div>
-
-                <div style={{ marginTop: "10px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                  {item.recurring_issue ? (
-                    <span style={{ ...badgeStyle, background: "#f59e0b" }}>Recurring</span>
-                  ) : null}
-                  {item.capa_required ? (
-                    <span style={{ ...badgeStyle, background: "#dc2626" }}>CAPA Required</span>
-                  ) : null}
-                  {item.supplier_capa_required ? (
-                    <span style={{ ...badgeStyle, background: "#7c3aed" }}>Supplier CAPA / SCAR</span>
-                  ) : null}
-                </div>
-
-                <div
-                  style={{
                     display: "grid",
-                    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
                     gap: "8px",
-                    marginTop: "14px",
-                    fontSize: "14px",
                   }}
                 >
-                  <div><strong>Part:</strong> {item.product_part_number || "N/A"}</div>
-                  <div><strong>Lot:</strong> {item.lot_number || "N/A"}</div>
+                  <div><strong>Part Number:</strong> {item.product_part_number || "N/A"}</div>
+                  <div><strong>Lot Number:</strong> {item.lot_number || "N/A"}</div>
                   <div><strong>Work Order:</strong> {item.workorder_number || "N/A"}</div>
-                  <div><strong>Source:</strong> {item.source_of_detection || "N/A"}</div>
-                  <div><strong>Department:</strong> {item.department || "N/A"}</div>
-                  <div><strong>Detected:</strong> {item.date_detected || "N/A"}</div>
                   <div><strong>Qty Affected:</strong> {item.quantity_affected ?? "N/A"}</div>
-                  <div><strong>Material Status:</strong> {item.material_status || "N/A"}</div>
-                  <div><strong>Defect:</strong> {item.defect_category || "N/A"}</div>
-                  <div><strong>Subcategory:</strong> {item.defect_subcategory || "N/A"}</div>
-                  <div><strong>Supplier:</strong> {item.supplier_name || "N/A"}</div>
-                  <div><strong>Owner:</strong> {item.owner || "N/A"}</div>
+                  <div><strong>Qty Quarantined:</strong> {item.quarantined_quantity ?? "N/A"}</div>
+                  <div><strong>Disposition Status:</strong> {item.product_disposition ? "Disposition Assigned" : "Pending MRB Disposition"}</div>
                 </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
 
-                {(item.recurrence_reason || item.supplier_capa_reason) ? (
-                  <div
-                    style={{
-                      marginTop: "12px",
-                      padding: "10px",
-                      background: "#f9fafb",
-                      borderRadius: "8px",
-                      fontSize: "14px",
-                    }}
-                  >
-                    {item.recurrence_reason ? (
-                      <div><strong>Recurrence Reason:</strong> {item.recurrence_reason}</div>
-                    ) : null}
-                    {item.supplier_capa_reason ? (
-                      <div><strong>Supplier CAPA / SCAR Reason:</strong> {item.supplier_capa_reason}</div>
-                    ) : null}
-                  </div>
-                ) : null}
+      <section style={{ marginBottom: "20px" }}>
+        <h2>2. Containment</h2>
 
-                <div style={{ marginTop: "14px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                  <a
-                    href={`/ncmrs/${item.id}`}
-                    style={{
-                      display: "inline-block",
-                      background: "#2563eb",
-                      color: "white",
-                      padding: "8px 12px",
-                      borderRadius: "8px",
-                      textDecoration: "none",
-                    }}
-                  >
-                    Open Workflow
-                  </a>
+        <label>Investigator</label><br />
+        <input
+          value={investigator}
+          onChange={(e) => setInvestigator(e.target.value)}
+          style={{ width: "100%", maxWidth: "500px", padding: "8px", marginBottom: "12px" }}
+        />
 
-                  <a
-                    href={`/ncmrs/${item.id}/report`}
-                    target="_blank"
-                    rel="noreferrer"
-                    style={{
-                      display: "inline-block",
-                      background:
-                        item.status === "closed"
-                          ? "#16a34a"
-                          : item.status === "draft"
-                          ? "#6b7280"
-                          : "#3b82f6",
-                      color: "white",
-                      padding: "8px 12px",
-                      borderRadius: "8px",
-                      textDecoration: "none",
-                    }}
-                  >
-                    NCMR Report
-                  </a>
-                </div>
-              </article>
-            );
-          })}
+        <br />
+        <label>Problem Description</label><br />
+        <textarea
+          value={problemDescription}
+          onChange={(e) => setProblemDescription(e.target.value)}
+          rows={4}
+          style={{ width: "100%", maxWidth: "800px", marginBottom: "12px" }}
+        />
+
+        <br />
+        <label>Containment Action</label><br />
+        <textarea
+          value={containmentAction}
+          onChange={(e) => setContainmentAction(e.target.value)}
+          rows={4}
+          style={{ width: "100%", maxWidth: "800px" }}
+        />
+      </section>
+
+      <section style={{ marginBottom: "20px" }}>
+        <h2>3. Investigation / Root Cause</h2>
+
+        <label>Investigation Summary</label><br />
+        <textarea
+          value={investigationSummary}
+          onChange={(e) => setInvestigationSummary(e.target.value)}
+          rows={4}
+          style={{ width: "100%", maxWidth: "800px", marginBottom: "12px" }}
+        />
+
+        <br />
+        <label>Root Cause Category</label><br />
+        <select
+          value={rootCauseCategory}
+          onChange={(e) => setRootCauseCategory(e.target.value)}
+          style={{ padding: "8px", minWidth: "300px", marginBottom: "12px" }}
+        >
+          <option value="">Select category</option>
+          {rootCauseOptions.map((opt) => (
+            <option key={opt.id} value={opt.code}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+
+        <br />
+        <label>Root Cause</label><br />
+        <textarea
+          value={rootCause}
+          onChange={(e) => setRootCause(e.target.value)}
+          rows={4}
+          style={{ width: "100%", maxWidth: "800px" }}
+        />
+      </section>
+
+      <section style={{ marginBottom: "20px" }}>
+        <h2>4. Correction / Corrective Action Proposal</h2>
+
+        <label>Correction / Corrective Action Proposal</label><br />
+        <select
+          value={correctionActionProposal}
+          onChange={(e) => setCorrectionActionProposal(e.target.value)}
+          style={{ padding: "8px", minWidth: "330px", marginBottom: "12px" }}
+        >
+          <option value="">Select proposal</option>
+          <option value="no_correction_required">No correction required</option>
+          <option value="immediate_correction_only">Immediate correction only</option>
+          <option value="rework">Rework</option>
+          <option value="repair">Repair</option>
+          <option value="replace">Replace</option>
+          <option value="scrap">Scrap</option>
+          <option value="return_to_supplier">Return to supplier</option>
+          <option value="process_correction">Process correction</option>
+          <option value="training_required">Training required</option>
+          <option value="procedure_update">Procedure update</option>
+          <option value="supplier_corrective_action">Supplier corrective action</option>
+          <option value="escalate_to_capa">Escalate to CAPA</option>
+        </select>
+
+        <br />
+        <label>Corrective Action Recommendation</label><br />
+        <textarea
+          value={correctiveAction}
+          onChange={(e) => setCorrectiveAction(e.target.value)}
+          rows={4}
+          style={{ width: "100%", maxWidth: "800px" }}
+        />
+      </section>
+
+      <section style={{ marginBottom: "20px" }}>
+        <h2>5. Risk Assessment</h2>
+
+        <label>Risk Assessment</label><br />
+        <textarea
+          value={riskAssessment}
+          onChange={(e) => setRiskAssessment(e.target.value)}
+          placeholder="Assess product, process, patient/user, regulatory, and quality risk."
+          rows={4}
+          style={{ width: "100%", maxWidth: "800px" }}
+        />
+
+        <div style={{ marginTop: "12px" }}>
+          <label>Severity</label><br />
+          <select
+            value={severity}
+            onChange={(e) => setSeverity(e.target.value)}
+            style={{ padding: "8px", minWidth: "180px" }}
+          >
+            <option value="not_assessed">Not Assessed</option>
+            <option value="minor">Minor</option>
+            <option value="major">Major</option>
+            <option value="critical">Critical</option>
+          </select>
+        </div>
+
+        {severity === "major" && !linkedCapa ? (
+          <div style={{ marginTop: "12px" }}>
+            <label>Justification for No CAPA</label><br />
+            <textarea
+              value={capaJustification}
+              onChange={(e) => setCapaJustification(e.target.value)}
+              placeholder="Required if severity is Major and no CAPA is linked."
+              rows={3}
+              style={{ width: "100%", maxWidth: "800px" }}
+            />
+          </div>
+        ) : null}
+
+        {severity === "critical" && !linkedCapa ? (
+          <p style={{ color: "red", marginTop: "12px" }}>
+            Critical severity requires CAPA. Save Workflow will automatically create one.
+          </p>
+        ) : null}
+      </section>
+
+      <section style={{ marginBottom: "20px" }}>
+        <h2>6. Product Disposition / MRB Decision</h2>
+
+        <label>Product Disposition</label><br />
+        <select
+          value={productDisposition}
+          onChange={(e) => setProductDisposition(e.target.value)}
+          style={{ padding: "8px", minWidth: "240px", marginBottom: "12px" }}
+        >
+          <option value="">Select disposition</option>
+          <option value="use_as_is">Use As Is</option>
+          <option value="rework">Rework</option>
+          <option value="repair">Repair</option>
+          <option value="scrap">Scrap</option>
+          <option value="return_to_supplier">Return to Supplier</option>
+          <option value="sort_screen">Sort / Screen</option>
+          <option value="hold_pending_decision">Hold Pending Decision</option>
+        </select>
+
+        <br />
+        <label>Disposition Justification</label><br />
+        <textarea
+          value={dispositionJustification}
+          onChange={(e) => setDispositionJustification(e.target.value)}
+          placeholder="Justify disposition based on risk assessment and investigation."
+          rows={4}
+          style={{ width: "100%", maxWidth: "800px" }}
+        />
+
+        <div style={{ marginTop: "18px" }}>
+          <h3>Additional Affected Item Dispositions</h3>
+          <p style={{ color: "#4b5563", fontSize: "14px" }}>
+            Assign and approve item-level dispositions when multiple parts, lots, or work orders are impacted.
+            Overall MRB approval requires each affected item to be approved when affected items are listed.
+          </p>
+
+          {affectedItems.length === 0 ? (
+            <p>No additional affected items recorded.</p>
+          ) : (
+            <div style={{ display: "grid", gap: "12px" }}>
+              {affectedItems.map((item) => (
+                <AffectedItemCard
+                  key={item.id}
+                  item={item}
+                  isLocked={isLocked}
+                  onSave={updateAffectedItemDisposition}
+                  onApprove={approveAffectedItemMrb}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div style={{ marginTop: "12px" }}>
+          <label>Re-enter Your Email for MRB E-Signature</label><br />
+          <input
+            value={mrbSignatureEmail}
+            onChange={(e) => setMrbSignatureEmail(e.target.value)}
+            placeholder={userEmail || "your.email@company.com"}
+            style={{ width: "100%", maxWidth: "500px", padding: "8px" }}
+          />
+        </div>
+
+        <div style={{ marginTop: "12px" }}>
+          <label>Additional MRB Approvers</label><br />
+          <textarea
+            value={additionalMrbApprovers}
+            onChange={(e) => setAdditionalMrbApprovers(e.target.value)}
+            placeholder="Enter comma-separated approver emails"
+            rows={3}
+            style={{ width: "100%", maxWidth: "800px" }}
+          />
+        </div>
+
+        <div style={{ marginTop: "12px" }}>
+          <button onClick={approveMrb} disabled={isLocked}>Approve MRB Decision</button>
+        </div>
+
+        {record.mrb_approved_by ? (
+          <div style={{ marginTop: "12px" }}>
+            <strong>MRB Approved By:</strong> {record.mrb_approved_by}<br />
+            <strong>MRB Approved At:</strong> {record.mrb_approved_at}<br />
+            <strong>Signature Email Entered:</strong> {record.mrb_signature_email_entered || "N/A"}<br />
+            <strong>Signature Meaning:</strong> {record.mrb_signature_meaning}
+          </div>
+        ) : null}
+
+        {mrbApprovers.length > 0 ? (
+          <div style={{ marginTop: "12px" }}>
+            <strong>Additional MRB Approvers:</strong>
+            <ul>
+              {mrbApprovers.map((approver) => (
+                <li key={approver.id}>
+                  {approver.approver_email} — {approver.approval_status}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </section>
+
+      <section style={{ marginBottom: "20px" }}>
+        <h2>7. Correction Implementation</h2>
+
+        <textarea
+          value={correctionImplementation}
+          onChange={(e) => setCorrectionImplementation(e.target.value)}
+          placeholder="Describe how the correction was implemented."
+          rows={4}
+          style={{ width: "100%", maxWidth: "800px" }}
+        />
+
+        <div style={{ marginTop: "12px" }}>
+          <button onClick={markCorrectionImplemented} disabled={isLocked}>
+            Mark Correction Implemented
+          </button>
+        </div>
+
+        {record.correction_implemented_by ? (
+          <div style={{ marginTop: "12px" }}>
+            <strong>Implemented By:</strong> {record.correction_implemented_by}<br />
+            <strong>Implemented At:</strong> {record.correction_implemented_at}
+          </div>
+        ) : null}
+      </section>
+
+      <section style={{ marginBottom: "20px" }}>
+        <h2>8. Evidence</h2>
+
+        <input
+          type="file"
+          onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
+        />
+        <button
+          onClick={uploadEvidence}
+          disabled={uploading}
+          style={{ marginLeft: "10px" }}
+        >
+          {uploading ? "Uploading..." : "Upload Evidence"}
+        </button>
+
+        <div style={{ marginTop: "12px" }}>
+          <label>Evidence URL</label><br />
+          <input
+            value={evidenceUrl}
+            onChange={(e) => setEvidenceUrl(e.target.value)}
+            style={{ width: "100%", maxWidth: "800px", padding: "8px" }}
+          />
+        </div>
+
+        <div style={{ marginTop: "12px" }}>
+          <label>Evidence Notes</label><br />
+          <textarea
+            value={evidenceNotes}
+            onChange={(e) => setEvidenceNotes(e.target.value)}
+            rows={3}
+            style={{ width: "100%", maxWidth: "800px" }}
+          />
+        </div>
+
+        {record.evidence_url ? (
+          <p>
+            <strong>Saved Evidence:</strong>{" "}
+            <a href={record.evidence_url} target="_blank" rel="noreferrer">
+              Open Evidence
+            </a>
+          </p>
+        ) : null}
+      </section>
+
+      <section style={{ marginBottom: "20px" }}>
+        <h2>9. Closure</h2>
+
+        <label>Review Status</label><br />
+        <select
+          value={reviewStatus}
+          onChange={(e) => setReviewStatus(e.target.value)}
+          style={{ padding: "8px", marginBottom: "12px" }}
+        >
+          <option value="draft">Draft</option>
+          <option value="in_review">In Review</option>
+          <option value="completed">Completed</option>
+        </select>
+
+        {record.ncmr_closed_by ? (
+          <div style={{ marginTop: "12px" }}>
+            <strong>NCMR Closed By:</strong> {record.ncmr_closed_by}<br />
+            <strong>Closed At:</strong> {record.closed_at}<br />
+            <strong>Signature Meaning:</strong> {record.ncmr_signature_meaning}
+          </div>
+        ) : null}
+      </section>
+
+      <button onClick={saveWorkflow} disabled={isLocked} style={{ marginRight: "10px" }}>
+        Save Workflow
+      </button>
+
+      <button onClick={closeNcmr} disabled={isLocked} style={{ marginRight: "10px" }}>
+        Close NCMR with E-Signature
+      </button>
+
+      <a href="/ncmrs">Back to NCMRs</a>
+    </main>
+  );
+}
+
+
+function AffectedItemCard({
+  item,
+  isLocked,
+  onSave,
+  onApprove,
+}: {
+  item: any;
+  isLocked: boolean;
+  onSave: (
+    itemId: string,
+    productDisposition: string,
+    dispositionJustification: string
+  ) => void;
+  onApprove: (
+    itemId: string,
+    productDisposition: string,
+    dispositionJustification: string
+  ) => void;
+}) {
+  const [productDisposition, setProductDisposition] = useState(
+    item.product_disposition || ""
+  );
+  const [dispositionJustification, setDispositionJustification] = useState(
+    item.disposition_justification || ""
+  );
+
+  useEffect(() => {
+    setProductDisposition(item.product_disposition || "");
+    setDispositionJustification(item.disposition_justification || "");
+  }, [item.product_disposition, item.disposition_justification]);
+
+  return (
+    <div
+      style={{
+        border: "1px solid #d1d5db",
+        borderRadius: "8px",
+        padding: "12px",
+        background: "#f9fafb",
+      }}
+    >
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+          gap: "8px",
+          marginBottom: "10px",
+        }}
+      >
+        <div><strong>Part Number:</strong> {item.product_part_number || "N/A"}</div>
+        <div><strong>Lot Number:</strong> {item.lot_number || "N/A"}</div>
+        <div><strong>Work Order:</strong> {item.workorder_number || "N/A"}</div>
+        <div><strong>Qty Affected:</strong> {item.quantity_affected ?? "N/A"}</div>
+        <div><strong>Qty Quarantined:</strong> {item.quarantined_quantity ?? "N/A"}</div>
+      </div>
+
+      <label>Additional Item Disposition</label>
+      <br />
+      <select
+        value={productDisposition}
+        onChange={(e) => setProductDisposition(e.target.value)}
+        disabled={isLocked}
+        style={{ padding: "8px", minWidth: "240px", marginBottom: "8px" }}
+      >
+        <option value="">Select disposition</option>
+        <option value="use_as_is">Use As Is</option>
+        <option value="rework">Rework</option>
+        <option value="repair">Repair</option>
+        <option value="scrap">Scrap</option>
+        <option value="return_to_supplier">Return to Supplier</option>
+        <option value="sort_screen">Sort / Screen</option>
+        <option value="hold_pending_decision">Hold Pending Decision</option>
+      </select>
+
+      <br />
+      <label>Additional Item Disposition Justification</label>
+      <br />
+      <textarea
+        value={dispositionJustification}
+        onChange={(e) => setDispositionJustification(e.target.value)}
+        disabled={isLocked}
+        rows={3}
+        style={{ width: "100%", maxWidth: "800px", marginBottom: "8px" }}
+      />
+
+      <br />
+      <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+        <button
+          type="button"
+          disabled={isLocked}
+          onClick={() =>
+            onSave(item.id, productDisposition, dispositionJustification)
+          }
+        >
+          Save Item Disposition
+        </button>
+
+        <button
+          type="button"
+          disabled={isLocked || !!item.mrb_approved_by}
+          onClick={() =>
+            onApprove(item.id, productDisposition, dispositionJustification)
+          }
+          style={{
+            background: item.mrb_approved_by ? "#16a34a" : "#2563eb",
+            color: "white",
+            border: "none",
+            borderRadius: "6px",
+            padding: "8px 12px",
+            cursor: isLocked || item.mrb_approved_by ? "not-allowed" : "pointer",
+          }}
+        >
+          {item.mrb_approved_by ? "Item MRB Approved" : "Approve Item MRB"}
+        </button>
+      </div>
+
+      {item.mrb_approved_by ? (
+        <div
+          style={{
+            marginTop: "10px",
+            border: "1px solid #86efac",
+            background: "#f0fdf4",
+            padding: "10px",
+            borderRadius: "8px",
+          }}
+        >
+          <strong>Item MRB Approved By:</strong> {item.mrb_approved_by}
+          <br />
+          <strong>Item MRB Approved At:</strong> {item.mrb_approved_at || "N/A"}
+          <br />
+          <strong>Signature Meaning:</strong>{" "}
+          {item.mrb_signature_meaning || "N/A"}
+        </div>
+      ) : (
+        <div
+          style={{
+            marginTop: "10px",
+            border: "1px solid #facc15",
+            background: "#fefce8",
+            padding: "10px",
+            borderRadius: "8px",
+          }}
+        >
+          <strong>Item MRB Status:</strong> Pending item-level approval
         </div>
       )}
-    </main>
+    </div>
   );
 }
