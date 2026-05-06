@@ -206,78 +206,6 @@ export default function NcmrDetailPage() {
     fetchAffectedItems();
   };
 
-  const approveAffectedItemMrb = async (
-    itemId: string,
-    productDisposition: string,
-    dispositionJustification: string
-  ) => {
-    if (record?.is_locked) {
-      alert("This record is locked after electronic signature and cannot be edited.");
-      return;
-    }
-
-    const isApprover = userRole === "approver" || userRole === "vp_quality";
-    const isVpQuality = userRole === "vp_quality";
-
-    if (!isApprover) {
-      alert("Only an approver or VP Quality can approve affected item MRB disposition.");
-      return;
-    }
-
-    if (!productDisposition) {
-      alert("Disposition is required before item MRB approval.");
-      return;
-    }
-
-    if (!dispositionJustification) {
-      alert("Disposition justification is required before item MRB approval.");
-      return;
-    }
-
-    if (
-      productDisposition === "use_as_is" &&
-      (severity === "major" || severity === "critical") &&
-      !isVpQuality
-    ) {
-      alert("Use As Is for Major or Critical severity requires VP Quality approval.");
-      return;
-    }
-
-    const confirmed = window.confirm(
-      "Electronic Signature:\n\nI have reviewed this affected item, its disposition, and justification, and approve the MRB decision for this item."
-    );
-
-    if (!confirmed) return;
-
-    const now = new Date().toISOString();
-    const meaning =
-      "I have reviewed this affected item, its disposition, and justification, and approve the MRB decision for this item.";
-
-    const { error } = await supabase
-      .from("ncmr_affected_items")
-      .update({
-        product_disposition: productDisposition,
-        disposition_justification: dispositionJustification,
-        mrb_approved_by: userEmail,
-        mrb_approved_at: now,
-        mrb_signature_meaning: meaning,
-      })
-      .eq("id", itemId);
-
-    if (error) {
-      alert(error.message);
-      return;
-    }
-
-    await addAuditLog(
-      "affected_item_mrb_approved",
-      `Affected item MRB approved by ${userEmail}. Disposition: ${productDisposition}.`
-    );
-
-    alert("Affected item MRB approved.");
-    fetchAffectedItems();
-  };
-
   const createCapaFromNcmr = async () => {
     if (record?.is_locked) {
       alert("This record is locked after electronic signature and cannot be edited.");
@@ -556,10 +484,12 @@ export default function NcmrDetailPage() {
     }
 
     if (affectedItems.length > 0) {
-      const unapprovedItems = affectedItems.filter((item) => !item.mrb_approved_by);
+      const itemsMissingDisposition = affectedItems.filter(
+        (item) => !item.product_disposition || !item.disposition_justification
+      );
 
-      if (unapprovedItems.length > 0) {
-        alert("All affected items must have MRB approval before overall MRB approval.");
+      if (itemsMissingDisposition.length > 0) {
+        alert("All affected items must have a saved disposition and justification before overall MRB approval.");
         return;
       }
     }
@@ -811,37 +741,19 @@ export default function NcmrDetailPage() {
         <h2>1. Initiation</h2>
         <p>This section is created from the NCMR initiation page.</p>
 
-        <h3>Affected Materials / Multiple Parts and Lots</h3>
+        <h3>Affected Items / Multiple Parts, Lots, and Dispositions</h3>
 
         {affectedItems.length === 0 ? (
           <p>No additional affected items recorded.</p>
         ) : (
-          <div style={{ display: "grid", gap: "10px" }}>
+          <div style={{ display: "grid", gap: "12px" }}>
             {affectedItems.map((item) => (
-              <div
+              <AffectedItemCard
                 key={item.id}
-                style={{
-                  border: "1px solid #d1d5db",
-                  borderRadius: "8px",
-                  padding: "12px",
-                  background: "#f9fafb",
-                }}
-              >
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-                    gap: "8px",
-                  }}
-                >
-                  <div><strong>Part Number:</strong> {item.product_part_number || "N/A"}</div>
-                  <div><strong>Lot Number:</strong> {item.lot_number || "N/A"}</div>
-                  <div><strong>Work Order:</strong> {item.workorder_number || "N/A"}</div>
-                  <div><strong>Qty Affected:</strong> {item.quantity_affected ?? "N/A"}</div>
-                  <div><strong>Qty Quarantined:</strong> {item.quarantined_quantity ?? "N/A"}</div>
-                  <div><strong>Disposition Status:</strong> {item.product_disposition ? "Disposition Assigned" : "Pending MRB Disposition"}</div>
-                </div>
-              </div>
+                item={item}
+                isLocked={isLocked}
+                onSave={updateAffectedItemDisposition}
+              />
             ))}
           </div>
         )}
@@ -1021,30 +933,6 @@ export default function NcmrDetailPage() {
           style={{ width: "100%", maxWidth: "800px" }}
         />
 
-        <div style={{ marginTop: "18px" }}>
-          <h3>Additional Affected Item Dispositions</h3>
-          <p style={{ color: "#4b5563", fontSize: "14px" }}>
-            Assign and approve item-level dispositions when multiple parts, lots, or work orders are impacted.
-            Overall MRB approval requires each affected item to be approved when affected items are listed.
-          </p>
-
-          {affectedItems.length === 0 ? (
-            <p>No additional affected items recorded.</p>
-          ) : (
-            <div style={{ display: "grid", gap: "12px" }}>
-              {affectedItems.map((item) => (
-                <AffectedItemCard
-                  key={item.id}
-                  item={item}
-                  isLocked={isLocked}
-                  onSave={updateAffectedItemDisposition}
-                  onApprove={approveAffectedItemMrb}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-
         <div style={{ marginTop: "12px" }}>
           <label>Re-enter Your Email for MRB E-Signature</label><br />
           <input
@@ -1203,16 +1091,10 @@ function AffectedItemCard({
   item,
   isLocked,
   onSave,
-  onApprove,
 }: {
   item: any;
   isLocked: boolean;
   onSave: (
-    itemId: string,
-    productDisposition: string,
-    dispositionJustification: string
-  ) => void;
-  onApprove: (
     itemId: string,
     productDisposition: string,
     dispositionJustification: string
@@ -1254,7 +1136,7 @@ function AffectedItemCard({
         <div><strong>Qty Quarantined:</strong> {item.quarantined_quantity ?? "N/A"}</div>
       </div>
 
-      <label>Additional Item Disposition</label>
+      <label>Item Disposition</label>
       <br />
       <select
         value={productDisposition}
@@ -1273,7 +1155,7 @@ function AffectedItemCard({
       </select>
 
       <br />
-      <label>Additional Item Disposition Justification</label>
+      <label>Item Disposition Justification</label>
       <br />
       <textarea
         value={dispositionJustification}
@@ -1284,66 +1166,30 @@ function AffectedItemCard({
       />
 
       <br />
-      <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-        <button
-          type="button"
-          disabled={isLocked}
-          onClick={() =>
-            onSave(item.id, productDisposition, dispositionJustification)
-          }
-        >
-          Save Item Disposition
-        </button>
+      <button
+        type="button"
+        disabled={isLocked}
+        onClick={() =>
+          onSave(item.id, productDisposition, dispositionJustification)
+        }
+      >
+        Save Item Disposition
+      </button>
 
-        <button
-          type="button"
-          disabled={isLocked || !!item.mrb_approved_by}
-          onClick={() =>
-            onApprove(item.id, productDisposition, dispositionJustification)
-          }
-          style={{
-            background: item.mrb_approved_by ? "#16a34a" : "#2563eb",
-            color: "white",
-            border: "none",
-            borderRadius: "6px",
-            padding: "8px 12px",
-            cursor: isLocked || item.mrb_approved_by ? "not-allowed" : "pointer",
-          }}
-        >
-          {item.mrb_approved_by ? "Item MRB Approved" : "Approve Item MRB"}
-        </button>
+      <div
+        style={{
+          marginTop: "10px",
+          border: item.product_disposition ? "1px solid #86efac" : "1px solid #facc15",
+          background: item.product_disposition ? "#f0fdf4" : "#fefce8",
+          padding: "10px",
+          borderRadius: "8px",
+        }}
+      >
+        <strong>Item Disposition Status:</strong>{" "}
+        {item.product_disposition
+          ? "Disposition saved; pending overall MRB approval"
+          : "Pending item disposition"}
       </div>
-
-      {item.mrb_approved_by ? (
-        <div
-          style={{
-            marginTop: "10px",
-            border: "1px solid #86efac",
-            background: "#f0fdf4",
-            padding: "10px",
-            borderRadius: "8px",
-          }}
-        >
-          <strong>Item MRB Approved By:</strong> {item.mrb_approved_by}
-          <br />
-          <strong>Item MRB Approved At:</strong> {item.mrb_approved_at || "N/A"}
-          <br />
-          <strong>Signature Meaning:</strong>{" "}
-          {item.mrb_signature_meaning || "N/A"}
-        </div>
-      ) : (
-        <div
-          style={{
-            marginTop: "10px",
-            border: "1px solid #facc15",
-            background: "#fefce8",
-            padding: "10px",
-            borderRadius: "8px",
-          }}
-        >
-          <strong>Item MRB Status:</strong> Pending item-level approval
-        </div>
-      )}
     </div>
   );
 }
