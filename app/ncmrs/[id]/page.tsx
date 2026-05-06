@@ -42,6 +42,13 @@ export default function NcmrDetailPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
 
+  const [summaryIssueDescription, setSummaryIssueDescription] = useState("");
+  const [summaryProductPartNumber, setSummaryProductPartNumber] = useState("");
+  const [summaryLotNumber, setSummaryLotNumber] = useState("");
+  const [summaryWorkorderNumber, setSummaryWorkorderNumber] = useState("");
+  const [summaryOwner, setSummaryOwner] = useState("");
+
+
   const fetchUserRole = async () => {
     const { data: userData } = await supabase.auth.getUser();
     const email = userData?.user?.email || "";
@@ -139,6 +146,11 @@ export default function NcmrDetailPage() {
     }
 
     setRecord(data);
+    setSummaryIssueDescription(data.issue_description || "");
+    setSummaryProductPartNumber(data.product_part_number || "");
+    setSummaryLotNumber(data.lot_number || "");
+    setSummaryWorkorderNumber(data.workorder_number || "");
+    setSummaryOwner(data.owner || "");
     setInvestigator(data.investigator || "");
     setProblemDescription(data.problem_description || "");
     setContainmentAction(data.containment_action || "");
@@ -173,6 +185,42 @@ export default function NcmrDetailPage() {
       details,
       user_email: userEmail || "unknown",
     });
+  };
+
+  const saveRecordSummary = async () => {
+    if (record?.is_locked || record?.mrb_approved_by) {
+      alert("Record summary cannot be edited after MRB approval or record lock.");
+      return;
+    }
+
+    if (!summaryIssueDescription) {
+      alert("Issue description is required.");
+      return;
+    }
+
+    const { error } = await supabase
+      .from("ncmrs")
+      .update({
+        issue_description: summaryIssueDescription,
+        product_part_number: summaryProductPartNumber || null,
+        lot_number: summaryLotNumber || null,
+        workorder_number: summaryWorkorderNumber || null,
+        owner: summaryOwner || null,
+      })
+      .eq("id", id);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    await addAuditLog(
+      "record_summary_updated",
+      "NCMR record summary updated before MRB approval."
+    );
+
+    alert("Record summary saved.");
+    fetchRecord();
   };
 
   const updateAffectedMaterial = async (
@@ -855,11 +903,88 @@ export default function NcmrDetailPage() {
 
       <div style={{ marginBottom: "20px", padding: "12px", border: "1px solid #ccc" }}>
         <h2>Record Summary</h2>
-        <p><strong>Title:</strong> {record.title}</p>
-        <p><strong>Issue Description:</strong> {record.issue_description || "N/A"}</p>
-        <p><strong>Part Number:</strong> {record.product_part_number || "N/A"}</p>
-        <p><strong>Lot Number:</strong> {record.lot_number || "N/A"}</p>
-        <p><strong>Work Order:</strong> {record.workorder_number || "N/A"}</p>
+
+        {canEditInitiation ? (
+          <p style={{ color: "#4b5563", fontSize: "14px" }}>
+            Record summary can be edited before MRB approval. After MRB approval or record lock, this section becomes read-only.
+          </p>
+        ) : (
+          <p style={{ color: "#6b7280", fontSize: "14px" }}>
+            Record summary is read-only after MRB approval or record lock.
+          </p>
+        )}
+
+        <div style={{ marginBottom: "12px" }}>
+          <label>Issue Description</label>
+          <br />
+          <textarea
+            value={summaryIssueDescription}
+            onChange={(e) => setSummaryIssueDescription(e.target.value)}
+            disabled={!canEditInitiation}
+            rows={4}
+            style={{ width: "100%", maxWidth: "900px", padding: "8px" }}
+          />
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+            gap: "10px",
+            marginBottom: "12px",
+          }}
+        >
+          <div>
+            <label>Primary Part Number</label>
+            <br />
+            <input
+              value={summaryProductPartNumber}
+              onChange={(e) => setSummaryProductPartNumber(e.target.value)}
+              disabled={!canEditInitiation}
+              style={{ padding: "8px", width: "100%" }}
+            />
+          </div>
+
+          <div>
+            <label>Primary Lot Number</label>
+            <br />
+            <input
+              value={summaryLotNumber}
+              onChange={(e) => setSummaryLotNumber(e.target.value)}
+              disabled={!canEditInitiation}
+              style={{ padding: "8px", width: "100%" }}
+            />
+          </div>
+
+          <div>
+            <label>Primary Work Order</label>
+            <br />
+            <input
+              value={summaryWorkorderNumber}
+              onChange={(e) => setSummaryWorkorderNumber(e.target.value)}
+              disabled={!canEditInitiation}
+              style={{ padding: "8px", width: "100%" }}
+            />
+          </div>
+
+          <div>
+            <label>Owner</label>
+            <br />
+            <input
+              value={summaryOwner}
+              onChange={(e) => setSummaryOwner(e.target.value)}
+              disabled={!canEditInitiation}
+              style={{ padding: "8px", width: "100%" }}
+            />
+          </div>
+        </div>
+
+        {canEditInitiation ? (
+          <button type="button" onClick={saveRecordSummary} style={{ marginBottom: "12px" }}>
+            Save Record Summary
+          </button>
+        ) : null}
+
         <p><strong>Severity:</strong> {record.severity || "not_assessed"}</p>
         <p><strong>CAPA Required:</strong> {record.capa_required ? "Yes" : "No"}</p>
         <p><strong>CAPA Justification:</strong> {record.capa_justification || "N/A"}</p>
@@ -875,7 +1000,7 @@ export default function NcmrDetailPage() {
         )}
 
         {!linkedCapa ? (
-          <button onClick={createCapaFromNcmr} disabled={isLocked}>
+          <button onClick={createCapaFromNcmr} disabled={!canEditInitiation}>
             Create CAPA from this NCMR
           </button>
         ) : null}
