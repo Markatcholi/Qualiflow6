@@ -178,10 +178,25 @@ export default function NcmrDetailPage() {
   const updateAffectedItemDisposition = async (
     itemId: string,
     productDisposition: string,
-    dispositionJustification: string
+    dispositionJustification: string,
+    quantityAccepted: string,
+    quantityRejected: string,
+    finalDispositionAfterRework: string,
+    finalReworkQuantityAccepted: string,
+    finalReworkQuantityRejected: string
   ) => {
     if (record?.is_locked) {
       alert("This record is locked after electronic signature and cannot be edited.");
+      return;
+    }
+
+    if (!productDisposition) {
+      alert("Disposition is required.");
+      return;
+    }
+
+    if (!dispositionJustification) {
+      alert("Disposition justification is required.");
       return;
     }
 
@@ -190,6 +205,18 @@ export default function NcmrDetailPage() {
       .update({
         product_disposition: productDisposition || null,
         disposition_justification: dispositionJustification || null,
+        quantity_accepted: quantityAccepted ? Number(quantityAccepted) : null,
+        quantity_rejected: quantityRejected ? Number(quantityRejected) : null,
+        final_disposition_after_rework:
+          productDisposition === "rework" ? finalDispositionAfterRework || null : null,
+        final_rework_quantity_accepted:
+          productDisposition === "rework" && finalReworkQuantityAccepted
+            ? Number(finalReworkQuantityAccepted)
+            : null,
+        final_rework_quantity_rejected:
+          productDisposition === "rework" && finalReworkQuantityRejected
+            ? Number(finalReworkQuantityRejected)
+            : null,
       })
       .eq("id", itemId);
 
@@ -200,7 +227,7 @@ export default function NcmrDetailPage() {
 
     await addAuditLog(
       "affected_item_disposition_updated",
-      "Affected item disposition updated."
+      "Affected item disposition, quantity accepted/rejected, and rework final disposition fields updated."
     );
 
     fetchAffectedItems();
@@ -485,11 +512,32 @@ export default function NcmrDetailPage() {
 
     if (affectedItems.length > 0) {
       const itemsMissingDisposition = affectedItems.filter(
-        (item) => !item.product_disposition || !item.disposition_justification
+        (item) =>
+          !item.product_disposition ||
+          !item.disposition_justification ||
+          item.quantity_accepted === null ||
+          item.quantity_accepted === undefined ||
+          item.quantity_rejected === null ||
+          item.quantity_rejected === undefined
       );
 
       if (itemsMissingDisposition.length > 0) {
-        alert("All affected items must have a saved disposition and justification before overall MRB approval.");
+        alert("All affected items must have a disposition, justification, quantity accepted, and quantity rejected before overall MRB approval.");
+        return;
+      }
+
+      const reworkItemsMissingFinalDisposition = affectedItems.filter(
+        (item) =>
+          item.product_disposition === "rework" &&
+          (!item.final_disposition_after_rework ||
+            item.final_rework_quantity_accepted === null ||
+            item.final_rework_quantity_accepted === undefined ||
+            item.final_rework_quantity_rejected === null ||
+            item.final_rework_quantity_rejected === undefined)
+      );
+
+      if (reworkItemsMissingFinalDisposition.length > 0) {
+        alert("Rework items require final disposition after rework with accepted and rejected quantities before overall MRB approval.");
         return;
       }
     }
@@ -1097,7 +1145,12 @@ function AffectedItemCard({
   onSave: (
     itemId: string,
     productDisposition: string,
-    dispositionJustification: string
+    dispositionJustification: string,
+    quantityAccepted: string,
+    quantityRejected: string,
+    finalDispositionAfterRework: string,
+    finalReworkQuantityAccepted: string,
+    finalReworkQuantityRejected: string
   ) => void;
 }) {
   const [productDisposition, setProductDisposition] = useState(
@@ -1106,11 +1159,67 @@ function AffectedItemCard({
   const [dispositionJustification, setDispositionJustification] = useState(
     item.disposition_justification || ""
   );
+  const [quantityAccepted, setQuantityAccepted] = useState(
+    item.quantity_accepted !== null && item.quantity_accepted !== undefined
+      ? String(item.quantity_accepted)
+      : ""
+  );
+  const [quantityRejected, setQuantityRejected] = useState(
+    item.quantity_rejected !== null && item.quantity_rejected !== undefined
+      ? String(item.quantity_rejected)
+      : ""
+  );
+  const [finalDispositionAfterRework, setFinalDispositionAfterRework] = useState(
+    item.final_disposition_after_rework || ""
+  );
+  const [finalReworkQuantityAccepted, setFinalReworkQuantityAccepted] = useState(
+    item.final_rework_quantity_accepted !== null &&
+      item.final_rework_quantity_accepted !== undefined
+      ? String(item.final_rework_quantity_accepted)
+      : ""
+  );
+  const [finalReworkQuantityRejected, setFinalReworkQuantityRejected] = useState(
+    item.final_rework_quantity_rejected !== null &&
+      item.final_rework_quantity_rejected !== undefined
+      ? String(item.final_rework_quantity_rejected)
+      : ""
+  );
 
   useEffect(() => {
     setProductDisposition(item.product_disposition || "");
     setDispositionJustification(item.disposition_justification || "");
-  }, [item.product_disposition, item.disposition_justification]);
+    setQuantityAccepted(
+      item.quantity_accepted !== null && item.quantity_accepted !== undefined
+        ? String(item.quantity_accepted)
+        : ""
+    );
+    setQuantityRejected(
+      item.quantity_rejected !== null && item.quantity_rejected !== undefined
+        ? String(item.quantity_rejected)
+        : ""
+    );
+    setFinalDispositionAfterRework(item.final_disposition_after_rework || "");
+    setFinalReworkQuantityAccepted(
+      item.final_rework_quantity_accepted !== null &&
+        item.final_rework_quantity_accepted !== undefined
+        ? String(item.final_rework_quantity_accepted)
+        : ""
+    );
+    setFinalReworkQuantityRejected(
+      item.final_rework_quantity_rejected !== null &&
+        item.final_rework_quantity_rejected !== undefined
+        ? String(item.final_rework_quantity_rejected)
+        : ""
+    );
+  }, [
+    item.product_disposition,
+    item.disposition_justification,
+    item.quantity_accepted,
+    item.quantity_rejected,
+    item.final_disposition_after_rework,
+    item.final_rework_quantity_accepted,
+    item.final_rework_quantity_rejected,
+  ]);
 
   return (
     <div
@@ -1121,12 +1230,17 @@ function AffectedItemCard({
         background: "#f9fafb",
       }}
     >
+      <h4 style={{ marginTop: 0 }}>
+        Disposition Item — {item.product_part_number || "Part N/A"} / Lot{" "}
+        {item.lot_number || "N/A"}
+      </h4>
+
       <div
         style={{
           display: "grid",
           gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
           gap: "8px",
-          marginBottom: "10px",
+          marginBottom: "12px",
         }}
       >
         <div><strong>Part Number:</strong> {item.product_part_number || "N/A"}</div>
@@ -1136,42 +1250,150 @@ function AffectedItemCard({
         <div><strong>Qty Quarantined:</strong> {item.quarantined_quantity ?? "N/A"}</div>
       </div>
 
-      <label>Item Disposition</label>
-      <br />
-      <select
-        value={productDisposition}
-        onChange={(e) => setProductDisposition(e.target.value)}
-        disabled={isLocked}
-        style={{ padding: "8px", minWidth: "240px", marginBottom: "8px" }}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+          gap: "10px",
+        }}
       >
-        <option value="">Select disposition</option>
-        <option value="use_as_is">Use As Is</option>
-        <option value="rework">Rework</option>
-        <option value="repair">Repair</option>
-        <option value="scrap">Scrap</option>
-        <option value="return_to_supplier">Return to Supplier</option>
-        <option value="sort_screen">Sort / Screen</option>
-        <option value="hold_pending_decision">Hold Pending Decision</option>
-      </select>
+        <div>
+          <label>Disposition</label>
+          <br />
+          <select
+            value={productDisposition}
+            onChange={(e) => setProductDisposition(e.target.value)}
+            disabled={isLocked}
+            style={{ padding: "8px", width: "100%" }}
+          >
+            <option value="">Select disposition</option>
+            <option value="use_as_is">Use As Is</option>
+            <option value="rework">Rework</option>
+            <option value="repair">Repair</option>
+            <option value="scrap">Scrap</option>
+            <option value="return_to_supplier">Return to Supplier</option>
+            <option value="sort_screen">Sort / Screen</option>
+            <option value="hold_pending_decision">Hold Pending Decision</option>
+          </select>
+        </div>
 
-      <br />
-      <label>Item Disposition Justification</label>
-      <br />
-      <textarea
-        value={dispositionJustification}
-        onChange={(e) => setDispositionJustification(e.target.value)}
-        disabled={isLocked}
-        rows={3}
-        style={{ width: "100%", maxWidth: "800px", marginBottom: "8px" }}
-      />
+        <div>
+          <label>Quantity Accepted</label>
+          <br />
+          <input
+            type="number"
+            value={quantityAccepted}
+            onChange={(e) => setQuantityAccepted(e.target.value)}
+            disabled={isLocked}
+            style={{ padding: "8px", width: "100%" }}
+          />
+        </div>
 
-      <br />
+        <div>
+          <label>Quantity Rejected</label>
+          <br />
+          <input
+            type="number"
+            value={quantityRejected}
+            onChange={(e) => setQuantityRejected(e.target.value)}
+            disabled={isLocked}
+            style={{ padding: "8px", width: "100%" }}
+          />
+        </div>
+      </div>
+
+      <div style={{ marginTop: "10px" }}>
+        <label>Disposition Justification</label>
+        <br />
+        <textarea
+          value={dispositionJustification}
+          onChange={(e) => setDispositionJustification(e.target.value)}
+          disabled={isLocked}
+          rows={3}
+          style={{ width: "100%", maxWidth: "900px", marginBottom: "8px" }}
+        />
+      </div>
+
+      {productDisposition === "rework" ? (
+        <div
+          style={{
+            marginTop: "12px",
+            border: "1px solid #bfdbfe",
+            background: "#eff6ff",
+            padding: "12px",
+            borderRadius: "8px",
+          }}
+        >
+          <h4 style={{ marginTop: 0 }}>Final Disposition After Rework</h4>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+              gap: "10px",
+            }}
+          >
+            <div>
+              <label>Final Disposition</label>
+              <br />
+              <select
+                value={finalDispositionAfterRework}
+                onChange={(e) => setFinalDispositionAfterRework(e.target.value)}
+                disabled={isLocked}
+                style={{ padding: "8px", width: "100%" }}
+              >
+                <option value="">Select final disposition</option>
+                <option value="use_as_is">Use As Is</option>
+                <option value="accept_after_rework">Accept After Rework</option>
+                <option value="scrap">Scrap</option>
+                <option value="return_to_supplier">Return to Supplier</option>
+                <option value="additional_rework_required">Additional Rework Required</option>
+              </select>
+            </div>
+
+            <div>
+              <label>Final Qty Accepted</label>
+              <br />
+              <input
+                type="number"
+                value={finalReworkQuantityAccepted}
+                onChange={(e) => setFinalReworkQuantityAccepted(e.target.value)}
+                disabled={isLocked}
+                style={{ padding: "8px", width: "100%" }}
+              />
+            </div>
+
+            <div>
+              <label>Final Qty Rejected</label>
+              <br />
+              <input
+                type="number"
+                value={finalReworkQuantityRejected}
+                onChange={(e) => setFinalReworkQuantityRejected(e.target.value)}
+                disabled={isLocked}
+                style={{ padding: "8px", width: "100%" }}
+              />
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <button
         type="button"
         disabled={isLocked}
         onClick={() =>
-          onSave(item.id, productDisposition, dispositionJustification)
+          onSave(
+            item.id,
+            productDisposition,
+            dispositionJustification,
+            quantityAccepted,
+            quantityRejected,
+            finalDispositionAfterRework,
+            finalReworkQuantityAccepted,
+            finalReworkQuantityRejected
+          )
         }
+        style={{ marginTop: "12px" }}
       >
         Save Item Disposition
       </button>
