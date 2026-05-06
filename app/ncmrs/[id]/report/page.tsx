@@ -138,7 +138,7 @@ export default function NcmrFullRecordReportPage() {
       </section>
 
       <section style={sectionStyle}>
-        <h2>3. Affected Items / Multi-Part, Multi-Lot, Multi-Disposition</h2>
+        <h2>3. Affected Items / Multi-Part, Multi-Lot, Disposition</h2>
 
         {affectedItems.length === 0 ? (
           <p>No additional affected items recorded.</p>
@@ -153,9 +153,6 @@ export default function NcmrFullRecordReportPage() {
                 <th style={thStyle}>Qty Quarantined</th>
                 <th style={thStyle}>Disposition</th>
                 <th style={thStyle}>Disposition Justification</th>
-                <th style={thStyle}>Item MRB Approved By</th>
-                <th style={thStyle}>Item MRB Approved At</th>
-                <th style={thStyle}>Item MRB Signature Meaning</th>
               </tr>
             </thead>
             <tbody>
@@ -168,9 +165,6 @@ export default function NcmrFullRecordReportPage() {
                   <td style={tdStyle}>{displayValue(item.quarantined_quantity)}</td>
                   <td style={tdStyle}>{displayValue(item.product_disposition)}</td>
                   <td style={tdStyle}>{displayValue(item.disposition_justification)}</td>
-                  <td style={tdStyle}>{displayValue(item.mrb_approved_by)}</td>
-                  <td style={tdStyle}>{displayValue(item.mrb_approved_at)}</td>
-                  <td style={tdStyle}>{displayValue(item.mrb_signature_meaning)}</td>
                 </tr>
               ))}
             </tbody>
