@@ -175,6 +175,101 @@ export default function NcmrDetailPage() {
     });
   };
 
+  const updateAffectedMaterial = async (
+    itemId: string,
+    productPartNumber: string,
+    lotNumber: string,
+    workorderNumber: string,
+    quantityAffected: string,
+    quarantinedQuantity: string
+  ) => {
+    if (record?.is_locked || record?.mrb_approved_by) {
+      alert("Affected materials cannot be edited after MRB approval or record lock.");
+      return;
+    }
+
+    const { error } = await supabase
+      .from("ncmr_affected_items")
+      .update({
+        product_part_number: productPartNumber || null,
+        lot_number: lotNumber || null,
+        workorder_number: workorderNumber || null,
+        quantity_affected: quantityAffected ? Number(quantityAffected) : null,
+        quarantined_quantity: quarantinedQuantity ? Number(quarantinedQuantity) : null,
+      })
+      .eq("id", itemId);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    await addAuditLog(
+      "affected_material_updated",
+      "Affected material information updated before MRB approval."
+    );
+
+    fetchAffectedItems();
+  };
+
+  const addAffectedMaterial = async () => {
+    if (record?.is_locked || record?.mrb_approved_by) {
+      alert("Affected materials cannot be added after MRB approval or record lock.");
+      return;
+    }
+
+    const { error } = await supabase.from("ncmr_affected_items").insert({
+      ncmr_id: id,
+      product_part_number: null,
+      lot_number: null,
+      workorder_number: null,
+      quantity_affected: null,
+      quarantined_quantity: null,
+    });
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    await addAuditLog(
+      "affected_material_added",
+      "Additional affected material row added before MRB approval."
+    );
+
+    fetchAffectedItems();
+  };
+
+  const removeAffectedMaterial = async (itemId: string) => {
+    if (record?.is_locked || record?.mrb_approved_by) {
+      alert("Affected materials cannot be removed after MRB approval or record lock.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Remove this affected material row? This should only be done before MRB approval."
+    );
+
+    if (!confirmed) return;
+
+    const { error } = await supabase
+      .from("ncmr_affected_items")
+      .delete()
+      .eq("id", itemId);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    await addAuditLog(
+      "affected_material_removed",
+      "Affected material row removed before MRB approval."
+    );
+
+    fetchAffectedItems();
+  };
+
   const updateAffectedItemDisposition = async (
     itemId: string,
     productDisposition: string,
@@ -733,6 +828,7 @@ export default function NcmrDetailPage() {
   }
 
   const isLocked = record?.is_locked === true;
+  const canEditInitiation = !isLocked && !record?.mrb_approved_by;
 
   return (
     <main style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
@@ -791,37 +887,41 @@ export default function NcmrDetailPage() {
 
         <h3>Affected Materials / Multiple Parts and Lots</h3>
 
+        {canEditInitiation ? (
+          <p style={{ color: "#4b5563", fontSize: "14px" }}>
+            Affected materials can be edited before MRB approval. Once MRB is approved, this section becomes read-only.
+          </p>
+        ) : (
+          <p style={{ color: "#6b7280", fontSize: "14px" }}>
+            Affected materials are read-only after MRB approval or record lock.
+          </p>
+        )}
+
         {affectedItems.length === 0 ? (
           <p>No additional affected items recorded.</p>
         ) : (
           <div style={{ display: "grid", gap: "10px" }}>
             {affectedItems.map((item) => (
-              <div
+              <AffectedMaterialEditCard
                 key={item.id}
-                style={{
-                  border: "1px solid #d1d5db",
-                  borderRadius: "8px",
-                  padding: "12px",
-                  background: "#f9fafb",
-                }}
-              >
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-                    gap: "8px",
-                  }}
-                >
-                  <div><strong>Part Number:</strong> {item.product_part_number || "N/A"}</div>
-                  <div><strong>Lot Number:</strong> {item.lot_number || "N/A"}</div>
-                  <div><strong>Work Order:</strong> {item.workorder_number || "N/A"}</div>
-                  <div><strong>Qty Affected:</strong> {item.quantity_affected ?? "N/A"}</div>
-                  <div><strong>Qty Quarantined:</strong> {item.quarantined_quantity ?? "N/A"}</div>
-                </div>
-              </div>
+                item={item}
+                canEdit={canEditInitiation}
+                onSave={updateAffectedMaterial}
+                onRemove={removeAffectedMaterial}
+              />
             ))}
           </div>
         )}
+
+        {canEditInitiation ? (
+          <button
+            type="button"
+            onClick={addAffectedMaterial}
+            style={{ marginTop: "12px" }}
+          >
+            + Add Affected Material
+          </button>
+        ) : null}
       </section>
 
       <section style={{ marginBottom: "20px" }}>
@@ -1175,6 +1275,165 @@ export default function NcmrDetailPage() {
   );
 }
 
+
+function AffectedMaterialEditCard({
+  item,
+  canEdit,
+  onSave,
+  onRemove,
+}: {
+  item: any;
+  canEdit: boolean;
+  onSave: (
+    itemId: string,
+    productPartNumber: string,
+    lotNumber: string,
+    workorderNumber: string,
+    quantityAffected: string,
+    quarantinedQuantity: string
+  ) => void;
+  onRemove: (itemId: string) => void;
+}) {
+  const [productPartNumber, setProductPartNumber] = useState(
+    item.product_part_number || ""
+  );
+  const [lotNumber, setLotNumber] = useState(item.lot_number || "");
+  const [workorderNumber, setWorkorderNumber] = useState(
+    item.workorder_number || ""
+  );
+  const [quantityAffected, setQuantityAffected] = useState(
+    item.quantity_affected !== null && item.quantity_affected !== undefined
+      ? String(item.quantity_affected)
+      : ""
+  );
+  const [quarantinedQuantity, setQuarantinedQuantity] = useState(
+    item.quarantined_quantity !== null && item.quarantined_quantity !== undefined
+      ? String(item.quarantined_quantity)
+      : ""
+  );
+
+  useEffect(() => {
+    setProductPartNumber(item.product_part_number || "");
+    setLotNumber(item.lot_number || "");
+    setWorkorderNumber(item.workorder_number || "");
+    setQuantityAffected(
+      item.quantity_affected !== null && item.quantity_affected !== undefined
+        ? String(item.quantity_affected)
+        : ""
+    );
+    setQuarantinedQuantity(
+      item.quarantined_quantity !== null && item.quarantined_quantity !== undefined
+        ? String(item.quarantined_quantity)
+        : ""
+    );
+  }, [
+    item.product_part_number,
+    item.lot_number,
+    item.workorder_number,
+    item.quantity_affected,
+    item.quarantined_quantity,
+  ]);
+
+  return (
+    <div
+      style={{
+        border: "1px solid #d1d5db",
+        borderRadius: "8px",
+        padding: "12px",
+        background: "#f9fafb",
+      }}
+    >
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+          gap: "10px",
+        }}
+      >
+        <div>
+          <label>Part Number</label>
+          <br />
+          <input
+            value={productPartNumber}
+            onChange={(e) => setProductPartNumber(e.target.value)}
+            disabled={!canEdit}
+            style={{ padding: "8px", width: "100%" }}
+          />
+        </div>
+
+        <div>
+          <label>Lot Number</label>
+          <br />
+          <input
+            value={lotNumber}
+            onChange={(e) => setLotNumber(e.target.value)}
+            disabled={!canEdit}
+            style={{ padding: "8px", width: "100%" }}
+          />
+        </div>
+
+        <div>
+          <label>Work Order</label>
+          <br />
+          <input
+            value={workorderNumber}
+            onChange={(e) => setWorkorderNumber(e.target.value)}
+            disabled={!canEdit}
+            style={{ padding: "8px", width: "100%" }}
+          />
+        </div>
+
+        <div>
+          <label>Qty Affected</label>
+          <br />
+          <input
+            type="number"
+            value={quantityAffected}
+            onChange={(e) => setQuantityAffected(e.target.value)}
+            disabled={!canEdit}
+            style={{ padding: "8px", width: "100%" }}
+          />
+        </div>
+
+        <div>
+          <label>Qty Quarantined</label>
+          <br />
+          <input
+            type="number"
+            value={quarantinedQuantity}
+            onChange={(e) => setQuarantinedQuantity(e.target.value)}
+            disabled={!canEdit}
+            style={{ padding: "8px", width: "100%" }}
+          />
+        </div>
+      </div>
+
+      {canEdit ? (
+        <div style={{ marginTop: "10px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
+          <button
+            type="button"
+            onClick={() =>
+              onSave(
+                item.id,
+                productPartNumber,
+                lotNumber,
+                workorderNumber,
+                quantityAffected,
+                quarantinedQuantity
+              )
+            }
+          >
+            Save Affected Material
+          </button>
+
+          <button type="button" onClick={() => onRemove(item.id)}>
+            Remove
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 function AffectedItemCard({
   item,
