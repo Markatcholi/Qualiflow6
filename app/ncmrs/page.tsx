@@ -106,6 +106,10 @@ export default function NcmrPage() {
     );
   }, [defectSubcategoryOptions, defectCategory]);
 
+  const isSupplierSource = sourceOfDetection
+    .toLowerCase()
+    .includes("supplier");
+
   const fieldStyle: React.CSSProperties = {
     width: "100%",
     maxWidth: "500px",
@@ -314,6 +318,9 @@ export default function NcmrPage() {
     const supplierScar = await checkSupplierScar();
 
     const capaRequired = recurrence.recurring || supplierScar.required;
+    const supplierNameForInsert = isSupplierSource ? supplierName : "";
+    const supplierLotForInsert = isSupplierSource ? supplierLot : "";
+
 
     const { data, error } = await supabase
       .from("ncmrs")
@@ -333,8 +340,8 @@ export default function NcmrPage() {
         quarantined_quantity: quarantinedQuantity ? Number(quarantinedQuantity) : null,
         defect_category: defectCategory,
         defect_subcategory: defectSubcategory,
-        supplier_name: supplierName,
-        supplier_lot: supplierLot,
+        supplier_name: supplierNameForInsert,
+        supplier_lot: supplierLotForInsert,
         site_location: siteLocation,
         immediate_correction: immediateCorrection,
         owner,
@@ -897,26 +904,47 @@ export default function NcmrPage() {
           </select>
         </div>
 
-        <div style={rowStyle}>
-          <label>Supplier Name</label>
-          <br />
-          <input
-            value={supplierName}
-            onChange={(e) => setSupplierName(e.target.value)}
-            placeholder="Supplier name"
-            style={fieldStyle}
-          />
-        </div>
+        <div
+          style={{
+            border: "1px solid #d1d5db",
+            borderRadius: "8px",
+            padding: "12px",
+            marginBottom: "12px",
+            background: isSupplierSource ? "#ffffff" : "#f3f4f6",
+            opacity: isSupplierSource ? 1 : 0.65,
+          }}
+        >
+          <h3 style={{ marginTop: 0 }}>Supplier Information</h3>
 
-        <div style={rowStyle}>
-          <label>Supplier Lot</label>
-          <br />
-          <input
-            value={supplierLot}
-            onChange={(e) => setSupplierLot(e.target.value)}
-            placeholder="Supplier lot"
-            style={fieldStyle}
-          />
+          {!isSupplierSource ? (
+            <p style={{ color: "#6b7280", fontSize: "14px" }}>
+              Supplier fields are disabled because Source of Detection is not supplier-related.
+            </p>
+          ) : null}
+
+          <div style={rowStyle}>
+            <label>Supplier Name</label>
+            <br />
+            <input
+              value={supplierName}
+              onChange={(e) => setSupplierName(e.target.value)}
+              placeholder="Supplier name"
+              disabled={!isSupplierSource}
+              style={fieldStyle}
+            />
+          </div>
+
+          <div style={rowStyle}>
+            <label>Supplier Lot</label>
+            <br />
+            <input
+              value={supplierLot}
+              onChange={(e) => setSupplierLot(e.target.value)}
+              placeholder="Supplier lot"
+              disabled={!isSupplierSource}
+              style={fieldStyle}
+            />
+          </div>
         </div>
 
         <div style={rowStyle}>
