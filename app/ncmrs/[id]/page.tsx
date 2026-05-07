@@ -49,6 +49,18 @@ export default function NcmrDetailPage() {
   const [supplyChainApproverEmail, setSupplyChainApproverEmail] = useState("");
   const [engineeringApproverEmail, setEngineeringApproverEmail] = useState("");
   const [approvalTasks, setApprovalTasks] = useState<any[]>([]);
+  const [correctionTasks, setCorrectionTasks] = useState<any[]>([]);
+  const [reworkTasks, setReworkTasks] = useState<any[]>([]);
+
+  const [investigationCollaborationNotes, setInvestigationCollaborationNotes] = useState("");
+
+  const [correctionTaskAssignee, setCorrectionTaskAssignee] = useState("");
+  const [correctionTaskDueDate, setCorrectionTaskDueDate] = useState("");
+  const [correctionTaskInstructions, setCorrectionTaskInstructions] = useState("");
+
+  const [reworkTaskAssignee, setReworkTaskAssignee] = useState("");
+  const [reworkTaskDueDate, setReworkTaskDueDate] = useState("");
+  const [reworkTaskInstructions, setReworkTaskInstructions] = useState("");
 
   const [evidenceUrl, setEvidenceUrl] = useState("");
   const [evidenceNotes, setEvidenceNotes] = useState("");
@@ -157,6 +169,40 @@ export default function NcmrDetailPage() {
     setApprovalTasks(data || []);
   };
 
+  const fetchCorrectionTasks = async () => {
+    const { data, error } = await supabase
+      .from("approval_tasks")
+      .select("*")
+      .eq("entity_type", "ncmr")
+      .eq("entity_id", id)
+      .eq("task_type", "correction_task")
+      .order("created_at", { ascending: true });
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    setCorrectionTasks(data || []);
+  };
+
+  const fetchReworkTasks = async () => {
+    const { data, error } = await supabase
+      .from("approval_tasks")
+      .select("*")
+      .eq("entity_type", "ncmr")
+      .eq("entity_id", id)
+      .eq("task_type", "rework_task")
+      .order("created_at", { ascending: true });
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    setReworkTasks(data || []);
+  };
+
   const fetchRecord = async () => {
     const { data, error } = await supabase
       .from("ncmrs")
@@ -207,6 +253,8 @@ export default function NcmrDetailPage() {
     await fetchMrbApprovers();
     await fetchAffectedItems();
     await fetchApprovalTasks();
+    await fetchCorrectionTasks();
+    await fetchReworkTasks();
     setLoading(false);
   };
 
@@ -503,6 +551,9 @@ export default function NcmrDetailPage() {
       errors.push("Critical severity requires a linked CAPA before closure.");
     }
 
+    const executionTaskErrors = requiredExecutionTasksComplete();
+    errors.push(...executionTaskErrors);
+
     setValidationErrors(errors);
     return errors.length === 0;
   };
@@ -788,6 +839,7 @@ This approval becomes part of the official electronic quality record.`,
       problem_description: problemDescription,
       containment_action: containmentAction,
       investigation_summary: investigationSummary,
+      investigation_collaboration_notes: investigationCollaborationNotes,
       root_cause: rootCause,
       root_cause_category: rootCauseCategory,
       correction_action_proposal: correctionActionProposal,
@@ -1060,6 +1112,167 @@ This approval becomes part of the official electronic quality record.`,
 
     alert("MRB approved with electronic signature");
     fetchRecord();
+  };
+
+  const generateCorrectionTask = async () => {
+    if (record?.is_locked) {
+      alert("This record is locked after electronic signature and cannot be edited.");
+      return;
+    }
+
+    if (!correctionTaskAssignee) {
+      alert("Correction task assignee email is required.");
+      return;
+    }
+
+    if (!correctionTaskInstructions) {
+      alert("Correction task instructions are required.");
+      return;
+    }
+
+    const { data: insertedTasks, error } = await supabase
+      .from("approval_tasks")
+      .insert({
+        entity_type: "ncmr",
+        entity_id: id,
+        task_type: "correction_task",
+        required_function: "Correction Owner",
+        task_title: `Correction task for ${record?.ncmr_number || "NCMR"}`,
+        task_instructions: correctionTaskInstructions,
+        assigned_to_email: correctionTaskAssignee.trim().toLowerCase(),
+        assigned_by_email: userEmail,
+        status: "pending",
+        due_date: correctionTaskDueDate || null,
+        comments: correctionTaskInstructions,
+      })
+      .select();
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    if (insertedTasks && insertedTasks.length > 0) {
+      await supabase.from("notification_queue").insert({
+        recipient_email: correctionTaskAssignee.trim().toLowerCase(),
+        subject: `Correction task assigned: ${record?.ncmr_number || "NCMR"}`,
+        body: `You have been assigned a correction task for ${record?.ncmr_number || "this NCMR"}. Please log in to QualiFlow and open My Tasks.`,
+        entity_type: "ncmr",
+        entity_id: id,
+        task_id: insertedTasks[0].id,
+        status: "pending",
+      });
+    }
+
+    await addAuditLog(
+      "correction_task_generated",
+      `Correction task assigned to ${correctionTaskAssignee}.`
+    );
+
+    alert("Correction task generated.");
+    setCorrectionTaskAssignee("");
+    setCorrectionTaskDueDate("");
+    setCorrectionTaskInstructions("");
+    fetchCorrectionTasks();
+  };
+
+  const generateReworkTask = async () => {
+    if (record?.is_locked) {
+      alert("This record is locked after electronic signature and cannot be edited.");
+      return;
+    }
+
+    if (!reworkTaskAssignee) {
+      alert("Rework task assignee email is required.");
+      return;
+    }
+
+    if (!reworkTaskInstructions) {
+      alert("Rework task instructions are required.");
+      return;
+    }
+
+    const { data: insertedTasks, error } = await supabase
+      .from("approval_tasks")
+      .insert({
+        entity_type: "ncmr",
+        entity_id: id,
+        task_type: "rework_task",
+        required_function: "Rework Owner",
+        task_title: `Rework task for ${record?.ncmr_number || "NCMR"}`,
+        task_instructions: reworkTaskInstructions,
+        assigned_to_email: reworkTaskAssignee.trim().toLowerCase(),
+        assigned_by_email: userEmail,
+        status: "pending",
+        due_date: reworkTaskDueDate || null,
+        comments: reworkTaskInstructions,
+      })
+      .select();
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    if (insertedTasks && insertedTasks.length > 0) {
+      await supabase.from("notification_queue").insert({
+        recipient_email: reworkTaskAssignee.trim().toLowerCase(),
+        subject: `Rework task assigned: ${record?.ncmr_number || "NCMR"}`,
+        body: `You have been assigned a rework task for ${record?.ncmr_number || "this NCMR"}. Please log in to QualiFlow and open My Tasks.`,
+        entity_type: "ncmr",
+        entity_id: id,
+        task_id: insertedTasks[0].id,
+        status: "pending",
+      });
+    }
+
+    await addAuditLog(
+      "rework_task_generated",
+      `Rework task assigned to ${reworkTaskAssignee}.`
+    );
+
+    alert("Rework task generated.");
+    setReworkTaskAssignee("");
+    setReworkTaskDueDate("");
+    setReworkTaskInstructions("");
+    fetchReworkTasks();
+  };
+
+  const hasReworkDisposition = () => {
+    return (
+      productDisposition === "rework" ||
+      affectedItems.some((item) => item.product_disposition === "rework")
+    );
+  };
+
+  const requiredExecutionTasksComplete = () => {
+    const errors: string[] = [];
+
+    const hasCorrectionAction =
+      correctionActionProposal &&
+      correctionActionProposal !== "no_correction_required";
+
+    if (hasCorrectionAction) {
+      const completedCorrectionTask = correctionTasks.find(
+        (task) => task.status === "completed"
+      );
+
+      if (!completedCorrectionTask) {
+        errors.push("At least one correction task must be completed before closure.");
+      }
+    }
+
+    if (hasReworkDisposition()) {
+      const completedReworkTask = reworkTasks.find(
+        (task) => task.status === "completed"
+      );
+
+      if (!completedReworkTask) {
+        errors.push("At least one rework task must be completed before closure when rework is applicable.");
+      }
+    }
+
+    return errors;
   };
 
   const markCorrectionImplemented = async () => {
@@ -1441,6 +1654,16 @@ This approval becomes part of the official electronic quality record.`,
         />
 
         <br />
+        <label>Investigation Collaboration Notes</label><br />
+        <textarea
+          value={investigationCollaborationNotes}
+          onChange={(e) => setInvestigationCollaborationNotes(e.target.value)}
+          placeholder="Capture investigation collaboration, SME input, manufacturing feedback, supplier input, regulatory input, or cross-functional comments."
+          rows={4}
+          style={{ width: "100%", maxWidth: "800px", marginBottom: "12px" }}
+        />
+
+        <br />
         <label>Root Cause Category</label><br />
         <select
           value={rootCauseCategory}
@@ -1598,6 +1821,64 @@ This approval becomes part of the official electronic quality record.`,
           )}
         </div>
 
+        {hasReworkDisposition() ? (
+          <div
+            style={{
+              marginTop: "18px",
+              border: "1px solid #bfdbfe",
+              borderRadius: "8px",
+              padding: "12px",
+              background: "#eff6ff",
+            }}
+          >
+            <h3 style={{ marginTop: 0 }}>Rework Task Assignment</h3>
+            <p style={{ color: "#1f2937", fontSize: "14px" }}>
+              Rework is applicable based on the overall or item-level disposition. Assign a rework execution task to the responsible owner.
+            </p>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "10px" }}>
+              <div>
+                <label>Assigned To Email</label><br />
+                <input
+                  value={reworkTaskAssignee}
+                  onChange={(e) => setReworkTaskAssignee(e.target.value)}
+                  disabled={isLocked}
+                  style={{ padding: "8px", width: "100%" }}
+                />
+              </div>
+
+              <div>
+                <label>Due Date</label><br />
+                <input
+                  type="date"
+                  value={reworkTaskDueDate}
+                  onChange={(e) => setReworkTaskDueDate(e.target.value)}
+                  disabled={isLocked}
+                  style={{ padding: "8px", width: "100%" }}
+                />
+              </div>
+            </div>
+
+            <div style={{ marginTop: "10px" }}>
+              <label>Rework Task Instructions</label><br />
+              <textarea
+                value={reworkTaskInstructions}
+                onChange={(e) => setReworkTaskInstructions(e.target.value)}
+                disabled={isLocked}
+                rows={3}
+                style={{ width: "100%", maxWidth: "800px" }}
+              />
+            </div>
+
+            <button type="button" onClick={generateReworkTask} disabled={isLocked} style={{ marginTop: "10px" }}>
+              Generate Rework Task
+            </button>
+
+            <h4>Rework Task Status</h4>
+            {reworkTasks.length === 0 ? <p>No rework tasks generated.</p> : <TaskStatusList tasks={reworkTasks} />}
+          </div>
+        ) : null}
+
         <div
           style={{
             marginTop: "18px",
@@ -1710,6 +1991,62 @@ This approval becomes part of the official electronic quality record.`,
       <section style={{ marginBottom: "20px" }}>
         <h2>7. Correction Implementation</h2>
 
+        <div
+          style={{
+            border: "1px solid #d1d5db",
+            borderRadius: "8px",
+            padding: "12px",
+            background: "#f9fafb",
+            marginBottom: "12px",
+          }}
+        >
+          <h3 style={{ marginTop: 0 }}>Correction Task Assignment</h3>
+          <p style={{ color: "#4b5563", fontSize: "14px" }}>
+            Assign the correction or corrective action execution to an owner. The owner completes the task from My Tasks.
+          </p>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "10px" }}>
+            <div>
+              <label>Assigned To Email</label><br />
+              <input
+                value={correctionTaskAssignee}
+                onChange={(e) => setCorrectionTaskAssignee(e.target.value)}
+                disabled={isLocked}
+                style={{ padding: "8px", width: "100%" }}
+              />
+            </div>
+
+            <div>
+              <label>Due Date</label><br />
+              <input
+                type="date"
+                value={correctionTaskDueDate}
+                onChange={(e) => setCorrectionTaskDueDate(e.target.value)}
+                disabled={isLocked}
+                style={{ padding: "8px", width: "100%" }}
+              />
+            </div>
+          </div>
+
+          <div style={{ marginTop: "10px" }}>
+            <label>Correction Task Instructions</label><br />
+            <textarea
+              value={correctionTaskInstructions}
+              onChange={(e) => setCorrectionTaskInstructions(e.target.value)}
+              disabled={isLocked}
+              rows={3}
+              style={{ width: "100%", maxWidth: "800px" }}
+            />
+          </div>
+
+          <button type="button" onClick={generateCorrectionTask} disabled={isLocked} style={{ marginTop: "10px" }}>
+            Generate Correction Task
+          </button>
+
+          <h4>Correction Task Status</h4>
+          {correctionTasks.length === 0 ? <p>No correction tasks generated.</p> : <TaskStatusList tasks={correctionTasks} />}
+        </div>
+
         <textarea
           value={correctionImplementation}
           onChange={(e) => setCorrectionImplementation(e.target.value)}
@@ -1812,6 +2149,46 @@ This approval becomes part of the official electronic quality record.`,
   );
 }
 
+
+function TaskStatusList({ tasks }: { tasks: any[] }) {
+  return (
+    <div style={{ display: "grid", gap: "10px" }}>
+      {tasks.map((task) => (
+        <div
+          key={task.id}
+          style={{
+            border:
+              task.status === "completed"
+                ? "1px solid #86efac"
+                : task.status === "rejected"
+                ? "1px solid #fca5a5"
+                : "1px solid #facc15",
+            background:
+              task.status === "completed"
+                ? "#f0fdf4"
+                : task.status === "rejected"
+                ? "#fef2f2"
+                : "#fefce8",
+            borderRadius: "8px",
+            padding: "10px",
+          }}
+        >
+          <strong>{task.task_title || task.required_function}</strong> — {task.status}
+          <br />
+          <strong>Assigned To:</strong> {task.assigned_to_email}
+          <br />
+          <strong>Due Date:</strong> {task.due_date || "N/A"}
+          <br />
+          <strong>Completed By:</strong> {task.completed_by || task.signed_by || "N/A"}
+          <br />
+          <strong>Completed At:</strong> {task.completed_at || task.signed_at || "N/A"}
+          <br />
+          <strong>Completion Comment:</strong> {task.completion_comment || task.approver_comment || "N/A"}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function MrbApproverAssignmentRow({
   label,
