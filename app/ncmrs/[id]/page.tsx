@@ -37,6 +37,14 @@ export default function NcmrDetailPage() {
   const [mrbSignatureEmail, setMrbSignatureEmail] = useState("");
   const [additionalMrbApprovers, setAdditionalMrbApprovers] = useState("");
 
+  const [mrbFunctionSignatureEmail, setMrbFunctionSignatureEmail] = useState("");
+
+  const [requireQualityApproval, setRequireQualityApproval] = useState(true);
+  const [requireOperationsApproval, setRequireOperationsApproval] = useState(false);
+  const [requireRegulatoryApproval, setRequireRegulatoryApproval] = useState(false);
+  const [requireSupplyChainApproval, setRequireSupplyChainApproval] = useState(false);
+  const [requireEngineeringApproval, setRequireEngineeringApproval] = useState(false);
+
   const [evidenceUrl, setEvidenceUrl] = useState("");
   const [evidenceNotes, setEvidenceNotes] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -451,6 +459,9 @@ export default function NcmrDetailPage() {
       }
     });
 
+    const mrbGovernanceErrors = requiredMrbApprovalsComplete();
+    errors.push(...mrbGovernanceErrors);
+
     setValidationErrors(errors);
     return errors.length === 0;
   };
@@ -471,6 +482,142 @@ export default function NcmrDetailPage() {
 
     setValidationErrors(errors);
     return errors.length === 0;
+  };
+
+  const saveMrbGovernance = async () => {
+    if (record?.is_locked || record?.mrb_approved_by) {
+      alert("MRB governance cannot be changed after MRB approval or record lock.");
+      return;
+    }
+
+    const { error } = await supabase
+      .from("ncmrs")
+      .update({
+        require_quality_approval: requireQualityApproval,
+        require_operations_approval: requireOperationsApproval,
+        require_regulatory_approval: requireRegulatoryApproval,
+        require_supply_chain_approval: requireSupplyChainApproval,
+        require_engineering_approval: requireEngineeringApproval,
+      })
+      .eq("id", id);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    await addAuditLog(
+      "mrb_governance_saved",
+      "MRB required approval functions were updated."
+    );
+
+    alert("MRB required approvers saved.");
+    fetchRecord();
+  };
+
+  const approveMrbFunction = async (functionName: string) => {
+    if (record?.is_locked || record?.mrb_approved_by) {
+      alert("MRB function approval cannot be changed after MRB approval or record lock.");
+      return;
+    }
+
+    if (!mrbFunctionSignatureEmail) {
+      alert("Please re-enter your email before signing the MRB function approval.");
+      return;
+    }
+
+    if (
+      mrbFunctionSignatureEmail.trim().toLowerCase() !==
+      userEmail.trim().toLowerCase()
+    ) {
+      alert("Electronic signature email does not match the logged-in user.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Electronic Signature:\n\nI approve the MRB decision on behalf of the ${functionName} function.`
+    );
+
+    if (!confirmed) return;
+
+    const now = new Date().toISOString();
+    const meaning = `I approve the MRB decision on behalf of the ${functionName} function.`;
+
+    const updatePayload: any = {};
+
+    if (functionName === "Quality") {
+      updatePayload.quality_approved_by = userEmail;
+      updatePayload.quality_approved_at = now;
+      updatePayload.quality_signature_meaning = meaning;
+    }
+
+    if (functionName === "Operations") {
+      updatePayload.operations_approved_by = userEmail;
+      updatePayload.operations_approved_at = now;
+      updatePayload.operations_signature_meaning = meaning;
+    }
+
+    if (functionName === "Regulatory") {
+      updatePayload.regulatory_approved_by = userEmail;
+      updatePayload.regulatory_approved_at = now;
+      updatePayload.regulatory_signature_meaning = meaning;
+    }
+
+    if (functionName === "Supply Chain") {
+      updatePayload.supply_chain_approved_by = userEmail;
+      updatePayload.supply_chain_approved_at = now;
+      updatePayload.supply_chain_signature_meaning = meaning;
+    }
+
+    if (functionName === "Engineering") {
+      updatePayload.engineering_approved_by = userEmail;
+      updatePayload.engineering_approved_at = now;
+      updatePayload.engineering_signature_meaning = meaning;
+    }
+
+    const { error } = await supabase
+      .from("ncmrs")
+      .update(updatePayload)
+      .eq("id", id);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    await addAuditLog(
+      "mrb_function_approved",
+      `${functionName} MRB function approval completed by ${userEmail}.`
+    );
+
+    alert(`${functionName} approval recorded.`);
+    fetchRecord();
+  };
+
+  const requiredMrbApprovalsComplete = () => {
+    const errors: string[] = [];
+
+    if (requireQualityApproval && !record?.quality_approved_by) {
+      errors.push("Quality MRB approval is required.");
+    }
+
+    if (requireOperationsApproval && !record?.operations_approved_by) {
+      errors.push("Operations MRB approval is required.");
+    }
+
+    if (requireRegulatoryApproval && !record?.regulatory_approved_by) {
+      errors.push("Regulatory MRB approval is required.");
+    }
+
+    if (requireSupplyChainApproval && !record?.supply_chain_approved_by) {
+      errors.push("Supply Chain MRB approval is required.");
+    }
+
+    if (requireEngineeringApproval && !record?.engineering_approved_by) {
+      errors.push("Engineering MRB approval is required.");
+    }
+
+    return errors;
   };
 
   const createCapaFromNcmr = async () => {
@@ -1391,6 +1538,155 @@ export default function NcmrDetailPage() {
           )}
         </div>
 
+        <div
+          style={{
+            marginTop: "18px",
+            border: "1px solid #d1d5db",
+            borderRadius: "8px",
+            padding: "12px",
+            background: "#f9fafb",
+          }}
+        >
+          <h3 style={{ marginTop: 0 }}>MRB Required Approval Functions</h3>
+          <p style={{ color: "#4b5563", fontSize: "14px" }}>
+            Select the MRB functions required by your nonconformance procedure based on NCMR type, severity, risk, and disposition.
+            Final MRB approval is blocked until all selected functions approve.
+          </p>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+              gap: "8px",
+              marginBottom: "12px",
+            }}
+          >
+            <label>
+              <input
+                type="checkbox"
+                checked={requireQualityApproval}
+                onChange={(e) => setRequireQualityApproval(e.target.checked)}
+                disabled={isLocked || !!record.mrb_approved_by}
+              />{" "}
+              Quality
+            </label>
+
+            <label>
+              <input
+                type="checkbox"
+                checked={requireOperationsApproval}
+                onChange={(e) => setRequireOperationsApproval(e.target.checked)}
+                disabled={isLocked || !!record.mrb_approved_by}
+              />{" "}
+              Operations
+            </label>
+
+            <label>
+              <input
+                type="checkbox"
+                checked={requireRegulatoryApproval}
+                onChange={(e) => setRequireRegulatoryApproval(e.target.checked)}
+                disabled={isLocked || !!record.mrb_approved_by}
+              />{" "}
+              Regulatory
+            </label>
+
+            <label>
+              <input
+                type="checkbox"
+                checked={requireSupplyChainApproval}
+                onChange={(e) => setRequireSupplyChainApproval(e.target.checked)}
+                disabled={isLocked || !!record.mrb_approved_by}
+              />{" "}
+              Supply Chain
+            </label>
+
+            <label>
+              <input
+                type="checkbox"
+                checked={requireEngineeringApproval}
+                onChange={(e) => setRequireEngineeringApproval(e.target.checked)}
+                disabled={isLocked || !!record.mrb_approved_by}
+              />{" "}
+              Engineering
+            </label>
+          </div>
+
+          <button
+            type="button"
+            onClick={saveMrbGovernance}
+            disabled={isLocked || !!record.mrb_approved_by}
+          >
+            Save Required MRB Functions
+          </button>
+
+          <div style={{ marginTop: "16px" }}>
+            <label>Re-enter Your Email for Function Approval</label>
+            <br />
+            <input
+              value={mrbFunctionSignatureEmail}
+              onChange={(e) => setMrbFunctionSignatureEmail(e.target.value)}
+              placeholder={userEmail || "your.email@company.com"}
+              style={{ width: "100%", maxWidth: "500px", padding: "8px" }}
+              disabled={isLocked || !!record.mrb_approved_by}
+            />
+          </div>
+
+          <h4>MRB Approval Status</h4>
+
+          <div style={{ display: "grid", gap: "10px" }}>
+            {requireQualityApproval ? (
+              <MrbFunctionApprovalCard
+                label="Quality"
+                approvedBy={record.quality_approved_by}
+                approvedAt={record.quality_approved_at}
+                isLocked={isLocked || !!record.mrb_approved_by}
+                onApprove={() => approveMrbFunction("Quality")}
+              />
+            ) : null}
+
+            {requireOperationsApproval ? (
+              <MrbFunctionApprovalCard
+                label="Operations"
+                approvedBy={record.operations_approved_by}
+                approvedAt={record.operations_approved_at}
+                isLocked={isLocked || !!record.mrb_approved_by}
+                onApprove={() => approveMrbFunction("Operations")}
+              />
+            ) : null}
+
+            {requireRegulatoryApproval ? (
+              <MrbFunctionApprovalCard
+                label="Regulatory"
+                approvedBy={record.regulatory_approved_by}
+                approvedAt={record.regulatory_approved_at}
+                isLocked={isLocked || !!record.mrb_approved_by}
+                onApprove={() => approveMrbFunction("Regulatory")}
+              />
+            ) : null}
+
+            {requireSupplyChainApproval ? (
+              <MrbFunctionApprovalCard
+                label="Supply Chain"
+                approvedBy={record.supply_chain_approved_by}
+                approvedAt={record.supply_chain_approved_at}
+                isLocked={isLocked || !!record.mrb_approved_by}
+                onApprove={() => approveMrbFunction("Supply Chain")}
+              />
+            ) : null}
+
+            {requireEngineeringApproval ? (
+              <MrbFunctionApprovalCard
+                label="Engineering"
+                approvedBy={record.engineering_approved_by}
+                approvedAt={record.engineering_approved_at}
+                isLocked={isLocked || !!record.mrb_approved_by}
+                onApprove={() => approveMrbFunction("Engineering")}
+              />
+            ) : null}
+          </div>
+        </div>
+
         <div style={{ marginTop: "12px" }}>
           <label>Re-enter Your Email for MRB E-Signature</label><br />
           <input
@@ -1544,6 +1840,44 @@ export default function NcmrDetailPage() {
   );
 }
 
+
+function MrbFunctionApprovalCard({
+  label,
+  approvedBy,
+  approvedAt,
+  isLocked,
+  onApprove,
+}: {
+  label: string;
+  approvedBy: string | null;
+  approvedAt: string | null;
+  isLocked: boolean;
+  onApprove: () => void;
+}) {
+  const approved = !!approvedBy;
+
+  return (
+    <div
+      style={{
+        border: approved ? "1px solid #86efac" : "1px solid #facc15",
+        background: approved ? "#f0fdf4" : "#fefce8",
+        borderRadius: "8px",
+        padding: "10px",
+      }}
+    >
+      <strong>{label}:</strong>{" "}
+      {approved ? `Approved by ${approvedBy} at ${approvedAt || "N/A"}` : "Pending"}
+
+      {!approved ? (
+        <div style={{ marginTop: "8px" }}>
+          <button type="button" onClick={onApprove} disabled={isLocked}>
+            Approve as {label}
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 function AffectedMaterialEditCard({
   item,
