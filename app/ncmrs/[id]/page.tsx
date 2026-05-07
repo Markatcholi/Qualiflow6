@@ -37,13 +37,18 @@ export default function NcmrDetailPage() {
   const [mrbSignatureEmail, setMrbSignatureEmail] = useState("");
   const [additionalMrbApprovers, setAdditionalMrbApprovers] = useState("");
 
-  const [mrbFunctionSignatureEmail, setMrbFunctionSignatureEmail] = useState("");
-
   const [requireQualityApproval, setRequireQualityApproval] = useState(true);
   const [requireOperationsApproval, setRequireOperationsApproval] = useState(false);
   const [requireRegulatoryApproval, setRequireRegulatoryApproval] = useState(false);
   const [requireSupplyChainApproval, setRequireSupplyChainApproval] = useState(false);
   const [requireEngineeringApproval, setRequireEngineeringApproval] = useState(false);
+
+  const [qualityApproverEmail, setQualityApproverEmail] = useState("");
+  const [operationsApproverEmail, setOperationsApproverEmail] = useState("");
+  const [regulatoryApproverEmail, setRegulatoryApproverEmail] = useState("");
+  const [supplyChainApproverEmail, setSupplyChainApproverEmail] = useState("");
+  const [engineeringApproverEmail, setEngineeringApproverEmail] = useState("");
+  const [approvalTasks, setApprovalTasks] = useState<any[]>([]);
 
   const [evidenceUrl, setEvidenceUrl] = useState("");
   const [evidenceNotes, setEvidenceNotes] = useState("");
@@ -135,6 +140,23 @@ export default function NcmrDetailPage() {
     setAffectedItems(data || []);
   };
 
+  const fetchApprovalTasks = async () => {
+    const { data, error } = await supabase
+      .from("approval_tasks")
+      .select("*")
+      .eq("entity_type", "ncmr")
+      .eq("entity_id", id)
+      .eq("task_type", "mrb_approval")
+      .order("created_at", { ascending: true });
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    setApprovalTasks(data || []);
+  };
+
   const fetchRecord = async () => {
     const { data, error } = await supabase
       .from("ncmrs")
@@ -184,6 +206,7 @@ export default function NcmrDetailPage() {
     await fetchLinkedCapa(data.capa_id || null);
     await fetchMrbApprovers();
     await fetchAffectedItems();
+    await fetchApprovalTasks();
     setLoading(false);
   };
 
@@ -498,6 +521,11 @@ export default function NcmrDetailPage() {
         require_regulatory_approval: requireRegulatoryApproval,
         require_supply_chain_approval: requireSupplyChainApproval,
         require_engineering_approval: requireEngineeringApproval,
+        quality_approver_email: qualityApproverEmail || null,
+        operations_approver_email: operationsApproverEmail || null,
+        regulatory_approver_email: regulatoryApproverEmail || null,
+        supply_chain_approver_email: supplyChainApproverEmail || null,
+        engineering_approver_email: engineeringApproverEmail || null,
       })
       .eq("id", id);
 
@@ -508,114 +536,130 @@ export default function NcmrDetailPage() {
 
     await addAuditLog(
       "mrb_governance_saved",
-      "MRB required approval functions were updated."
+      "MRB required approval functions and approver assignments were updated."
     );
 
-    alert("MRB required approvers saved.");
+    alert("MRB governance saved.");
     fetchRecord();
   };
 
-  const approveMrbFunction = async (functionName: string) => {
+  const generateMrbApprovalTasks = async () => {
     if (record?.is_locked || record?.mrb_approved_by) {
-      alert("MRB function approval cannot be changed after MRB approval or record lock.");
+      alert("Approval tasks cannot be generated after MRB approval or record lock.");
       return;
     }
 
-    if (!mrbFunctionSignatureEmail) {
-      alert("Please re-enter your email before signing the MRB function approval.");
+    const requiredTasks = [
+      { required: requireQualityApproval, functionName: "Quality", email: qualityApproverEmail },
+      { required: requireOperationsApproval, functionName: "Operations", email: operationsApproverEmail },
+      { required: requireRegulatoryApproval, functionName: "Regulatory", email: regulatoryApproverEmail },
+      { required: requireSupplyChainApproval, functionName: "Supply Chain", email: supplyChainApproverEmail },
+      { required: requireEngineeringApproval, functionName: "Engineering", email: engineeringApproverEmail },
+    ].filter((task) => task.required);
+
+    const missingEmails = requiredTasks.filter((task) => !task.email);
+
+    if (missingEmails.length > 0) {
+      alert(
+        `Missing approver email for: ${missingEmails
+          .map((task) => task.functionName)
+          .join(", ")}`
+      );
       return;
     }
 
-    if (
-      mrbFunctionSignatureEmail.trim().toLowerCase() !==
-      userEmail.trim().toLowerCase()
-    ) {
-      alert("Electronic signature email does not match the logged-in user.");
-      return;
-    }
-
-    const confirmed = window.confirm(
-      `Electronic Signature:\n\nI approve the MRB decision on behalf of the ${functionName} function.`
-    );
-
-    if (!confirmed) return;
-
-    const now = new Date().toISOString();
-    const meaning = `I approve the MRB decision on behalf of the ${functionName} function.`;
-
-    const updatePayload: any = {};
-
-    if (functionName === "Quality") {
-      updatePayload.quality_approved_by = userEmail;
-      updatePayload.quality_approved_at = now;
-      updatePayload.quality_signature_meaning = meaning;
-    }
-
-    if (functionName === "Operations") {
-      updatePayload.operations_approved_by = userEmail;
-      updatePayload.operations_approved_at = now;
-      updatePayload.operations_signature_meaning = meaning;
-    }
-
-    if (functionName === "Regulatory") {
-      updatePayload.regulatory_approved_by = userEmail;
-      updatePayload.regulatory_approved_at = now;
-      updatePayload.regulatory_signature_meaning = meaning;
-    }
-
-    if (functionName === "Supply Chain") {
-      updatePayload.supply_chain_approved_by = userEmail;
-      updatePayload.supply_chain_approved_at = now;
-      updatePayload.supply_chain_signature_meaning = meaning;
-    }
-
-    if (functionName === "Engineering") {
-      updatePayload.engineering_approved_by = userEmail;
-      updatePayload.engineering_approved_at = now;
-      updatePayload.engineering_signature_meaning = meaning;
-    }
-
-    const { error } = await supabase
+    const { error: saveError } = await supabase
       .from("ncmrs")
-      .update(updatePayload)
+      .update({
+        require_quality_approval: requireQualityApproval,
+        require_operations_approval: requireOperationsApproval,
+        require_regulatory_approval: requireRegulatoryApproval,
+        require_supply_chain_approval: requireSupplyChainApproval,
+        require_engineering_approval: requireEngineeringApproval,
+        quality_approver_email: qualityApproverEmail || null,
+        operations_approver_email: operationsApproverEmail || null,
+        regulatory_approver_email: regulatoryApproverEmail || null,
+        supply_chain_approver_email: supplyChainApproverEmail || null,
+        engineering_approver_email: engineeringApproverEmail || null,
+      })
       .eq("id", id);
+
+    if (saveError) {
+      alert(saveError.message);
+      return;
+    }
+
+    await supabase
+      .from("approval_tasks")
+      .delete()
+      .eq("entity_type", "ncmr")
+      .eq("entity_id", id)
+      .eq("task_type", "mrb_approval")
+      .eq("status", "pending");
+
+    const taskRows = requiredTasks.map((task) => ({
+      entity_type: "ncmr",
+      entity_id: id,
+      task_type: "mrb_approval",
+      required_function: task.functionName,
+      assigned_to_email: task.email.trim().toLowerCase(),
+      assigned_by_email: userEmail,
+      status: "pending",
+      comments: `MRB approval required for ${record?.ncmr_number || "NCMR"}.`,
+    }));
+
+    const { data: insertedTasks, error } = await supabase
+      .from("approval_tasks")
+      .insert(taskRows)
+      .select();
 
     if (error) {
       alert(error.message);
       return;
     }
 
-    await addAuditLog(
-      "mrb_function_approved",
-      `${functionName} MRB function approval completed by ${userEmail}.`
-    );
+    if (insertedTasks && insertedTasks.length > 0) {
+      const notifications = insertedTasks.map((task) => ({
+        recipient_email: task.assigned_to_email,
+        subject: `MRB approval task assigned: ${record?.ncmr_number || "NCMR"}`,
+        body: `You have been assigned an MRB approval task for ${record?.ncmr_number || "this NCMR"}. Please log in to QualiFlow and open My Approval Tasks.`,
+        entity_type: "ncmr",
+        entity_id: id,
+        task_id: task.id,
+        status: "pending",
+      }));
 
-    alert(`${functionName} approval recorded.`);
+      await supabase.from("notification_queue").insert(notifications);
+    }
+
+    await addAuditLog("mrb_approval_tasks_generated", `Generated ${taskRows.length} MRB approval task(s).`);
+
+    alert("MRB approval tasks generated.");
     fetchRecord();
   };
 
   const requiredMrbApprovalsComplete = () => {
     const errors: string[] = [];
 
-    if (requireQualityApproval && !record?.quality_approved_by) {
-      errors.push("Quality MRB approval is required.");
-    }
+    const requiredFunctions = [
+      { required: requireQualityApproval, functionName: "Quality" },
+      { required: requireOperationsApproval, functionName: "Operations" },
+      { required: requireRegulatoryApproval, functionName: "Regulatory" },
+      { required: requireSupplyChainApproval, functionName: "Supply Chain" },
+      { required: requireEngineeringApproval, functionName: "Engineering" },
+    ].filter((item) => item.required);
 
-    if (requireOperationsApproval && !record?.operations_approved_by) {
-      errors.push("Operations MRB approval is required.");
-    }
+    requiredFunctions.forEach((item) => {
+      const task = approvalTasks.find(
+        (approvalTask) =>
+          approvalTask.required_function === item.functionName &&
+          approvalTask.status === "approved"
+      );
 
-    if (requireRegulatoryApproval && !record?.regulatory_approved_by) {
-      errors.push("Regulatory MRB approval is required.");
-    }
-
-    if (requireSupplyChainApproval && !record?.supply_chain_approved_by) {
-      errors.push("Supply Chain MRB approval is required.");
-    }
-
-    if (requireEngineeringApproval && !record?.engineering_approved_by) {
-      errors.push("Engineering MRB approval is required.");
-    }
+      if (!task) {
+        errors.push(`${item.functionName} MRB approval task must be approved.`);
+      }
+    });
 
     return errors;
   };
@@ -1547,144 +1591,55 @@ export default function NcmrDetailPage() {
             background: "#f9fafb",
           }}
         >
-          <h3 style={{ marginTop: 0 }}>MRB Required Approval Functions</h3>
+          <h3 style={{ marginTop: 0 }}>MRB Required Approval Tasks</h3>
           <p style={{ color: "#4b5563", fontSize: "14px" }}>
-            Select the MRB functions required by your nonconformance procedure based on NCMR type, severity, risk, and disposition.
-            Final MRB approval is blocked until all selected functions approve.
+            Assign named approvers for required MRB functions. Approvers log in to My Approval Tasks to approve or reject.
+            Final MRB approval is blocked until all required approval tasks are approved.
           </p>
 
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-              gap: "8px",
-              marginBottom: "12px",
-            }}
-          >
-            <label>
-              <input
-                type="checkbox"
-                checked={requireQualityApproval}
-                onChange={(e) => setRequireQualityApproval(e.target.checked)}
-                disabled={isLocked || !!record.mrb_approved_by}
-              />{" "}
-              Quality
-            </label>
+          <MrbApproverAssignmentRow label="Quality" required={requireQualityApproval} setRequired={setRequireQualityApproval} email={qualityApproverEmail} setEmail={setQualityApproverEmail} disabled={isLocked || !!record.mrb_approved_by} />
+          <MrbApproverAssignmentRow label="Operations" required={requireOperationsApproval} setRequired={setRequireOperationsApproval} email={operationsApproverEmail} setEmail={setOperationsApproverEmail} disabled={isLocked || !!record.mrb_approved_by} />
+          <MrbApproverAssignmentRow label="Regulatory" required={requireRegulatoryApproval} setRequired={setRequireRegulatoryApproval} email={regulatoryApproverEmail} setEmail={setRegulatoryApproverEmail} disabled={isLocked || !!record.mrb_approved_by} />
+          <MrbApproverAssignmentRow label="Supply Chain" required={requireSupplyChainApproval} setRequired={setRequireSupplyChainApproval} email={supplyChainApproverEmail} setEmail={setSupplyChainApproverEmail} disabled={isLocked || !!record.mrb_approved_by} />
+          <MrbApproverAssignmentRow label="Engineering" required={requireEngineeringApproval} setRequired={setRequireEngineeringApproval} email={engineeringApproverEmail} setEmail={setEngineeringApproverEmail} disabled={isLocked || !!record.mrb_approved_by} />
 
-            <label>
-              <input
-                type="checkbox"
-                checked={requireOperationsApproval}
-                onChange={(e) => setRequireOperationsApproval(e.target.checked)}
-                disabled={isLocked || !!record.mrb_approved_by}
-              />{" "}
-              Operations
-            </label>
-
-            <label>
-              <input
-                type="checkbox"
-                checked={requireRegulatoryApproval}
-                onChange={(e) => setRequireRegulatoryApproval(e.target.checked)}
-                disabled={isLocked || !!record.mrb_approved_by}
-              />{" "}
-              Regulatory
-            </label>
-
-            <label>
-              <input
-                type="checkbox"
-                checked={requireSupplyChainApproval}
-                onChange={(e) => setRequireSupplyChainApproval(e.target.checked)}
-                disabled={isLocked || !!record.mrb_approved_by}
-              />{" "}
-              Supply Chain
-            </label>
-
-            <label>
-              <input
-                type="checkbox"
-                checked={requireEngineeringApproval}
-                onChange={(e) => setRequireEngineeringApproval(e.target.checked)}
-                disabled={isLocked || !!record.mrb_approved_by}
-              />{" "}
-              Engineering
-            </label>
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginTop: "12px" }}>
+            <button type="button" onClick={saveMrbGovernance} disabled={isLocked || !!record.mrb_approved_by}>
+              Save Required Approvers
+            </button>
+            <button type="button" onClick={generateMrbApprovalTasks} disabled={isLocked || !!record.mrb_approved_by}>
+              Generate Approval Tasks
+            </button>
           </div>
 
-          <button
-            type="button"
-            onClick={saveMrbGovernance}
-            disabled={isLocked || !!record.mrb_approved_by}
-          >
-            Save Required MRB Functions
-          </button>
-
-          <div style={{ marginTop: "16px" }}>
-            <label>Re-enter Your Email for Function Approval</label>
-            <br />
-            <input
-              value={mrbFunctionSignatureEmail}
-              onChange={(e) => setMrbFunctionSignatureEmail(e.target.value)}
-              placeholder={userEmail || "your.email@company.com"}
-              style={{ width: "100%", maxWidth: "500px", padding: "8px" }}
-              disabled={isLocked || !!record.mrb_approved_by}
-            />
-          </div>
-
-          <h4>MRB Approval Status</h4>
-
-          <div style={{ display: "grid", gap: "10px" }}>
-            {requireQualityApproval ? (
-              <MrbFunctionApprovalCard
-                label="Quality"
-                approvedBy={record.quality_approved_by}
-                approvedAt={record.quality_approved_at}
-                isLocked={isLocked || !!record.mrb_approved_by}
-                onApprove={() => approveMrbFunction("Quality")}
-              />
-            ) : null}
-
-            {requireOperationsApproval ? (
-              <MrbFunctionApprovalCard
-                label="Operations"
-                approvedBy={record.operations_approved_by}
-                approvedAt={record.operations_approved_at}
-                isLocked={isLocked || !!record.mrb_approved_by}
-                onApprove={() => approveMrbFunction("Operations")}
-              />
-            ) : null}
-
-            {requireRegulatoryApproval ? (
-              <MrbFunctionApprovalCard
-                label="Regulatory"
-                approvedBy={record.regulatory_approved_by}
-                approvedAt={record.regulatory_approved_at}
-                isLocked={isLocked || !!record.mrb_approved_by}
-                onApprove={() => approveMrbFunction("Regulatory")}
-              />
-            ) : null}
-
-            {requireSupplyChainApproval ? (
-              <MrbFunctionApprovalCard
-                label="Supply Chain"
-                approvedBy={record.supply_chain_approved_by}
-                approvedAt={record.supply_chain_approved_at}
-                isLocked={isLocked || !!record.mrb_approved_by}
-                onApprove={() => approveMrbFunction("Supply Chain")}
-              />
-            ) : null}
-
-            {requireEngineeringApproval ? (
-              <MrbFunctionApprovalCard
-                label="Engineering"
-                approvedBy={record.engineering_approved_by}
-                approvedAt={record.engineering_approved_at}
-                isLocked={isLocked || !!record.mrb_approved_by}
-                onApprove={() => approveMrbFunction("Engineering")}
-              />
-            ) : null}
-          </div>
+          <h4>Approval Task Status</h4>
+          {approvalTasks.length === 0 ? (
+            <p>No MRB approval tasks generated yet.</p>
+          ) : (
+            <div style={{ display: "grid", gap: "10px" }}>
+              {approvalTasks.map((task) => (
+                <div
+                  key={task.id}
+                  style={{
+                    border: task.status === "approved" ? "1px solid #86efac" : task.status === "rejected" ? "1px solid #fca5a5" : "1px solid #facc15",
+                    background: task.status === "approved" ? "#f0fdf4" : task.status === "rejected" ? "#fef2f2" : "#fefce8",
+                    borderRadius: "8px",
+                    padding: "10px",
+                  }}
+                >
+                  <strong>{task.required_function}</strong> — {task.status}
+                  <br />
+                  <strong>Assigned To:</strong> {task.assigned_to_email}
+                  <br />
+                  <strong>Signed By:</strong> {task.signed_by || "N/A"}
+                  <br />
+                  <strong>Signed At:</strong> {task.signed_at || "N/A"}
+                  <br />
+                  <strong>Comments:</strong> {task.comments || "N/A"}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div style={{ marginTop: "12px" }}>
@@ -1841,40 +1796,48 @@ export default function NcmrDetailPage() {
 }
 
 
-function MrbFunctionApprovalCard({
+function MrbApproverAssignmentRow({
   label,
-  approvedBy,
-  approvedAt,
-  isLocked,
-  onApprove,
+  required,
+  setRequired,
+  email,
+  setEmail,
+  disabled,
 }: {
   label: string;
-  approvedBy: string | null;
-  approvedAt: string | null;
-  isLocked: boolean;
-  onApprove: () => void;
+  required: boolean;
+  setRequired: (value: boolean) => void;
+  email: string;
+  setEmail: (value: string) => void;
+  disabled: boolean;
 }) {
-  const approved = !!approvedBy;
-
   return (
     <div
       style={{
-        border: approved ? "1px solid #86efac" : "1px solid #facc15",
-        background: approved ? "#f0fdf4" : "#fefce8",
-        borderRadius: "8px",
-        padding: "10px",
+        display: "grid",
+        gridTemplateColumns: "minmax(160px, 220px) 1fr",
+        gap: "10px",
+        alignItems: "center",
+        marginBottom: "8px",
       }}
     >
-      <strong>{label}:</strong>{" "}
-      {approved ? `Approved by ${approvedBy} at ${approvedAt || "N/A"}` : "Pending"}
+      <label>
+        <input
+          type="checkbox"
+          checked={required}
+          onChange={(e) => setRequired(e.target.checked)}
+          disabled={disabled}
+        />{" "}
+        {label}
+      </label>
 
-      {!approved ? (
-        <div style={{ marginTop: "8px" }}>
-          <button type="button" onClick={onApprove} disabled={isLocked}>
-            Approve as {label}
-          </button>
-        </div>
-      ) : null}
+      <input
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        placeholder={`${label} approver email`}
+        disabled={disabled || !required}
+        style={{ padding: "8px", width: "100%" }}
+      />
     </div>
   );
 }
