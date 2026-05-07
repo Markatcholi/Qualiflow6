@@ -605,26 +605,7 @@ export default function NcmrDetailPage() {
       assigned_to_email: task.email.trim().toLowerCase(),
       assigned_by_email: userEmail,
       status: "pending",
-      comments:
-  `Please review this NCMR for MRB approval.
-
-NCMR: ${record?.ncmr_number || "NCMR"}
-Severity: ${severity || "N/A"}
-Source: ${source || "N/A"}
-
-Review and verify:
-• Problem description
-• Investigation summary
-• Root cause
-• Risk assessment
-• Product disposition
-• Quantity accepted/rejected
-• Rework final disposition (if applicable)
-
-Approve only if the MRB decision is technically justified, risk-assessed, and compliant with procedure requirements.
-
-This approval becomes part of the official electronic quality record.`,
-
+     comments: `Please review this NCMR for MRB approval.\n\nNCMR: ${record?.ncmr_number || "NCMR"}\nSeverity: ${severity || "N/A"}\n\nReview and verify:\n• Problem description\n• Investigation summary\n• Root cause\n• Risk assessment\n• Product disposition\n• Quantity accepted/rejected\n• Rework final disposition, if applicable\n\nApprove only if the MRB decision is technically justified, risk-assessed, and compliant with procedure requirements.\n\nThis approval becomes part of the official electronic quality record.`,
     const { data: insertedTasks, error } = await supabase
       .from("approval_tasks")
       .insert(taskRows)
