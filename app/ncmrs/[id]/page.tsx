@@ -605,8 +605,25 @@ export default function NcmrDetailPage() {
       assigned_to_email: task.email.trim().toLowerCase(),
       assigned_by_email: userEmail,
       status: "pending",
-      comments: `MRB approval required for ${record?.ncmr_number || "NCMR"}.`,
-    }));
+      comments:
+  `Please review this NCMR for MRB approval.
+
+NCMR: ${record?.ncmr_number || "NCMR"}
+Severity: ${severity || "N/A"}
+Source: ${source || "N/A"}
+
+Review and verify:
+• Problem description
+• Investigation summary
+• Root cause
+• Risk assessment
+• Product disposition
+• Quantity accepted/rejected
+• Rework final disposition (if applicable)
+
+Approve only if the MRB decision is technically justified, risk-assessed, and compliant with procedure requirements.
+
+This approval becomes part of the official electronic quality record.`,
 
     const { data: insertedTasks, error } = await supabase
       .from("approval_tasks")
