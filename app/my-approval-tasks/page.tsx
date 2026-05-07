@@ -103,11 +103,70 @@ export default function MyApprovalTasksPage() {
     fetchTasks();
   };
 
-  if (loading) return <main style={{ padding: "20px" }}>Loading approval tasks...</main>;
+  const completeExecutionTask = async (task: any) => {
+    if (!signatureEmail) {
+      alert("Please enter your email for electronic signature.");
+      return;
+    }
+
+    if (signatureEmail.trim().toLowerCase() !== userEmail.trim().toLowerCase()) {
+      alert("Electronic signature email does not match the logged-in user.");
+      return;
+    }
+
+    const completionComment = approverCommentByTask[task.id] || "";
+
+    if (!completionComment.trim()) {
+      alert("Completion comment is required.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Electronic Signature:\n\nI confirm this ${task.task_type} has been completed.`
+    );
+
+    if (!confirmed) return;
+
+    const now = new Date().toISOString();
+    const signatureMeaning = `I confirm this ${task.task_type} has been completed.`;
+
+    const { error } = await supabase
+      .from("approval_tasks")
+      .update({
+        status: "completed",
+        completion_comment: completionComment,
+        approver_comment: completionComment,
+        signature_meaning: signatureMeaning,
+        completed_by: userEmail,
+        completed_at: now,
+        signed_by: userEmail,
+        signed_at: now,
+      })
+      .eq("id", task.id);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    await supabase.from("audit_logs").insert({
+      entity_type: task.entity_type,
+      entity_id: task.entity_id,
+      action: `${task.task_type}_completed`,
+      details: `${task.task_type} completed by ${userEmail}. Completion comment: ${completionComment}`,
+      user_email: userEmail,
+    });
+
+    alert("Task completed.");
+    fetchTasks();
+  };
+
+
+  if (loading) return <main style={{ padding: "20px" }}>Loading tasks...</main>;
 
   return (
     <main style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
-      <h1>My Approval Tasks</h1>
+      <h1>My Tasks</h1>
       <p><strong>Logged-in:</strong> {userEmail || "none"}</p>
 
       <div style={{ marginBottom: "16px" }}>
@@ -120,7 +179,7 @@ export default function MyApprovalTasksPage() {
       </div>
 
       {tasks.length === 0 ? (
-        <p>No approval tasks assigned to you.</p>
+        <p>No tasks assigned to you.</p>
       ) : (
         <div style={{ display: "grid", gap: "12px" }}>
           {tasks.map((task) => (
@@ -133,7 +192,7 @@ export default function MyApprovalTasksPage() {
                 background: task.status === "approved" ? "#f0fdf4" : task.status === "rejected" ? "#fef2f2" : "#f9fafb",
               }}
             >
-              <h2 style={{ marginTop: 0 }}>{task.required_function} — {task.task_type}</h2>
+              <h2 style={{ marginTop: 0 }}>{task.task_title || `${task.required_function} — ${task.task_type}`}</h2>
               <p><strong>Status:</strong> {task.status}</p>
               <p><strong>Entity:</strong> {task.entity_type} / {task.entity_id}</p>
               <p><strong>Assigned By:</strong> {task.assigned_by_email || "N/A"}</p>
@@ -148,7 +207,7 @@ export default function MyApprovalTasksPage() {
                   Review Instructions
                 </label>
                 <textarea
-                  value={task.comments || "No review instructions provided."}
+                  value={task.task_instructions || task.comments || "No instructions provided."}
                   readOnly
                   rows={8}
                   style={{
@@ -162,7 +221,9 @@ export default function MyApprovalTasksPage() {
 
               <div style={{ marginTop: "10px", marginBottom: "12px" }}>
                 <label style={{ display: "block", fontWeight: 600, marginBottom: "4px" }}>
-                  Approver Comment
+                  {task.task_type === "correction_task" || task.task_type === "rework_task"
+                    ? "Completion Comment"
+                    : "Approver Comment"}
                 </label>
                 <textarea
                   value={approverCommentByTask[task.id] ?? task.approver_comment ?? ""}
@@ -175,16 +236,22 @@ export default function MyApprovalTasksPage() {
               </div>
 
               {task.status === "pending" ? (
-                <div style={{ marginTop: "10px", display: "flex", gap: "8px" }}>
-                  <button onClick={() => signTask(task, "approved")}>Approve</button>
-                  <button onClick={() => signTask(task, "rejected")}>Reject</button>
-                </div>
+                task.task_type === "correction_task" || task.task_type === "rework_task" ? (
+                  <div style={{ marginTop: "10px", display: "flex", gap: "8px" }}>
+                    <button onClick={() => completeExecutionTask(task)}>Complete Task</button>
+                  </div>
+                ) : (
+                  <div style={{ marginTop: "10px", display: "flex", gap: "8px" }}>
+                    <button onClick={() => signTask(task, "approved")}>Approve</button>
+                    <button onClick={() => signTask(task, "rejected")}>Reject</button>
+                  </div>
+                )
               ) : (
                 <div style={{ marginTop: "10px" }}>
-                  <strong>Signed By:</strong> {task.signed_by || "N/A"}<br />
-                  <strong>Signed At:</strong> {task.signed_at || "N/A"}<br />
+                  <strong>Signed By:</strong> {task.signed_by || task.completed_by || "N/A"}<br />
+                  <strong>Signed At:</strong> {task.signed_at || task.completed_at || "N/A"}<br />
                   <strong>Signature Meaning:</strong> {task.signature_meaning || "N/A"}<br />
-                  <strong>Approver Comment:</strong> {task.approver_comment || "N/A"}
+                  <strong>Comment:</strong> {task.approver_comment || task.completion_comment || "N/A"}
                 </div>
               )}
             </section>
