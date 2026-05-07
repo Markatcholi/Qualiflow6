@@ -605,8 +605,9 @@ export default function NcmrDetailPage() {
       assigned_to_email: task.email.trim().toLowerCase(),
       assigned_by_email: userEmail,
       status: "pending",
-  comments: `Please review this NCMR for MRB approval.\n\nNCMR: ${record?.ncmr_number || "NCMR"}\nSeverity: ${severity || "N/A"}\n\nReview and verify:\n• Problem description\n• Investigation summary\n• Root cause\n• Risk assessment\n• Product disposition\n• Quantity accepted/rejected\n• Rework final disposition, if applicable\n\nApprove only if the MRB decision is technically justified, risk-assessed, and compliant with procedure requirements.\n\nThis approval becomes part of the official electronic quality record.`,
-}));
+      comments: `MRB approval required for ${record?.ncmr_number || "NCMR"}.`,
+    }));
+
     const { data: insertedTasks, error } = await supabase
       .from("approval_tasks")
       .insert(taskRows)
@@ -1634,7 +1635,20 @@ export default function NcmrDetailPage() {
                   <br />
                   <strong>Signed At:</strong> {task.signed_at || "N/A"}
                   <br />
-                  <strong>Comments:</strong> {task.comments || "N/A"}
+                  <strong>Review Instructions:</strong>
+                  <pre
+                    style={{
+                      whiteSpace: "pre-wrap",
+                      fontFamily: "Arial, sans-serif",
+                      background: "#f3f4f6",
+                      padding: "8px",
+                      borderRadius: "6px",
+                      marginTop: "4px",
+                    }}
+                  >
+                    {task.comments || "N/A"}
+                  </pre>
+                  <strong>Approver Comment:</strong> {task.approver_comment || "N/A"}
                 </div>
               ))}
             </div>
