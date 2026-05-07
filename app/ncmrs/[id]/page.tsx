@@ -42,6 +42,8 @@ export default function NcmrDetailPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
 
+  const [validationErrors, setValidationErrors] = useState<string[]>([]);
+
   const [summaryIssueDescription, setSummaryIssueDescription] = useState("");
   const [summaryProductPartNumber, setSummaryProductPartNumber] = useState("");
   const [summaryLotNumber, setSummaryLotNumber] = useState("");
@@ -376,6 +378,101 @@ export default function NcmrDetailPage() {
     fetchAffectedItems();
   };
 
+  const validateWorkflowForMrbApproval = () => {
+    const errors: string[] = [];
+
+    if (!investigator) errors.push("Investigator is required before MRB approval.");
+    if (!problemDescription) errors.push("Problem description is required before MRB approval.");
+    if (!investigationSummary) errors.push("Investigation summary is required before MRB approval.");
+    if (!rootCauseCategory) errors.push("Root cause category is required before MRB approval.");
+    if (!rootCause) errors.push("Root cause is required before MRB approval.");
+    if (!riskAssessment) errors.push("Risk assessment is required before MRB approval.");
+    if (severity === "not_assessed") errors.push("Severity must be assessed before MRB approval.");
+
+    if (severity === "critical" && !record?.capa_id) {
+      errors.push("Critical severity requires a linked CAPA before MRB approval.");
+    }
+
+    if (severity === "major" && !record?.capa_id && !capaJustification) {
+      errors.push("Major severity requires a linked CAPA or a documented no-CAPA justification.");
+    }
+
+    if (!productDisposition) errors.push("Overall product disposition is required before MRB approval.");
+    if (!dispositionJustification) errors.push("Overall disposition justification is required before MRB approval.");
+
+    if (affectedItems.length === 0) {
+      errors.push("At least one affected material item is required before MRB approval.");
+    }
+
+    affectedItems.forEach((item, index) => {
+      const label = `Affected Item ${index + 1}`;
+
+      if (!item.product_part_number && !item.lot_number && !item.workorder_number) {
+        errors.push(`${label}: part number, lot number, or work order is required.`);
+      }
+
+      if (item.quantity_affected === null || item.quantity_affected === undefined) {
+        errors.push(`${label}: quantity affected is required.`);
+      }
+
+      if (item.quarantined_quantity === null || item.quarantined_quantity === undefined) {
+        errors.push(`${label}: quantity quarantined is required.`);
+      }
+
+      if (!item.product_disposition) errors.push(`${label}: disposition is required.`);
+      if (!item.disposition_justification) errors.push(`${label}: disposition justification is required.`);
+
+      if (item.quantity_accepted === null || item.quantity_accepted === undefined) {
+        errors.push(`${label}: quantity accepted is required.`);
+      }
+
+      if (item.quantity_rejected === null || item.quantity_rejected === undefined) {
+        errors.push(`${label}: quantity rejected is required.`);
+      }
+
+      if (item.product_disposition === "rework") {
+        if (!item.final_disposition_after_rework) {
+          errors.push(`${label}: final disposition after rework is required.`);
+        }
+
+        if (
+          item.final_rework_quantity_accepted === null ||
+          item.final_rework_quantity_accepted === undefined
+        ) {
+          errors.push(`${label}: final rework quantity accepted is required.`);
+        }
+
+        if (
+          item.final_rework_quantity_rejected === null ||
+          item.final_rework_quantity_rejected === undefined
+        ) {
+          errors.push(`${label}: final rework quantity rejected is required.`);
+        }
+      }
+    });
+
+    setValidationErrors(errors);
+    return errors.length === 0;
+  };
+
+  const validateWorkflowForClosure = () => {
+    const errors: string[] = [];
+
+    if (!record?.mrb_approved_by) errors.push("MRB approval is required before closure.");
+    if (!correctionImplementation) errors.push("Correction implementation is required before closure.");
+    if (!record?.correction_implemented_by) {
+      errors.push("Correction implementation must be formally recorded before closure.");
+    }
+    if (!investigationSummary) errors.push("Investigation summary is required before closure.");
+    if (!riskAssessment) errors.push("Risk assessment is required before closure.");
+    if (severity === "critical" && !record?.capa_id) {
+      errors.push("Critical severity requires a linked CAPA before closure.");
+    }
+
+    setValidationErrors(errors);
+    return errors.length === 0;
+  };
+
   const createCapaFromNcmr = async () => {
     if (record?.is_locked) {
       alert("This record is locked after electronic signature and cannot be edited.");
@@ -594,6 +691,13 @@ export default function NcmrDetailPage() {
       return;
     }
 
+    const validationPassed = validateWorkflowForMrbApproval();
+
+    if (!validationPassed) {
+      alert("Workflow validation failed. Resolve all validation errors before MRB approval.");
+      return;
+    }
+
     const isApprover = userRole === "approver" || userRole === "vp_quality";
     const isVpQuality = userRole === "vp_quality";
 
@@ -789,6 +893,13 @@ export default function NcmrDetailPage() {
       return;
     }
 
+    const validationPassed = validateWorkflowForClosure();
+
+    if (!validationPassed) {
+      alert("Workflow validation failed. Resolve all validation errors before closure.");
+      return;
+    }
+
     if (userRole !== "approver" && userRole !== "vp_quality") {
       return alert("Only an approver or VP Quality can close NCMR.");
     }
@@ -900,6 +1011,39 @@ export default function NcmrDetailPage() {
 
       <p><strong>Logged-in:</strong> {userEmail || "none"}</p>
       <p><strong>Role:</strong> {userRole || "none"}</p>
+
+      {validationErrors.length > 0 ? (
+        <div
+          style={{
+            background: "#fef2f2",
+            border: "1px solid #fca5a5",
+            color: "#991b1b",
+            padding: "12px",
+            borderRadius: "8px",
+            marginBottom: "16px",
+          }}
+        >
+          <strong>Workflow Validation Errors</strong>
+          <ul style={{ marginTop: "8px", marginBottom: 0 }}>
+            {validationErrors.map((error, index) => (
+              <li key={index}>{error}</li>
+            ))}
+          </ul>
+        </div>
+      ) : (
+        <div
+          style={{
+            background: "#f0fdf4",
+            border: "1px solid #86efac",
+            color: "#166534",
+            padding: "12px",
+            borderRadius: "8px",
+            marginBottom: "16px",
+          }}
+        >
+          <strong>Workflow Validation:</strong> No active validation errors.
+        </div>
+      )}
 
       <div style={{ marginBottom: "20px", padding: "12px", border: "1px solid #ccc" }}>
         <h2>Record Summary</h2>
