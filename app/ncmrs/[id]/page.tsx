@@ -1635,19 +1635,7 @@ export default function NcmrDetailPage() {
                   <br />
                   <strong>Signed At:</strong> {task.signed_at || "N/A"}
                   <br />
-                  <strong>Review Instructions:</strong>
-                  <pre
-                    style={{
-                      whiteSpace: "pre-wrap",
-                      fontFamily: "Arial, sans-serif",
-                      background: "#f3f4f6",
-                      padding: "8px",
-                      borderRadius: "6px",
-                      marginTop: "4px",
-                    }}
-                  >
-                    {task.comments || "N/A"}
-                  </pre>
+                  
                   <strong>Approver Comment:</strong> {task.approver_comment || "N/A"}
                 </div>
               ))}
