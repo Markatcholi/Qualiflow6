@@ -7,7 +7,7 @@ export default function MyApprovalTasksPage() {
   const [userEmail, setUserEmail] = useState("");
   const [tasks, setTasks] = useState<any[]>([]);
   const [signatureEmail, setSignatureEmail] = useState("");
-  const [commentByTask, setCommentByTask] = useState<Record<string, string>>({});
+  const [approverCommentByTask, setApproverCommentByTask] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
 
   const fetchTasks = async () => {
@@ -43,8 +43,8 @@ export default function MyApprovalTasksPage() {
     fetchTasks();
   }, []);
 
-  const updateComment = (taskId: string, value: string) => {
-    setCommentByTask((current) => ({ ...current, [taskId]: value }));
+  const updateApproverComment = (taskId: string, value: string) => {
+    setApproverCommentByTask((current) => ({ ...current, [taskId]: value }));
   };
 
   const signTask = async (task: any, status: "approved" | "rejected") => {
@@ -58,6 +58,13 @@ export default function MyApprovalTasksPage() {
       return;
     }
 
+    const approverComment = approverCommentByTask[task.id] || "";
+
+    if (status === "rejected" && !approverComment.trim()) {
+      alert("Rejection comment is required when rejecting an approval task.");
+      return;
+    }
+
     const actionLabel = status === "approved" ? "approve" : "reject";
     const confirmed = window.confirm(
       `Electronic Signature:\n\nI ${actionLabel} this ${task.required_function} ${task.task_type} task.`
@@ -67,13 +74,13 @@ export default function MyApprovalTasksPage() {
 
     const now = new Date().toISOString();
     const signatureMeaning = `I ${actionLabel} this ${task.required_function} ${task.task_type} task.`;
-    const comments = commentByTask[task.id] || task.comments || "";
+    const approverComment = approverCommentByTask[task.id] || "";
 
     const { error } = await supabase
       .from("approval_tasks")
       .update({
         status,
-        comments,
+        approver_comment: approverComment,
         signature_meaning: signatureMeaning,
         signed_by: userEmail,
         signed_at: now,
@@ -89,7 +96,7 @@ export default function MyApprovalTasksPage() {
       entity_type: task.entity_type,
       entity_id: task.entity_id,
       action: `approval_task_${status}`,
-      details: `${task.required_function} approval task ${status} by ${userEmail}. Comments: ${comments}`,
+      details: `${task.required_function} approval task ${status} by ${userEmail}. Approver comment: ${approverComment || "N/A"}`,
       user_email: userEmail,
     });
 
@@ -137,12 +144,26 @@ export default function MyApprovalTasksPage() {
                 <p><a href={`/ncmrs/${task.entity_id}`} target="_blank" rel="noreferrer">Open NCMR</a></p>
               ) : null}
 
-              <label>Comments</label><br />
+              <label>Review Instructions</label><br />
               <textarea
-                value={commentByTask[task.id] ?? task.comments ?? ""}
-                onChange={(e) => updateComment(task.id, e.target.value)}
+                value={task.comments || "No review instructions provided."}
+                readOnly
+                rows={8}
+                style={{
+                  width: "100%",
+                  maxWidth: "800px",
+                  background: "#f3f4f6",
+                  marginBottom: "10px",
+                }}
+              />
+
+              <label>Approver Comment</label><br />
+              <textarea
+                value={approverCommentByTask[task.id] ?? task.approver_comment ?? ""}
+                onChange={(e) => updateApproverComment(task.id, e.target.value)}
                 disabled={task.status !== "pending"}
-                rows={3}
+                placeholder="Add approval comment or rejection rationale. Required if rejecting."
+                rows={4}
                 style={{ width: "100%", maxWidth: "800px" }}
               />
 
@@ -155,7 +176,8 @@ export default function MyApprovalTasksPage() {
                 <div style={{ marginTop: "10px" }}>
                   <strong>Signed By:</strong> {task.signed_by || "N/A"}<br />
                   <strong>Signed At:</strong> {task.signed_at || "N/A"}<br />
-                  <strong>Signature Meaning:</strong> {task.signature_meaning || "N/A"}
+                  <strong>Signature Meaning:</strong> {task.signature_meaning || "N/A"}<br />
+                  <strong>Approver Comment:</strong> {task.approver_comment || "N/A"}
                 </div>
               )}
             </section>
