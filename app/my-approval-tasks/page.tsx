@@ -143,28 +143,36 @@ export default function MyApprovalTasksPage() {
                 <p><a href={`/ncmrs/${task.entity_id}`} target="_blank" rel="noreferrer">Open NCMR</a></p>
               ) : null}
 
-              <label>Review Instructions</label><br />
-              <textarea
-                value={task.comments || "No review instructions provided."}
-                readOnly
-                rows={8}
-                style={{
-                  width: "100%",
-                  maxWidth: "800px",
-                  background: "#f3f4f6",
-                  marginBottom: "10px",
-                }}
-              />
+              <div style={{ marginTop: "10px", marginBottom: "12px" }}>
+                <label style={{ display: "block", fontWeight: 600, marginBottom: "4px" }}>
+                  Review Instructions
+                </label>
+                <textarea
+                  value={task.comments || "No review instructions provided."}
+                  readOnly
+                  rows={8}
+                  style={{
+                    width: "100%",
+                    maxWidth: "800px",
+                    background: "#f3f4f6",
+                    display: "block",
+                  }}
+                />
+              </div>
 
-              <label>Approver Comment</label><br />
-              <textarea
-                value={approverCommentByTask[task.id] ?? task.approver_comment ?? ""}
-                onChange={(e) => updateApproverComment(task.id, e.target.value)}
-                disabled={task.status !== "pending"}
-                placeholder="Add approval comment or rejection rationale. Required if rejecting."
-                rows={4}
-                style={{ width: "100%", maxWidth: "800px" }}
-              />
+              <div style={{ marginTop: "10px", marginBottom: "12px" }}>
+                <label style={{ display: "block", fontWeight: 600, marginBottom: "4px" }}>
+                  Approver Comment
+                </label>
+                <textarea
+                  value={approverCommentByTask[task.id] ?? task.approver_comment ?? ""}
+                  onChange={(e) => updateApproverComment(task.id, e.target.value)}
+                  disabled={task.status !== "pending"}
+                  placeholder="Add approval comment or rejection rationale. Required if rejecting."
+                  rows={4}
+                  style={{ width: "100%", maxWidth: "800px", display: "block" }}
+                />
+              </div>
 
               {task.status === "pending" ? (
                 <div style={{ marginTop: "10px", display: "flex", gap: "8px" }}>
