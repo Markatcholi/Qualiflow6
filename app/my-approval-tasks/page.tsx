@@ -74,7 +74,6 @@ export default function MyApprovalTasksPage() {
 
     const now = new Date().toISOString();
     const signatureMeaning = `I ${actionLabel} this ${task.required_function} ${task.task_type} task.`;
-    const approverComment = approverCommentByTask[task.id] || "";
 
     const { error } = await supabase
       .from("approval_tasks")
