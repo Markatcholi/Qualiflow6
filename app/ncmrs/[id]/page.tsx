@@ -53,6 +53,7 @@ export default function NcmrDetailPage() {
   const [reworkTasks, setReworkTasks] = useState<any[]>([]);
 
   const [investigationCollaborationNotes, setInvestigationCollaborationNotes] = useState("");
+  const [investigationCollaborators, setInvestigationCollaborators] = useState("");
 
   const [correctionTaskAssignee, setCorrectionTaskAssignee] = useState("");
   const [correctionTaskDueDate, setCorrectionTaskDueDate] = useState("");
@@ -283,9 +284,6 @@ export default function NcmrDetailPage() {
       .from("ncmrs")
       .update({
         issue_description: summaryIssueDescription,
-        product_part_number: summaryProductPartNumber || null,
-        lot_number: summaryLotNumber || null,
-        workorder_number: summaryWorkorderNumber || null,
         owner: summaryOwner || null,
       })
       .eq("id", id);
@@ -509,25 +507,6 @@ export default function NcmrDetailPage() {
         errors.push(`${label}: quantity rejected is required.`);
       }
 
-      if (item.product_disposition === "rework") {
-        if (!item.final_disposition_after_rework) {
-          errors.push(`${label}: final disposition after rework is required.`);
-        }
-
-        if (
-          item.final_rework_quantity_accepted === null ||
-          item.final_rework_quantity_accepted === undefined
-        ) {
-          errors.push(`${label}: final rework quantity accepted is required.`);
-        }
-
-        if (
-          item.final_rework_quantity_rejected === null ||
-          item.final_rework_quantity_rejected === undefined
-        ) {
-          errors.push(`${label}: final rework quantity rejected is required.`);
-        }
-      }
     });
 
     const mrbGovernanceErrors = requiredMrbApprovalsComplete();
@@ -549,6 +528,20 @@ export default function NcmrDetailPage() {
     if (!riskAssessment) errors.push("Risk assessment is required before closure.");
     if (severity === "critical" && !record?.capa_id) {
       errors.push("Critical severity requires a linked CAPA before closure.");
+    }
+
+    const reworkItemsMissingFinalDisposition = affectedItems.filter(
+      (item) =>
+        item.product_disposition === "rework" &&
+        (!item.final_disposition_after_rework ||
+          item.final_rework_quantity_accepted === null ||
+          item.final_rework_quantity_accepted === undefined ||
+          item.final_rework_quantity_rejected === null ||
+          item.final_rework_quantity_rejected === undefined)
+    );
+
+    if (reworkItemsMissingFinalDisposition.length > 0) {
+      errors.push("Rework items require final disposition after rework with final accepted and rejected quantities before closure.");
     }
 
     const executionTaskErrors = requiredExecutionTasksComplete();
@@ -840,6 +833,7 @@ This approval becomes part of the official electronic quality record.`,
       containment_action: containmentAction,
       investigation_summary: investigationSummary,
       investigation_collaboration_notes: investigationCollaborationNotes,
+      investigation_collaborators: investigationCollaborators,
       root_cause: rootCause,
       root_cause_category: rootCauseCategory,
       correction_action_proposal: correctionActionProposal,
@@ -1032,20 +1026,6 @@ This approval becomes part of the official electronic quality record.`,
         return;
       }
 
-      const reworkItemsMissingFinalDisposition = affectedItems.filter(
-        (item) =>
-          item.product_disposition === "rework" &&
-          (!item.final_disposition_after_rework ||
-            item.final_rework_quantity_accepted === null ||
-            item.final_rework_quantity_accepted === undefined ||
-            item.final_rework_quantity_rejected === null ||
-            item.final_rework_quantity_rejected === undefined)
-      );
-
-      if (reworkItemsMissingFinalDisposition.length > 0) {
-        alert("Rework items require final disposition after rework with accepted and rejected quantities before overall MRB approval.");
-        return;
-      }
     }
 
     const confirmed = window.confirm(
@@ -1112,6 +1092,71 @@ This approval becomes part of the official electronic quality record.`,
 
     alert("MRB approved with electronic signature");
     fetchRecord();
+  };
+
+  const generateInvestigationCollaborationTasks = async () => {
+    if (record?.is_locked || record?.mrb_approved_by) {
+      alert("Investigation collaborators cannot be assigned after MRB approval or record lock.");
+      return;
+    }
+
+    const collaboratorEmails = investigationCollaborators
+      .split(",")
+      .map((email) => email.trim().toLowerCase())
+      .filter((email) => email);
+
+    if (collaboratorEmails.length === 0) {
+      alert("Enter at least one collaborator email.");
+      return;
+    }
+
+    const taskRows = collaboratorEmails.map((email) => ({
+      entity_type: "ncmr",
+      entity_id: id,
+      task_type: "investigation_collaboration",
+      required_function: "Investigation Collaborator",
+      task_title: `Investigation collaboration requested for ${record?.ncmr_number || "NCMR"}`,
+      task_instructions:
+        investigationCollaborationNotes ||
+        "Please review the NCMR investigation and provide input to support problem definition, containment, root cause, risk assessment, or disposition decision.",
+      assigned_to_email: email,
+      assigned_by_email: userEmail,
+      status: "pending",
+      comments:
+        investigationCollaborationNotes ||
+        "Please review the NCMR investigation and provide collaboration input.",
+    }));
+
+    const { data: insertedTasks, error } = await supabase
+      .from("approval_tasks")
+      .insert(taskRows)
+      .select();
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    if (insertedTasks && insertedTasks.length > 0) {
+      const notifications = insertedTasks.map((task) => ({
+        recipient_email: task.assigned_to_email,
+        subject: `Investigation collaboration requested: ${record?.ncmr_number || "NCMR"}`,
+        body: `You have been assigned an investigation collaboration task for ${record?.ncmr_number || "this NCMR"}. Please log in to QualiFlow and open My Tasks.`,
+        entity_type: "ncmr",
+        entity_id: id,
+        task_id: task.id,
+        status: "pending",
+      }));
+
+      await supabase.from("notification_queue").insert(notifications);
+    }
+
+    await addAuditLog(
+      "investigation_collaboration_tasks_generated",
+      `Investigation collaboration tasks assigned to ${collaboratorEmails.join(", ")}.`
+    );
+
+    alert("Investigation collaboration task(s) generated.");
   };
 
   const generateCorrectionTask = async () => {
@@ -1490,57 +1535,15 @@ This approval becomes part of the official electronic quality record.`,
           />
         </div>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-            gap: "10px",
-            marginBottom: "12px",
-          }}
-        >
-          <div>
-            <label>Primary Part Number</label>
-            <br />
-            <input
-              value={summaryProductPartNumber}
-              onChange={(e) => setSummaryProductPartNumber(e.target.value)}
-              disabled={!canEditInitiation}
-              style={{ padding: "8px", width: "100%" }}
-            />
-          </div>
-
-          <div>
-            <label>Primary Lot Number</label>
-            <br />
-            <input
-              value={summaryLotNumber}
-              onChange={(e) => setSummaryLotNumber(e.target.value)}
-              disabled={!canEditInitiation}
-              style={{ padding: "8px", width: "100%" }}
-            />
-          </div>
-
-          <div>
-            <label>Primary Work Order</label>
-            <br />
-            <input
-              value={summaryWorkorderNumber}
-              onChange={(e) => setSummaryWorkorderNumber(e.target.value)}
-              disabled={!canEditInitiation}
-              style={{ padding: "8px", width: "100%" }}
-            />
-          </div>
-
-          <div>
-            <label>Owner</label>
-            <br />
-            <input
-              value={summaryOwner}
-              onChange={(e) => setSummaryOwner(e.target.value)}
-              disabled={!canEditInitiation}
-              style={{ padding: "8px", width: "100%" }}
-            />
-          </div>
+        <div style={{ marginBottom: "12px" }}>
+          <label>Owner</label>
+          <br />
+          <input
+            value={summaryOwner}
+            onChange={(e) => setSummaryOwner(e.target.value)}
+            disabled={!canEditInitiation}
+            style={{ padding: "8px", width: "100%", maxWidth: "500px" }}
+          />
         </div>
 
         {canEditInitiation ? (
@@ -1654,14 +1657,46 @@ This approval becomes part of the official electronic quality record.`,
         />
 
         <br />
-        <label>Investigation Collaboration Notes</label><br />
-        <textarea
-          value={investigationCollaborationNotes}
-          onChange={(e) => setInvestigationCollaborationNotes(e.target.value)}
-          placeholder="Capture investigation collaboration, SME input, manufacturing feedback, supplier input, regulatory input, or cross-functional comments."
-          rows={4}
-          style={{ width: "100%", maxWidth: "800px", marginBottom: "12px" }}
-        />
+        <div
+          style={{
+            border: "1px solid #d1d5db",
+            borderRadius: "8px",
+            padding: "12px",
+            background: "#f9fafb",
+            marginBottom: "12px",
+          }}
+        >
+          <h3 style={{ marginTop: 0 }}>Investigation Collaboration</h3>
+
+          <label>Collaborator Emails</label><br />
+          <input
+            value={investigationCollaborators}
+            onChange={(e) => setInvestigationCollaborators(e.target.value)}
+            placeholder="Enter comma-separated collaborator emails"
+            disabled={!canEditInitiation}
+            style={{ padding: "8px", width: "100%", maxWidth: "800px", marginBottom: "10px" }}
+          />
+
+          <br />
+          <label>Collaboration Notes / Instructions</label><br />
+          <textarea
+            value={investigationCollaborationNotes}
+            onChange={(e) => setInvestigationCollaborationNotes(e.target.value)}
+            placeholder="Capture investigation collaboration, SME input, manufacturing feedback, supplier input, regulatory input, or cross-functional comments."
+            rows={4}
+            disabled={!canEditInitiation}
+            style={{ width: "100%", maxWidth: "800px", marginBottom: "10px" }}
+          />
+
+          <br />
+          <button
+            type="button"
+            onClick={generateInvestigationCollaborationTasks}
+            disabled={!canEditInitiation}
+          >
+            Generate Collaboration Task(s)
+          </button>
+        </div>
 
         <br />
         <label>Root Cause Category</label><br />
@@ -1814,6 +1849,7 @@ This approval becomes part of the official electronic quality record.`,
                   key={item.id}
                   item={item}
                   isLocked={isLocked}
+                  mrbApproved={!!record.mrb_approved_by}
                   onSave={updateAffectedItemDisposition}
                 />
               ))}
@@ -1821,7 +1857,7 @@ This approval becomes part of the official electronic quality record.`,
           )}
         </div>
 
-        {hasReworkDisposition() ? (
+        {hasReworkDisposition() && record.mrb_approved_by ? (
           <div
             style={{
               marginTop: "18px",
@@ -1833,7 +1869,7 @@ This approval becomes part of the official electronic quality record.`,
           >
             <h3 style={{ marginTop: 0 }}>Rework Task Assignment</h3>
             <p style={{ color: "#1f2937", fontSize: "14px" }}>
-              Rework is applicable based on the overall or item-level disposition. Assign a rework execution task to the responsible owner.
+              Rework is applicable based on the approved MRB disposition. Assign rework execution after MRB approval.
             </p>
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "10px" }}>
@@ -2398,10 +2434,12 @@ function AffectedMaterialEditCard({
 function AffectedItemCard({
   item,
   isLocked,
+  mrbApproved,
   onSave,
 }: {
   item: any;
   isLocked: boolean;
+  mrbApproved: boolean;
   onSave: (
     itemId: string,
     productDisposition: string,
@@ -2574,7 +2612,13 @@ function AffectedItemCard({
         />
       </div>
 
-      {productDisposition === "rework" ? (
+      {productDisposition === "rework" && !mrbApproved ? (
+        <p style={{ color: "#4b5563", marginTop: "10px" }}>
+          Final rework disposition becomes available after MRB approval.
+        </p>
+      ) : null}
+
+      {productDisposition === "rework" && mrbApproved ? (
         <div
           style={{
             marginTop: "12px",
