@@ -221,7 +221,9 @@ export default function MyApprovalTasksPage() {
 
               <div style={{ marginTop: "10px", marginBottom: "12px" }}>
                 <label style={{ display: "block", fontWeight: 600, marginBottom: "4px" }}>
-                  {task.task_type === "correction_task" || task.task_type === "rework_task"
+                  {task.task_type === "correction_task" ||
+                  task.task_type === "rework_task" ||
+                  task.task_type === "investigation_collaboration"
                     ? "Completion Comment"
                     : "Approver Comment"}
                 </label>
@@ -236,7 +238,9 @@ export default function MyApprovalTasksPage() {
               </div>
 
               {task.status === "pending" ? (
-                task.task_type === "correction_task" || task.task_type === "rework_task" ? (
+                task.task_type === "correction_task" ||
+                  task.task_type === "rework_task" ||
+                  task.task_type === "investigation_collaboration" ? (
                   <div style={{ marginTop: "10px", display: "flex", gap: "8px" }}>
                     <button onClick={() => completeExecutionTask(task)}>Complete Task</button>
                   </div>
