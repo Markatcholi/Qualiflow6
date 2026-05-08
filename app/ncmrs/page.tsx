@@ -58,13 +58,9 @@ type Ncmr = {
 export default function NcmrPage() {
   const [title, setTitle] = useState("");
   const [issueDescription, setIssueDescription] = useState("");
-  const [productPartNumber, setProductPartNumber] = useState("");
-  const [lotNumber, setLotNumber] = useState("");
-  const [workorderNumber, setWorkorderNumber] = useState("");
   const [sourceOfDetection, setSourceOfDetection] = useState("");
   const [department, setDepartment] = useState("");
   const [dateDetected, setDateDetected] = useState("");
-  const [quantityAffected, setQuantityAffected] = useState("");
   const [containmentAction, setContainmentAction] = useState("");
   const [containmentOwner, setContainmentOwner] = useState("");
   const [materialStatus, setMaterialStatus] = useState("");
@@ -200,7 +196,13 @@ export default function NcmrPage() {
   };
 
   const checkRecurrence = async () => {
-    if (!productPartNumber || !defectCategory) {
+    const primaryAffectedItem = affectedItems.find(
+      (item) => item.product_part_number || item.lot_number || item.workorder_number
+    );
+
+    const primaryPartNumber = primaryAffectedItem?.product_part_number || "";
+
+    if (!primaryPartNumber || !defectCategory) {
       return { recurring: false, reason: "" };
     }
 
@@ -210,7 +212,7 @@ export default function NcmrPage() {
     const { data, error } = await supabase
       .from("ncmrs")
       .select("id")
-      .eq("product_part_number", productPartNumber)
+      .eq("product_part_number", primaryPartNumber)
       .eq("defect_category", defectCategory)
       .gte("created_at", sixtyDaysAgo.toISOString());
 
@@ -224,7 +226,7 @@ export default function NcmrPage() {
     if (count > 0) {
       return {
         recurring: true,
-        reason: `Recurring issue detected: ${count} prior NCMR(s) with same part number and defect category in the last 60 days.`,
+        reason: `Recurring issue detected: ${count} prior NCMR(s) with same affected part number and defect category in the last 60 days.`,
       };
     }
 
@@ -327,13 +329,13 @@ export default function NcmrPage() {
       .insert({
         title,
         issue_description: issueDescription,
-        product_part_number: productPartNumber,
-        lot_number: lotNumber,
-        workorder_number: workorderNumber,
+        product_part_number: null,
+        lot_number: null,
+        workorder_number: null,
         source_of_detection: sourceOfDetection,
         department,
         date_detected: dateDetected || null,
-        quantity_affected: quantityAffected ? Number(quantityAffected) : null,
+        quantity_affected: null,
         containment_action: containmentAction,
         containment_owner: containmentOwner,
         material_status: materialStatus,
@@ -485,13 +487,9 @@ export default function NcmrPage() {
 
     setTitle("");
     setIssueDescription("");
-    setProductPartNumber("");
-    setLotNumber("");
-    setWorkorderNumber("");
     setSourceOfDetection("");
     setDepartment("");
     setDateDetected("");
-    setQuantityAffected("");
     setContainmentAction("");
     setContainmentOwner("");
     setMaterialStatus("");
@@ -625,41 +623,6 @@ export default function NcmrPage() {
         </div>
 
         <div style={rowStyle}>
-          <label>Product Part Number</label>
-          <br />
-          <select
-            value={productPartNumber}
-            onChange={(e) => setProductPartNumber(e.target.value)}
-            style={fieldStyle}
-          >
-            <option value="">Select part number</option>
-            {renderOptions(partNumberOptions)}
-          </select>
-        </div>
-
-        <div style={rowStyle}>
-          <label>Lot Number</label>
-          <br />
-          <input
-            value={lotNumber}
-            onChange={(e) => setLotNumber(e.target.value)}
-            placeholder="Lot number"
-            style={fieldStyle}
-          />
-        </div>
-
-        <div style={rowStyle}>
-          <label>Work Order Number</label>
-          <br />
-          <input
-            value={workorderNumber}
-            onChange={(e) => setWorkorderNumber(e.target.value)}
-            placeholder="Work order number"
-            style={fieldStyle}
-          />
-        </div>
-
-        <div style={rowStyle}>
           <label>Source of Detection</label>
           <br />
           <select
@@ -696,23 +659,14 @@ export default function NcmrPage() {
           />
         </div>
 
-        <div style={rowStyle}>
-          <label>Quantity Affected</label>
-          <br />
-          <input
-            type="number"
-            value={quantityAffected}
-            onChange={(e) => setQuantityAffected(e.target.value)}
-            placeholder="Quantity affected"
-            style={fieldStyle}
-          />
-        </div>
-
         <div style={{ marginTop: "18px" }}>
           <h3>Affected Materials / Multiple Parts and Lots</h3>
           <p style={{ color: "#4b5563", fontSize: "14px" }}>
-            Use this section when more than one part number, lot number, or work order may be impacted.
-            The first row can match the primary part/lot above.
+            All impacted products must be entered in this section.
+          </p>
+          <p style={{ color: "#4b5563", fontSize: "14px" }}>
+            Add all impacted products, lots, work orders, affected quantities, and quarantined quantities here.
+            This section is the controlled source for impacted product information.
           </p>
 
           {affectedItems.map((item, index) => (
