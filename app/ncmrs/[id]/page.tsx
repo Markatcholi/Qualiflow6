@@ -1572,7 +1572,7 @@ This approval becomes part of the official electronic quality record.`,
           value={containmentAction}
           onChange={(e) => setContainmentAction(e.target.value)}
           rows={4}
-          style={{ width: "100%", maxWidth: "800px" }}
+          style={{ width: "100%", maxWidth: "700px" }}
         />
       </section>
 
@@ -1632,7 +1632,7 @@ This approval becomes part of the official electronic quality record.`,
           value={rootCause}
           onChange={(e) => setRootCause(e.target.value)}
           rows={4}
-          style={{ width: "100%", maxWidth: "800px" }}
+          style={{ width: "100%", maxWidth: "700px" }}
         />
       </section>
 
@@ -1666,7 +1666,7 @@ This approval becomes part of the official electronic quality record.`,
           value={correctiveAction}
           onChange={(e) => setCorrectiveAction(e.target.value)}
           rows={4}
-          style={{ width: "100%", maxWidth: "800px" }}
+          style={{ width: "100%", maxWidth: "700px" }}
         />
       </section>
 
@@ -1679,7 +1679,7 @@ This approval becomes part of the official electronic quality record.`,
           onChange={(e) => setRiskAssessment(e.target.value)}
           placeholder="Assess product, process, patient/user, regulatory, and quality risk."
           rows={4}
-          style={{ width: "100%", maxWidth: "800px" }}
+          style={{ width: "100%", maxWidth: "700px" }}
         />
 
         <div style={{ marginTop: "12px" }}>
@@ -1704,7 +1704,7 @@ This approval becomes part of the official electronic quality record.`,
               onChange={(e) => setCapaJustification(e.target.value)}
               placeholder="Required if severity is Major and no CAPA is linked."
               rows={3}
-              style={{ width: "100%", maxWidth: "800px" }}
+              style={{ width: "100%", maxWidth: "700px" }}
             />
           </div>
         ) : null}
@@ -1742,7 +1742,7 @@ This approval becomes part of the official electronic quality record.`,
           onChange={(e) => setDispositionJustification(e.target.value)}
           placeholder="Justify disposition based on risk assessment and investigation."
           rows={4}
-          style={{ width: "100%", maxWidth: "800px" }}
+          style={{ width: "100%", maxWidth: "700px" }}
         />
 
         <div style={{ marginTop: "18px" }}>
@@ -1785,7 +1785,7 @@ This approval becomes part of the official electronic quality record.`,
               Rework is applicable based on the approved MRB disposition. Assign rework execution after MRB approval.
             </p>
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "10px" }}>
+            <div style={{ display: "grid", gap: "12px", maxWidth: "700px" }}>
               <div>
                 <label>Assigned To Email</label><br />
                 <input
@@ -1815,7 +1815,7 @@ This approval becomes part of the official electronic quality record.`,
                 onChange={(e) => setReworkTaskInstructions(e.target.value)}
                 disabled={isLocked}
                 rows={3}
-                style={{ width: "100%", maxWidth: "800px" }}
+                style={{ width: "100%", maxWidth: "700px" }}
               />
             </div>
 
@@ -1906,7 +1906,7 @@ This approval becomes part of the official electronic quality record.`,
             onChange={(e) => setAdditionalMrbApprovers(e.target.value)}
             placeholder="Enter comma-separated approver emails"
             rows={3}
-            style={{ width: "100%", maxWidth: "800px" }}
+            style={{ width: "100%", maxWidth: "700px" }}
           />
         </div>
 
@@ -1954,7 +1954,7 @@ This approval becomes part of the official electronic quality record.`,
             Assign the correction or corrective action execution to an owner. The owner completes the task from My Tasks.
           </p>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "10px" }}>
+          <div style={{ display: "grid", gap: "12px", maxWidth: "700px" }}>
             <div>
               <label>Assigned To Email</label><br />
               <input
@@ -1984,7 +1984,7 @@ This approval becomes part of the official electronic quality record.`,
               onChange={(e) => setCorrectionTaskInstructions(e.target.value)}
               disabled={isLocked}
               rows={3}
-              style={{ width: "100%", maxWidth: "800px" }}
+              style={{ width: "100%", maxWidth: "700px" }}
             />
           </div>
 
@@ -2001,7 +2001,7 @@ This approval becomes part of the official electronic quality record.`,
           onChange={(e) => setCorrectionImplementation(e.target.value)}
           placeholder="Describe how the correction was implemented."
           rows={4}
-          style={{ width: "100%", maxWidth: "800px" }}
+          style={{ width: "100%", maxWidth: "700px" }}
         />
 
         <div style={{ marginTop: "12px" }}>
@@ -2048,7 +2048,7 @@ This approval becomes part of the official electronic quality record.`,
             value={evidenceNotes}
             onChange={(e) => setEvidenceNotes(e.target.value)}
             rows={3}
-            style={{ width: "100%", maxWidth: "800px" }}
+            style={{ width: "100%", maxWidth: "700px" }}
           />
         </div>
 
@@ -2252,13 +2252,7 @@ function AffectedMaterialEditCard({
         background: "#f9fafb",
       }}
     >
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-          gap: "10px",
-        }}
-      >
+      <div style={{ display: "grid", gap: "12px", maxWidth: "700px" }}>
         <div>
           <label>Part Number</label>
           <br />
@@ -2449,7 +2443,7 @@ function AffectedItemCard({
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+          gridTemplateColumns: "1fr",
           gap: "8px",
           marginBottom: "12px",
         }}
