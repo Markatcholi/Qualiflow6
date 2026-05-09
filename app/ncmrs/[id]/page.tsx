@@ -2437,31 +2437,10 @@ function AffectedItemCard({
     >
       <h4 style={{ marginTop: 0 }}>
         Disposition Item — {item.product_part_number || "Part N/A"} / Lot{" "}
-        {item.lot_number || "N/A"}
+        {item.lot_number || "Lot N/A"}
       </h4>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr",
-          gap: "8px",
-          marginBottom: "12px",
-        }}
-      >
-        <div><strong>Part Number:</strong> {item.product_part_number || "N/A"}</div>
-        <div><strong>Lot Number:</strong> {item.lot_number || "N/A"}</div>
-        <div><strong>Work Order:</strong> {item.workorder_number || "N/A"}</div>
-        <div><strong>Qty Affected:</strong> {item.quantity_affected ?? "N/A"}</div>
-        <div><strong>Qty Quarantined:</strong> {item.quarantined_quantity ?? "N/A"}</div>
-      </div>
-
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-          gap: "10px",
-        }}
-      >
+      <div style={{ display: "grid", gap: "12px", maxWidth: "700px" }}>
         <div>
           <label>Disposition</label>
           <br />
@@ -2482,6 +2461,9 @@ function AffectedItemCard({
           </select>
         </div>
 
+        <div>
+          <label>Quantity Accepted</label>
+          <br />
           <input
             type="number"
             value={quantityAccepted}
@@ -2502,45 +2484,38 @@ function AffectedItemCard({
             style={{ padding: "8px", width: "100%" }}
           />
         </div>
-      </div>
 
-      <div style={{ marginTop: "10px" }}>
-        <label>Disposition Justification</label>
-        <br />
-        <textarea
-          value={dispositionJustification}
-          onChange={(e) => setDispositionJustification(e.target.value)}
-          disabled={isLocked}
-          rows={3}
-          style={{ width: "100%", maxWidth: "900px", marginBottom: "8px" }}
-        />
-      </div>
+        <div>
+          <label>Disposition Justification</label>
+          <br />
+          <textarea
+            value={dispositionJustification}
+            onChange={(e) => setDispositionJustification(e.target.value)}
+            disabled={isLocked}
+            rows={4}
+            style={{ width: "100%" }}
+          />
+        </div>
 
-      {productDisposition === "rework" && !mrbApproved ? (
-        <p style={{ color: "#4b5563", marginTop: "10px" }}>
-          Final rework disposition becomes available after MRB approval.
-        </p>
-      ) : null}
+        {productDisposition === "rework" && !mrbApproved ? (
+          <p style={{ color: "#4b5563", marginTop: 0 }}>
+            Final rework disposition becomes available after MRB approval.
+          </p>
+        ) : null}
 
-      {productDisposition === "rework" && mrbApproved ? (
-        <div
-          style={{
-            marginTop: "12px",
-            border: "1px solid #bfdbfe",
-            background: "#eff6ff",
-            padding: "12px",
-            borderRadius: "8px",
-          }}
-        >
-          <h4 style={{ marginTop: 0 }}>Final Disposition After Rework</h4>
-
+        {productDisposition === "rework" && mrbApproved ? (
           <div
             style={{
+              border: "1px solid #bfdbfe",
+              borderRadius: "8px",
+              padding: "12px",
+              background: "#eff6ff",
               display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-              gap: "10px",
+              gap: "12px",
             }}
           >
+            <h5 style={{ margin: 0 }}>Final Disposition After Rework</h5>
+
             <div>
               <label>Final Disposition</label>
               <br />
@@ -2551,16 +2526,15 @@ function AffectedItemCard({
                 style={{ padding: "8px", width: "100%" }}
               >
                 <option value="">Select final disposition</option>
-                <option value="use_as_is">Use As Is</option>
-                <option value="accept_after_rework">Accept After Rework</option>
-                <option value="scrap">Scrap</option>
-                <option value="return_to_supplier">Return to Supplier</option>
+                <option value="accepted_after_rework">Accepted After Rework</option>
+                <option value="scrap_after_rework">Scrap After Rework</option>
                 <option value="additional_rework_required">Additional Rework Required</option>
+                <option value="use_as_is_after_rework">Use As Is After Rework</option>
               </select>
             </div>
 
             <div>
-              <label>Final Qty Accepted</label>
+              <label>Final Rework Quantity Accepted</label>
               <br />
               <input
                 type="number"
@@ -2572,7 +2546,7 @@ function AffectedItemCard({
             </div>
 
             <div>
-              <label>Final Qty Rejected</label>
+              <label>Final Rework Quantity Rejected</label>
               <br />
               <input
                 type="number"
@@ -2583,42 +2557,39 @@ function AffectedItemCard({
               />
             </div>
           </div>
+        ) : null}
+
+        <button
+          type="button"
+          onClick={() =>
+            onSave(
+              item.id,
+              productDisposition,
+              dispositionJustification,
+              quantityAccepted,
+              quantityRejected,
+              finalDispositionAfterRework,
+              finalReworkQuantityAccepted,
+              finalReworkQuantityRejected
+            )
+          }
+          disabled={isLocked}
+          style={{ width: "fit-content" }}
+        >
+          Save Item Disposition
+        </button>
+
+        <div
+          style={{
+            border: productDisposition ? "1px solid #86efac" : "1px solid #facc15",
+            background: productDisposition ? "#f0fdf4" : "#fefce8",
+            borderRadius: "8px",
+            padding: "10px",
+          }}
+        >
+          <strong>Item Disposition Status:</strong>{" "}
+          {productDisposition ? "Disposition saved or pending save" : "Pending item disposition"}
         </div>
-      ) : null}
-
-      <button
-        type="button"
-        disabled={isLocked}
-        onClick={() =>
-          onSave(
-            item.id,
-            productDisposition,
-            dispositionJustification,
-            quantityAccepted,
-            quantityRejected,
-            finalDispositionAfterRework,
-            finalReworkQuantityAccepted,
-            finalReworkQuantityRejected
-          )
-        }
-        style={{ marginTop: "12px" }}
-      >
-        Save Item Disposition
-      </button>
-
-      <div
-        style={{
-          marginTop: "10px",
-          border: item.product_disposition ? "1px solid #86efac" : "1px solid #facc15",
-          background: item.product_disposition ? "#f0fdf4" : "#fefce8",
-          padding: "10px",
-          borderRadius: "8px",
-        }}
-      >
-        <strong>Item Disposition Status:</strong>{" "}
-        {item.product_disposition
-          ? "Disposition saved; pending overall MRB approval"
-          : "Pending item disposition"}
       </div>
     </div>
   );
