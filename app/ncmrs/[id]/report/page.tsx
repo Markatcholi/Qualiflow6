@@ -13,6 +13,7 @@ export default function NcmrFullRecordReportPage() {
   const [mrbApprovers, setMrbApprovers] = useState<any[]>([]);
   const [affectedItems, setAffectedItems] = useState<any[]>([]);
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
+  const [includeAuditTrail, setIncludeAuditTrail] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -87,6 +88,17 @@ export default function NcmrFullRecordReportPage() {
         <button onClick={() => window.print()} style={{ padding: "8px 12px", marginRight: "10px" }}>
           Print / Save as PDF
         </button>
+
+        <label style={{ marginRight: "14px" }}>
+          <input
+            type="checkbox"
+            checked={includeAuditTrail}
+            onChange={(e) => setIncludeAuditTrail(e.target.checked)}
+            style={{ marginRight: "6px" }}
+          />
+          Include Audit Trail
+        </label>
+
         <a href={`/ncmrs/${id}`}>Back to NCMR Workflow</a>
       </div>
 
@@ -122,13 +134,9 @@ export default function NcmrFullRecordReportPage() {
         <h2>2. Initiation / Event Details</h2>
         <div style={gridStyle}>
           <Field label="Issue Description" value={record.issue_description} />
-          <Field label="Product Part Number" value={record.product_part_number} />
-          <Field label="Lot Number" value={record.lot_number} />
-          <Field label="Work Order Number" value={record.workorder_number} />
           <Field label="Source of Detection" value={record.source_of_detection} />
           <Field label="Department" value={record.department} />
           <Field label="Date Detected" value={record.date_detected} />
-          <Field label="Quantity Affected" value={record.quantity_affected} />
           <Field label="Supplier Name" value={record.supplier_name} />
           <Field label="Supplier Lot" value={record.supplier_lot} />
           <Field label="Site / Location" value={record.site_location} />
@@ -138,47 +146,40 @@ export default function NcmrFullRecordReportPage() {
       </section>
 
       <section style={sectionStyle}>
-        <h2>3. Affected Items / Multi-Part, Multi-Lot, Disposition</h2>
+        <h2>3. Affected Materials and Item Disposition</h2>
 
         {affectedItems.length === 0 ? (
-          <p>No additional affected items recorded.</p>
+          <p>No affected materials recorded.</p>
         ) : (
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
-            <thead>
-              <tr>
-                <th style={thStyle}>Part Number</th>
-                <th style={thStyle}>Lot Number</th>
-                <th style={thStyle}>Work Order</th>
-                <th style={thStyle}>Qty Affected</th>
-                <th style={thStyle}>Qty Quarantined</th>
-                <th style={thStyle}>Disposition</th>
-                <th style={thStyle}>Qty Accepted</th>
-                <th style={thStyle}>Qty Rejected</th>
-                <th style={thStyle}>Disposition Justification</th>
-                <th style={thStyle}>Final Disposition After Rework</th>
-                <th style={thStyle}>Final Rework Qty Accepted</th>
-                <th style={thStyle}>Final Rework Qty Rejected</th>
-              </tr>
-            </thead>
-            <tbody>
-              {affectedItems.map((item) => (
-                <tr key={item.id}>
-                  <td style={tdStyle}>{displayValue(item.product_part_number)}</td>
-                  <td style={tdStyle}>{displayValue(item.lot_number)}</td>
-                  <td style={tdStyle}>{displayValue(item.workorder_number)}</td>
-                  <td style={tdStyle}>{displayValue(item.quantity_affected)}</td>
-                  <td style={tdStyle}>{displayValue(item.quarantined_quantity)}</td>
-                  <td style={tdStyle}>{displayValue(item.product_disposition)}</td>
-                  <td style={tdStyle}>{displayValue(item.quantity_accepted)}</td>
-                  <td style={tdStyle}>{displayValue(item.quantity_rejected)}</td>
-                  <td style={tdStyle}>{displayValue(item.disposition_justification)}</td>
-                  <td style={tdStyle}>{displayValue(item.final_disposition_after_rework)}</td>
-                  <td style={tdStyle}>{displayValue(item.final_rework_quantity_accepted)}</td>
-                  <td style={tdStyle}>{displayValue(item.final_rework_quantity_rejected)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div style={{ display: "grid", gap: "12px" }}>
+            {affectedItems.map((item, index) => (
+              <div key={item.id || index} style={itemCardStyle}>
+                <h3 style={{ marginTop: 0 }}>
+                  Disposition Item {index + 1} — {displayValue(item.product_part_number)} / Lot {displayValue(item.lot_number)}
+                </h3>
+
+                <div style={verticalGridStyle}>
+                  <Field label="Part Number" value={item.product_part_number} />
+                  <Field label="Lot Number" value={item.lot_number} />
+                  <Field label="Work Order" value={item.workorder_number} />
+                  <Field label="Quantity Affected" value={item.quantity_affected} />
+                  <Field label="Quantity Quarantined" value={item.quarantined_quantity} />
+                  <Field label="Disposition" value={item.product_disposition} />
+                  <Field label="Quantity Accepted" value={item.quantity_accepted} />
+                  <Field label="Quantity Rejected" value={item.quantity_rejected} />
+                  <Field label="Disposition Justification" value={item.disposition_justification} />
+
+                  {item.product_disposition === "rework" ? (
+                    <>
+                      <Field label="Final Disposition After Rework" value={item.final_disposition_after_rework} />
+                      <Field label="Final Rework Quantity Accepted" value={item.final_rework_quantity_accepted} />
+                      <Field label="Final Rework Quantity Rejected" value={item.final_rework_quantity_rejected} />
+                    </>
+                  ) : null}
+                </div>
+              </div>
+            ))}
+          </div>
         )}
       </section>
 
@@ -274,21 +275,23 @@ export default function NcmrFullRecordReportPage() {
         </div>
       </section>
 
-      <section style={sectionStyle}>
-        <h2>11. Audit Trail Summary</h2>
-        {auditLogs.length === 0 ? (
-          <p>No audit log entries found for this NCMR.</p>
-        ) : (
-          auditLogs.map((log) => (
-            <div key={log.id} style={{ borderTop: "1px solid #ddd", paddingTop: "8px", marginTop: "8px" }}>
-              <Field label="Date / Time" value={log.created_at} />
-              <Field label="User" value={log.user_email} />
-              <Field label="Action" value={log.action} />
-              <Field label="Details" value={log.details} />
-            </div>
-          ))
-        )}
-      </section>
+      {includeAuditTrail ? (
+        <section style={sectionStyle}>
+          <h2>11. Audit Trail Summary</h2>
+          {auditLogs.length === 0 ? (
+            <p>No audit log entries found for this NCMR.</p>
+          ) : (
+            auditLogs.map((log) => (
+              <div key={log.id} style={{ borderTop: "1px solid #ddd", paddingTop: "8px", marginTop: "8px" }}>
+                <Field label="Date / Time" value={log.created_at} />
+                <Field label="User" value={log.user_email} />
+                <Field label="Action" value={log.action} />
+                <Field label="Details" value={log.details} />
+              </div>
+            ))
+          )}
+        </section>
+      ) : null}
 
       <footer className="print-footer">
         NCMR Controlled Record | {record.ncmr_number || record.id} | Generated {new Date().toISOString()}
@@ -374,6 +377,18 @@ const gridStyle: React.CSSProperties = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
   gap: "8px",
+};
+
+const verticalGridStyle: React.CSSProperties = {
+  display: "grid",
+  gap: "8px",
+};
+
+const itemCardStyle: React.CSSProperties = {
+  border: "1px solid #cbd5e1",
+  borderRadius: "8px",
+  padding: "12px",
+  background: "#f8fafc",
 };
 
 const signatureStyle: React.CSSProperties = {
