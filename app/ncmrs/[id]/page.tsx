@@ -52,10 +52,6 @@ export default function NcmrDetailPage() {
   const [correctionTasks, setCorrectionTasks] = useState<any[]>([]);
   const [reworkTasks, setReworkTasks] = useState<any[]>([]);
 
-  const [investigationCollaborationNotes, setInvestigationCollaborationNotes] = useState("");
-  const [investigationCollaborators, setInvestigationCollaborators] = useState("");
-
-
   const [correctionTaskAssignee, setCorrectionTaskAssignee] = useState("");
   const [correctionTaskDueDate, setCorrectionTaskDueDate] = useState("");
   const [correctionTaskInstructions, setCorrectionTaskInstructions] = useState("");
@@ -834,8 +830,6 @@ This approval becomes part of the official electronic quality record.`,
       problem_description: problemDescription,
       containment_action: containmentAction,
       investigation_summary: investigationSummary,
-      investigation_collaboration_notes: investigationCollaborationNotes,
-      investigation_collaborators: investigationCollaborators,
       root_cause: rootCause,
       root_cause_category: rootCauseCategory,
       correction_action_proposal: correctionActionProposal,
@@ -1094,71 +1088,6 @@ This approval becomes part of the official electronic quality record.`,
 
     alert("MRB approved with electronic signature");
     fetchRecord();
-  };
-
-  const generateInvestigationCollaborationTasks = async () => {
-    if (record?.is_locked || record?.mrb_approved_by) {
-      alert("Investigation collaborators cannot be assigned after MRB approval or record lock.");
-      return;
-    }
-
-    const collaboratorEmails = investigationCollaborators
-      .split(",")
-      .map((email) => email.trim().toLowerCase())
-      .filter((email) => email);
-
-    if (collaboratorEmails.length === 0) {
-      alert("Enter at least one collaborator email.");
-      return;
-    }
-
-    const taskRows = collaboratorEmails.map((email) => ({
-      entity_type: "ncmr",
-      entity_id: id,
-      task_type: "investigation_collaboration",
-      required_function: "Investigation Collaborator",
-      task_title: `Investigation collaboration requested for ${record?.ncmr_number || "NCMR"}`,
-      task_instructions:
-        investigationCollaborationNotes ||
-        "Please review the NCMR investigation and provide input to support problem definition, containment, root cause, risk assessment, or disposition decision.",
-      assigned_to_email: email,
-      assigned_by_email: userEmail,
-      status: "pending",
-      comments:
-        investigationCollaborationNotes ||
-        "Please review the NCMR investigation and provide collaboration input.",
-    }));
-
-    const { data: insertedTasks, error } = await supabase
-      .from("approval_tasks")
-      .insert(taskRows)
-      .select();
-
-    if (error) {
-      alert(error.message);
-      return;
-    }
-
-    if (insertedTasks && insertedTasks.length > 0) {
-      const notifications = insertedTasks.map((task) => ({
-        recipient_email: task.assigned_to_email,
-        subject: `Investigation collaboration requested: ${record?.ncmr_number || "NCMR"}`,
-        body: `You have been assigned an investigation collaboration task for ${record?.ncmr_number || "this NCMR"}. Please log in to QualiFlow and open My Tasks.`,
-        entity_type: "ncmr",
-        entity_id: id,
-        task_id: task.id,
-        status: "pending",
-      }));
-
-      await supabase.from("notification_queue").insert(notifications);
-    }
-
-    await addAuditLog(
-      "investigation_collaboration_tasks_generated",
-      `Investigation collaboration tasks assigned to ${collaboratorEmails.join(", ")}.`
-    );
-
-    alert("Investigation collaboration task(s) generated.");
   };
 
   const generateCorrectionTask = async () => {
@@ -1682,47 +1611,6 @@ This approval becomes part of the official electronic quality record.`,
         </div>
 
         <br />
-        <div
-          style={{
-            border: "1px solid #d1d5db",
-            borderRadius: "8px",
-            padding: "12px",
-            background: "#f9fafb",
-            marginBottom: "12px",
-          }}
-        >
-          <h3 style={{ marginTop: 0 }}>Investigation Collaboration</h3>
-
-          <label>Collaborator Emails</label><br />
-          <input
-            value={investigationCollaborators}
-            onChange={(e) => setInvestigationCollaborators(e.target.value)}
-            placeholder="Enter comma-separated collaborator emails"
-            disabled={!canEditInitiation}
-            style={{ padding: "8px", width: "100%", maxWidth: "800px", marginBottom: "10px" }}
-          />
-
-          <br />
-          <label>Collaboration Notes / Instructions</label><br />
-          <textarea
-            value={investigationCollaborationNotes}
-            onChange={(e) => setInvestigationCollaborationNotes(e.target.value)}
-            placeholder="Capture investigation collaboration, SME input, manufacturing feedback, supplier input, regulatory input, or cross-functional comments."
-            rows={4}
-            disabled={!canEditInitiation}
-            style={{ width: "100%", maxWidth: "800px", marginBottom: "10px" }}
-          />
-
-          <br />
-          <button
-            type="button"
-            onClick={generateInvestigationCollaborationTasks}
-            disabled={!canEditInitiation}
-          >
-            Generate Collaboration Task(s)
-          </button>
-        </div>
-
         <br />
         <label>Root Cause Category</label><br />
         <select
