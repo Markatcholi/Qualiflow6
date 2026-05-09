@@ -55,9 +55,6 @@ export default function NcmrDetailPage() {
   const [investigationCollaborationNotes, setInvestigationCollaborationNotes] = useState("");
   const [investigationCollaborators, setInvestigationCollaborators] = useState("");
 
-  const [collaborationComments, setCollaborationComments] = useState<any[]>([]);
-  const [newCollaborationComment, setNewCollaborationComment] = useState("");
-  const [taggedUsers, setTaggedUsers] = useState("");
 
   const [correctionTaskAssignee, setCorrectionTaskAssignee] = useState("");
   const [correctionTaskDueDate, setCorrectionTaskDueDate] = useState("");
@@ -209,68 +206,6 @@ export default function NcmrDetailPage() {
   };
 
 
-  const fetchCollaborationComments = async () => {
-    const { data, error } = await supabase
-      .from("ncmr_comments")
-      .select("*")
-      .eq("ncmr_id", id)
-      .order("created_at", { ascending: true });
-
-    if (error) {
-      alert(error.message);
-      return;
-    }
-
-    setCollaborationComments(data || []);
-  };
-
-  const postCollaborationComment = async () => {
-    if (!newCollaborationComment.trim()) {
-      alert("Comment is required.");
-      return;
-    }
-
-    const taggedUserArray = taggedUsers
-      .split(",")
-      .map((user) => user.trim().toLowerCase())
-      .filter((user) => user);
-
-    const { error } = await supabase.from("ncmr_comments").insert({
-      ncmr_id: id,
-      comment_text: newCollaborationComment,
-      created_by: userEmail,
-      tagged_users: taggedUserArray.length > 0 ? taggedUserArray : null,
-    });
-
-    if (error) {
-      alert(error.message);
-      return;
-    }
-
-    if (taggedUserArray.length > 0) {
-      const notifications = taggedUserArray.map((email) => ({
-        recipient_email: email,
-        subject: `Tagged in NCMR collaboration thread: ${record?.ncmr_number || "NCMR"}`,
-        body: `${userEmail} tagged you in the NCMR collaboration thread.`,
-        entity_type: "ncmr",
-        entity_id: id,
-        status: "pending",
-      }));
-
-      await supabase.from("notification_queue").insert(notifications);
-    }
-
-    await addAuditLog(
-      "collaboration_comment_posted",
-      `Collaboration comment posted by ${userEmail}.`
-    );
-
-    setNewCollaborationComment("");
-    setTaggedUsers("");
-    fetchCollaborationComments();
-  };
-
-
   const fetchRecord = async () => {
     const { data, error } = await supabase
       .from("ncmrs")
@@ -323,7 +258,6 @@ export default function NcmrDetailPage() {
     await fetchApprovalTasks();
     await fetchCorrectionTasks();
     await fetchReworkTasks();
-    await fetchCollaborationComments();
     setLoading(false);
   };
 
@@ -1725,82 +1659,26 @@ This approval becomes part of the official electronic quality record.`,
         />
 
 
-        <div
-          style={{
-            border: "1px solid #cbd5e1",
-            borderRadius: "10px",
-            padding: "14px",
-            background: "#f8fafc",
-            marginBottom: "16px",
-          }}
-        >
-          <h3 style={{ marginTop: 0 }}>Investigation Collaboration Thread</h3>
-
-          <p style={{ color: "#475569", fontSize: "14px" }}>
-            Use this thread for investigation discussion, manufacturing feedback,
-            supplier communication summaries, technical review, and cross-functional collaboration.
+        <div style={{ marginBottom: "16px" }}>
+          <a
+            href={`/ncmrs/${id}/collaboration`}
+            target="_blank"
+            rel="noreferrer"
+            style={{
+              display: "inline-block",
+              background: "#2563eb",
+              color: "white",
+              padding: "8px 12px",
+              borderRadius: "8px",
+              textDecoration: "none",
+              fontWeight: 600,
+            }}
+          >
+            Open Collaboration Thread
+          </a>
+          <p style={{ color: "#4b5563", fontSize: "14px", marginTop: "8px" }}>
+            Optional collaboration is available when cross-functional investigation input is needed.
           </p>
-
-          <label>New Collaboration Comment</label><br />
-          <textarea
-            value={newCollaborationComment}
-            onChange={(e) => setNewCollaborationComment(e.target.value)}
-            rows={4}
-            placeholder="Enter investigation discussion, findings, or updates."
-            style={{ width: "100%", maxWidth: "900px", marginBottom: "10px" }}
-          />
-
-          <br />
-          <label>Tag Users (comma-separated emails)</label><br />
-          <input
-            value={taggedUsers}
-            onChange={(e) => setTaggedUsers(e.target.value)}
-            placeholder="quality@company.com, operations@company.com"
-            style={{ width: "100%", maxWidth: "700px", padding: "8px", marginBottom: "10px" }}
-          />
-
-          <br />
-          <button type="button" onClick={postCollaborationComment}>
-            Post Collaboration Comment
-          </button>
-
-          <div style={{ marginTop: "18px" }}>
-            <h4>Discussion History</h4>
-
-            {collaborationComments.length === 0 ? (
-              <p>No collaboration comments posted yet.</p>
-            ) : (
-              <div style={{ display: "grid", gap: "12px" }}>
-                {collaborationComments.map((comment) => (
-                  <div
-                    key={comment.id}
-                    style={{
-                      border: "1px solid #d1d5db",
-                      borderRadius: "8px",
-                      padding: "12px",
-                      background: "white",
-                    }}
-                  >
-                    <div style={{ marginBottom: "8px", color: "#334155" }}>
-                      <strong>{comment.created_by}</strong>
-                      {" • "}
-                      {new Date(comment.created_at).toLocaleString()}
-                    </div>
-
-                    <div style={{ whiteSpace: "pre-wrap", marginBottom: "8px" }}>
-                      {comment.comment_text}
-                    </div>
-
-                    {comment.tagged_users && comment.tagged_users.length > 0 ? (
-                      <div style={{ color: "#2563eb", fontSize: "14px" }}>
-                        <strong>Tagged:</strong> {comment.tagged_users.join(", ")}
-                      </div>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
         </div>
 
         <br />
