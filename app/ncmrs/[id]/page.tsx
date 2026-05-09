@@ -2482,9 +2482,6 @@ function AffectedItemCard({
           </select>
         </div>
 
-        <div>
-          <label>Quantity Accepted</label>
-          <br />
           <input
             type="number"
             value={quantityAccepted}
