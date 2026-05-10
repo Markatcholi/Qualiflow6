@@ -188,20 +188,6 @@ export default function NcmrPage() {
   };
 
   const fetchData = async () => {
-    if (
-      supplierScarCheck.required &&
-      supplierScarDecision === "no" &&
-      !supplierScarDecisionJustification.trim()
-    ) {
-      alert("Justification is required when SCAR recommendation is rejected.");
-      return;
-    }
-
-    if (supplierScarCheck.required && !supplierScarDecision) {
-      alert("Please select Yes or No for the supplier SCAR recommendation.");
-      return;
-    }
-
     const { data, error } = await supabase
       .from("ncmrs")
       .select("*")
