@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "../../../lib/supabaseClient";
 
@@ -29,7 +30,7 @@ export default function SupplierProfilePage() {
 
     const ncmrRes = await supabase
       .from("ncmrs")
-      .select("id, ncmr_number, title, status, severity, created_at")
+      .select("id, ncmr_number, title, status, severity, defect_category, defect_subcategory, created_at, closed_at")
       .eq("supplier_id", id)
       .order("created_at", { ascending: false });
 
@@ -41,10 +42,32 @@ export default function SupplierProfilePage() {
   };
 
   useEffect(() => {
-    if (id) {
-      fetchSupplier();
-    }
+    if (id) fetchSupplier();
   }, [id]);
+
+  const metrics = useMemo(() => {
+    const open = linkedNcmrs.filter((n) => n.status !== "closed");
+    const closed = linkedNcmrs.filter((n) => n.status === "closed");
+    const majorCritical = linkedNcmrs.filter(
+      (n) => n.severity === "major" || n.severity === "critical"
+    );
+
+    const defectCounts: Record<string, number> = {};
+    linkedNcmrs.forEach((ncmr) => {
+      const key = ncmr.defect_category || "Uncategorized";
+      defectCounts[key] = (defectCounts[key] || 0) + 1;
+    });
+
+    const topDefect = Object.entries(defectCounts).sort((a, b) => b[1] - a[1])[0];
+
+    return {
+      total: linkedNcmrs.length,
+      open: open.length,
+      closed: closed.length,
+      majorCritical: majorCritical.length,
+      topDefect: topDefect ? `${topDefect[0]} (${topDefect[1]})` : "N/A",
+    };
+  }, [linkedNcmrs]);
 
   if (loading) {
     return <main style={{ padding: "24px" }}>Loading supplier...</main>;
@@ -56,7 +79,21 @@ export default function SupplierProfilePage() {
 
   return (
     <main style={{ padding: "24px", fontFamily: "Arial" }}>
-      <h1>{supplier.supplier_name}</h1>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", flexWrap: "wrap" }}>
+        <h1>{supplier.supplier_name}</h1>
+        <div>
+          <Link href="/suppliers" style={{ marginRight: "12px" }}>Supplier List</Link>
+          <Link href="/supplier-quality-dashboard">Supplier Dashboard</Link>
+        </div>
+      </div>
+
+      <section style={summaryGridStyle}>
+        <MetricCard label="Total Supplier NCMRs" value={metrics.total} />
+        <MetricCard label="Open NCMRs" value={metrics.open} />
+        <MetricCard label="Closed NCMRs" value={metrics.closed} />
+        <MetricCard label="Major/Critical NCMRs" value={metrics.majorCritical} />
+        <MetricCard label="Top Defect Category" value={metrics.topDefect} />
+      </section>
 
       <section style={sectionStyle}>
         <h2>Supplier Summary</h2>
@@ -75,27 +112,13 @@ export default function SupplierProfilePage() {
           <Field label="Quality Agreement Signed" value={supplier.quality_agreement_signed ? "Yes" : "No"} />
           <Field label="Last Audit" value={supplier.last_supplier_audit_date} />
           <Field label="Next Audit" value={supplier.next_supplier_audit_date} />
+          <Field label="Approved Products / Services" value={supplier.approved_products_services} />
+          <Field label="Supplier Notes" value={supplier.supplier_notes} />
         </div>
       </section>
 
       <section style={sectionStyle}>
-        <h2>Supplier Metrics</h2>
-
-        <div style={gridStyle}>
-          <Field label="Linked NCMRs" value={linkedNcmrs.length} />
-          <Field
-            label="Open NCMRs"
-            value={linkedNcmrs.filter((n) => n.status !== "closed").length}
-          />
-          <Field
-            label="Critical Severity NCMRs"
-            value={linkedNcmrs.filter((n) => n.severity === "critical").length}
-          />
-        </div>
-      </section>
-
-      <section style={sectionStyle}>
-        <h2>Linked NCMRs</h2>
+        <h2>Linked Supplier NCMRs</h2>
 
         {linkedNcmrs.length === 0 ? (
           <p>No linked NCMRs.</p>
@@ -107,7 +130,9 @@ export default function SupplierProfilePage() {
                 <th style={thStyle}>Title</th>
                 <th style={thStyle}>Status</th>
                 <th style={thStyle}>Severity</th>
+                <th style={thStyle}>Defect</th>
                 <th style={thStyle}>Created</th>
+                <th style={thStyle}>Open</th>
               </tr>
             </thead>
 
@@ -118,7 +143,11 @@ export default function SupplierProfilePage() {
                   <td style={tdStyle}>{ncmr.title}</td>
                   <td style={tdStyle}>{ncmr.status}</td>
                   <td style={tdStyle}>{ncmr.severity}</td>
+                  <td style={tdStyle}>{ncmr.defect_category || "N/A"}</td>
                   <td style={tdStyle}>{ncmr.created_at}</td>
+                  <td style={tdStyle}>
+                    <Link href={`/ncmrs/${ncmr.id}`}>Open NCMR</Link>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -129,19 +158,36 @@ export default function SupplierProfilePage() {
   );
 }
 
-function Field({
-  label,
-  value,
-}: {
-  label: string;
-  value: any;
-}) {
+function Field({ label, value }: { label: string; value: any }) {
   return (
     <div>
       <strong>{label}:</strong> {value || "N/A"}
     </div>
   );
 }
+
+function MetricCard({ label, value }: { label: string; value: any }) {
+  return (
+    <div style={metricCardStyle}>
+      <div style={{ color: "#4b5563", fontSize: "13px" }}>{label}</div>
+      <div style={{ fontSize: "24px", fontWeight: "bold", marginTop: "6px" }}>{value}</div>
+    </div>
+  );
+}
+
+const summaryGridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+  gap: "12px",
+  marginBottom: "20px",
+};
+
+const metricCardStyle: React.CSSProperties = {
+  border: "1px solid #d1d5db",
+  borderRadius: "10px",
+  padding: "14px",
+  background: "#f9fafb",
+};
 
 const sectionStyle: React.CSSProperties = {
   border: "1px solid #d1d5db",
