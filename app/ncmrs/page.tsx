@@ -374,10 +374,10 @@ export default function NcmrPage() {
         supplier_id: supplierIdForInsert,
         supplier_name: supplierNameForInsert,
         supplier_lot: supplierLotForInsert,
-        supplier_scar_recommended: supplierScarCheck.required,
-        supplier_scar_decision: supplierScarCheck.required ? supplierScarDecision || null : null,
+        supplier_scar_recommended: supplierScar.required,
+        supplier_scar_decision: supplierScar.required ? supplierScarDecision || null : null,
         supplier_scar_decision_justification:
-          supplierScarCheck.required && supplierScarDecision === "no"
+          supplierScar.required && supplierScarDecision === "no"
             ? supplierScarDecisionJustification
             : null,
         site_location: siteLocation,
