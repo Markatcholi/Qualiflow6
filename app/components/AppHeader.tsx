@@ -53,6 +53,7 @@ export default function AppHeader() {
 </a>
         <a href="/ncmrs" style={{ marginRight: "12px" }}>NCMRs</a>
         <a href="/capa" style={{ marginRight: "12px" }}>CAPA</a>
+        <a href="/suppliers" style={{ marginRight: "12px" }}>Suppliers</a>
         <a href="/audits" style={{ marginRight: "12px" }}>Audits</a>
         <a href="/oos-oot" style={{ marginRight: "12px" }}>OOS/OOT</a>
         <a href="/audit" style={{ marginRight: "12px" }}>Audit Trail</a>
