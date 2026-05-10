@@ -14,6 +14,15 @@ type DefectSubcategoryOption = {
   label: string;
 };
 
+type SupplierOption = {
+  id: string;
+  supplier_name: string;
+  supplier_number: string | null;
+  supplier_status: string | null;
+  supplier_risk_level: string | null;
+  primary_contact_email: string | null;
+};
+
 type AffectedItemInput = {
   product_part_number: string;
   lot_number: string;
@@ -40,6 +49,7 @@ type Ncmr = {
   quarantined_quantity: number | null;
   defect_category: string | null;
   defect_subcategory: string | null;
+  supplier_id: string | null;
   supplier_name: string | null;
   supplier_lot: string | null;
   site_location: string | null;
@@ -67,6 +77,7 @@ export default function NcmrPage() {
   const [quarantinedQuantity, setQuarantinedQuantity] = useState("");
   const [defectCategory, setDefectCategory] = useState("");
   const [defectSubcategory, setDefectSubcategory] = useState("");
+  const [supplierId, setSupplierId] = useState("");
   const [supplierName, setSupplierName] = useState("");
   const [supplierLot, setSupplierLot] = useState("");
   const [siteLocation, setSiteLocation] = useState("");
@@ -95,6 +106,7 @@ export default function NcmrPage() {
   const [materialStatusOptions, setMaterialStatusOptions] = useState<MasterOption[]>([]);
   const [defectCategoryOptions, setDefectCategoryOptions] = useState<MasterOption[]>([]);
   const [defectSubcategoryOptions, setDefectSubcategoryOptions] = useState<DefectSubcategoryOption[]>([]);
+  const [supplierOptions, setSupplierOptions] = useState<SupplierOption[]>([]);
 
   const filteredDefectSubcategories = useMemo(() => {
     return defectSubcategoryOptions.filter(
@@ -105,6 +117,8 @@ export default function NcmrPage() {
   const isSupplierSource = sourceOfDetection
     .toLowerCase()
     .includes("supplier");
+
+  const selectedSupplier = supplierOptions.find((supplier) => supplier.id === supplierId) || null;
 
   const fieldStyle: React.CSSProperties = {
     width: "100%",
@@ -139,6 +153,7 @@ export default function NcmrPage() {
       materialRes,
       defectCategoryRes,
       defectSubcategoryRes,
+      suppliersRes,
     ] = await Promise.all([
       supabase.from("md_product_part_numbers").select("code, label").order("label"),
       supabase.from("md_detection_sources").select("code, label").order("label"),
@@ -146,6 +161,10 @@ export default function NcmrPage() {
       supabase.from("md_material_statuses").select("code, label").order("label"),
       supabase.from("md_defect_categories").select("code, label").order("label"),
       supabase.from("md_defect_subcategories").select("category_code, code, label").order("label"),
+      supabase
+        .from("suppliers")
+        .select("id, supplier_name, supplier_number, supplier_status, supplier_risk_level, primary_contact_email")
+        .order("supplier_name"),
     ]);
 
     if (partNumbersRes.error) return alert(partNumbersRes.error.message);
@@ -154,6 +173,7 @@ export default function NcmrPage() {
     if (materialRes.error) return alert(materialRes.error.message);
     if (defectCategoryRes.error) return alert(defectCategoryRes.error.message);
     if (defectSubcategoryRes.error) return alert(defectSubcategoryRes.error.message);
+    if (suppliersRes.error) return alert(suppliersRes.error.message);
 
     setPartNumberOptions(partNumbersRes.data || []);
     setDetectionSourceOptions(detectionRes.data || []);
@@ -161,6 +181,7 @@ export default function NcmrPage() {
     setMaterialStatusOptions(materialRes.data || []);
     setDefectCategoryOptions(defectCategoryRes.data || []);
     setDefectSubcategoryOptions(defectSubcategoryRes.data || []);
+    setSupplierOptions(suppliersRes.data || []);
   };
 
   const fetchData = async () => {
@@ -234,7 +255,9 @@ export default function NcmrPage() {
   };
 
   const checkSupplierScar = async () => {
-    if (!supplierName.trim()) {
+    const supplierNameForCheck = selectedSupplier?.supplier_name || supplierName;
+
+    if (!supplierNameForCheck.trim()) {
       return { required: false, reason: "" };
     }
 
@@ -244,7 +267,7 @@ export default function NcmrPage() {
     const { data, error } = await supabase
       .from("ncmrs")
       .select("id")
-      .ilike("supplier_name", supplierName.trim())
+      .ilike("supplier_name", supplierNameForCheck.trim())
       .gte("created_at", thirtyDaysAgo.toISOString());
 
     if (error) {
@@ -258,7 +281,7 @@ export default function NcmrPage() {
     if (totalWithNewRecord >= 3) {
       return {
         required: true,
-        reason: `Supplier CAPA/SCAR required: ${supplierName} has ${totalWithNewRecord} NCMR(s) in the last 30 days.`,
+        reason: `Supplier CAPA/SCAR required: ${supplierNameForCheck} has ${totalWithNewRecord} NCMR(s) in the last 30 days.`,
       };
     }
 
@@ -320,8 +343,11 @@ export default function NcmrPage() {
     const supplierScar = await checkSupplierScar();
 
     const capaRequired = recurrence.recurring || supplierScar.required;
-    const supplierNameForInsert = isSupplierSource ? supplierName : "";
+    const supplierNameForInsert = isSupplierSource
+      ? selectedSupplier?.supplier_name || supplierName
+      : "";
     const supplierLotForInsert = isSupplierSource ? supplierLot : "";
+    const supplierIdForInsert = isSupplierSource ? supplierId || null : null;
 
 
     const { data, error } = await supabase
@@ -342,6 +368,7 @@ export default function NcmrPage() {
         quarantined_quantity: quarantinedQuantity ? Number(quarantinedQuantity) : null,
         defect_category: defectCategory,
         defect_subcategory: defectSubcategory,
+        supplier_id: supplierIdForInsert,
         supplier_name: supplierNameForInsert,
         supplier_lot: supplierLotForInsert,
         site_location: siteLocation,
@@ -417,12 +444,12 @@ export default function NcmrPage() {
         .from("capas")
         .insert({
           ncmr_id: data.id,
-          title: `SCAR for ${supplierName}`,
+          title: `SCAR for ${supplierNameForInsert}`,
           linked_ncmr_title: title,
           source_type: "supplier_quality",
           capa_source: "Supplier recurrence",
           capa_type: "scar",
-          supplier_name: supplierName,
+          supplier_name: supplierNameForInsert,
           scar_required: true,
           scar_reason: supplierScar.reason,
           problem_description:
@@ -449,7 +476,7 @@ export default function NcmrPage() {
         "ncmr",
         data.id,
         "scar_created",
-        `Supplier CAPA/SCAR automatically created for supplier: ${supplierName}`
+        `Supplier CAPA/SCAR automatically created for supplier: ${supplierNameForInsert}`
       );
     } else if (recurrence.recurring) {
       const { data: capaData, error: capaError } = await supabase
@@ -496,6 +523,7 @@ export default function NcmrPage() {
     setQuarantinedQuantity("");
     setDefectCategory("");
     setDefectSubcategory("");
+    setSupplierId("");
     setSupplierName("");
     setSupplierLot("");
     setSiteLocation("");
@@ -877,16 +905,50 @@ export default function NcmrPage() {
           ) : null}
 
           <div style={rowStyle}>
-            <label>Supplier Name</label>
+            <label>Supplier</label>
             <br />
-            <input
-              value={supplierName}
-              onChange={(e) => setSupplierName(e.target.value)}
-              placeholder="Supplier name"
+            <select
+              value={supplierId}
+              onChange={(e) => {
+                const selectedId = e.target.value;
+                const supplier = supplierOptions.find((item) => item.id === selectedId) || null;
+                setSupplierId(selectedId);
+                setSupplierName(supplier?.supplier_name || "");
+              }}
               disabled={!isSupplierSource}
               style={fieldStyle}
-            />
+            >
+              <option value="">Select supplier</option>
+              {supplierOptions.map((supplier) => (
+                <option key={supplier.id} value={supplier.id}>
+                  {supplier.supplier_number ? `${supplier.supplier_number} - ` : ""}
+                  {supplier.supplier_name}
+                </option>
+              ))}
+            </select>
           </div>
+
+          {selectedSupplier ? (
+            <div
+              style={{
+                border: "1px solid #d1d5db",
+                borderRadius: "8px",
+                padding: "10px",
+                background: "#f9fafb",
+                marginBottom: "12px",
+              }}
+            >
+              <strong>Selected Supplier Summary</strong>
+              <div><strong>Status:</strong> {selectedSupplier.supplier_status || "N/A"}</div>
+              <div><strong>Risk Level:</strong> {selectedSupplier.supplier_risk_level || "N/A"}</div>
+              <div><strong>Contact Email:</strong> {selectedSupplier.primary_contact_email || "N/A"}</div>
+              <div>
+                <a href={`/suppliers/${selectedSupplier.id}`} target="_blank" rel="noreferrer">
+                  Open Supplier Profile
+                </a>
+              </div>
+            </div>
+          ) : null}
 
           <div style={rowStyle}>
             <label>Supplier Lot</label>
