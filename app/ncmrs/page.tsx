@@ -80,6 +80,9 @@ export default function NcmrPage() {
   const [supplierId, setSupplierId] = useState("");
   const [supplierName, setSupplierName] = useState("");
   const [supplierLot, setSupplierLot] = useState("");
+  const [supplierScarRecommended, setSupplierScarRecommended] = useState(false);
+  const [supplierScarDecision, setSupplierScarDecision] = useState("");
+  const [supplierScarDecisionJustification, setSupplierScarDecisionJustification] = useState("");
   const [siteLocation, setSiteLocation] = useState("");
   const [immediateCorrection, setImmediateCorrection] = useState("");
   const [owner, setOwner] = useState("");
@@ -185,6 +188,20 @@ export default function NcmrPage() {
   };
 
   const fetchData = async () => {
+    if (
+      supplierScarCheck.required &&
+      supplierScarDecision === "no" &&
+      !supplierScarDecisionJustification.trim()
+    ) {
+      alert("Justification is required when SCAR recommendation is rejected.");
+      return;
+    }
+
+    if (supplierScarCheck.required && !supplierScarDecision) {
+      alert("Please select Yes or No for the supplier SCAR recommendation.");
+      return;
+    }
+
     const { data, error } = await supabase
       .from("ncmrs")
       .select("*")
@@ -371,6 +388,12 @@ export default function NcmrPage() {
         supplier_id: supplierIdForInsert,
         supplier_name: supplierNameForInsert,
         supplier_lot: supplierLotForInsert,
+        supplier_scar_recommended: supplierScarCheck.required,
+        supplier_scar_decision: supplierScarCheck.required ? supplierScarDecision || null : null,
+        supplier_scar_decision_justification:
+          supplierScarCheck.required && supplierScarDecision === "no"
+            ? supplierScarDecisionJustification
+            : null,
         site_location: siteLocation,
         immediate_correction: immediateCorrection,
         owner,
@@ -526,6 +549,9 @@ export default function NcmrPage() {
     setSupplierId("");
     setSupplierName("");
     setSupplierLot("");
+    setSupplierScarRecommended(false);
+    setSupplierScarDecision("");
+    setSupplierScarDecisionJustification("");
     setSiteLocation("");
     setImmediateCorrection("");
     setOwner("");
@@ -961,6 +987,66 @@ export default function NcmrPage() {
               style={fieldStyle}
             />
           </div>
+
+          {isSupplierSource ? (
+            <div
+              style={{
+                border: "1px solid #f59e0b",
+                background: "#fffbeb",
+                padding: "12px",
+                borderRadius: "8px",
+                marginTop: "12px",
+                marginBottom: "12px",
+              }}
+            >
+              <strong>Supplier SCAR Risk-Based Decision</strong>
+              <p style={{ marginTop: "8px" }}>
+                If supplier escalation criteria are met when this NCMR is created, decide whether to initiate a SCAR.
+              </p>
+
+              <div style={{ marginBottom: "10px" }}>
+                <button
+                  type="button"
+                  onClick={() => setSupplierScarDecision("yes")}
+                  style={{
+                    marginRight: "8px",
+                    background: supplierScarDecision === "yes" ? "#16a34a" : undefined,
+                    color: supplierScarDecision === "yes" ? "white" : undefined,
+                  }}
+                >
+                  Yes - Initiate SCAR if recommended
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSupplierScarDecision("no")}
+                  style={{
+                    background: supplierScarDecision === "no" ? "#dc2626" : undefined,
+                    color: supplierScarDecision === "no" ? "white" : undefined,
+                  }}
+                >
+                  No - Do Not Initiate SCAR
+                </button>
+              </div>
+
+              {supplierScarDecision === "no" ? (
+                <div>
+                  <label>Justification for not initiating SCAR</label>
+                  <br />
+                  <textarea
+                    value={supplierScarDecisionJustification}
+                    onChange={(e) => setSupplierScarDecisionJustification(e.target.value)}
+                    rows={4}
+                    style={{
+                      width: "100%",
+                      maxWidth: "800px",
+                      padding: "8px",
+                    }}
+                  />
+                </div>
+              ) : null}
+            </div>
+          ) : null}
         </div>
 
         <div style={rowStyle}>
