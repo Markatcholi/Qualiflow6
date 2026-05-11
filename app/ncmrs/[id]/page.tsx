@@ -29,6 +29,9 @@ export default function NcmrDetailPage() {
   const [riskAssessment, setRiskAssessment] = useState("");
   const [severity, setSeverity] = useState("not_assessed");
   const [capaJustification, setCapaJustification] = useState("");
+  const [capaRecommended, setCapaRecommended] = useState(false);
+  const [capaDecision, setCapaDecision] = useState("");
+  const [capaDecisionJustification, setCapaDecisionJustification] = useState("");
   const [productDisposition, setProductDisposition] = useState("");
   const [dispositionJustification, setDispositionJustification] = useState("");
   const [correctionImplementation, setCorrectionImplementation] = useState("");
@@ -239,6 +242,9 @@ export default function NcmrDetailPage() {
     setRiskAssessment(data.risk_assessment || "");
     setSeverity(data.severity || "not_assessed");
     setCapaJustification(data.capa_justification || "");
+    setCapaRecommended(data.capa_recommended || false);
+    setCapaDecision(data.capa_decision || "");
+    setCapaDecisionJustification(data.capa_decision_justification || "");
     setProductDisposition(data.product_disposition || data.disposition || "");
     setDispositionJustification(data.disposition_justification || "");
     setCorrectionImplementation(data.correction_implementation || "");
@@ -453,6 +459,53 @@ export default function NcmrDetailPage() {
     fetchAffectedItems();
   };
 
+  const getCapaRecommendation = () => {
+    const reasons: string[] = [];
+
+    if (severity === "critical") {
+      reasons.push("Critical severity requires CAPA escalation review.");
+    }
+
+    if (severity === "major") {
+      reasons.push("Major severity requires documented CAPA decision.");
+    }
+
+    if (record?.recurring_issue) {
+      reasons.push("Recurring issue was identified.");
+    }
+
+    if (correctionActionProposal === "escalate_to_capa") {
+      reasons.push("Correction / corrective action proposal indicates escalation to CAPA.");
+    }
+
+    return {
+      recommended: reasons.length > 0,
+      reason: reasons.join(" "),
+    };
+  };
+
+  const isNoCapaDecisionAccepted = () => {
+    const recommendation = getCapaRecommendation();
+
+    if (!recommendation.recommended) {
+      return true;
+    }
+
+    if (record?.capa_id) {
+      return true;
+    }
+
+    if (capaDecision === "yes") {
+      return false;
+    }
+
+    if (capaDecision === "no" && capaDecisionJustification.trim()) {
+      return true;
+    }
+
+    return false;
+  };
+
   const validateWorkflowForMrbApproval = () => {
     const errors: string[] = [];
 
@@ -464,12 +517,14 @@ export default function NcmrDetailPage() {
     if (!riskAssessment) errors.push("Risk assessment is required before MRB approval.");
     if (severity === "not_assessed") errors.push("Severity must be assessed before MRB approval.");
 
-    if (severity === "critical" && !record?.capa_id) {
-      errors.push("Critical severity requires a linked CAPA before MRB approval.");
-    }
+    const capaRecommendation = getCapaRecommendation();
 
-    if (severity === "major" && !record?.capa_id && !capaJustification) {
-      errors.push("Major severity requires a linked CAPA or a documented no-CAPA justification.");
+    if (
+      capaRecommendation.recommended &&
+      !record?.capa_id &&
+      !isNoCapaDecisionAccepted()
+    ) {
+      errors.push("CAPA recommendation requires either a linked CAPA or a documented No-CAPA decision with justification before MRB approval.");
     }
 
     if (!productDisposition) errors.push("Overall product disposition is required before MRB approval.");
@@ -524,8 +579,14 @@ export default function NcmrDetailPage() {
     }
     if (!investigationSummary) errors.push("Investigation summary is required before closure.");
     if (!riskAssessment) errors.push("Risk assessment is required before closure.");
-    if (severity === "critical" && !record?.capa_id) {
-      errors.push("Critical severity requires a linked CAPA before closure.");
+    const closureCapaRecommendation = getCapaRecommendation();
+
+    if (
+      closureCapaRecommendation.recommended &&
+      !record?.capa_id &&
+      !isNoCapaDecisionAccepted()
+    ) {
+      errors.push("CAPA recommendation requires either a linked CAPA or a documented No-CAPA decision with justification before closure.");
     }
 
     const reworkItemsMissingFinalDisposition = affectedItems.filter(
@@ -763,6 +824,9 @@ This approval becomes part of the official electronic quality record.`,
       .update({
         capa_id: capaData.id,
         capa_required: true,
+        capa_recommended: true,
+        capa_decision: "yes",
+        capa_decision_justification: null,
         capa_justification: null,
       })
       .eq("id", id);
@@ -820,8 +884,19 @@ This approval becomes part of the official electronic quality record.`,
       return;
     }
 
-    if (severity === "major" && !record?.capa_id && !capaJustification) {
-      alert("For Major severity, CAPA is required OR justification must be provided.");
+    const capaRecommendation = getCapaRecommendation();
+
+    if (
+      capaRecommendation.recommended &&
+      capaDecision === "no" &&
+      !capaDecisionJustification.trim()
+    ) {
+      alert("Justification is required when CAPA recommendation is rejected.");
+      return;
+    }
+
+    if (capaRecommendation.recommended && !record?.capa_id && !capaDecision) {
+      alert("Please select Yes or No for the CAPA recommendation.");
       return;
     }
 
@@ -836,7 +911,16 @@ This approval becomes part of the official electronic quality record.`,
       corrective_action: correctiveAction,
       risk_assessment: riskAssessment,
       severity,
-      capa_justification: capaJustification,
+      capa_recommended: capaRecommendation.recommended,
+      capa_decision: capaRecommendation.recommended ? capaDecision || null : null,
+      capa_decision_justification:
+        capaRecommendation.recommended && capaDecision === "no"
+          ? capaDecisionJustification
+          : null,
+      capa_justification:
+        capaRecommendation.recommended && capaDecision === "no"
+          ? capaDecisionJustification
+          : capaJustification,
       product_disposition: productDisposition,
       disposition: productDisposition,
       disposition_justification: dispositionJustification,
@@ -859,20 +943,25 @@ This approval becomes part of the official electronic quality record.`,
 
     await addAuditLog("workflow_saved", "NCMR workflow fields saved.");
 
-    if (severity === "critical" && !record?.capa_id) {
+    if (
+      capaRecommendation.recommended &&
+      capaDecision === "yes" &&
+      !record?.capa_id
+    ) {
       const { data: capaData, error: capaError } = await supabase
         .from("capas")
         .insert({
           title: `CAPA for ${record.title}`,
           status: "open",
           source_type: "ncmr",
-          capa_source: "Severity-based trigger: critical",
+          capa_source: "NCMR risk-based CAPA escalation decision",
           ncmr_id: id,
           linked_ncmr_title: record.title,
           problem_description:
             problemDescription || record.issue_description || record.title,
           investigation_summary: investigationSummary,
           root_cause: rootCause,
+          root_cause_category: rootCauseCategory,
           corrective_action_plan: correctiveAction,
           action_plan: correctiveAction,
         })
@@ -889,6 +978,9 @@ This approval becomes part of the official electronic quality record.`,
         .update({
           capa_id: capaData.id,
           capa_required: true,
+          capa_recommended: true,
+          capa_decision: "yes",
+          capa_decision_justification: null,
           capa_justification: null,
         })
         .eq("id", id);
@@ -899,27 +991,34 @@ This approval becomes part of the official electronic quality record.`,
       }
 
       await addAuditLog(
-        "critical_severity_capa_trigger",
-        "CAPA automatically created because NCMR severity was assessed as critical."
+        "risk_based_capa_created",
+        "CAPA automatically created because CAPA recommendation was accepted."
       );
 
-      alert("NCMR saved. CAPA automatically created because severity is Critical.");
+      alert("NCMR saved. CAPA created and linked based on risk-based CAPA decision.");
       fetchRecord();
       return;
     }
 
-    if (severity === "major" && !record?.capa_id && capaJustification) {
+    if (
+      capaRecommendation.recommended &&
+      capaDecision === "no" &&
+      !record?.capa_id
+    ) {
       await supabase
         .from("ncmrs")
         .update({
           capa_required: false,
-          capa_justification: capaJustification,
+          capa_recommended: true,
+          capa_decision: "no",
+          capa_decision_justification: capaDecisionJustification,
+          capa_justification: capaDecisionJustification,
         })
         .eq("id", id);
 
       await addAuditLog(
-        "major_severity_no_capa_justification",
-        `Major severity assessed with no CAPA. Justification: ${capaJustification}`
+        "risk_based_no_capa_decision",
+        `CAPA recommendation rejected with justification: ${capaDecisionJustification}`
       );
     }
 
@@ -968,12 +1067,14 @@ This approval becomes part of the official electronic quality record.`,
     if (!riskAssessment) return alert("Risk assessment is required before MRB approval.");
     if (severity === "not_assessed") return alert("Severity must be assessed before MRB approval.");
 
-    if (severity === "major" && !record?.capa_id && !capaJustification) {
-      return alert("For Major severity, CAPA is required OR justification must be provided before MRB approval.");
-    }
+    const mrbCapaRecommendation = getCapaRecommendation();
 
-    if (severity === "critical" && !record?.capa_id) {
-      return alert("Critical severity requires a linked CAPA before MRB approval. Save workflow first to auto-create CAPA.");
+    if (
+      mrbCapaRecommendation.recommended &&
+      !record?.capa_id &&
+      !isNoCapaDecisionAccepted()
+    ) {
+      return alert("CAPA recommendation requires either a linked CAPA or a documented No-CAPA decision with justification before MRB approval.");
     }
 
     if (!productDisposition) return alert("Product disposition is required before MRB approval.");
@@ -1310,12 +1411,14 @@ This approval becomes part of the official electronic quality record.`,
     if (!riskAssessment) return alert("Risk assessment is required.");
     if (severity === "not_assessed") return alert("Severity must be assessed.");
 
-    if (severity === "major" && !record?.capa_id && !capaJustification) {
-      return alert("For Major severity, CAPA is required OR justification must be provided before closure.");
-    }
+    const closureCapaRecommendationDirect = getCapaRecommendation();
 
-    if (severity === "critical" && !record?.capa_id) {
-      return alert("Critical severity requires a linked CAPA before closure.");
+    if (
+      closureCapaRecommendationDirect.recommended &&
+      !record?.capa_id &&
+      !isNoCapaDecisionAccepted()
+    ) {
+      return alert("CAPA recommendation requires either a linked CAPA or a documented No-CAPA decision with justification before closure.");
     }
 
     if (!productDisposition) return alert("Product disposition is required.");
@@ -1485,7 +1588,9 @@ This approval becomes part of the official electronic quality record.`,
 
         <p><strong>Severity:</strong> {record.severity || "not_assessed"}</p>
         <p><strong>CAPA Required:</strong> {record.capa_required ? "Yes" : "No"}</p>
-        <p><strong>CAPA Justification:</strong> {record.capa_justification || "N/A"}</p>
+        <p><strong>CAPA Recommended:</strong> {record.capa_recommended ? "Yes" : "No"}</p>
+        <p><strong>CAPA Decision:</strong> {record.capa_decision || "N/A"}</p>
+        <p><strong>CAPA Decision Justification:</strong> {record.capa_decision_justification || record.capa_justification || "N/A"}</p>
         <p><strong>Status:</strong> {record.status}</p>
 
         {linkedCapa ? (
@@ -1696,23 +1801,83 @@ This approval becomes part of the official electronic quality record.`,
           </select>
         </div>
 
-        {severity === "major" && !linkedCapa ? (
-          <div style={{ marginTop: "12px" }}>
-            <label>Justification for No CAPA</label><br />
-            <textarea
-              value={capaJustification}
-              onChange={(e) => setCapaJustification(e.target.value)}
-              placeholder="Required if severity is Major and no CAPA is linked."
-              rows={3}
-              style={{ width: "100%", maxWidth: "700px" }}
-            />
+        {getCapaRecommendation().recommended && !linkedCapa ? (
+          <div
+            style={{
+              border: "1px solid #2563eb",
+              background: "#eff6ff",
+              padding: "12px",
+              borderRadius: "8px",
+              marginTop: "14px",
+              marginBottom: "12px",
+              maxWidth: "850px",
+            }}
+          >
+            <strong>CAPA Recommended</strong>
+            <p style={{ marginTop: "8px" }}>
+              {getCapaRecommendation().reason}
+            </p>
+            <p style={{ marginTop: "8px" }}>
+              Use risk-based decision making to determine whether CAPA should be initiated.
+              If No is selected, justification is required.
+            </p>
+
+            <div style={{ marginBottom: "10px" }}>
+              <button
+                type="button"
+                onClick={() => setCapaDecision("yes")}
+                style={{
+                  marginRight: "8px",
+                  background: capaDecision === "yes" ? "#16a34a" : undefined,
+                  color: capaDecision === "yes" ? "white" : undefined,
+                }}
+              >
+                Yes - Initiate CAPA
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setCapaDecision("no")}
+                style={{
+                  background: capaDecision === "no" ? "#dc2626" : undefined,
+                  color: capaDecision === "no" ? "white" : undefined,
+                }}
+              >
+                No - Do Not Initiate CAPA
+              </button>
+            </div>
+
+            {capaDecision === "no" ? (
+              <div>
+                <label>Justification for Not Initiating CAPA</label>
+                <br />
+                <textarea
+                  value={capaDecisionJustification}
+                  onChange={(e) => {
+                    setCapaDecisionJustification(e.target.value);
+                    setCapaJustification(e.target.value);
+                  }}
+                  rows={4}
+                  style={{ width: "100%", maxWidth: "800px", padding: "8px" }}
+                />
+              </div>
+            ) : null}
           </div>
         ) : null}
 
-        {severity === "critical" && !linkedCapa ? (
-          <p style={{ color: "red", marginTop: "12px" }}>
-            Critical severity requires CAPA. Save Workflow will automatically create one.
-          </p>
+        {linkedCapa ? (
+          <div
+            style={{
+              border: "1px solid #86efac",
+              background: "#f0fdf4",
+              padding: "12px",
+              borderRadius: "8px",
+              marginTop: "14px",
+              maxWidth: "850px",
+            }}
+          >
+            <strong>CAPA Linked:</strong> {linkedCapa.title}
+          </div>
         ) : null}
       </section>
 
