@@ -348,7 +348,7 @@ export default function NcmrPage() {
 
     const recurrence = await checkRecurrence();
     const supplierScar = await checkSupplierScar();
-    const capaRecommendation = checkCapaRecommendation(recurrenceCheck);
+    const capaRecommendation = checkCapaRecommendation(recurrence);
     setCapaRecommended(capaRecommendation.recommended);
 
     const capaRequired = recurrence.recurring || supplierScar.required;
