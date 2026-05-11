@@ -348,7 +348,30 @@ export default function NcmrPage() {
 
     const recurrence = await checkRecurrence();
     const supplierScar = await checkSupplierScar();
-    const capaRecommendation = checkCapaRecommendation(recurrence);
+
+    const capaRecommendationReasons: string[] = [];
+
+    if (severity === "critical") {
+      capaRecommendationReasons.push("Critical severity requires CAPA escalation review.");
+    }
+
+    if (severity === "major") {
+      capaRecommendationReasons.push("Major severity requires documented CAPA decision.");
+    }
+
+    if (recurrence.recurring) {
+      capaRecommendationReasons.push("Recurring issue detected.");
+    }
+
+    if (supplierScarDecision === "yes") {
+      capaRecommendationReasons.push("Supplier escalation selected; CAPA escalation review may be needed.");
+    }
+
+    const capaRecommendation = {
+      recommended: capaRecommendationReasons.length > 0,
+      reason: capaRecommendationReasons.join(" "),
+    };
+
     setCapaRecommended(capaRecommendation.recommended);
 
     const capaRequired = recurrence.recurring || supplierScar.required;
