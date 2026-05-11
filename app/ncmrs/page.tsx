@@ -83,10 +83,6 @@ export default function NcmrPage() {
   const [supplierScarRecommended, setSupplierScarRecommended] = useState(false);
   const [supplierScarDecision, setSupplierScarDecision] = useState("");
   const [supplierScarDecisionJustification, setSupplierScarDecisionJustification] = useState("");
-
-  const [capaRecommended, setCapaRecommended] = useState(false);
-  const [capaDecision, setCapaDecision] = useState("");
-  const [capaDecisionJustification, setCapaDecisionJustification] = useState("");
   const [siteLocation, setSiteLocation] = useState("");
   const [immediateCorrection, setImmediateCorrection] = useState("");
   const [owner, setOwner] = useState("");
@@ -349,31 +345,6 @@ export default function NcmrPage() {
     const recurrence = await checkRecurrence();
     const supplierScar = await checkSupplierScar();
 
-    const capaRecommendationReasons: string[] = [];
-
-    if (severity === "critical") {
-      capaRecommendationReasons.push("Critical severity requires CAPA escalation review.");
-    }
-
-    if (severity === "major") {
-      capaRecommendationReasons.push("Major severity requires documented CAPA decision.");
-    }
-
-    if (recurrence.recurring) {
-      capaRecommendationReasons.push("Recurring issue detected.");
-    }
-
-    if (supplierScarDecision === "yes") {
-      capaRecommendationReasons.push("Supplier escalation selected; CAPA escalation review may be needed.");
-    }
-
-    const capaRecommendation = {
-      recommended: capaRecommendationReasons.length > 0,
-      reason: capaRecommendationReasons.join(" "),
-    };
-
-    setCapaRecommended(capaRecommendation.recommended);
-
     const capaRequired = recurrence.recurring || supplierScar.required;
     const supplierNameForInsert = isSupplierSource
       ? selectedSupplier?.supplier_name || supplierName
@@ -409,19 +380,12 @@ export default function NcmrPage() {
           supplierScar.required && supplierScarDecision === "no"
             ? supplierScarDecisionJustification
             : null,
-
-        capa_recommended: capaRecommendation.recommended,
-        capa_decision: capaRecommendation.recommended ? capaDecision || null : null,
-        capa_decision_justification:
-          capaRecommendation.recommended && capaDecision === "no"
-            ? capaDecisionJustification
-            : null,
         site_location: siteLocation,
         immediate_correction: immediateCorrection,
         owner,
         status: "open",
         severity: "not_assessed",
-        capa_required: capaRecommendation.recommended ? capaDecision === "yes" : capaRequired,
+        capa_required: capaRequired,
         recurring_issue: recurrence.recurring,
         recurrence_reason: recurrence.reason,
         recurrence_checked_at: new Date().toISOString(),
@@ -574,9 +538,6 @@ export default function NcmrPage() {
     setSupplierScarRecommended(false);
     setSupplierScarDecision("");
     setSupplierScarDecisionJustification("");
-    setCapaRecommended(false);
-    setCapaDecision("");
-    setCapaDecisionJustification("");
     setSiteLocation("");
     setImmediateCorrection("");
     setOwner("");
@@ -1070,67 +1031,6 @@ export default function NcmrPage() {
                   />
                 </div>
               ) : null}
-
-          {(severity === "major" || severity === "critical") ? (
-            <div
-              style={{
-                border: "1px solid #2563eb",
-                background: "#eff6ff",
-                padding: "12px",
-                borderRadius: "8px",
-                marginTop: "12px",
-                marginBottom: "12px",
-              }}
-            >
-              <strong>CAPA Risk-Based Decision</strong>
-              <p style={{ marginTop: "8px" }}>
-                Based on severity and risk, CAPA escalation may be recommended. Select Yes or No.
-                If No is selected, justification is required when the CAPA recommendation is triggered.
-              </p>
-
-              <div style={{ marginBottom: "10px" }}>
-                <button
-                  type="button"
-                  onClick={() => setCapaDecision("yes")}
-                  style={{
-                    marginRight: "8px",
-                    background: capaDecision === "yes" ? "#16a34a" : undefined,
-                    color: capaDecision === "yes" ? "white" : undefined,
-                  }}
-                >
-                  Yes - Initiate CAPA if recommended
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setCapaDecision("no")}
-                  style={{
-                    background: capaDecision === "no" ? "#dc2626" : undefined,
-                    color: capaDecision === "no" ? "white" : undefined,
-                  }}
-                >
-                  No - Do Not Initiate CAPA
-                </button>
-              </div>
-
-              {capaDecision === "no" ? (
-                <div>
-                  <label>Justification for not initiating CAPA</label>
-                  <br />
-                  <textarea
-                    value={capaDecisionJustification}
-                    onChange={(e) => setCapaDecisionJustification(e.target.value)}
-                    rows={4}
-                    style={{
-                      width: "100%",
-                      maxWidth: "800px",
-                      padding: "8px",
-                    }}
-                  />
-                </div>
-              ) : null}
-            </div>
-          ) : null}
             </div>
           ) : null}
         </div>
