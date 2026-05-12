@@ -11,9 +11,21 @@ export default function SupplierProfilePage() {
 
   const [supplier, setSupplier] = useState<any>(null);
   const [linkedNcmrs, setLinkedNcmrs] = useState<any[]>([]);
+  const [scars, setScars] = useState<any[]>([]);
+  const [supplierAudits, setSupplierAudits] = useState<any[]>([]);
+  const [auditFindings, setAuditFindings] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const [supplierStatus, setSupplierStatus] = useState("approved");
+  const [supplierRiskLevel, setSupplierRiskLevel] = useState("medium");
+  const [qualificationStatus, setQualificationStatus] = useState("qualified");
+  const [qualificationExpirationDate, setQualificationExpirationDate] = useState("");
+  const [requalificationDueDate, setRequalificationDueDate] = useState("");
+  const [qualificationRationale, setQualificationRationale] = useState("");
+
   const fetchSupplier = async () => {
+    setLoading(true);
+
     const { data, error } = await supabase
       .from("suppliers")
       .select("*")
@@ -28,14 +40,57 @@ export default function SupplierProfilePage() {
 
     setSupplier(data);
 
+    setSupplierStatus(data?.supplier_status || "approved");
+    setSupplierRiskLevel(data?.supplier_risk_level || "medium");
+    setQualificationStatus(data?.qualification_status || "qualified");
+    setQualificationExpirationDate(data?.qualification_expiration_date || "");
+    setRequalificationDueDate(data?.requalification_due_date || "");
+    setQualificationRationale(data?.qualification_rationale || "");
+
     const ncmrRes = await supabase
       .from("ncmrs")
-      .select("id, ncmr_number, title, status, severity, defect_category, defect_subcategory, created_at, closed_at")
+      .select("id, ncmr_number, title, status, severity, defect_category, defect_subcategory, created_at")
       .eq("supplier_id", id)
       .order("created_at", { ascending: false });
 
     if (!ncmrRes.error) {
       setLinkedNcmrs(ncmrRes.data || []);
+    }
+
+    const scarRes = await supabase
+      .from("scars")
+      .select("*")
+      .eq("supplier_id", id)
+      .order("created_at", { ascending: false });
+
+    if (!scarRes.error) {
+      setScars(scarRes.data || []);
+    }
+
+    const auditRes = await supabase
+      .from("supplier_audits")
+      .select("*")
+      .eq("supplier_id", id)
+      .order("created_at", { ascending: false });
+
+    if (!auditRes.error) {
+      const audits = auditRes.data || [];
+      setSupplierAudits(audits);
+
+      const auditIds = audits.map((audit) => audit.id);
+
+      if (auditIds.length > 0) {
+        const findingsRes = await supabase
+          .from("supplier_audit_findings")
+          .select("*")
+          .in("audit_id", auditIds);
+
+        if (!findingsRes.error) {
+          setAuditFindings(findingsRes.data || []);
+        }
+      } else {
+        setAuditFindings([]);
+      }
     }
 
     setLoading(false);
@@ -46,10 +101,23 @@ export default function SupplierProfilePage() {
   }, [id]);
 
   const metrics = useMemo(() => {
-    const open = linkedNcmrs.filter((n) => n.status !== "closed");
-    const closed = linkedNcmrs.filter((n) => n.status === "closed");
-    const majorCritical = linkedNcmrs.filter(
+    const openNcmrs = linkedNcmrs.filter((n) => n.status !== "closed");
+    const closedNcmrs = linkedNcmrs.filter((n) => n.status === "closed");
+    const majorCriticalNcmrs = linkedNcmrs.filter(
       (n) => n.severity === "major" || n.severity === "critical"
+    );
+
+    const openScars = scars.filter((scar) => scar.status !== "closed");
+    const closedScars = scars.filter((scar) => scar.status === "closed");
+
+    const openAudits = supplierAudits.filter((audit) => audit.audit_status !== "closed");
+    const closedAudits = supplierAudits.filter((audit) => audit.audit_status === "closed");
+
+    const majorCriticalFindings = auditFindings.filter(
+      (finding) => finding.finding_type === "major" || finding.finding_type === "critical"
+    );
+    const criticalFindings = auditFindings.filter(
+      (finding) => finding.finding_type === "critical"
     );
 
     const defectCounts: Record<string, number> = {};
@@ -61,13 +129,127 @@ export default function SupplierProfilePage() {
     const topDefect = Object.entries(defectCounts).sort((a, b) => b[1] - a[1])[0];
 
     return {
-      total: linkedNcmrs.length,
-      open: open.length,
-      closed: closed.length,
-      majorCritical: majorCritical.length,
+      totalNcmrs: linkedNcmrs.length,
+      openNcmrs: openNcmrs.length,
+      closedNcmrs: closedNcmrs.length,
+      majorCriticalNcmrs: majorCriticalNcmrs.length,
+      totalScars: scars.length,
+      openScars: openScars.length,
+      closedScars: closedScars.length,
+      totalAudits: supplierAudits.length,
+      openAudits: openAudits.length,
+      closedAudits: closedAudits.length,
+      totalFindings: auditFindings.length,
+      majorCriticalFindings: majorCriticalFindings.length,
+      criticalFindings: criticalFindings.length,
       topDefect: topDefect ? `${topDefect[0]} (${topDefect[1]})` : "N/A",
     };
-  }, [linkedNcmrs]);
+  }, [linkedNcmrs, scars, supplierAudits, auditFindings]);
+
+  const getRecommendedSupplierControl = () => {
+    const reasons: string[] = [];
+    let recommendedStatus = supplierStatus || "approved";
+    let recommendedRisk = supplierRiskLevel || "medium";
+    let recommendedQualification = qualificationStatus || "qualified";
+
+    if (supplier?.supplier_status === "disqualified") {
+      recommendedStatus = "disqualified";
+      recommendedRisk = "critical";
+      recommendedQualification = "disqualified";
+      reasons.push("Supplier is currently disqualified.");
+    }
+
+    if (metrics.criticalFindings > 0) {
+      recommendedStatus = "probation";
+      recommendedRisk = "critical";
+      recommendedQualification = "conditional";
+      reasons.push("Critical supplier audit finding detected.");
+    } else if (metrics.majorCriticalFindings >= 2) {
+      recommendedStatus = "conditional";
+      recommendedRisk = "high";
+      recommendedQualification = "conditional";
+      reasons.push("Multiple major/critical supplier audit findings detected.");
+    }
+
+    if (metrics.openScars >= 2) {
+      recommendedStatus = "probation";
+      recommendedRisk = recommendedRisk === "critical" ? "critical" : "high";
+      recommendedQualification = "conditional";
+      reasons.push("Multiple open SCARs detected.");
+    } else if (metrics.openScars === 1) {
+      recommendedRisk = recommendedRisk === "critical" ? "critical" : "high";
+      reasons.push("Open SCAR detected.");
+    }
+
+    if (metrics.openNcmrs >= 3) {
+      recommendedStatus = recommendedStatus === "probation" ? "probation" : "conditional";
+      recommendedRisk = recommendedRisk === "critical" ? "critical" : "high";
+      reasons.push("Three or more open supplier-linked NCMRs detected.");
+    }
+
+    if (reasons.length === 0) {
+      reasons.push("No automatic escalation trigger detected based on current supplier quality data.");
+    }
+
+    return {
+      recommendedStatus,
+      recommendedRisk,
+      recommendedQualification,
+      reasons,
+    };
+  };
+
+  const applyRecommendedSupplierControl = () => {
+    const recommendation = getRecommendedSupplierControl();
+    setSupplierStatus(recommendation.recommendedStatus);
+    setSupplierRiskLevel(recommendation.recommendedRisk);
+    setQualificationStatus(recommendation.recommendedQualification);
+
+    if (!qualificationRationale.trim()) {
+      setQualificationRationale(recommendation.reasons.join(" "));
+    }
+  };
+
+  const saveSupplierQualification = async () => {
+    if (!qualificationRationale.trim()) {
+      alert("Qualification/status rationale is required.");
+      return;
+    }
+
+    const { data: userData } = await supabase.auth.getUser();
+    const userEmail = userData?.user?.email || "unknown";
+
+    const { error } = await supabase
+      .from("suppliers")
+      .update({
+        supplier_status: supplierStatus,
+        supplier_risk_level: supplierRiskLevel,
+        qualification_status: qualificationStatus,
+        qualification_expiration_date: qualificationExpirationDate || null,
+        requalification_due_date: requalificationDueDate || null,
+        qualification_rationale: qualificationRationale,
+        qualification_updated_by: userEmail,
+        qualification_updated_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", id);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    await supabase.from("audit_logs").insert({
+      entity_type: "supplier",
+      entity_id: id,
+      action: "supplier_qualification_updated",
+      details: `Supplier qualification/status updated. Status: ${supplierStatus}. Risk: ${supplierRiskLevel}. Qualification: ${qualificationStatus}.`,
+      user_email: userEmail,
+    });
+
+    alert("Supplier qualification/status saved.");
+    fetchSupplier();
+  };
 
   if (loading) {
     return <main style={{ padding: "24px" }}>Loading supplier...</main>;
@@ -76,6 +258,8 @@ export default function SupplierProfilePage() {
   if (!supplier) {
     return <main style={{ padding: "24px" }}>Supplier not found.</main>;
   }
+
+  const recommendation = getRecommendedSupplierControl();
 
   return (
     <main style={{ padding: "24px", fontFamily: "Arial" }}>
@@ -90,10 +274,11 @@ export default function SupplierProfilePage() {
       </div>
 
       <section style={summaryGridStyle}>
-        <MetricCard label="Total Supplier NCMRs" value={metrics.total} />
-        <MetricCard label="Open NCMRs" value={metrics.open} />
-        <MetricCard label="Closed NCMRs" value={metrics.closed} />
-        <MetricCard label="Major/Critical NCMRs" value={metrics.majorCritical} />
+        <MetricCard label="Linked NCMRs" value={metrics.totalNcmrs} />
+        <MetricCard label="Open NCMRs" value={metrics.openNcmrs} />
+        <MetricCard label="Open SCARs" value={metrics.openScars} />
+        <MetricCard label="Open Audits" value={metrics.openAudits} />
+        <MetricCard label="Major/Critical Findings" value={metrics.majorCriticalFindings} />
         <MetricCard label="Top Defect Category" value={metrics.topDefect} />
       </section>
 
@@ -105,6 +290,11 @@ export default function SupplierProfilePage() {
           <Field label="Category" value={supplier.supplier_category} />
           <Field label="Status" value={supplier.supplier_status} />
           <Field label="Risk Level" value={supplier.supplier_risk_level} />
+          <Field label="Qualification Status" value={supplier.qualification_status} />
+          <Field label="Qualification Expiration" value={supplier.qualification_expiration_date} />
+          <Field label="Requalification Due" value={supplier.requalification_due_date} />
+          <Field label="Qualification Updated By" value={supplier.qualification_updated_by} />
+          <Field label="Qualification Updated At" value={supplier.qualification_updated_at} />
           <Field label="Primary Contact" value={supplier.primary_contact_name} />
           <Field label="Primary Email" value={supplier.primary_contact_email} />
           <Field label="Primary Phone" value={supplier.primary_contact_phone} />
@@ -116,6 +306,136 @@ export default function SupplierProfilePage() {
           <Field label="Next Audit" value={supplier.next_supplier_audit_date} />
           <Field label="Approved Products / Services" value={supplier.approved_products_services} />
           <Field label="Supplier Notes" value={supplier.supplier_notes} />
+        </div>
+      </section>
+
+      <section style={sectionStyle}>
+        <h2>Supplier Qualification / Status Control</h2>
+
+        <p style={{ color: "#4b5563" }}>
+          Use this section to document supplier approval status, risk level, qualification status,
+          expiration, requalification due date, and the rationale for the decision.
+        </p>
+
+        <div
+          style={{
+            border: "1px solid #cbd5e1",
+            borderRadius: "8px",
+            padding: "12px",
+            background: "#f8fafc",
+            marginBottom: "12px",
+          }}
+        >
+          <strong>System Recommendation</strong>
+          <div><strong>Recommended Status:</strong> {recommendation.recommendedStatus}</div>
+          <div><strong>Recommended Risk:</strong> {recommendation.recommendedRisk}</div>
+          <div><strong>Recommended Qualification:</strong> {recommendation.recommendedQualification}</div>
+          <ul>
+            {recommendation.reasons.map((reason, index) => (
+              <li key={index}>{reason}</li>
+            ))}
+          </ul>
+
+          <button type="button" onClick={applyRecommendedSupplierControl}>
+            Apply Recommendation
+          </button>
+        </div>
+
+        <div style={{ display: "grid", gap: "12px", maxWidth: "750px" }}>
+          <div>
+            <label>Supplier Status</label><br />
+            <select
+              value={supplierStatus}
+              onChange={(e) => setSupplierStatus(e.target.value)}
+              style={{ padding: "8px", width: "100%" }}
+            >
+              <option value="approved">Approved</option>
+              <option value="conditional">Conditional</option>
+              <option value="probation">Probation</option>
+              <option value="disqualified">Disqualified</option>
+            </select>
+          </div>
+
+          <div>
+            <label>Supplier Risk Level</label><br />
+            <select
+              value={supplierRiskLevel}
+              onChange={(e) => setSupplierRiskLevel(e.target.value)}
+              style={{ padding: "8px", width: "100%" }}
+            >
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+              <option value="critical">Critical</option>
+            </select>
+          </div>
+
+          <div>
+            <label>Qualification Status</label><br />
+            <select
+              value={qualificationStatus}
+              onChange={(e) => setQualificationStatus(e.target.value)}
+              style={{ padding: "8px", width: "100%" }}
+            >
+              <option value="qualified">Qualified</option>
+              <option value="conditional">Conditional</option>
+              <option value="requalification_required">Requalification Required</option>
+              <option value="disqualified">Disqualified</option>
+            </select>
+          </div>
+
+          <div>
+            <label>Qualification Expiration Date</label><br />
+            <input
+              type="date"
+              value={qualificationExpirationDate}
+              onChange={(e) => setQualificationExpirationDate(e.target.value)}
+              style={{ padding: "8px", width: "100%" }}
+            />
+          </div>
+
+          <div>
+            <label>Requalification Due Date</label><br />
+            <input
+              type="date"
+              value={requalificationDueDate}
+              onChange={(e) => setRequalificationDueDate(e.target.value)}
+              style={{ padding: "8px", width: "100%" }}
+            />
+          </div>
+
+          <div>
+            <label>Qualification / Status Rationale</label><br />
+            <textarea
+              value={qualificationRationale}
+              onChange={(e) => setQualificationRationale(e.target.value)}
+              rows={4}
+              style={{ padding: "8px", width: "100%" }}
+            />
+          </div>
+
+          <button type="button" onClick={saveSupplierQualification}>
+            Save Supplier Qualification / Status Decision
+          </button>
+        </div>
+      </section>
+
+      <section style={sectionStyle}>
+        <h2>Supplier Quality Metrics</h2>
+
+        <div style={gridStyle}>
+          <Field label="Total NCMRs" value={metrics.totalNcmrs} />
+          <Field label="Open NCMRs" value={metrics.openNcmrs} />
+          <Field label="Closed NCMRs" value={metrics.closedNcmrs} />
+          <Field label="Major/Critical NCMRs" value={metrics.majorCriticalNcmrs} />
+          <Field label="Total SCARs" value={metrics.totalScars} />
+          <Field label="Open SCARs" value={metrics.openScars} />
+          <Field label="Closed SCARs" value={metrics.closedScars} />
+          <Field label="Total Supplier Audits" value={metrics.totalAudits} />
+          <Field label="Open Supplier Audits" value={metrics.openAudits} />
+          <Field label="Closed Supplier Audits" value={metrics.closedAudits} />
+          <Field label="Audit Findings" value={metrics.totalFindings} />
+          <Field label="Major/Critical Audit Findings" value={metrics.majorCriticalFindings} />
         </div>
       </section>
 
