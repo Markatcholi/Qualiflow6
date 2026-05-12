@@ -83,7 +83,9 @@ export default function SupplierProfilePage() {
         <h1>{supplier.supplier_name}</h1>
         <div>
           <Link href="/suppliers" style={{ marginRight: "12px" }}>Supplier List</Link>
-          <Link href="/supplier-quality-dashboard">Supplier Dashboard</Link>
+          <Link href="/supplier-quality-dashboard" style={{ marginRight: "12px" }}>Supplier Dashboard</Link>
+          <Link href={`/supplier-quality/scorecards/${supplier.id}`} style={{ marginRight: "12px" }}>Supplier Scorecard</Link>
+          <Link href={`/suppliers/${supplier.id}/audits`}>Supplier Audits</Link>
         </div>
       </div>
 
