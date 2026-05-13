@@ -383,6 +383,70 @@ export default function SupplierProfilePage() {
               <option value="disqualified">Disqualified</option>
             </select>
           </div>
+          <section
+  style={{
+    border: "1px solid #d1d5db",
+    borderRadius: "10px",
+    padding: "14px",
+    marginBottom: "20px",
+  }}
+>
+  <h2>Optional Receiving Inspection</h2>
+
+  <p style={{ color: "#4b5563" }}>
+    Enable or disable receiving inspection management for this supplier.
+  </p>
+
+  <label>
+    <input
+      type="checkbox"
+      checked={supplier.receiving_inspection_enabled || false}
+      onChange={async (e) => {
+        const enabled = e.target.checked;
+
+        const { error } = await supabase
+          .from("suppliers")
+          .update({
+            receiving_inspection_enabled: enabled,
+          })
+          .eq("id", supplier.id);
+
+        if (error) {
+          alert(error.message);
+          return;
+        }
+
+        alert(
+          enabled
+            ? "Receiving inspection enabled."
+            : "Receiving inspection disabled."
+        );
+
+        fetchSupplier();
+      }}
+    />{" "}
+    Enable Receiving Inspection
+  </label>
+
+  {supplier.receiving_inspection_enabled ? (
+    <div style={{ marginTop: "14px" }}>
+      <a
+        href={`/suppliers/${supplier.id}/receiving-inspections`}
+        style={{
+          display: "inline-block",
+          padding: "10px 14px",
+          background: "#2563eb",
+          color: "white",
+          borderRadius: "8px",
+          textDecoration: "none",
+          fontWeight: 600,
+        }}
+      >
+        Open Receiving Inspections
+      </a>
+    </div>
+  ) : null}
+</section>
 
           <div>
             <label>Qualification Expiration Date</label><br />
