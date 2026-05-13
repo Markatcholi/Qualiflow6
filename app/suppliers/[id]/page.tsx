@@ -23,6 +23,16 @@ export default function SupplierProfilePage() {
   const [requalificationDueDate, setRequalificationDueDate] = useState("");
   const [qualificationRationale, setQualificationRationale] = useState("");
 
+  const [aslStatus, setAslStatus] = useState("approved");
+  const [approvedCommodities, setApprovedCommodities] = useState("");
+  const [approvedServices, setApprovedServices] = useState("");
+  const [qualificationDate, setQualificationDate] = useState("");
+  const [criticalSupplier, setCriticalSupplier] = useState(false);
+  const [qualityAgreementApproved, setQualityAgreementApproved] = useState(false);
+  const [probationReason, setProbationReason] = useState("");
+  const [disqualificationReason, setDisqualificationReason] = useState("");
+  const [aslSignatureEmail, setAslSignatureEmail] = useState("");
+
   const fetchSupplier = async () => {
     setLoading(true);
 
@@ -46,6 +56,16 @@ export default function SupplierProfilePage() {
     setQualificationExpirationDate(data?.qualification_expiration_date || "");
     setRequalificationDueDate(data?.requalification_due_date || "");
     setQualificationRationale(data?.qualification_rationale || "");
+
+    setAslStatus(data?.asl_status || data?.supplier_status || "approved");
+    setApprovedCommodities(data?.approved_commodities || "");
+    setApprovedServices(data?.approved_services || "");
+    setQualificationDate(data?.qualification_date || "");
+    setCriticalSupplier(data?.critical_supplier || false);
+    setQualityAgreementApproved(data?.quality_agreement_approved || false);
+    setProbationReason(data?.probation_reason || "");
+    setDisqualificationReason(data?.disqualification_reason || "");
+    setAslSignatureEmail("");
 
     const ncmrRes = await supabase
       .from("ncmrs")
@@ -251,6 +271,84 @@ export default function SupplierProfilePage() {
     fetchSupplier();
   };
 
+
+  const saveAslGovernance = async () => {
+    if (!aslSignatureEmail.trim()) {
+      alert("Please re-enter your email to approve ASL governance changes.");
+      return;
+    }
+
+    const { data: userData } = await supabase.auth.getUser();
+    const userEmail = userData?.user?.email || "unknown";
+
+    if (aslSignatureEmail.trim().toLowerCase() !== userEmail.trim().toLowerCase()) {
+      alert("Electronic signature email does not match the logged-in user.");
+      return;
+    }
+
+    if (!qualificationDate) {
+      alert("Qualification date is required for ASL governance.");
+      return;
+    }
+
+    if (!approvedCommodities.trim() && !approvedServices.trim()) {
+      alert("At least one approved commodity or approved service is required.");
+      return;
+    }
+
+    if (aslStatus === "probation" && !probationReason.trim()) {
+      alert("Probation reason is required when ASL status is Probation.");
+      return;
+    }
+
+    if (aslStatus === "disqualified" && !disqualificationReason.trim()) {
+      alert("Disqualification reason is required when ASL status is Disqualified.");
+      return;
+    }
+
+    const now = new Date().toISOString();
+
+    const { error } = await supabase
+      .from("suppliers")
+      .update({
+        asl_status: aslStatus,
+        supplier_status: aslStatus,
+        approved_commodities: approvedCommodities || null,
+        approved_services: approvedServices || null,
+        qualification_date: qualificationDate || null,
+        critical_supplier: criticalSupplier,
+        quality_agreement_approved: qualityAgreementApproved,
+        asl_approved_by: userEmail,
+        asl_approved_at: now,
+        probation_reason: aslStatus === "probation" ? probationReason : null,
+        disqualification_reason: aslStatus === "disqualified" ? disqualificationReason : null,
+        qualification_status:
+          aslStatus === "disqualified"
+            ? "disqualified"
+            : aslStatus === "conditional" || aslStatus === "probation"
+            ? "conditional"
+            : qualificationStatus,
+        updated_at: now,
+      })
+      .eq("id", id);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    await supabase.from("audit_logs").insert({
+      entity_type: "supplier",
+      entity_id: id,
+      action: "asl_governance_approved",
+      details: `ASL governance approved. ASL Status: ${aslStatus}. Critical Supplier: ${criticalSupplier ? "Yes" : "No"}. Quality Agreement Approved: ${qualityAgreementApproved ? "Yes" : "No"}.`,
+      user_email: userEmail,
+    });
+
+    alert("ASL governance saved with electronic signature.");
+    fetchSupplier();
+  };
+
   if (loading) {
     return <main style={{ padding: "24px" }}>Loading supplier...</main>;
   }
@@ -289,6 +387,7 @@ export default function SupplierProfilePage() {
           <Field label="Supplier Number" value={supplier.supplier_number} />
           <Field label="Category" value={supplier.supplier_category} />
           <Field label="Status" value={supplier.supplier_status} />
+          <Field label="ASL Status" value={supplier.asl_status} />
           <Field label="Risk Level" value={supplier.supplier_risk_level} />
           <Field label="Qualification Status" value={supplier.qualification_status} />
           <Field label="Qualification Expiration" value={supplier.qualification_expiration_date} />
@@ -305,8 +404,154 @@ export default function SupplierProfilePage() {
           <Field label="Last Audit" value={supplier.last_supplier_audit_date} />
           <Field label="Next Audit" value={supplier.next_supplier_audit_date} />
           <Field label="Approved Products / Services" value={supplier.approved_products_services} />
+          <Field label="Approved Commodities" value={supplier.approved_commodities} />
+          <Field label="Approved Services" value={supplier.approved_services} />
+          <Field label="Qualification Date" value={supplier.qualification_date} />
+          <Field label="Critical Supplier" value={supplier.critical_supplier ? "Yes" : "No"} />
+          <Field label="Quality Agreement Approved" value={supplier.quality_agreement_approved ? "Yes" : "No"} />
+          <Field label="ASL Approved By" value={supplier.asl_approved_by} />
+          <Field label="ASL Approved At" value={supplier.asl_approved_at} />
           <Field label="Supplier Notes" value={supplier.supplier_notes} />
         </div>
+      </section>
+
+      <section style={sectionStyle}>
+        <h2>ASL Governance / Approved Supplier Controls</h2>
+
+        <p style={{ color: "#4b5563" }}>
+          This controls the supplier's Approved Supplier List status without duplicating supplier master data.
+          Document approval scope, qualification basis, criticality, and electronic approval here.
+        </p>
+
+        <div style={{ display: "grid", gap: "12px", maxWidth: "800px" }}>
+          <div>
+            <label>ASL Status</label><br />
+            <select
+              value={aslStatus}
+              onChange={(e) => {
+                setAslStatus(e.target.value);
+                setSupplierStatus(e.target.value);
+              }}
+              style={{ padding: "8px", width: "100%" }}
+            >
+              <option value="approved">Approved</option>
+              <option value="conditional">Conditional</option>
+              <option value="probation">Probation</option>
+              <option value="disqualified">Disqualified</option>
+              <option value="pending_qualification">Pending Qualification</option>
+            </select>
+          </div>
+
+          <div>
+            <label>Approved Commodities / Materials</label><br />
+            <textarea
+              value={approvedCommodities}
+              onChange={(e) => setApprovedCommodities(e.target.value)}
+              rows={3}
+              placeholder="Example: sterile packaging, bovine pericardium, machined components, labels"
+              style={{ padding: "8px", width: "100%" }}
+            />
+          </div>
+
+          <div>
+            <label>Approved Services</label><br />
+            <textarea
+              value={approvedServices}
+              onChange={(e) => setApprovedServices(e.target.value)}
+              rows={3}
+              placeholder="Example: sterilization, calibration, testing, contract manufacturing"
+              style={{ padding: "8px", width: "100%" }}
+            />
+          </div>
+
+          <div>
+            <label>Qualification Date</label><br />
+            <input
+              type="date"
+              value={qualificationDate}
+              onChange={(e) => setQualificationDate(e.target.value)}
+              style={{ padding: "8px", width: "100%" }}
+            />
+          </div>
+
+          <label>
+            <input
+              type="checkbox"
+              checked={criticalSupplier}
+              onChange={(e) => {
+                setCriticalSupplier(e.target.checked);
+                if (e.target.checked && supplierRiskLevel !== "critical") {
+                  setSupplierRiskLevel("high");
+                }
+              }}
+            />{" "}
+            Critical Supplier
+          </label>
+
+          <label>
+            <input
+              type="checkbox"
+              checked={qualityAgreementApproved}
+              onChange={(e) => setQualityAgreementApproved(e.target.checked)}
+            />{" "}
+            Quality Agreement Approved
+          </label>
+
+          {aslStatus === "probation" ? (
+            <div>
+              <label>Probation Reason</label><br />
+              <textarea
+                value={probationReason}
+                onChange={(e) => setProbationReason(e.target.value)}
+                rows={3}
+                style={{ padding: "8px", width: "100%" }}
+              />
+            </div>
+          ) : null}
+
+          {aslStatus === "disqualified" ? (
+            <div>
+              <label>Disqualification Reason</label><br />
+              <textarea
+                value={disqualificationReason}
+                onChange={(e) => setDisqualificationReason(e.target.value)}
+                rows={3}
+                style={{ padding: "8px", width: "100%" }}
+              />
+            </div>
+          ) : null}
+
+          <div
+            style={{
+              border: "1px solid #cbd5e1",
+              borderRadius: "8px",
+              padding: "12px",
+              background: "#f8fafc",
+            }}
+          >
+            <strong>Electronic Approval</strong>
+            <p style={{ color: "#4b5563" }}>
+              Re-enter your logged-in email to approve this ASL governance decision.
+            </p>
+
+            <input
+              value={aslSignatureEmail}
+              onChange={(e) => setAslSignatureEmail(e.target.value)}
+              placeholder="your.email@company.com"
+              style={{ padding: "8px", width: "100%", maxWidth: "500px" }}
+            />
+          </div>
+
+          <button type="button" onClick={saveAslGovernance}>
+            Save ASL Governance Decision
+          </button>
+        </div>
+
+        {supplier.asl_approved_by ? (
+          <div style={{ marginTop: "12px" }}>
+            <strong>Last ASL Approval:</strong> {supplier.asl_approved_by} at {supplier.asl_approved_at || "N/A"}
+          </div>
+        ) : null}
       </section>
 
       <section style={sectionStyle}>
@@ -383,70 +628,6 @@ export default function SupplierProfilePage() {
               <option value="disqualified">Disqualified</option>
             </select>
           </div>
-          <section
-  style={{
-    border: "1px solid #d1d5db",
-    borderRadius: "10px",
-    padding: "14px",
-    marginBottom: "20px",
-  }}
->
-  <h2>Optional Receiving Inspection</h2>
-
-  <p style={{ color: "#4b5563" }}>
-    Enable or disable receiving inspection management for this supplier.
-  </p>
-
-  <label>
-    <input
-      type="checkbox"
-      checked={supplier.receiving_inspection_enabled || false}
-      onChange={async (e) => {
-        const enabled = e.target.checked;
-
-        const { error } = await supabase
-          .from("suppliers")
-          .update({
-            receiving_inspection_enabled: enabled,
-          })
-          .eq("id", supplier.id);
-
-        if (error) {
-          alert(error.message);
-          return;
-        }
-
-        alert(
-          enabled
-            ? "Receiving inspection enabled."
-            : "Receiving inspection disabled."
-        );
-
-        fetchSupplier();
-      }}
-    />{" "}
-    Enable Receiving Inspection
-  </label>
-
-  {supplier.receiving_inspection_enabled ? (
-    <div style={{ marginTop: "14px" }}>
-      <a
-        href={`/suppliers/${supplier.id}/receiving-inspections`}
-        style={{
-          display: "inline-block",
-          padding: "10px 14px",
-          background: "#2563eb",
-          color: "white",
-          borderRadius: "8px",
-          textDecoration: "none",
-          fontWeight: 600,
-        }}
-      >
-        Open Receiving Inspections
-      </a>
-    </div>
-  ) : null}
-</section>
 
           <div>
             <label>Qualification Expiration Date</label><br />
