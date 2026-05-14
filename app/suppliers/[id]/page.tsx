@@ -463,7 +463,6 @@ export default function SupplierProfilePage() {
         defaultOpen={false}
         rightAction={<StatusBadge status={supplier.asl_status || supplier.supplier_status || "approved"} />}
       >
-
         <div style={{ display: "grid", gap: "12px", maxWidth: "800px" }}>
           <div>
             <label>ASL Status</label><br />
@@ -593,15 +592,16 @@ export default function SupplierProfilePage() {
             <strong>Last ASL Approval:</strong> {supplier.asl_approved_by} at {supplier.asl_approved_at || "N/A"}
           </div>
         ) : null}
+
       </SectionCard>
 
-      <section style={sectionStyle}>
-        <h2>Supplier Qualification / Status Control</h2>
+      <SectionCard
+        title="Supplier Qualification / Status Control"
+        subtitle="Document supplier status and risk decisions based on linked NCMRs, SCARs, scorecards, and audit findings."
+        defaultOpen={false}
+        rightAction={<StatusBadge status={supplier.qualification_status || "qualified"} />}
+      >
 
-        <p style={{ color: "#4b5563" }}>
-          Use this section to document supplier approval status, risk level, qualification status,
-          expiration, requalification due date, and the rationale for the decision.
-        </p>
 
         <div
           style={{
@@ -704,7 +704,7 @@ export default function SupplierProfilePage() {
             Save Supplier Qualification / Status Decision
           </button>
         </div>
-      </SectionCard>
+      </section>
 
       <section style={sectionStyle}>
         <h2>Supplier Quality Metrics</h2>
@@ -723,7 +723,8 @@ export default function SupplierProfilePage() {
           <Field label="Audit Findings" value={metrics.totalFindings} />
           <Field label="Major/Critical Audit Findings" value={metrics.majorCriticalFindings} />
         </div>
-      </section>
+
+      </SectionCard>
 
       <section style={sectionStyle}>
         <h2>Optional Receiving Inspection</h2>
