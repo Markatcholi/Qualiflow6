@@ -370,8 +370,8 @@ export default function SupplierProfilePage() {
           <Link href={`/suppliers/${supplier.id}/audits`}>Supplier Audits</Link>
           
           <Link href={`/suppliers/${supplier.id}/documents`}>
-  Supplier Documents
-</Link>
+            Supplier Documents
+        </Link>
         </div>
       </div>
 
