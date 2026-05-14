@@ -4,6 +4,16 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "../../../../lib/supabaseClient";
+import {
+  SectionCard,
+  ActionToolbar,
+  StatusBadge,
+  EmptyStateCard,
+  FormField,
+  primaryButtonStyle,
+  standardInputStyle,
+  standardTextareaStyle,
+} from "../../../components/QualityWorkflowComponents";
 
 export default function SupplierAuditsPage() {
   const params = useParams<{ id: string }>();
@@ -12,6 +22,7 @@ export default function SupplierAuditsPage() {
   const [supplier, setSupplier] = useState<any>(null);
   const [audits, setAudits] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showCreateAudit, setShowCreateAudit] = useState(false);
 
   const [auditTitle, setAuditTitle] = useState("");
   const [auditType, setAuditType] = useState("surveillance");
@@ -57,6 +68,16 @@ export default function SupplierAuditsPage() {
     if (supplierId) fetchData();
   }, [supplierId]);
 
+  const resetCreateAuditForm = () => {
+    setAuditTitle("");
+    setAuditType("surveillance");
+    setAuditMethod("remote");
+    setPlannedAuditDate("");
+    setLeadAuditor("");
+    setAuditScope("");
+    setShowCreateAudit(false);
+  };
+
   const createAudit = async () => {
     if (!auditTitle.trim()) {
       alert("Audit title is required.");
@@ -101,12 +122,7 @@ export default function SupplierAuditsPage() {
     });
 
     alert("Supplier audit created.");
-    setAuditTitle("");
-    setAuditType("surveillance");
-    setAuditMethod("remote");
-    setPlannedAuditDate("");
-    setLeadAuditor("");
-    setAuditScope("");
+    resetCreateAuditForm();
     fetchData();
   };
 
@@ -120,58 +136,141 @@ export default function SupplierAuditsPage() {
 
   return (
     <main style={{ padding: "24px", fontFamily: "Arial" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", flexWrap: "wrap" }}>
-        <h1>Supplier Audits — {supplier.supplier_name}</h1>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          gap: "12px",
+          flexWrap: "wrap",
+          marginBottom: "16px",
+        }}
+      >
         <div>
-          <Link href={`/suppliers/${supplierId}`} style={{ marginRight: "12px" }}>Supplier Profile</Link>
-          <Link href="/supplier-quality/scorecards">Scorecards</Link>
+          <h1>Supplier Audits</h1>
+          <p style={{ color: "#4b5563", marginTop: 0 }}>{supplier.supplier_name}</p>
         </div>
+
+        <ActionToolbar>
+          <Link href={`/suppliers/${supplierId}`}>Supplier Profile</Link>
+          <Link href="/supplier-quality/scorecards">Scorecards</Link>
+        </ActionToolbar>
       </div>
 
-      <section style={sectionStyle}>
-        <h2>Create Supplier Audit</h2>
+      <SectionCard
+        title="Create Supplier Audit"
+        subtitle="Create a supplier qualification, surveillance, for-cause, or requalification audit only when needed."
+        defaultOpen={showCreateAudit}
+        rightAction={
+          !showCreateAudit ? (
+            <button
+              type="button"
+              onClick={() => setShowCreateAudit(true)}
+              style={primaryButtonStyle}
+            >
+              + Add Audit
+            </button>
+          ) : null
+        }
+      >
+        {showCreateAudit ? (
+          <div
+            style={{
+              border: "1px solid #cbd5e1",
+              borderRadius: "10px",
+              padding: "14px",
+              background: "#f8fafc",
+            }}
+          >
+            <FormField label="Audit Title">
+              <input
+                value={auditTitle}
+                onChange={(e) => setAuditTitle(e.target.value)}
+                style={standardInputStyle}
+              />
+            </FormField>
 
-        <Field label="Audit Title">
-          <input value={auditTitle} onChange={(e) => setAuditTitle(e.target.value)} style={inputStyle} />
-        </Field>
+            <FormField label="Audit Type">
+              <select
+                value={auditType}
+                onChange={(e) => setAuditType(e.target.value)}
+                style={standardInputStyle}
+              >
+                <option value="qualification">Qualification</option>
+                <option value="surveillance">Surveillance</option>
+                <option value="for_cause">For Cause</option>
+                <option value="requalification">Requalification</option>
+              </select>
+            </FormField>
 
-        <Field label="Audit Type">
-          <select value={auditType} onChange={(e) => setAuditType(e.target.value)} style={inputStyle}>
-            <option value="qualification">Qualification</option>
-            <option value="surveillance">Surveillance</option>
-            <option value="for_cause">For Cause</option>
-            <option value="requalification">Requalification</option>
-          </select>
-        </Field>
+            <FormField label="Audit Method">
+              <select
+                value={auditMethod}
+                onChange={(e) => setAuditMethod(e.target.value)}
+                style={standardInputStyle}
+              >
+                <option value="remote">Remote</option>
+                <option value="onsite">Onsite</option>
+                <option value="hybrid">Hybrid</option>
+              </select>
+            </FormField>
 
-        <Field label="Audit Method">
-          <select value={auditMethod} onChange={(e) => setAuditMethod(e.target.value)} style={inputStyle}>
-            <option value="remote">Remote</option>
-            <option value="onsite">Onsite</option>
-            <option value="hybrid">Hybrid</option>
-          </select>
-        </Field>
+            <FormField label="Planned Audit Date">
+              <input
+                type="date"
+                value={plannedAuditDate}
+                onChange={(e) => setPlannedAuditDate(e.target.value)}
+                style={standardInputStyle}
+              />
+            </FormField>
 
-        <Field label="Planned Audit Date">
-          <input type="date" value={plannedAuditDate} onChange={(e) => setPlannedAuditDate(e.target.value)} style={inputStyle} />
-        </Field>
+            <FormField label="Lead Auditor">
+              <input
+                value={leadAuditor}
+                onChange={(e) => setLeadAuditor(e.target.value)}
+                style={standardInputStyle}
+              />
+            </FormField>
 
-        <Field label="Lead Auditor">
-          <input value={leadAuditor} onChange={(e) => setLeadAuditor(e.target.value)} style={inputStyle} />
-        </Field>
+            <FormField label="Audit Scope">
+              <textarea
+                value={auditScope}
+                onChange={(e) => setAuditScope(e.target.value)}
+                rows={4}
+                style={standardTextareaStyle}
+              />
+            </FormField>
 
-        <Field label="Audit Scope">
-          <textarea value={auditScope} onChange={(e) => setAuditScope(e.target.value)} rows={4} style={textareaStyle} />
-        </Field>
+            <ActionToolbar>
+              <button type="button" onClick={createAudit} style={primaryButtonStyle}>
+                Save Audit
+              </button>
+              <button type="button" onClick={resetCreateAuditForm}>
+                Cancel
+              </button>
+            </ActionToolbar>
+          </div>
+        ) : null}
+      </SectionCard>
 
-        <button onClick={createAudit}>Create Audit</button>
-      </section>
-
-      <section style={sectionStyle}>
-        <h2>Supplier Audit History</h2>
-
+      <SectionCard
+        title="Supplier Audit History"
+        subtitle="Audit records are retained under the supplier profile to avoid duplicate supplier data."
+        defaultOpen={true}
+      >
         {audits.length === 0 ? (
-          <p>No supplier audits recorded.</p>
+          <EmptyStateCard
+            title="No supplier audits recorded"
+            message="Use + Add Audit when a supplier qualification, surveillance, for-cause, or requalification audit is needed."
+            action={
+              <button
+                type="button"
+                onClick={() => setShowCreateAudit(true)}
+                style={primaryButtonStyle}
+              >
+                + Add Audit
+              </button>
+            }
+          />
         ) : (
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
@@ -193,49 +292,25 @@ export default function SupplierAuditsPage() {
                   <td style={tdStyle}>{audit.audit_type || "N/A"}</td>
                   <td style={tdStyle}>{audit.audit_method || "N/A"}</td>
                   <td style={tdStyle}>{audit.planned_audit_date || "N/A"}</td>
-                  <td style={tdStyle}>{audit.audit_status || "planned"}</td>
+                  <td style={tdStyle}>
+                    <StatusBadge status={audit.audit_status || "planned"} />
+                  </td>
                   <td style={tdStyle}>{audit.audit_result || "N/A"}</td>
                   <td style={tdStyle}>{audit.compliance_score ?? "N/A"}</td>
                   <td style={tdStyle}>
-                    <Link href={`/suppliers/${supplierId}/audits/${audit.id}`}>Open Audit</Link>
+                    <Link href={`/suppliers/${supplierId}/audits/${audit.id}`}>
+                      Open Audit
+                    </Link>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
         )}
-      </section>
+      </SectionCard>
     </main>
   );
 }
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div style={{ marginBottom: "12px" }}>
-      <label>{label}</label><br />
-      {children}
-    </div>
-  );
-}
-
-const sectionStyle: React.CSSProperties = {
-  border: "1px solid #d1d5db",
-  borderRadius: "10px",
-  padding: "14px",
-  marginBottom: "20px",
-};
-
-const inputStyle: React.CSSProperties = {
-  padding: "8px",
-  width: "100%",
-  maxWidth: "700px",
-};
-
-const textareaStyle: React.CSSProperties = {
-  padding: "8px",
-  width: "100%",
-  maxWidth: "800px",
-};
 
 const thStyle: React.CSSProperties = {
   border: "1px solid #d1d5db",
