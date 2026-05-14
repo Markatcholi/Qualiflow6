@@ -32,6 +32,7 @@ export default function SupplierProfilePage() {
   const [probationReason, setProbationReason] = useState("");
   const [disqualificationReason, setDisqualificationReason] = useState("");
   const [aslSignatureEmail, setAslSignatureEmail] = useState("");
+  const [receivingInspectionEnabled, setReceivingInspectionEnabled] = useState(false);
 
   const fetchSupplier = async () => {
     setLoading(true);
@@ -349,6 +350,41 @@ export default function SupplierProfilePage() {
     fetchSupplier();
   };
 
+
+  const saveReceivingInspectionSetting = async () => {
+    const { data: userData } = await supabase.auth.getUser();
+    const userEmail = userData?.user?.email || "unknown";
+
+    const { error } = await supabase
+      .from("suppliers")
+      .update({
+        receiving_inspection_enabled: receivingInspectionEnabled,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", id);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    await supabase.from("audit_logs").insert({
+      entity_type: "supplier",
+      entity_id: id,
+      action: "receiving_inspection_setting_updated",
+      details: `Receiving inspection ${receivingInspectionEnabled ? "enabled" : "disabled"} for supplier.`,
+      user_email: userEmail,
+    });
+
+    alert(
+      receivingInspectionEnabled
+        ? "Receiving inspection enabled for this supplier."
+        : "Receiving inspection disabled for this supplier."
+    );
+
+    fetchSupplier();
+  };
+
   if (loading) {
     return <main style={{ padding: "24px" }}>Loading supplier...</main>;
   }
@@ -366,11 +402,9 @@ export default function SupplierProfilePage() {
         <div>
           <Link href="/suppliers" style={{ marginRight: "12px" }}>Supplier List</Link>
           <Link href="/supplier-quality-dashboard" style={{ marginRight: "12px" }}>Supplier Dashboard</Link>
-          <Link href={`/supplier-quality/scorecards/${supplier.id}`} style={{ marginRight: "12px" }}>Supplier Scorecard</Link> 
-          <Link href={`/suppliers/${supplier.id}/audits`}>Supplier Audits</Link>  
-          <Link href={`/suppliers/${supplier.id}/documents`}> Supplier Documents </Link>
+          <Link href={`/supplier-quality/scorecards/${supplier.id}`} style={{ marginRight: "12px" }}>Supplier Scorecard</Link>
+          <Link href={`/suppliers/${supplier.id}/audits`}>Supplier Audits</Link>
         </div>
-       
       </div>
 
       <section style={summaryGridStyle}>
@@ -411,6 +445,7 @@ export default function SupplierProfilePage() {
           <Field label="Qualification Date" value={supplier.qualification_date} />
           <Field label="Critical Supplier" value={supplier.critical_supplier ? "Yes" : "No"} />
           <Field label="Quality Agreement Approved" value={supplier.quality_agreement_approved ? "Yes" : "No"} />
+          <Field label="Receiving Inspection Enabled" value={supplier.receiving_inspection_enabled ? "Yes" : "No"} />
           <Field label="ASL Approved By" value={supplier.asl_approved_by} />
           <Field label="ASL Approved At" value={supplier.asl_approved_at} />
           <Field label="Supplier Notes" value={supplier.supplier_notes} />
@@ -684,6 +719,53 @@ export default function SupplierProfilePage() {
           <Field label="Audit Findings" value={metrics.totalFindings} />
           <Field label="Major/Critical Audit Findings" value={metrics.majorCriticalFindings} />
         </div>
+      </section>
+
+      <section style={sectionStyle}>
+        <h2>Optional Receiving Inspection</h2>
+
+        <p style={{ color: "#4b5563" }}>
+          Enable this optional add-on only for suppliers where incoming material inspection needs to be tracked in QualiFlow.
+          If disabled, the supplier profile remains clean and the receiving inspection workflow stays hidden.
+        </p>
+
+        <label>
+          <input
+            type="checkbox"
+            checked={receivingInspectionEnabled}
+            onChange={(e) => setReceivingInspectionEnabled(e.target.checked)}
+          />{" "}
+          Enable Receiving Inspection for this supplier
+        </label>
+
+        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginTop: "12px" }}>
+          <button type="button" onClick={saveReceivingInspectionSetting}>
+            Save Receiving Inspection Setting
+          </button>
+
+          {supplier.receiving_inspection_enabled ? (
+            <a
+              href={`/suppliers/${supplier.id}/receiving-inspections`}
+              style={{
+                display: "inline-block",
+                padding: "8px 12px",
+                background: "#2563eb",
+                color: "white",
+                borderRadius: "6px",
+                textDecoration: "none",
+                fontWeight: 600,
+              }}
+            >
+              Open Receiving Inspections
+            </a>
+          ) : null}
+        </div>
+
+        {!supplier.receiving_inspection_enabled ? (
+          <p style={{ color: "#6b7280", fontSize: "14px", marginTop: "10px" }}>
+            Receiving inspection is currently disabled for this supplier.
+          </p>
+        ) : null}
       </section>
 
       <section style={sectionStyle}>
