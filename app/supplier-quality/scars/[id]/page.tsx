@@ -4,6 +4,19 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "../../../../lib/supabaseClient";
+import {
+  SectionCard,
+  ActionToolbar,
+  StatusBadge,
+  FieldRow,
+  FormField,
+  ConfirmButton,
+  primaryButtonStyle,
+  successButtonStyle,
+  dangerButtonStyle,
+  standardInputStyle,
+  standardTextareaStyle,
+} from "../../../components/QualityWorkflowComponents";
 
 export default function ScarDetailPage() {
   const params = useParams<{ id: string }>();
@@ -12,6 +25,7 @@ export default function ScarDetailPage() {
   const [scar, setScar] = useState<any>(null);
   const [supplier, setSupplier] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+
   const [rootCause, setRootCause] = useState("");
   const [correctiveAction, setCorrectiveAction] = useState("");
   const [supplierResponse, setSupplierResponse] = useState("");
@@ -19,7 +33,12 @@ export default function ScarDetailPage() {
   const [status, setStatus] = useState("open");
 
   const fetchScar = async () => {
-    const { data, error } = await supabase.from("scars").select("*").eq("id", id).maybeSingle();
+    const { data, error } = await supabase
+      .from("scars")
+      .select("*")
+      .eq("id", id)
+      .maybeSingle();
+
     if (error) {
       alert(error.message);
       setLoading(false);
@@ -34,7 +53,12 @@ export default function ScarDetailPage() {
     setStatus(data?.status || "open");
 
     if (data?.supplier_id) {
-      const supplierRes = await supabase.from("suppliers").select("*").eq("id", data.supplier_id).maybeSingle();
+      const supplierRes = await supabase
+        .from("suppliers")
+        .select("*")
+        .eq("id", data.supplier_id)
+        .maybeSingle();
+
       if (!supplierRes.error) setSupplier(supplierRes.data || null);
     }
 
@@ -62,7 +86,10 @@ export default function ScarDetailPage() {
       })
       .eq("id", id);
 
-    if (error) return alert(error.message);
+    if (error) {
+      alert(error.message);
+      return;
+    }
 
     await supabase.from("audit_logs").insert({
       entity_type: "scar",
@@ -77,12 +104,20 @@ export default function ScarDetailPage() {
   };
 
   const closeScar = async () => {
-    if (!rootCause || !correctiveAction || !effectivenessVerification) {
-      alert("Root cause, corrective action, and effectiveness verification are required before closure.");
+    if (!rootCause.trim()) {
+      alert("Root cause is required before SCAR closure.");
       return;
     }
 
-    if (!window.confirm("Close this SCAR with electronic signature confirmation?")) return;
+    if (!correctiveAction.trim()) {
+      alert("Corrective action is required before SCAR closure.");
+      return;
+    }
+
+    if (!effectivenessVerification.trim()) {
+      alert("Effectiveness verification is required before SCAR closure.");
+      return;
+    }
 
     const { data: userData } = await supabase.auth.getUser();
     const userEmail = userData?.user?.email || "unknown";
@@ -101,7 +136,10 @@ export default function ScarDetailPage() {
       })
       .eq("id", id);
 
-    if (error) return alert(error.message);
+    if (error) {
+      alert(error.message);
+      return;
+    }
 
     await supabase.from("audit_logs").insert({
       entity_type: "scar",
@@ -115,71 +153,177 @@ export default function ScarDetailPage() {
     fetchScar();
   };
 
-  if (loading) return <main style={{ padding: "24px" }}>Loading SCAR...</main>;
-  if (!scar) return <main style={{ padding: "24px" }}>SCAR not found.</main>;
+  if (loading) {
+    return <main style={{ padding: "24px", fontFamily: "Arial" }}>Loading SCAR...</main>;
+  }
+
+  if (!scar) {
+    return <main style={{ padding: "24px", fontFamily: "Arial" }}>SCAR not found.</main>;
+  }
+
+  const isClosed = scar.status === "closed";
 
   return (
     <main style={{ padding: "24px", fontFamily: "Arial" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", flexWrap: "wrap" }}>
-        <h1>{scar.scar_number || "SCAR"} — {scar.title}</h1>
-        <Link href="/supplier-quality/scars">Back to SCARs</Link>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          gap: "12px",
+          flexWrap: "wrap",
+          marginBottom: "16px",
+        }}
+      >
+        <div>
+          <h1>{scar.scar_number || "SCAR"} — {scar.title || "Untitled SCAR"}</h1>
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
+            <StatusBadge status={scar.status || "open"} />
+            <StatusBadge status={scar.risk_level || "risk not set"} />
+            <StatusBadge status={scar.severity || "severity not set"} />
+          </div>
+        </div>
+
+        <ActionToolbar>
+          <Link href="/supplier-quality/scars">Back to SCARs</Link>
+          {scar.supplier_id ? <Link href={`/suppliers/${scar.supplier_id}`}>Supplier Profile</Link> : null}
+          {scar.linked_ncmr_id ? <Link href={`/ncmrs/${scar.linked_ncmr_id}`}>Linked NCMR</Link> : null}
+        </ActionToolbar>
       </div>
 
-      <section style={sectionStyle}>
-        <h2>SCAR Summary</h2>
-        <Field label="Supplier" value={scar.supplier_name} />
-        <Field label="Supplier Status" value={supplier?.supplier_status} />
-        <Field label="Supplier Risk" value={supplier?.supplier_risk_level} />
-        <Field label="Linked NCMR" value={scar.linked_ncmr_number} />
-        <Field label="Severity" value={scar.severity} />
-        <Field label="Risk Level" value={scar.risk_level} />
-        <Field label="Status" value={scar.status} />
-        <Field label="Due Date" value={scar.due_date} />
-        {scar.linked_ncmr_id ? <p><Link href={`/ncmrs/${scar.linked_ncmr_id}`}>Open Linked NCMR</Link></p> : null}
-        {scar.supplier_id ? <p><Link href={`/suppliers/${scar.supplier_id}`}>Open Supplier Profile</Link></p> : null}
-      </section>
-
-      <section style={sectionStyle}>
-        <h2>Supplier Issue</h2>
-        <Field label="Description" value={scar.description} />
-        <Field label="Issue Summary" value={scar.issue_summary} />
-      </section>
-
-      <section style={sectionStyle}>
-        <h2>Supplier Response / Corrective Action</h2>
-        <label>Supplier Response</label><br />
-        <textarea value={supplierResponse} onChange={(e) => setSupplierResponse(e.target.value)} rows={5} style={textareaStyle} />
-        <br />
-        <label>Root Cause</label><br />
-        <textarea value={rootCause} onChange={(e) => setRootCause(e.target.value)} rows={5} style={textareaStyle} />
-        <br />
-        <label>Corrective Action</label><br />
-        <textarea value={correctiveAction} onChange={(e) => setCorrectiveAction(e.target.value)} rows={5} style={textareaStyle} />
-        <br />
-        <label>Effectiveness Verification</label><br />
-        <textarea value={effectivenessVerification} onChange={(e) => setEffectivenessVerification(e.target.value)} rows={5} style={textareaStyle} />
-        <br />
-        <label>Status</label><br />
-        <select value={status} onChange={(e) => setStatus(e.target.value)} style={inputStyle}>
-          <option value="open">Open</option>
-          <option value="supplier_response_pending">Supplier Response Pending</option>
-          <option value="quality_review">Quality Review</option>
-          <option value="effectiveness_check">Effectiveness Check</option>
-          <option value="closed">Closed</option>
-        </select>
-        <div style={{ marginTop: "14px", display: "flex", gap: "8px" }}>
-          <button onClick={saveScar}>Save SCAR</button>
-          <button onClick={closeScar}>Close SCAR</button>
+      <SectionCard
+        title="SCAR Summary"
+        subtitle="Supplier linkage, risk level, source record, due date, and current status."
+        defaultOpen={true}
+      >
+        <div style={gridStyle}>
+          <FieldRow label="Supplier" value={scar.supplier_name} />
+          <FieldRow label="Supplier Status" value={supplier?.supplier_status} />
+          <FieldRow label="Supplier Risk" value={supplier?.supplier_risk_level} />
+          <FieldRow label="Linked NCMR" value={scar.linked_ncmr_number} />
+          <FieldRow label="Severity" value={scar.severity} />
+          <FieldRow label="Risk Level" value={scar.risk_level} />
+          <FieldRow label="Status" value={scar.status} />
+          <FieldRow label="Due Date" value={scar.due_date} />
+          <FieldRow label="Initiated By" value={scar.initiated_by} />
+          <FieldRow label="Initiated At" value={scar.initiated_at} />
+          <FieldRow label="Closed By" value={scar.closed_by} />
+          <FieldRow label="Closed At" value={scar.closed_at} />
         </div>
-      </section>
+      </SectionCard>
+
+      <SectionCard
+        title="Supplier Issue"
+        subtitle="Original supplier issue summary and description that triggered the SCAR."
+        defaultOpen={true}
+      >
+        <FieldRow label="Description" value={scar.description} />
+        <FieldRow label="Issue Summary" value={scar.issue_summary} />
+      </SectionCard>
+
+      <SectionCard
+        title="Supplier Response"
+        subtitle="Document supplier response before quality review and root cause assessment."
+        defaultOpen={!supplierResponse}
+      >
+        <FormField label="Supplier Response">
+          <textarea
+            value={supplierResponse}
+            onChange={(e) => setSupplierResponse(e.target.value)}
+            disabled={isClosed}
+            rows={5}
+            style={standardTextareaStyle}
+          />
+        </FormField>
+      </SectionCard>
+
+      <SectionCard
+        title="Root Cause and Corrective Action"
+        subtitle="Document root cause and supplier corrective action plan."
+        defaultOpen={true}
+      >
+        <FormField label="Root Cause">
+          <textarea
+            value={rootCause}
+            onChange={(e) => setRootCause(e.target.value)}
+            disabled={isClosed}
+            rows={5}
+            style={standardTextareaStyle}
+          />
+        </FormField>
+
+        <FormField label="Corrective Action">
+          <textarea
+            value={correctiveAction}
+            onChange={(e) => setCorrectiveAction(e.target.value)}
+            disabled={isClosed}
+            rows={5}
+            style={standardTextareaStyle}
+          />
+        </FormField>
+      </SectionCard>
+
+      <SectionCard
+        title="Effectiveness Verification and Closure"
+        subtitle="Verify effectiveness, update status, save progress, or close the SCAR."
+        defaultOpen={true}
+      >
+        <FormField label="Effectiveness Verification">
+          <textarea
+            value={effectivenessVerification}
+            onChange={(e) => setEffectivenessVerification(e.target.value)}
+            disabled={isClosed}
+            rows={5}
+            style={standardTextareaStyle}
+          />
+        </FormField>
+
+        <FormField label="Status">
+          <select
+            value={status}
+            onChange={(e) => setStatus(e.target.value)}
+            disabled={isClosed}
+            style={standardInputStyle}
+          >
+            <option value="open">Open</option>
+            <option value="supplier_response_pending">Supplier Response Pending</option>
+            <option value="quality_review">Quality Review</option>
+            <option value="effectiveness_check">Effectiveness Check</option>
+            <option value="closed">Closed</option>
+          </select>
+        </FormField>
+
+        <ActionToolbar>
+          <button
+            type="button"
+            onClick={saveScar}
+            disabled={isClosed}
+            style={primaryButtonStyle}
+          >
+            Save SCAR
+          </button>
+
+          <ConfirmButton
+            confirmMessage="Close this SCAR with electronic signature confirmation?"
+            onConfirm={closeScar}
+            disabled={isClosed}
+            style={successButtonStyle}
+          >
+            Close SCAR
+          </ConfirmButton>
+
+          {isClosed ? (
+            <span style={{ color: "#166534", fontWeight: 600 }}>
+              This SCAR is closed.
+            </span>
+          ) : null}
+        </ActionToolbar>
+      </SectionCard>
     </main>
   );
 }
 
-function Field({ label, value }: { label: string; value: any }) {
-  return <div style={{ marginBottom: "8px" }}><strong>{label}:</strong> {value || "N/A"}</div>;
-}
-
-const sectionStyle: React.CSSProperties = { border: "1px solid #d1d5db", borderRadius: "10px", padding: "14px", marginBottom: "20px" };
-const inputStyle: React.CSSProperties = { padding: "8px", width: "100%", maxWidth: "700px" };
-const textareaStyle: React.CSSProperties = { padding: "8px", width: "100%", maxWidth: "900px", marginBottom: "12px" };
+const gridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+  gap: "10px",
+};
