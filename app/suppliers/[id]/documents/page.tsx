@@ -12,6 +12,7 @@ export default function SupplierDocumentsPage() {
   const [supplier, setSupplier] = useState<any>(null);
   const [documents, setDocuments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
 
   const [documentTitle, setDocumentTitle] = useState("");
   const [documentType, setDocumentType] = useState("quality_agreement");
@@ -19,6 +20,8 @@ export default function SupplierDocumentsPage() {
   const [effectiveDate, setEffectiveDate] = useState("");
   const [expirationDate, setExpirationDate] = useState("");
   const [documentUrl, setDocumentUrl] = useState("");
+  const [uploadedFileUrl, setUploadedFileUrl] = useState("");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [notes, setNotes] = useState("");
 
   const fetchData = async () => {
@@ -65,7 +68,42 @@ export default function SupplierDocumentsPage() {
     setEffectiveDate("");
     setExpirationDate("");
     setDocumentUrl("");
+    setUploadedFileUrl("");
+    setSelectedFile(null);
     setNotes("");
+
+    const fileInput = document.getElementById("supplier-document-file") as HTMLInputElement | null;
+    if (fileInput) fileInput.value = "";
+  };
+
+  const uploadFile = async () => {
+    if (!selectedFile) {
+      alert("Please select a file to upload.");
+      return;
+    }
+
+    setUploading(true);
+
+    const safeFileName = selectedFile.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const filePath = `suppliers/${supplierId}/${Date.now()}_${safeFileName}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from("supplier-documents")
+      .upload(filePath, selectedFile, { upsert: false });
+
+    if (uploadError) {
+      alert(uploadError.message);
+      setUploading(false);
+      return;
+    }
+
+    const { data } = supabase.storage
+      .from("supplier-documents")
+      .getPublicUrl(filePath);
+
+    setUploadedFileUrl(data.publicUrl);
+    setUploading(false);
+    alert("File uploaded. Click Add Document to save the document record.");
   };
 
   const addDocument = async () => {
@@ -74,10 +112,12 @@ export default function SupplierDocumentsPage() {
       return;
     }
 
-    if (!documentUrl.trim()) {
-      alert("Document URL or storage link is required.");
+    if (!documentUrl.trim() && !uploadedFileUrl.trim()) {
+      alert("Please provide an external URL, upload a file, or both.");
       return;
     }
+
+    const finalDocumentUrl = uploadedFileUrl || documentUrl;
 
     const { data: userData } = await supabase.auth.getUser();
     const userEmail = userData?.user?.email || "unknown";
@@ -91,7 +131,9 @@ export default function SupplierDocumentsPage() {
         document_status: documentStatus,
         effective_date: effectiveDate || null,
         expiration_date: expirationDate || null,
-        document_url: documentUrl,
+        document_url: finalDocumentUrl,
+        external_url: documentUrl || null,
+        uploaded_file_url: uploadedFileUrl || null,
         notes: notes || null,
         created_by: userEmail,
       })
@@ -107,7 +149,7 @@ export default function SupplierDocumentsPage() {
       entity_type: "supplier_document",
       entity_id: data.id,
       action: "supplier_document_added",
-      details: `Supplier document added: ${documentTitle}.`,
+      details: `Supplier document added: ${documentTitle}. Uploaded file: ${uploadedFileUrl ? "Yes" : "No"}. External URL: ${documentUrl ? "Yes" : "No"}.`,
       user_email: userEmail,
     });
 
@@ -169,6 +211,10 @@ export default function SupplierDocumentsPage() {
       <section style={sectionStyle}>
         <h2>Add Supplier Document</h2>
 
+        <p style={{ color: "#4b5563" }}>
+          Add a supplier document using an uploaded file, an external URL/storage link, or both.
+        </p>
+
         <Field label="Document Title">
           <input value={documentTitle} onChange={(e) => setDocumentTitle(e.target.value)} style={inputStyle} />
         </Field>
@@ -202,9 +248,42 @@ export default function SupplierDocumentsPage() {
           <input type="date" value={expirationDate} onChange={(e) => setExpirationDate(e.target.value)} style={inputStyle} />
         </Field>
 
-        <Field label="Document URL / Storage Link">
-          <input value={documentUrl} onChange={(e) => setDocumentUrl(e.target.value)} style={inputStyle} />
-        </Field>
+        <div style={{ border: "1px solid #d1d5db", borderRadius: "8px", padding: "12px", background: "#f9fafb", marginBottom: "12px" }}>
+          <h3 style={{ marginTop: 0 }}>Option 1 — Upload File</h3>
+
+          <input
+            id="supplier-document-file"
+            type="file"
+            onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
+          />
+
+          <button
+            type="button"
+            onClick={uploadFile}
+            disabled={uploading || !selectedFile}
+            style={{ marginLeft: "10px" }}
+          >
+            {uploading ? "Uploading..." : "Upload File"}
+          </button>
+
+          {uploadedFileUrl ? (
+            <p>
+              <strong>Uploaded File:</strong>{" "}
+              <a href={uploadedFileUrl} target="_blank" rel="noreferrer">Open Uploaded File</a>
+            </p>
+          ) : null}
+        </div>
+
+        <div style={{ border: "1px solid #d1d5db", borderRadius: "8px", padding: "12px", background: "#f9fafb", marginBottom: "12px" }}>
+          <h3 style={{ marginTop: 0 }}>Option 2 — External URL / Storage Link</h3>
+
+          <input
+            value={documentUrl}
+            onChange={(e) => setDocumentUrl(e.target.value)}
+            placeholder="SharePoint, Google Drive, Supabase, or other controlled document link"
+            style={inputStyle}
+          />
+        </div>
 
         <Field label="Notes">
           <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} style={textareaStyle} />
@@ -231,7 +310,8 @@ export default function SupplierDocumentsPage() {
                 <th style={thStyle}>Effective</th>
                 <th style={thStyle}>Expiration</th>
                 <th style={thStyle}>Alert</th>
-                <th style={thStyle}>Document</th>
+                <th style={thStyle}>Uploaded File</th>
+                <th style={thStyle}>External URL</th>
                 <th style={thStyle}>Action</th>
               </tr>
             </thead>
@@ -239,6 +319,7 @@ export default function SupplierDocumentsPage() {
               {documents.map((doc) => {
                 const isExpired = doc.expiration_date && doc.expiration_date < today;
                 const alertText = isExpired ? "Expired" : doc.expiration_date ? "Active / Monitor" : "No Expiration";
+
                 return (
                   <tr key={doc.id}>
                     <td style={tdStyle}>{doc.document_title || "N/A"}</td>
@@ -248,18 +329,19 @@ export default function SupplierDocumentsPage() {
                     <td style={tdStyle}>{doc.expiration_date || "N/A"}</td>
                     <td style={tdStyle}>{alertText}</td>
                     <td style={tdStyle}>
-                      {doc.document_url ? (
-                        <a href={doc.document_url} target="_blank" rel="noreferrer">Open</a>
-                      ) : (
-                        "N/A"
-                      )}
+                      {doc.uploaded_file_url || doc.document_url ? (
+                        <a href={doc.uploaded_file_url || doc.document_url} target="_blank" rel="noreferrer">Open</a>
+                      ) : "N/A"}
+                    </td>
+                    <td style={tdStyle}>
+                      {doc.external_url ? (
+                        <a href={doc.external_url} target="_blank" rel="noreferrer">Open</a>
+                      ) : "N/A"}
                     </td>
                     <td style={tdStyle}>
                       {doc.document_status !== "retired" ? (
                         <button type="button" onClick={() => retireDocument(doc.id)}>Retire</button>
-                      ) : (
-                        "Retired"
-                      )}
+                      ) : "Retired"}
                     </td>
                   </tr>
                 );
