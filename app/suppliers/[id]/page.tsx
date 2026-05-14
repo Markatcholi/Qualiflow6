@@ -4,6 +4,10 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "../../../lib/supabaseClient";
+import {
+  SectionCard,
+  StatusBadge,
+} from "../../components/QualityWorkflowComponents";
 
 export default function SupplierProfilePage() {
   const params = useParams<{ id: string }>();
@@ -453,13 +457,12 @@ export default function SupplierProfilePage() {
         </div>
       </section>
 
-      <section style={sectionStyle}>
-        <h2>ASL Governance / Approved Supplier Controls</h2>
-
-        <p style={{ color: "#4b5563" }}>
-          This controls the supplier's Approved Supplier List status without duplicating supplier master data.
-          Document approval scope, qualification basis, criticality, and electronic approval here.
-        </p>
+      <SectionCard
+        title="ASL Governance / Approved Supplier Controls"
+        subtitle="Controls Approved Supplier List status without duplicating supplier master data. Document approval scope, qualification basis, criticality, and electronic approval here."
+        defaultOpen={false}
+        rightAction={<StatusBadge status={supplier.asl_status || supplier.supplier_status || "approved"} />}
+      >
 
         <div style={{ display: "grid", gap: "12px", maxWidth: "800px" }}>
           <div>
@@ -590,7 +593,7 @@ export default function SupplierProfilePage() {
             <strong>Last ASL Approval:</strong> {supplier.asl_approved_by} at {supplier.asl_approved_at || "N/A"}
           </div>
         ) : null}
-      </section>
+      </SectionCard>
 
       <section style={sectionStyle}>
         <h2>Supplier Qualification / Status Control</h2>
@@ -701,7 +704,7 @@ export default function SupplierProfilePage() {
             Save Supplier Qualification / Status Decision
           </button>
         </div>
-      </section>
+      </SectionCard>
 
       <section style={sectionStyle}>
         <h2>Supplier Quality Metrics</h2>
