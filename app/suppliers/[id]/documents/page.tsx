@@ -13,6 +13,7 @@ export default function SupplierDocumentsPage() {
   const [documents, setDocuments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [showAddForm, setShowAddForm] = useState(false);
 
   const [documentTitle, setDocumentTitle] = useState("");
   const [documentType, setDocumentType] = useState("quality_agreement");
@@ -74,6 +75,8 @@ export default function SupplierDocumentsPage() {
 
     const fileInput = document.getElementById("supplier-document-file") as HTMLInputElement | null;
     if (fileInput) fileInput.value = "";
+
+    setShowAddForm(false);
   };
 
   const uploadFile = async () => {
@@ -209,90 +212,168 @@ export default function SupplierDocumentsPage() {
       </div>
 
       <section style={sectionStyle}>
-        <h2>Add Supplier Document</h2>
-
-        <p style={{ color: "#4b5563" }}>
-          Add a supplier document using an uploaded file, an external URL/storage link, or both.
-        </p>
-
-        <Field label="Document Title">
-          <input value={documentTitle} onChange={(e) => setDocumentTitle(e.target.value)} style={inputStyle} />
-        </Field>
-
-        <Field label="Document Type">
-          <select value={documentType} onChange={(e) => setDocumentType(e.target.value)} style={inputStyle}>
-            <option value="quality_agreement">Quality Agreement</option>
-            <option value="iso_certificate">ISO Certificate</option>
-            <option value="audit_report">Audit Report</option>
-            <option value="insurance_certificate">Insurance Certificate</option>
-            <option value="regulatory_certificate">Regulatory Certificate</option>
-            <option value="supplier_questionnaire">Supplier Questionnaire</option>
-            <option value="other">Other</option>
-          </select>
-        </Field>
-
-        <Field label="Document Status">
-          <select value={documentStatus} onChange={(e) => setDocumentStatus(e.target.value)} style={inputStyle}>
-            <option value="active">Active</option>
-            <option value="pending_review">Pending Review</option>
-            <option value="expired">Expired</option>
-            <option value="retired">Retired</option>
-          </select>
-        </Field>
-
-        <Field label="Effective Date">
-          <input type="date" value={effectiveDate} onChange={(e) => setEffectiveDate(e.target.value)} style={inputStyle} />
-        </Field>
-
-        <Field label="Expiration Date">
-          <input type="date" value={expirationDate} onChange={(e) => setExpirationDate(e.target.value)} style={inputStyle} />
-        </Field>
-
-        <div style={{ border: "1px solid #d1d5db", borderRadius: "8px", padding: "12px", background: "#f9fafb", marginBottom: "12px" }}>
-          <h3 style={{ marginTop: 0 }}>Option 1 — Upload File</h3>
-
-          <input
-            id="supplier-document-file"
-            type="file"
-            onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
-          />
-
-          <button
-            type="button"
-            onClick={uploadFile}
-            disabled={uploading || !selectedFile}
-            style={{ marginLeft: "10px" }}
-          >
-            {uploading ? "Uploading..." : "Upload File"}
-          </button>
-
-          {uploadedFileUrl ? (
-            <p>
-              <strong>Uploaded File:</strong>{" "}
-              <a href={uploadedFileUrl} target="_blank" rel="noreferrer">Open Uploaded File</a>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: "12px",
+            alignItems: "center",
+            flexWrap: "wrap",
+          }}
+        >
+          <div>
+            <h2 style={{ marginBottom: "4px" }}>Supplier Documents</h2>
+            <p style={{ color: "#4b5563", marginTop: 0 }}>
+              Add supplier documents using an uploaded file, an external URL/storage link, or both.
             </p>
+          </div>
+
+          {!showAddForm ? (
+            <button
+              type="button"
+              onClick={() => setShowAddForm(true)}
+              style={{
+                padding: "8px 12px",
+                background: "#2563eb",
+                color: "white",
+                border: "none",
+                borderRadius: "6px",
+                cursor: "pointer",
+                fontWeight: 600,
+              }}
+            >
+              + Add Supplier Document
+            </button>
           ) : null}
         </div>
 
-        <div style={{ border: "1px solid #d1d5db", borderRadius: "8px", padding: "12px", background: "#f9fafb", marginBottom: "12px" }}>
-          <h3 style={{ marginTop: 0 }}>Option 2 — External URL / Storage Link</h3>
+        {showAddForm ? (
+          <div
+            style={{
+              border: "1px solid #cbd5e1",
+              borderRadius: "10px",
+              padding: "14px",
+              background: "#f8fafc",
+              marginTop: "12px",
+            }}
+          >
+            <h3 style={{ marginTop: 0 }}>New Supplier Document</h3>
 
-          <input
-            value={documentUrl}
-            onChange={(e) => setDocumentUrl(e.target.value)}
-            placeholder="SharePoint, Google Drive, Supabase, or other controlled document link"
-            style={inputStyle}
-          />
-        </div>
+            <Field label="Document Title">
+              <input value={documentTitle} onChange={(e) => setDocumentTitle(e.target.value)} style={inputStyle} />
+            </Field>
 
-        <Field label="Notes">
-          <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} style={textareaStyle} />
-        </Field>
+            <Field label="Document Type">
+              <select value={documentType} onChange={(e) => setDocumentType(e.target.value)} style={inputStyle}>
+                <option value="quality_agreement">Quality Agreement</option>
+                <option value="iso_certificate">ISO Certificate</option>
+                <option value="audit_report">Audit Report</option>
+                <option value="insurance_certificate">Insurance Certificate</option>
+                <option value="regulatory_certificate">Regulatory Certificate</option>
+                <option value="supplier_questionnaire">Supplier Questionnaire</option>
+                <option value="other">Other</option>
+              </select>
+            </Field>
 
-        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-          <button onClick={addDocument}>Add Document</button>
-          <button type="button" onClick={resetForm}>Cancel / Clear</button>
-        </div>
+            <Field label="Document Status">
+              <select value={documentStatus} onChange={(e) => setDocumentStatus(e.target.value)} style={inputStyle}>
+                <option value="active">Active</option>
+                <option value="pending_review">Pending Review</option>
+                <option value="expired">Expired</option>
+                <option value="retired">Retired</option>
+              </select>
+            </Field>
+
+            <Field label="Effective Date">
+              <input type="date" value={effectiveDate} onChange={(e) => setEffectiveDate(e.target.value)} style={inputStyle} />
+            </Field>
+
+            <Field label="Expiration Date">
+              <input type="date" value={expirationDate} onChange={(e) => setExpirationDate(e.target.value)} style={inputStyle} />
+            </Field>
+
+            <div
+              style={{
+                border: "1px solid #d1d5db",
+                borderRadius: "8px",
+                padding: "12px",
+                background: "white",
+                marginBottom: "12px",
+              }}
+            >
+              <h4 style={{ marginTop: 0 }}>Option 1 — Upload File</h4>
+
+              <input
+                id="supplier-document-file"
+                type="file"
+                onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
+              />
+
+              <button
+                type="button"
+                onClick={uploadFile}
+                disabled={uploading || !selectedFile}
+                style={{ marginLeft: "10px" }}
+              >
+                {uploading ? "Uploading..." : "Upload File"}
+              </button>
+
+              {uploadedFileUrl ? (
+                <p>
+                  <strong>Uploaded File:</strong>{" "}
+                  <a href={uploadedFileUrl} target="_blank" rel="noreferrer">
+                    Open Uploaded File
+                  </a>
+                </p>
+              ) : null}
+            </div>
+
+            <div
+              style={{
+                border: "1px solid #d1d5db",
+                borderRadius: "8px",
+                padding: "12px",
+                background: "white",
+                marginBottom: "12px",
+              }}
+            >
+              <h4 style={{ marginTop: 0 }}>Option 2 — External URL / Storage Link</h4>
+
+              <input
+                value={documentUrl}
+                onChange={(e) => setDocumentUrl(e.target.value)}
+                placeholder="SharePoint, Google Drive, Supabase, or other controlled document link"
+                style={inputStyle}
+              />
+            </div>
+
+            <Field label="Notes">
+              <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} style={textareaStyle} />
+            </Field>
+
+            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+              <button
+                type="button"
+                onClick={addDocument}
+                style={{
+                  padding: "8px 12px",
+                  background: "#16a34a",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "6px",
+                  cursor: "pointer",
+                  fontWeight: 600,
+                }}
+              >
+                Save Document
+              </button>
+
+              <button type="button" onClick={resetForm}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : null}
       </section>
 
       <section style={sectionStyle}>
