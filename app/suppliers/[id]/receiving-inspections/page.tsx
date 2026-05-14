@@ -4,6 +4,15 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "../../../../lib/supabaseClient";
+import {
+  SectionCard,
+  ActionToolbar,
+  StatusBadge,
+  EmptyStateCard,
+  FormField,
+  primaryButtonStyle,
+  standardInputStyle,
+} from "../../../components/QualityWorkflowComponents";
 
 export default function SupplierReceivingInspectionsPage() {
   const params = useParams<{ id: string }>();
@@ -12,6 +21,7 @@ export default function SupplierReceivingInspectionsPage() {
   const [supplier, setSupplier] = useState<any>(null);
   const [inspections, setInspections] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showCreateInspection, setShowCreateInspection] = useState(false);
 
   const [partNumber, setPartNumber] = useState("");
   const [lotNumber, setLotNumber] = useState("");
@@ -55,9 +65,24 @@ export default function SupplierReceivingInspectionsPage() {
     if (supplierId) fetchData();
   }, [supplierId]);
 
+  const resetCreateInspectionForm = () => {
+    setPartNumber("");
+    setLotNumber("");
+    setReceiptDate("");
+    setQuantityReceived("");
+    setShowCreateInspection(false);
+  };
+
   const createInspection = async () => {
-    if (!partNumber.trim()) return alert("Part number is required.");
-    if (!lotNumber.trim()) return alert("Lot number is required.");
+    if (!partNumber.trim()) {
+      alert("Part number is required.");
+      return;
+    }
+
+    if (!lotNumber.trim()) {
+      alert("Lot number is required.");
+      return;
+    }
 
     const { data: userData } = await supabase.auth.getUser();
     const userEmail = userData?.user?.email || "unknown";
@@ -76,7 +101,10 @@ export default function SupplierReceivingInspectionsPage() {
       .select()
       .single();
 
-    if (error) return alert(error.message);
+    if (error) {
+      alert(error.message);
+      return;
+    }
 
     await supabase.from("audit_logs").insert({
       entity_type: "receiving_inspection",
@@ -87,51 +115,163 @@ export default function SupplierReceivingInspectionsPage() {
     });
 
     alert("Receiving inspection created.");
-    setPartNumber("");
-    setLotNumber("");
-    setReceiptDate("");
-    setQuantityReceived("");
+    resetCreateInspectionForm();
     fetchData();
   };
 
-  if (loading) return <main style={{ padding: "24px", fontFamily: "Arial" }}>Loading receiving inspections...</main>;
-  if (!supplier) return <main style={{ padding: "24px", fontFamily: "Arial" }}>Supplier not found.</main>;
+  if (loading) {
+    return <main style={{ padding: "24px", fontFamily: "Arial" }}>Loading receiving inspections...</main>;
+  }
+
+  if (!supplier) {
+    return <main style={{ padding: "24px", fontFamily: "Arial" }}>Supplier not found.</main>;
+  }
 
   if (!supplier.receiving_inspection_enabled) {
     return (
       <main style={{ padding: "24px", fontFamily: "Arial" }}>
-        <h1>Receiving Inspection — {supplier.supplier_name}</h1>
-        <p>Receiving inspection is not enabled for this supplier.</p>
-        <Link href={`/suppliers/${supplierId}`}>Back to Supplier Profile</Link>
+        <h1>Receiving Inspection</h1>
+        <p style={{ color: "#4b5563" }}>{supplier.supplier_name}</p>
+
+        <SectionCard
+          title="Receiving Inspection Not Enabled"
+          subtitle="Receiving inspection is optional and can be enabled from the supplier profile."
+          defaultOpen={true}
+        >
+          <EmptyStateCard
+            title="Optional module disabled"
+            message="Enable receiving inspection on the supplier profile before creating inspection records."
+            action={<Link href={`/suppliers/${supplierId}`}>Back to Supplier Profile</Link>}
+          />
+        </SectionCard>
       </main>
     );
   }
 
   return (
     <main style={{ padding: "24px", fontFamily: "Arial" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", flexWrap: "wrap" }}>
-        <h1>Receiving Inspections — {supplier.supplier_name}</h1>
-        <Link href={`/suppliers/${supplierId}`}>Supplier Profile</Link>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          gap: "12px",
+          flexWrap: "wrap",
+          marginBottom: "16px",
+        }}
+      >
+        <div>
+          <h1>Receiving Inspections</h1>
+          <p style={{ color: "#4b5563", marginTop: 0 }}>{supplier.supplier_name}</p>
+        </div>
+
+        <ActionToolbar>
+          <Link href={`/suppliers/${supplierId}`}>Supplier Profile</Link>
+        </ActionToolbar>
       </div>
 
-      <section style={sectionStyle}>
-        <h2>Create Receiving Inspection</h2>
-        <Field label="Part Number"><input value={partNumber} onChange={(e) => setPartNumber(e.target.value)} style={inputStyle} /></Field>
-        <Field label="Lot Number"><input value={lotNumber} onChange={(e) => setLotNumber(e.target.value)} style={inputStyle} /></Field>
-        <Field label="Receipt Date"><input type="date" value={receiptDate} onChange={(e) => setReceiptDate(e.target.value)} style={inputStyle} /></Field>
-        <Field label="Quantity Received"><input type="number" value={quantityReceived} onChange={(e) => setQuantityReceived(e.target.value)} style={inputStyle} /></Field>
-        <button onClick={createInspection}>Create Inspection</button>
-      </section>
+      <SectionCard
+        title="Create Receiving Inspection"
+        subtitle="Create a receiving inspection record only when incoming material inspection is required."
+        defaultOpen={showCreateInspection}
+        rightAction={
+          !showCreateInspection ? (
+            <button
+              type="button"
+              onClick={() => setShowCreateInspection(true)}
+              style={primaryButtonStyle}
+            >
+              + Add Inspection
+            </button>
+          ) : null
+        }
+      >
+        {showCreateInspection ? (
+          <div
+            style={{
+              border: "1px solid #cbd5e1",
+              borderRadius: "10px",
+              padding: "14px",
+              background: "#f8fafc",
+            }}
+          >
+            <FormField label="Part Number">
+              <input
+                value={partNumber}
+                onChange={(e) => setPartNumber(e.target.value)}
+                style={standardInputStyle}
+              />
+            </FormField>
 
-      <section style={sectionStyle}>
-        <h2>Inspection History</h2>
-        {inspections.length === 0 ? <p>No receiving inspections recorded.</p> : (
+            <FormField label="Lot Number">
+              <input
+                value={lotNumber}
+                onChange={(e) => setLotNumber(e.target.value)}
+                style={standardInputStyle}
+              />
+            </FormField>
+
+            <FormField label="Receipt Date">
+              <input
+                type="date"
+                value={receiptDate}
+                onChange={(e) => setReceiptDate(e.target.value)}
+                style={standardInputStyle}
+              />
+            </FormField>
+
+            <FormField label="Quantity Received">
+              <input
+                type="number"
+                value={quantityReceived}
+                onChange={(e) => setQuantityReceived(e.target.value)}
+                style={standardInputStyle}
+              />
+            </FormField>
+
+            <ActionToolbar>
+              <button type="button" onClick={createInspection} style={primaryButtonStyle}>
+                Save Inspection
+              </button>
+              <button type="button" onClick={resetCreateInspectionForm}>
+                Cancel
+              </button>
+            </ActionToolbar>
+          </div>
+        ) : null}
+      </SectionCard>
+
+      <SectionCard
+        title="Inspection History"
+        subtitle="Receiving inspection records are linked directly to the supplier and can escalate to NCMR when inspection fails."
+        defaultOpen={true}
+      >
+        {inspections.length === 0 ? (
+          <EmptyStateCard
+            title="No receiving inspections recorded"
+            message="Use + Add Inspection when incoming material requires inspection tracking."
+            action={
+              <button
+                type="button"
+                onClick={() => setShowCreateInspection(true)}
+                style={primaryButtonStyle}
+              >
+                + Add Inspection
+              </button>
+            }
+          />
+        ) : (
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr>
-                <th style={thStyle}>Part Number</th><th style={thStyle}>Lot Number</th><th style={thStyle}>Receipt Date</th>
-                <th style={thStyle}>Qty Received</th><th style={thStyle}>Qty Accepted</th><th style={thStyle}>Qty Rejected</th>
-                <th style={thStyle}>Result</th><th style={thStyle}>Linked NCMR</th><th style={thStyle}>Open</th>
+                <th style={thStyle}>Part Number</th>
+                <th style={thStyle}>Lot Number</th>
+                <th style={thStyle}>Receipt Date</th>
+                <th style={thStyle}>Qty Received</th>
+                <th style={thStyle}>Qty Accepted</th>
+                <th style={thStyle}>Qty Rejected</th>
+                <th style={thStyle}>Result</th>
+                <th style={thStyle}>Linked NCMR</th>
+                <th style={thStyle}>Open</th>
               </tr>
             </thead>
             <tbody>
@@ -143,24 +283,39 @@ export default function SupplierReceivingInspectionsPage() {
                   <td style={tdStyle}>{inspection.quantity_received ?? "N/A"}</td>
                   <td style={tdStyle}>{inspection.quantity_accepted ?? "N/A"}</td>
                   <td style={tdStyle}>{inspection.quantity_rejected ?? "N/A"}</td>
-                  <td style={tdStyle}>{inspection.inspection_result || "pending"}</td>
-                  <td style={tdStyle}>{inspection.linked_ncmr_id ? <Link href={`/ncmrs/${inspection.linked_ncmr_id}`}>Open NCMR</Link> : "N/A"}</td>
-                  <td style={tdStyle}><Link href={`/suppliers/${supplierId}/receiving-inspections/${inspection.id}`}>Open Inspection</Link></td>
+                  <td style={tdStyle}>
+                    <StatusBadge status={inspection.inspection_result || "pending"} />
+                  </td>
+                  <td style={tdStyle}>
+                    {inspection.linked_ncmr_id ? (
+                      <Link href={`/ncmrs/${inspection.linked_ncmr_id}`}>Open NCMR</Link>
+                    ) : (
+                      "N/A"
+                    )}
+                  </td>
+                  <td style={tdStyle}>
+                    <Link href={`/suppliers/${supplierId}/receiving-inspections/${inspection.id}`}>
+                      Open Inspection
+                    </Link>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         )}
-      </section>
+      </SectionCard>
     </main>
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return <div style={{ marginBottom: "12px" }}><label>{label}</label><br />{children}</div>;
-}
+const thStyle: React.CSSProperties = {
+  border: "1px solid #d1d5db",
+  padding: "10px",
+  background: "#f3f4f6",
+  textAlign: "left",
+};
 
-const sectionStyle: React.CSSProperties = { border: "1px solid #d1d5db", borderRadius: "10px", padding: "14px", marginBottom: "20px" };
-const inputStyle: React.CSSProperties = { padding: "8px", width: "100%", maxWidth: "700px" };
-const thStyle: React.CSSProperties = { border: "1px solid #d1d5db", padding: "10px", background: "#f3f4f6", textAlign: "left" };
-const tdStyle: React.CSSProperties = { border: "1px solid #d1d5db", padding: "10px" };
+const tdStyle: React.CSSProperties = {
+  border: "1px solid #d1d5db",
+  padding: "10px",
+};
