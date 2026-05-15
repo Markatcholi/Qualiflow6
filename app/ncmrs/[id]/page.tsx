@@ -16,6 +16,7 @@ export default function NcmrDetailPage() {
   const [linkedCapa, setLinkedCapa] = useState<any>(null);
   const [mrbApprovers, setMrbApprovers] = useState<any[]>([]);
   const [affectedItems, setAffectedItems] = useState<any[]>([]);
+  const [auditTimeline, setAuditTimeline] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [userEmail, setUserEmail] = useState("");
@@ -209,6 +210,22 @@ export default function NcmrDetailPage() {
     setReworkTasks(data || []);
   };
 
+  const fetchAuditTimeline = async () => {
+    const { data, error } = await supabase
+      .from("audit_logs")
+      .select("*")
+      .eq("entity_type", "ncmr")
+      .eq("entity_id", id)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    setAuditTimeline(data || []);
+  };
+
 
   const fetchRecord = async () => {
     const { data, error } = await supabase
@@ -265,6 +282,7 @@ export default function NcmrDetailPage() {
     await fetchApprovalTasks();
     await fetchCorrectionTasks();
     await fetchReworkTasks();
+    await fetchAuditTimeline();
     setLoading(false);
   };
 
@@ -276,6 +294,8 @@ export default function NcmrDetailPage() {
       details,
       user_email: userEmail || "unknown",
     });
+
+    fetchAuditTimeline();
   };
 
   const saveRecordSummary = async () => {
@@ -2520,6 +2540,67 @@ This approval becomes part of the official electronic quality record.`,
           </p>
         ) : null}
 
+      </SectionCard>
+
+      <SectionCard
+        title="NCMR Timeline / Activity Feed"
+        subtitle="Audit-ready history of major NCMR actions captured from audit logs."
+        defaultOpen={false}
+        rightAction={
+          <span
+            style={{
+              border: "1px solid #d1d5db",
+              background: "#f9fafb",
+              color: "#374151",
+              borderRadius: "999px",
+              padding: "4px 10px",
+              fontSize: "12px",
+              fontWeight: 700,
+            }}
+          >
+            {auditTimeline.length} event(s)
+          </span>
+        }
+      >
+        {auditTimeline.length === 0 ? (
+          <p>No activity recorded yet.</p>
+        ) : (
+          <div style={{ display: "grid", gap: "12px" }}>
+            {auditTimeline.map((event) => (
+              <div
+                key={event.id}
+                style={{
+                  border: "1px solid #d1d5db",
+                  borderRadius: "10px",
+                  padding: "12px",
+                  background: "white",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: "12px",
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <strong>{event.action || "Activity"}</strong>
+                  <span style={{ color: "#4b5563", fontSize: "13px" }}>
+                    {event.created_at ? new Date(event.created_at).toLocaleString() : "N/A"}
+                  </span>
+                </div>
+
+                <div style={{ marginTop: "8px", color: "#374151" }}>
+                  {event.details || "No details provided."}
+                </div>
+
+                <div style={{ marginTop: "8px", color: "#6b7280", fontSize: "13px" }}>
+                  <strong>User:</strong> {event.user_email || "unknown"}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </SectionCard>
 
       <SectionCard
