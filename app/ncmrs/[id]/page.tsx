@@ -1513,6 +1513,40 @@ This approval becomes part of the official electronic quality record.`,
     <main style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
       <h1>NCMR Controlled Workflow</h1>
 
+      {/* NCMR Executive Status Strip */}
+      <div
+        style={{
+          border: "1px solid #d1d5db",
+          borderRadius: "10px",
+          padding: "12px",
+          background: "#f9fafb",
+          marginBottom: "16px",
+        }}
+      >
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "10px" }}>
+          <div>
+            <div style={{ color: "#4b5563", fontSize: "13px" }}>NCMR Number</div>
+            <strong>{record.ncmr_number || "Pending Number"}</strong>
+          </div>
+          <div>
+            <div style={{ color: "#4b5563", fontSize: "13px" }}>Workflow Status</div>
+            <strong>{record.status || "open"}</strong>
+          </div>
+          <div>
+            <div style={{ color: "#4b5563", fontSize: "13px" }}>Severity</div>
+            <strong>{record.severity || "not_assessed"}</strong>
+          </div>
+          <div>
+            <div style={{ color: "#4b5563", fontSize: "13px" }}>MRB</div>
+            <strong>{record.mrb_approved_by ? "Approved" : "Pending"}</strong>
+          </div>
+          <div>
+            <div style={{ color: "#4b5563", fontSize: "13px" }}>Lock Status</div>
+            <strong>{record.is_locked ? "Locked" : "Editable"}</strong>
+          </div>
+        </div>
+      </div>
+
       {/* NCMR StatusBadge Row */}
       <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "16px" }}>
         <StatusBadge status={record.status || "open"} />
@@ -1657,6 +1691,49 @@ This approval becomes part of the official electronic quality record.`,
         </div>
       </div>
 
+      {/* NCMR Workflow Navigation Panel */}
+      <div
+        style={{
+          border: "1px solid #d1d5db",
+          borderRadius: "10px",
+          padding: "12px",
+          background: "#f9fafb",
+          marginBottom: "16px",
+        }}
+      >
+        <strong>Workflow Navigation</strong>
+        <p style={{ color: "#4b5563", marginTop: "6px", marginBottom: "10px" }}>
+          Use this as a quick visual map of the NCMR workflow. Collapsible sections below remain the official workflow record.
+        </p>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+            gap: "10px",
+          }}
+        >
+          {workflowProgressSteps.map((step, index) => (
+            <div
+              key={step.label}
+              style={{
+                border: step.complete ? "1px solid #86efac" : "1px solid #d1d5db",
+                background: step.complete ? "#f0fdf4" : "white",
+                borderRadius: "10px",
+                padding: "10px",
+              }}
+            >
+              <div style={{ fontWeight: 700 }}>
+                {step.complete ? "✓" : "○"} {index + 1}. {step.label}
+              </div>
+              <div style={{ color: "#4b5563", fontSize: "13px", marginTop: "4px" }}>
+                {step.complete ? "Complete" : "Pending / In Progress"}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
       {validationErrors.length > 0 ? (
         <div
           style={{
@@ -1757,7 +1834,7 @@ This approval becomes part of the official electronic quality record.`,
 
       <SectionCard
         title="1. Initiation"
-        subtitle="Affected materials and initiation information linked to the original NCMR record."
+        subtitle={affectedItems.length > 0 && summaryIssueDescription ? "Complete: affected materials and initiation information are documented." : "Pending: document affected materials and initiation information."}
         defaultOpen={true}
       >
         <p>This section is created from the NCMR initiation page.</p>
@@ -1804,7 +1881,7 @@ This approval becomes part of the official electronic quality record.`,
 
       <SectionCard
         title="2. Containment"
-        subtitle="Document investigator, problem description, and containment actions."
+        subtitle={investigator && problemDescription && containmentAction ? "Complete: containment information is documented." : "Pending: document investigator, problem description, and containment action."}
         defaultOpen={true}
       >
 
@@ -1837,7 +1914,7 @@ This approval becomes part of the official electronic quality record.`,
 
       <SectionCard
         title="3. Investigation / Root Cause"
-        subtitle="Document investigation summary, optional collaboration, root cause category, and root cause."
+        subtitle={investigationSummary && rootCauseCategory && rootCause ? "Complete: investigation and root cause are documented." : "Pending: document investigation summary, root cause category, and root cause."}
         defaultOpen={true}
       >
 
@@ -1901,7 +1978,7 @@ This approval becomes part of the official electronic quality record.`,
 
       <SectionCard
         title="4. Correction / Corrective Action Proposal"
-        subtitle="Document correction or corrective action recommendation before risk assessment."
+        subtitle={correctionActionProposal && correctiveAction ? "Complete: correction proposal and recommendation are documented." : "Pending: document correction proposal and corrective action recommendation."}
         defaultOpen={false}
       >
 
@@ -1939,7 +2016,7 @@ This approval becomes part of the official electronic quality record.`,
 
       <SectionCard
         title="5. Risk Assessment"
-        subtitle="Assess product, process, patient/user, regulatory, and quality risk, including CAPA decision."
+        subtitle={riskAssessment && severity !== "not_assessed" ? "Complete: risk assessment and severity are documented." : "Pending: document risk assessment and severity."}
         defaultOpen={true}
       >
 
@@ -2049,7 +2126,7 @@ This approval becomes part of the official electronic quality record.`,
 
       <SectionCard
         title="6. Product Disposition / MRB Decision"
-        subtitle="Document overall product disposition, item-level disposition, MRB governance, and approval tasks."
+        subtitle={record?.mrb_approved_by ? "Complete: MRB approval has been signed." : "Pending: complete disposition, approval tasks, and MRB approval."}
         defaultOpen={true}
       >
 
@@ -2274,7 +2351,7 @@ This approval becomes part of the official electronic quality record.`,
 
       <SectionCard
         title="7. Correction Implementation"
-        subtitle="Assign correction execution and document implementation before closure."
+        subtitle={record?.correction_implemented_by ? "Complete: correction implementation has been recorded." : "Pending: assign/complete correction task and document implementation."}
         defaultOpen={false}
       >
 
@@ -2359,7 +2436,7 @@ This approval becomes part of the official electronic quality record.`,
 
       <SectionCard
         title="8. Evidence"
-        subtitle="Upload and document evidence supporting the investigation, disposition, and closure."
+        subtitle={evidenceUrl || record?.evidence_url ? "Complete: evidence is linked." : "Optional/Pending: upload or link supporting evidence."}
         defaultOpen={false}
       >
 
@@ -2407,7 +2484,7 @@ This approval becomes part of the official electronic quality record.`,
 
       <SectionCard
         title="9. Closure"
-        subtitle="Complete final review status and close the NCMR with electronic signature."
+        subtitle={record?.ncmr_closed_by || record?.status === "closed" ? "Complete: NCMR is closed and locked." : "Pending: complete closure review and e-signature."}
         defaultOpen={false}
       >
 
