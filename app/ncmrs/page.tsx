@@ -2,6 +2,16 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
+import {
+  SectionCard,
+  ActionToolbar,
+  StatusBadge,
+  EmptyStateCard,
+  FormField,
+  primaryButtonStyle,
+  standardInputStyle,
+  standardTextareaStyle,
+} from "../components/QualityWorkflowComponents";
 
 type MasterOption = {
   code: string;
@@ -86,6 +96,7 @@ export default function NcmrPage() {
   const [siteLocation, setSiteLocation] = useState("");
   const [immediateCorrection, setImmediateCorrection] = useState("");
   const [owner, setOwner] = useState("");
+  const [showCreateForm, setShowCreateForm] = useState(true);
 
   const [affectedItems, setAffectedItems] = useState<AffectedItemInput[]>([
     {
@@ -124,16 +135,12 @@ export default function NcmrPage() {
   const selectedSupplier = supplierOptions.find((supplier) => supplier.id === supplierId) || null;
 
   const fieldStyle: React.CSSProperties = {
-    width: "100%",
-    maxWidth: "500px",
-    padding: "8px",
+    ...standardInputStyle,
     marginTop: "4px",
   };
 
   const textAreaStyle: React.CSSProperties = {
-    width: "100%",
-    maxWidth: "800px",
-    padding: "8px",
+    ...standardTextareaStyle,
     marginTop: "4px",
   };
 
@@ -336,6 +343,39 @@ export default function NcmrPage() {
     setAffectedItems(updated);
   };
 
+
+  const resetNcmrForm = () => {
+    setTitle("");
+    setIssueDescription("");
+    setSourceOfDetection("");
+    setDepartment("");
+    setDateDetected("");
+    setContainmentAction("");
+    setContainmentOwner("");
+    setMaterialStatus("");
+    setQuarantinedQuantity("");
+    setDefectCategory("");
+    setDefectSubcategory("");
+    setSupplierId("");
+    setSupplierName("");
+    setSupplierLot("");
+    setSupplierScarRecommended(false);
+    setSupplierScarDecision("");
+    setSupplierScarDecisionJustification("");
+    setSiteLocation("");
+    setImmediateCorrection("");
+    setOwner("");
+    setAffectedItems([
+      {
+        product_part_number: "",
+        lot_number: "",
+        workorder_number: "",
+        quantity_affected: "",
+        quarantined_quantity: "",
+      },
+    ]);
+  };
+
   const addNcmr = async () => {
     if (!title) {
       alert("Title is required.");
@@ -521,36 +561,7 @@ export default function NcmrPage() {
       );
     }
 
-    setTitle("");
-    setIssueDescription("");
-    setSourceOfDetection("");
-    setDepartment("");
-    setDateDetected("");
-    setContainmentAction("");
-    setContainmentOwner("");
-    setMaterialStatus("");
-    setQuarantinedQuantity("");
-    setDefectCategory("");
-    setDefectSubcategory("");
-    setSupplierId("");
-    setSupplierName("");
-    setSupplierLot("");
-    setSupplierScarRecommended(false);
-    setSupplierScarDecision("");
-    setSupplierScarDecisionJustification("");
-    setSiteLocation("");
-    setImmediateCorrection("");
-    setOwner("");
-    setAffectedItems([
-      {
-        product_part_number: "",
-        lot_number: "",
-        workorder_number: "",
-        quantity_affected: "",
-        quarantined_quantity: "",
-        },
-    ]);
-
+    resetNcmrForm();
     fetchData();
   };
 
@@ -632,12 +643,114 @@ export default function NcmrPage() {
     return matchesSearch && matchesStatus && matchesSeverity;
   });
 
+  const initiationProgressSteps = [
+    { label: "Issue", complete: !!title && !!issueDescription },
+    { label: "Detection", complete: !!sourceOfDetection && !!department && !!dateDetected },
+    { label: "Affected Material", complete: affectedItems.some((item) => item.product_part_number || item.lot_number || item.workorder_number || item.quantity_affected) },
+    { label: "Containment", complete: !!containmentAction || !!materialStatus },
+    { label: "Defect", complete: !!defectCategory },
+    { label: "Owner", complete: !!owner },
+  ];
+
+  const completedInitiationSteps = initiationProgressSteps.filter((step) => step.complete).length;
+  const initiationPercentComplete = Math.round(
+    (completedInitiationSteps / initiationProgressSteps.length) * 100
+  );
+
   return (
     <main style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
-      <h1>NCMR Initiation</h1>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          gap: "12px",
+          alignItems: "flex-start",
+          flexWrap: "wrap",
+          marginBottom: "16px",
+        }}
+      >
+        <div>
+          <h1 style={{ marginBottom: "6px" }}>NCMR Initiation</h1>
+          <p style={{ color: "#4b5563", marginTop: 0 }}>
+            Create a lightweight NCMR intake record. Detailed investigation, risk assessment, MRB, and closure are completed in the controlled workflow page.
+          </p>
+        </div>
 
-      <section style={sectionStyle}>
-        <h2>1. Initiation Information</h2>
+        <ActionToolbar>
+          {!showCreateForm ? (
+            <button
+              type="button"
+              onClick={() => setShowCreateForm(true)}
+              style={primaryButtonStyle}
+            >
+              + Create NCMR
+            </button>
+          ) : null}
+        </ActionToolbar>
+      </div>
+
+      <SectionCard
+        title="Create NCMR Intake"
+        subtitle="Capture the issue, affected material, containment, defect information, and owner."
+        defaultOpen={showCreateForm}
+        rightAction={<StatusBadge status={`${completedInitiationSteps}/${initiationProgressSteps.length} complete`} />}
+      >
+        {showCreateForm ? (
+          <>
+            <div
+              style={{
+                border: "1px solid #d1d5db",
+                borderRadius: "10px",
+                padding: "12px",
+                background: "#f9fafb",
+                marginBottom: "16px",
+              }}
+            >
+              <strong>Intake Progress:</strong> {completedInitiationSteps} / {initiationProgressSteps.length} complete ({initiationPercentComplete}%)
+              <div
+                style={{
+                  height: "8px",
+                  background: "#e5e7eb",
+                  borderRadius: "999px",
+                  overflow: "hidden",
+                  marginTop: "8px",
+                  maxWidth: "420px",
+                }}
+              >
+                <div
+                  style={{
+                    height: "100%",
+                    width: `${initiationPercentComplete}%`,
+                    background: initiationPercentComplete === 100 ? "#16a34a" : "#2563eb",
+                  }}
+                />
+              </div>
+
+              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginTop: "10px" }}>
+                {initiationProgressSteps.map((step) => (
+                  <span
+                    key={step.label}
+                    style={{
+                      border: step.complete ? "1px solid #86efac" : "1px solid #d1d5db",
+                      background: step.complete ? "#f0fdf4" : "white",
+                      color: step.complete ? "#166534" : "#374151",
+                      borderRadius: "999px",
+                      padding: "4px 10px",
+                      fontSize: "12px",
+                      fontWeight: 600,
+                    }}
+                  >
+                    {step.complete ? "✓" : "○"} {step.label}
+                  </span>
+                ))}
+              </div>
+            </div>
+            <SectionCard
+              title="1. Initiation Information"
+              subtitle="Capture title, issue description, detection source, department, date, and affected material."
+              defaultOpen={true}
+            >
+
 
         <div style={rowStyle}>
           <label>Title</label>
@@ -811,10 +924,15 @@ export default function NcmrPage() {
             + Add Another Affected Item
           </button>
         </div>
-      </section>
+      
+            </SectionCard>
 
-      <section style={sectionStyle}>
-        <h2>2. Containment</h2>
+            <SectionCard
+              title="2. Containment"
+              subtitle="Document immediate containment action, owner, material status, and quarantined quantity."
+              defaultOpen={false}
+            >
+
 
         <div style={rowStyle}>
           <label>Containment Action</label>
@@ -863,10 +981,15 @@ export default function NcmrPage() {
             style={fieldStyle}
           />
         </div>
-      </section>
+      
+            </SectionCard>
 
-      <section style={sectionStyle}>
-        <h2>3. Defect / Supplier Information</h2>
+            <SectionCard
+              title="3. Defect / Supplier Information"
+              subtitle="Capture defect category, supplier linkage when applicable, site, immediate correction, and owner."
+              defaultOpen={false}
+            >
+
 
         <div style={rowStyle}>
           <label>Defect Category</label>
@@ -1068,16 +1191,50 @@ export default function NcmrPage() {
             style={fieldStyle}
           />
         </div>
-      </section>
+      
+            </SectionCard>
 
-      <button onClick={addNcmr} style={{ padding: "10px 16px", marginBottom: "25px" }}>
-        Create NCMR
-      </button>
+            <ActionToolbar>
+              <button onClick={addNcmr} style={primaryButtonStyle}>
+                Create NCMR
+              </button>
 
-      <h2>Existing NCMRs</h2>
+              <button
+                type="button"
+                onClick={() => {
+                  resetNcmrForm();
+                  setShowCreateForm(false);
+                }}
+              >
+                Cancel / Clear
+              </button>
+            </ActionToolbar>
+          </>
+        ) : (
+          <EmptyStateCard
+            title="NCMR intake form collapsed"
+            message="Use + Create NCMR to open the intake form."
+            action={
+              <button
+                type="button"
+                onClick={() => setShowCreateForm(true)}
+                style={primaryButtonStyle}
+              >
+                + Create NCMR
+              </button>
+            }
+          />
+        )}
+      </SectionCard>
+
+      <SectionCard
+        title="Existing NCMRs"
+        subtitle="Search, filter, and open existing NCMR workflows."
+        defaultOpen={true}
+      >
 
       <section style={sectionStyle}>
-        <h3>Search / Filters</h3>
+        <h3 style={{ marginTop: 0 }}>Search / Filters</h3>
 
         <input
           value={search}
@@ -1152,9 +1309,15 @@ export default function NcmrPage() {
       </section>
 
       {list.length === 0 ? (
-        <p>No NCMRs created yet.</p>
+        <EmptyStateCard
+          title="No NCMRs created yet"
+          message="Use the intake form above to create the first NCMR record."
+        />
       ) : filteredList.length === 0 ? (
-        <p>No NCMRs match the selected filters.</p>
+        <EmptyStateCard
+          title="No NCMRs match the selected filters"
+          message="Adjust or clear the filters to view more records."
+        />
       ) : (
         <div style={{ display: "grid", gap: "16px" }}>
           {filteredList.map((item) => {
@@ -1308,6 +1471,7 @@ export default function NcmrPage() {
           })}
         </div>
       )}
+      </SectionCard>
     </main>
   );
 }
