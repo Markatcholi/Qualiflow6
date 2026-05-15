@@ -3,6 +3,10 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "../../../lib/supabaseClient";
+import {
+  SectionCard,
+  StatusBadge,
+} from "../../components/QualityWorkflowComponents";
 
 export default function NcmrDetailPage() {
   const params = useParams<{ id: string }>();
@@ -1491,6 +1495,16 @@ This approval becomes part of the official electronic quality record.`,
   return (
     <main style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
       <h1>NCMR Controlled Workflow</h1>
+
+      {/* NCMR StatusBadge Row */}
+      <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "16px" }}>
+        <StatusBadge status={record.status || "open"} />
+        <StatusBadge status={record.severity || "not_assessed"} />
+        <StatusBadge status={record.review_status || "draft"} />
+        {record.mrb_approved_by ? <StatusBadge status="MRB Approved" /> : <StatusBadge status="MRB Pending" />}
+        {record.is_locked ? <StatusBadge status="Locked" /> : <StatusBadge status="Editable" />}
+      </div>
+
       <div style={{ marginBottom: "16px" }}>
         <button
           onClick={() => window.open(`/ncmrs/${id}/report`, "_blank")}
@@ -1609,8 +1623,11 @@ This approval becomes part of the official electronic quality record.`,
         ) : null}
       </div>
 
-      <section style={{ marginBottom: "20px" }}>
-        <h2>1. Initiation</h2>
+      <SectionCard
+        title="1. Initiation"
+        subtitle="Affected materials and initiation information linked to the original NCMR record."
+        defaultOpen={true}
+      >
         <p>This section is created from the NCMR initiation page.</p>
 
         <h3>Affected Materials / Multiple Parts and Lots</h3>
@@ -1650,10 +1667,14 @@ This approval becomes part of the official electronic quality record.`,
             + Add Affected Material
           </button>
         ) : null}
-      </section>
 
-      <section style={{ marginBottom: "20px" }}>
-        <h2>2. Containment</h2>
+      </SectionCard>
+
+      <SectionCard
+        title="2. Containment"
+        subtitle="Document investigator, problem description, and containment actions."
+        defaultOpen={true}
+      >
 
         <label>Investigator</label><br />
         <input
@@ -1679,10 +1700,14 @@ This approval becomes part of the official electronic quality record.`,
           rows={4}
           style={{ width: "100%", maxWidth: "700px" }}
         />
-      </section>
 
-      <section style={{ marginBottom: "20px" }}>
-        <h2>3. Investigation / Root Cause</h2>
+      </SectionCard>
+
+      <SectionCard
+        title="3. Investigation / Root Cause"
+        subtitle="Document investigation summary, optional collaboration, root cause category, and root cause."
+        defaultOpen={true}
+      >
 
         <label>Investigation Summary</label><br />
         <textarea
@@ -1739,10 +1764,14 @@ This approval becomes part of the official electronic quality record.`,
           rows={4}
           style={{ width: "100%", maxWidth: "700px" }}
         />
-      </section>
 
-      <section style={{ marginBottom: "20px" }}>
-        <h2>4. Correction / Corrective Action Proposal</h2>
+      </SectionCard>
+
+      <SectionCard
+        title="4. Correction / Corrective Action Proposal"
+        subtitle="Document correction or corrective action recommendation before risk assessment."
+        defaultOpen={false}
+      >
 
         <label>Correction / Corrective Action Proposal</label><br />
         <select
@@ -1773,10 +1802,14 @@ This approval becomes part of the official electronic quality record.`,
           rows={4}
           style={{ width: "100%", maxWidth: "700px" }}
         />
-      </section>
 
-      <section style={{ marginBottom: "20px" }}>
-        <h2>5. Risk Assessment</h2>
+      </SectionCard>
+
+      <SectionCard
+        title="5. Risk Assessment"
+        subtitle="Assess product, process, patient/user, regulatory, and quality risk, including CAPA decision."
+        defaultOpen={true}
+      >
 
         <label>Risk Assessment</label><br />
         <textarea
@@ -1879,10 +1912,14 @@ This approval becomes part of the official electronic quality record.`,
             <strong>CAPA Linked:</strong> {linkedCapa.title}
           </div>
         ) : null}
-      </section>
 
-      <section style={{ marginBottom: "20px" }}>
-        <h2>6. Product Disposition / MRB Decision</h2>
+      </SectionCard>
+
+      <SectionCard
+        title="6. Product Disposition / MRB Decision"
+        subtitle="Document overall product disposition, item-level disposition, MRB governance, and approval tasks."
+        defaultOpen={true}
+      >
 
         <label>Product Disposition</label><br />
         <select
@@ -2100,10 +2137,14 @@ This approval becomes part of the official electronic quality record.`,
             </ul>
           </div>
         ) : null}
-      </section>
 
-      <section style={{ marginBottom: "20px" }}>
-        <h2>7. Correction Implementation</h2>
+      </SectionCard>
+
+      <SectionCard
+        title="7. Correction Implementation"
+        subtitle="Assign correction execution and document implementation before closure."
+        defaultOpen={false}
+      >
 
         <div
           style={{
@@ -2181,10 +2222,14 @@ This approval becomes part of the official electronic quality record.`,
             <strong>Implemented At:</strong> {record.correction_implemented_at}
           </div>
         ) : null}
-      </section>
 
-      <section style={{ marginBottom: "20px" }}>
-        <h2>8. Evidence</h2>
+      </SectionCard>
+
+      <SectionCard
+        title="8. Evidence"
+        subtitle="Upload and document evidence supporting the investigation, disposition, and closure."
+        defaultOpen={false}
+      >
 
         <input
           type="file"
@@ -2225,10 +2270,14 @@ This approval becomes part of the official electronic quality record.`,
             </a>
           </p>
         ) : null}
-      </section>
 
-      <section style={{ marginBottom: "20px" }}>
-        <h2>9. Closure</h2>
+      </SectionCard>
+
+      <SectionCard
+        title="9. Closure"
+        subtitle="Complete final review status and close the NCMR with electronic signature."
+        defaultOpen={false}
+      >
 
         <label>Review Status</label><br />
         <select
@@ -2248,7 +2297,8 @@ This approval becomes part of the official electronic quality record.`,
             <strong>Signature Meaning:</strong> {record.ncmr_signature_meaning}
           </div>
         ) : null}
-      </section>
+
+      </SectionCard>
 
       <button onClick={saveWorkflow} disabled={isLocked} style={{ marginRight: "10px" }}>
         Save Workflow
