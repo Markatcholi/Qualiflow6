@@ -1492,6 +1492,23 @@ This approval becomes part of the official electronic quality record.`,
   const isLocked = record?.is_locked === true;
   const canEditInitiation = !isLocked && !record?.mrb_approved_by;
 
+  const workflowProgressSteps = [
+    { label: "Initiation", complete: affectedItems.length > 0 && !!summaryIssueDescription },
+    { label: "Containment", complete: !!investigator && !!problemDescription && !!containmentAction },
+    { label: "Investigation", complete: !!investigationSummary && !!rootCauseCategory && !!rootCause },
+    { label: "Correction Proposal", complete: !!correctionActionProposal && !!correctiveAction },
+    { label: "Risk Assessment", complete: !!riskAssessment && severity !== "not_assessed" },
+    { label: "MRB Approval", complete: !!record?.mrb_approved_by },
+    { label: "Implementation", complete: !!record?.correction_implemented_by },
+    { label: "Evidence", complete: !!evidenceUrl || !!record?.evidence_url },
+    { label: "Closure", complete: !!record?.ncmr_closed_by || record?.status === "closed" },
+  ];
+
+  const completedWorkflowSteps = workflowProgressSteps.filter((step) => step.complete).length;
+  const workflowPercentComplete = Math.round(
+    (completedWorkflowSteps / workflowProgressSteps.length) * 100
+  );
+
   return (
     <main style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
       <h1>NCMR Controlled Workflow</h1>
@@ -1524,6 +1541,121 @@ This approval becomes part of the official electronic quality record.`,
 
       <p><strong>Logged-in:</strong> {userEmail || "none"}</p>
       <p><strong>Role:</strong> {userRole || "none"}</p>
+
+      {/* Sticky NCMR Action Bar */}
+      <div
+        style={{
+          position: "sticky",
+          top: 0,
+          zIndex: 50,
+          background: "white",
+          border: "1px solid #d1d5db",
+          borderRadius: "10px",
+          padding: "12px",
+          marginBottom: "16px",
+          boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: "12px",
+            alignItems: "center",
+            flexWrap: "wrap",
+          }}
+        >
+          <div>
+            <strong>Workflow Progress:</strong> {completedWorkflowSteps} / {workflowProgressSteps.length} complete ({workflowPercentComplete}%)
+            <div
+              style={{
+                height: "8px",
+                background: "#e5e7eb",
+                borderRadius: "999px",
+                overflow: "hidden",
+                marginTop: "6px",
+                width: "260px",
+                maxWidth: "100%",
+              }}
+            >
+              <div
+                style={{
+                  height: "100%",
+                  width: `${workflowPercentComplete}%`,
+                  background: workflowPercentComplete === 100 ? "#16a34a" : "#2563eb",
+                }}
+              />
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+            <button onClick={saveWorkflow} disabled={isLocked}>
+              Save Workflow
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                const passed = validateWorkflowForMrbApproval();
+                alert(passed ? "Workflow is ready for MRB approval." : "Workflow validation found open items.");
+              }}
+              disabled={isLocked}
+            >
+              Validate for MRB
+            </button>
+
+            <button onClick={approveMrb} disabled={isLocked || !!record?.mrb_approved_by}>
+              Approve MRB
+            </button>
+
+            <button onClick={closeNcmr} disabled={isLocked}>
+              Close NCMR
+            </button>
+
+            <button
+              type="button"
+              onClick={() => window.open(`/ncmrs/${id}/report`, "_blank")}
+            >
+              Print Report
+            </button>
+
+            {linkedCapa ? (
+              <button
+                type="button"
+                onClick={() => window.open(`/capa/${linkedCapa.id}`, "_blank")}
+              >
+                Open CAPA
+              </button>
+            ) : null}
+          </div>
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            gap: "8px",
+            flexWrap: "wrap",
+            marginTop: "10px",
+          }}
+        >
+          {workflowProgressSteps.map((step) => (
+            <span
+              key={step.label}
+              style={{
+                border: step.complete ? "1px solid #86efac" : "1px solid #d1d5db",
+                background: step.complete ? "#f0fdf4" : "#f9fafb",
+                color: step.complete ? "#166534" : "#374151",
+                borderRadius: "999px",
+                padding: "4px 10px",
+                fontSize: "12px",
+                fontWeight: 600,
+              }}
+            >
+              {step.complete ? "✓" : "○"} {step.label}
+            </span>
+          ))}
+        </div>
+      </div>
 
       {validationErrors.length > 0 ? (
         <div
@@ -2300,15 +2432,9 @@ This approval becomes part of the official electronic quality record.`,
 
       </SectionCard>
 
-      <button onClick={saveWorkflow} disabled={isLocked} style={{ marginRight: "10px" }}>
-        Save Workflow
-      </button>
-
-      <button onClick={closeNcmr} disabled={isLocked} style={{ marginRight: "10px" }}>
-        Close NCMR with E-Signature
-      </button>
-
-      <a href="/ncmrs">Back to NCMRs</a>
+      <div style={{ marginTop: "20px" }}>
+        <a href="/ncmrs">Back to NCMRs</a>
+      </div>
     </main>
   );
 }
