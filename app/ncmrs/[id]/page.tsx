@@ -73,6 +73,7 @@ export default function NcmrDetailPage() {
   const [uploading, setUploading] = useState(false);
 
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
+  const [validationAttempted, setValidationAttempted] = useState(false);
 
   const [summaryIssueDescription, setSummaryIssueDescription] = useState("");
   const [summaryProductPartNumber, setSummaryProductPartNumber] = useState("");
@@ -511,6 +512,7 @@ export default function NcmrDetailPage() {
   };
 
   const validateWorkflowForMrbApproval = () => {
+    setValidationAttempted(true);
     const errors: string[] = [];
 
     if (!investigator) errors.push("Investigator is required before MRB approval.");
@@ -574,6 +576,7 @@ export default function NcmrDetailPage() {
   };
 
   const validateWorkflowForClosure = () => {
+    setValidationAttempted(true);
     const errors: string[] = [];
 
     if (!record?.mrb_approved_by) errors.push("MRB approval is required before closure.");
@@ -1509,6 +1512,70 @@ This approval becomes part of the official electronic quality record.`,
     (completedWorkflowSteps / workflowProgressSteps.length) * 100
   );
 
+  const sectionStatusBadge = (complete: boolean, label = "Section") => {
+    if (complete) {
+      return (
+        <span
+          style={{
+            border: "1px solid #86efac",
+            background: "#f0fdf4",
+            color: "#166534",
+            borderRadius: "999px",
+            padding: "4px 10px",
+            fontSize: "12px",
+            fontWeight: 700,
+          }}
+        >
+          ✓ Complete
+        </span>
+      );
+    }
+
+    if (validationAttempted) {
+      return (
+        <span
+          style={{
+            border: "1px solid #fca5a5",
+            background: "#fef2f2",
+            color: "#991b1b",
+            borderRadius: "999px",
+            padding: "4px 10px",
+            fontSize: "12px",
+            fontWeight: 700,
+          }}
+        >
+          ⚠ Needs Attention
+        </span>
+      );
+    }
+
+    return (
+      <span
+        style={{
+          border: "1px solid #d1d5db",
+          background: "#f9fafb",
+          color: "#374151",
+          borderRadius: "999px",
+          padding: "4px 10px",
+          fontSize: "12px",
+          fontWeight: 700,
+        }}
+      >
+        ○ Pending
+      </span>
+    );
+  };
+
+  const isInitiationComplete = affectedItems.length > 0 && !!summaryIssueDescription;
+  const isContainmentComplete = !!investigator && !!problemDescription && !!containmentAction;
+  const isInvestigationComplete = !!investigationSummary && !!rootCauseCategory && !!rootCause;
+  const isCorrectionProposalComplete = !!correctionActionProposal && !!correctiveAction;
+  const isRiskAssessmentComplete = !!riskAssessment && severity !== "not_assessed";
+  const isMrbComplete = !!record?.mrb_approved_by;
+  const isImplementationComplete = !!record?.correction_implemented_by;
+  const isEvidenceComplete = !!evidenceUrl || !!record?.evidence_url;
+  const isClosureComplete = !!record?.ncmr_closed_by || record?.status === "closed";
+
   return (
     <main style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
       <h1>NCMR Controlled Workflow</h1>
@@ -1631,7 +1698,13 @@ This approval becomes part of the official electronic quality record.`,
               type="button"
               onClick={() => {
                 const passed = validateWorkflowForMrbApproval();
-                alert(passed ? "Workflow is ready for MRB approval." : "Workflow validation found open items.");
+                setTimeout(() => {
+                  document.getElementById("workflow-validation-banner")?.scrollIntoView({
+                    behavior: "smooth",
+                    block: "start",
+                  });
+                }, 100);
+                alert(passed ? "Workflow is ready for MRB approval." : "Workflow validation found open items. Review the warning badges and validation banner.");
               }}
               disabled={isLocked}
             >
@@ -1693,6 +1766,7 @@ This approval becomes part of the official electronic quality record.`,
 
       {validationErrors.length > 0 ? (
         <div
+          id="workflow-validation-banner"
           style={{
             background: "#fef2f2",
             border: "1px solid #fca5a5",
@@ -1711,6 +1785,7 @@ This approval becomes part of the official electronic quality record.`,
         </div>
       ) : (
         <div
+          id="workflow-validation-banner"
           style={{
             background: "#f0fdf4",
             border: "1px solid #86efac",
@@ -1791,8 +1866,9 @@ This approval becomes part of the official electronic quality record.`,
 
       <SectionCard
         title="1. Initiation"
-        subtitle={affectedItems.length > 0 && summaryIssueDescription ? "Complete: affected materials and initiation information are documented." : "Pending: document affected materials and initiation information."}
+        subtitle={isInitiationComplete ? "Complete: affected materials and initiation information are documented." : "Pending: document affected materials and initiation information."}
         defaultOpen={true}
+        rightAction={sectionStatusBadge(isInitiationComplete, "Initiation")}
       >
         <p>This section is created from the NCMR initiation page.</p>
 
@@ -1838,8 +1914,9 @@ This approval becomes part of the official electronic quality record.`,
 
       <SectionCard
         title="2. Containment"
-        subtitle={investigator && problemDescription && containmentAction ? "Complete: containment information is documented." : "Pending: document investigator, problem description, and containment action."}
+        subtitle={isContainmentComplete ? "Complete: containment information is documented." : "Pending: document investigator, problem description, and containment action."}
         defaultOpen={true}
+        rightAction={sectionStatusBadge(isContainmentComplete, "Containment")}
       >
 
         <label>Investigator</label><br />
@@ -1871,8 +1948,9 @@ This approval becomes part of the official electronic quality record.`,
 
       <SectionCard
         title="3. Investigation / Root Cause"
-        subtitle={investigationSummary && rootCauseCategory && rootCause ? "Complete: investigation and root cause are documented." : "Pending: document investigation summary, root cause category, and root cause."}
+        subtitle={isInvestigationComplete ? "Complete: investigation and root cause are documented." : "Pending: document investigation summary, root cause category, and root cause."}
         defaultOpen={true}
+        rightAction={sectionStatusBadge(isInvestigationComplete, "Investigation")}
       >
 
         <label>Investigation Summary</label><br />
@@ -1935,8 +2013,9 @@ This approval becomes part of the official electronic quality record.`,
 
       <SectionCard
         title="4. Correction / Corrective Action Proposal"
-        subtitle={correctionActionProposal && correctiveAction ? "Complete: correction proposal and recommendation are documented." : "Pending: document correction proposal and corrective action recommendation."}
+        subtitle={isCorrectionProposalComplete ? "Complete: correction proposal and recommendation are documented." : "Pending: document correction proposal and corrective action recommendation."}
         defaultOpen={false}
+        rightAction={sectionStatusBadge(isCorrectionProposalComplete, "Correction Proposal")}
       >
 
         <label>Correction / Corrective Action Proposal</label><br />
@@ -1973,8 +2052,9 @@ This approval becomes part of the official electronic quality record.`,
 
       <SectionCard
         title="5. Risk Assessment"
-        subtitle={riskAssessment && severity !== "not_assessed" ? "Complete: risk assessment and severity are documented." : "Pending: document risk assessment and severity."}
+        subtitle={isRiskAssessmentComplete ? "Complete: risk assessment and severity are documented." : "Pending: document risk assessment and severity."}
         defaultOpen={true}
+        rightAction={sectionStatusBadge(isRiskAssessmentComplete, "Risk Assessment")}
       >
 
         <label>Risk Assessment</label><br />
@@ -2082,9 +2162,10 @@ This approval becomes part of the official electronic quality record.`,
       </SectionCard>
 
       <SectionCard
-        title="6. Product Disposition / MRB Decision"
-        subtitle={record?.mrb_approved_by ? "Complete: MRB approval has been signed." : "Pending: complete disposition, approval tasks, and MRB approval."}
+        title="6. Product Disposition / MRB Approval"
+        subtitle={isMrbComplete ? "Complete: MRB approval has been signed." : "Pending: complete disposition, approval tasks, and MRB approval."}
         defaultOpen={true}
+        rightAction={sectionStatusBadge(isMrbComplete, "MRB")}
       >
 
         <label>Product Disposition</label><br />
@@ -2308,8 +2389,9 @@ This approval becomes part of the official electronic quality record.`,
 
       <SectionCard
         title="7. Correction Implementation"
-        subtitle={record?.correction_implemented_by ? "Complete: correction implementation has been recorded." : "Pending: assign/complete correction task and document implementation."}
+        subtitle={isImplementationComplete ? "Complete: correction implementation has been recorded." : "Pending: assign/complete correction task and document implementation."}
         defaultOpen={false}
+        rightAction={sectionStatusBadge(isImplementationComplete, "Implementation")}
       >
 
         <div
@@ -2393,8 +2475,9 @@ This approval becomes part of the official electronic quality record.`,
 
       <SectionCard
         title="8. Evidence"
-        subtitle={evidenceUrl || record?.evidence_url ? "Complete: evidence is linked." : "Optional/Pending: upload or link supporting evidence."}
+        subtitle={isEvidenceComplete ? "Complete: evidence is linked." : "Optional/Pending: upload or link supporting evidence."}
         defaultOpen={false}
+        rightAction={sectionStatusBadge(isEvidenceComplete, "Evidence")}
       >
 
         <input
@@ -2441,8 +2524,9 @@ This approval becomes part of the official electronic quality record.`,
 
       <SectionCard
         title="9. Closure"
-        subtitle={record?.ncmr_closed_by || record?.status === "closed" ? "Complete: NCMR is closed and locked." : "Pending: complete closure review and e-signature."}
+        subtitle={isClosureComplete ? "Complete: NCMR is closed and locked." : "Pending: complete closure review and e-signature."}
         defaultOpen={false}
+        rightAction={sectionStatusBadge(isClosureComplete, "Closure")}
       >
 
         <label>Review Status</label><br />
