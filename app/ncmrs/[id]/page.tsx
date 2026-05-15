@@ -2540,6 +2540,47 @@ This approval becomes part of the official electronic quality record.`,
           <option value="completed">Completed</option>
         </select>
 
+        {/* Section 9 Closure Action Buttons */}
+        <div
+          style={{
+            border: "1px solid #d1d5db",
+            borderRadius: "8px",
+            padding: "12px",
+            background: "#f9fafb",
+            marginTop: "16px",
+          }}
+        >
+          <h3 style={{ marginTop: 0 }}>Closure Actions</h3>
+          <p style={{ color: "#4b5563", fontSize: "14px" }}>
+            Save workflow updates, close the NCMR with e-signature, or return to the NCMR list.
+          </p>
+
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+            <button onClick={saveWorkflow} disabled={isLocked}>
+              Save Workflow
+            </button>
+
+            <button onClick={closeNcmr} disabled={isLocked}>
+              Close NCMR with E-Signature
+            </button>
+
+            <a
+              href="/ncmrs"
+              style={{
+                display: "inline-block",
+                padding: "8px 12px",
+                border: "1px solid #d1d5db",
+                borderRadius: "6px",
+                textDecoration: "none",
+                color: "#111827",
+                background: "white",
+              }}
+            >
+              Cancel / Back to NCMRs
+            </a>
+          </div>
+        </div>
+
         {record.ncmr_closed_by ? (
           <div style={{ marginTop: "12px" }}>
             <strong>NCMR Closed By:</strong> {record.ncmr_closed_by}<br />
