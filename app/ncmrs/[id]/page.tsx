@@ -1691,49 +1691,6 @@ This approval becomes part of the official electronic quality record.`,
         </div>
       </div>
 
-      {/* NCMR Workflow Navigation Panel */}
-      <div
-        style={{
-          border: "1px solid #d1d5db",
-          borderRadius: "10px",
-          padding: "12px",
-          background: "#f9fafb",
-          marginBottom: "16px",
-        }}
-      >
-        <strong>Workflow Navigation</strong>
-        <p style={{ color: "#4b5563", marginTop: "6px", marginBottom: "10px" }}>
-          Use this as a quick visual map of the NCMR workflow. Collapsible sections below remain the official workflow record.
-        </p>
-
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-            gap: "10px",
-          }}
-        >
-          {workflowProgressSteps.map((step, index) => (
-            <div
-              key={step.label}
-              style={{
-                border: step.complete ? "1px solid #86efac" : "1px solid #d1d5db",
-                background: step.complete ? "#f0fdf4" : "white",
-                borderRadius: "10px",
-                padding: "10px",
-              }}
-            >
-              <div style={{ fontWeight: 700 }}>
-                {step.complete ? "✓" : "○"} {index + 1}. {step.label}
-              </div>
-              <div style={{ color: "#4b5563", fontSize: "13px", marginTop: "4px" }}>
-                {step.complete ? "Complete" : "Pending / In Progress"}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
       {validationErrors.length > 0 ? (
         <div
           style={{
