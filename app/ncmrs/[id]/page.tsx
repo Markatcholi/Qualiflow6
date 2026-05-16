@@ -2166,6 +2166,24 @@ This approval becomes part of the official electronic quality record.`,
           style={{ width: "100%", maxWidth: "700px" }}
         />
 
+
+        <div
+          style={
+            display: "flex",
+            gap: "8px",
+            flexWrap: "wrap",
+            marginTop: "14px",
+            borderTop: "1px solid #e5e7eb",
+            paddingTop: "12px",
+          }
+        >
+          <button type="button" onClick={saveWorkflow} disabled={isLocked}>
+            Save Section
+          </button>
+          <button type="button" onClick={() => cancelSectionChanges("containment")} disabled={isLocked}>
+            Cancel Section Changes
+          </button>
+        </div>
       </SectionCard>
 
       <SectionCard
@@ -2231,6 +2249,24 @@ This approval becomes part of the official electronic quality record.`,
           style={{ width: "100%", maxWidth: "700px" }}
         />
 
+
+        <div
+          style={
+            display: "flex",
+            gap: "8px",
+            flexWrap: "wrap",
+            marginTop: "14px",
+            borderTop: "1px solid #e5e7eb",
+            paddingTop: "12px",
+          }
+        >
+          <button type="button" onClick={saveWorkflow} disabled={isLocked}>
+            Save Section
+          </button>
+          <button type="button" onClick={() => cancelSectionChanges("investigation")} disabled={isLocked}>
+            Cancel Section Changes
+          </button>
+        </div>
       </SectionCard>
 
       <SectionCard
@@ -2270,6 +2306,24 @@ This approval becomes part of the official electronic quality record.`,
           style={{ width: "100%", maxWidth: "700px" }}
         />
 
+
+        <div
+          style={
+            display: "flex",
+            gap: "8px",
+            flexWrap: "wrap",
+            marginTop: "14px",
+            borderTop: "1px solid #e5e7eb",
+            paddingTop: "12px",
+          }
+        >
+          <button type="button" onClick={saveWorkflow} disabled={isLocked}>
+            Save Section
+          </button>
+          <button type="button" onClick={() => cancelSectionChanges("correctionProposal")} disabled={isLocked}>
+            Cancel Section Changes
+          </button>
+        </div>
       </SectionCard>
 
       <SectionCard
@@ -2381,6 +2435,24 @@ This approval becomes part of the official electronic quality record.`,
           </div>
         ) : null}
 
+
+        <div
+          style={
+            display: "flex",
+            gap: "8px",
+            flexWrap: "wrap",
+            marginTop: "14px",
+            borderTop: "1px solid #e5e7eb",
+            paddingTop: "12px",
+          }
+        >
+          <button type="button" onClick={saveWorkflow} disabled={isLocked}>
+            Save Section
+          </button>
+          <button type="button" onClick={() => cancelSectionChanges("risk")} disabled={isLocked}>
+            Cancel Section Changes
+          </button>
+        </div>
       </SectionCard>
 
       <SectionCard
@@ -2492,6 +2564,19 @@ This approval becomes part of the official electronic quality record.`,
 
             <button type="button" onClick={generateReworkTask} disabled={isLocked} style={{ marginTop: "10px" }}>
               Generate Rework Task
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setReworkTaskAssignee("");
+                setReworkTaskDueDate("");
+                setReworkTaskInstructions("");
+              }}
+              disabled={isLocked}
+              style={{ marginTop: "10px", marginLeft: "8px" }}
+            >
+              Cancel Rework Task Entry
             </button>
 
             <h4>Rework Task Status</h4>
@@ -2607,6 +2692,24 @@ This approval becomes part of the official electronic quality record.`,
           </div>
         ) : null}
 
+
+        <div
+          style={
+            display: "flex",
+            gap: "8px",
+            flexWrap: "wrap",
+            marginTop: "14px",
+            borderTop: "1px solid #e5e7eb",
+            paddingTop: "12px",
+          }
+        >
+          <button type="button" onClick={saveWorkflow} disabled={isLocked}>
+            Save Section
+          </button>
+          <button type="button" onClick={() => cancelSectionChanges("mrb")} disabled={isLocked}>
+            Cancel Section Changes
+          </button>
+        </div>
       </SectionCard>
 
       <SectionCard
@@ -2668,6 +2771,19 @@ This approval becomes part of the official electronic quality record.`,
             Generate Correction Task
           </button>
 
+          <button
+            type="button"
+            onClick={() => {
+              setCorrectionTaskAssignee("");
+              setCorrectionTaskDueDate("");
+              setCorrectionTaskInstructions("");
+            }}
+            disabled={isLocked}
+            style={{ marginTop: "10px", marginLeft: "8px" }}
+          >
+            Cancel Correction Task Entry
+          </button>
+
           <h4>Correction Task Status</h4>
           {correctionTasks.length === 0 ? <p>No correction tasks generated.</p> : <TaskStatusList tasks={correctionTasks} />}
         </div>
@@ -2693,6 +2809,24 @@ This approval becomes part of the official electronic quality record.`,
           </div>
         ) : null}
 
+
+        <div
+          style={
+            display: "flex",
+            gap: "8px",
+            flexWrap: "wrap",
+            marginTop: "14px",
+            borderTop: "1px solid #e5e7eb",
+            paddingTop: "12px",
+          }
+        >
+          <button type="button" onClick={saveWorkflow} disabled={isLocked}>
+            Save Section
+          </button>
+          <button type="button" onClick={() => cancelSectionChanges("correctionTask")} disabled={isLocked}>
+            Cancel Section Changes
+          </button>
+        </div>
       </SectionCard>
 
       <SectionCard
@@ -2742,6 +2876,24 @@ This approval becomes part of the official electronic quality record.`,
           </p>
         ) : null}
 
+
+        <div
+          style={
+            display: "flex",
+            gap: "8px",
+            flexWrap: "wrap",
+            marginTop: "14px",
+            borderTop: "1px solid #e5e7eb",
+            paddingTop: "12px",
+          }
+        >
+          <button type="button" onClick={saveWorkflow} disabled={isLocked}>
+            Save Section
+          </button>
+          <button type="button" onClick={() => cancelSectionChanges("evidence")} disabled={isLocked}>
+            Cancel Section Changes
+          </button>
+        </div>
       </SectionCard>
 
       <SectionCard
