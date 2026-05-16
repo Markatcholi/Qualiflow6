@@ -153,12 +153,12 @@ export default function SuppliersPage() {
             </small>
           </Link>
 
-          <div style={navCardStyle}>
+          <Link href="/supplier-quality/asl" style={navCardStyle}>
             <span>ASL / Qualification</span>
             <small style={{ color: "#6b7280" }}>
-              Controlled within each supplier profile.
+              Global approved supplier list and qualification control
             </small>
-          </div>
+          </Link>
         </div>
       </section>
 
