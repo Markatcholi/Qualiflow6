@@ -5,15 +5,11 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "../../../../lib/supabaseClient";
 import {
-  WorkflowSection,
-  WorkflowActionBar,
-  SaveCancelActions,
   StatusBadge,
   EmptyStateCard,
   FormField,
   standardInputStyle,
   standardTextareaStyle,
-  primaryButtonStyle,
 } from "../../../components/workflow/WorkflowComponents";
 
 export default function SupplierAuditsPage() {
@@ -68,6 +64,15 @@ export default function SupplierAuditsPage() {
     if (supplierId) fetchData();
   }, [supplierId]);
 
+  const resetAuditForm = () => {
+    setAuditTitle("");
+    setAuditType("surveillance");
+    setAuditMethod("remote");
+    setPlannedAuditDate("");
+    setLeadAuditor("");
+    setAuditScope("");
+  };
+
   const createAudit = async () => {
     if (!auditTitle.trim()) {
       alert("Audit title is required.");
@@ -112,12 +117,7 @@ export default function SupplierAuditsPage() {
     });
 
     alert("Supplier audit created.");
-    setAuditTitle("");
-    setAuditType("surveillance");
-    setAuditMethod("remote");
-    setPlannedAuditDate("");
-    setLeadAuditor("");
-    setAuditScope("");
+    resetAuditForm();
     fetchData();
   };
 
@@ -175,14 +175,22 @@ export default function SupplierAuditsPage() {
           <textarea value={auditScope} onChange={(e) => setAuditScope(e.target.value)} rows={4} style={standardTextareaStyle} />
         </FormField>
 
-        <button onClick={createAudit}>Create Audit</button>
+        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+          <button onClick={createAudit}>Create Audit</button>
+          <button type="button" onClick={resetAuditForm}>
+            Cancel
+          </button>
+        </div>
       </section>
 
       <section style={sectionStyle}>
         <h2>Supplier Audit History</h2>
 
         {audits.length === 0 ? (
-          <p>No supplier audits recorded.</p>
+          <EmptyStateCard
+            title="No supplier audits recorded"
+            message="Create a supplier audit when qualification, surveillance, for-cause, or requalification review is needed."
+          />
         ) : (
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
@@ -204,8 +212,12 @@ export default function SupplierAuditsPage() {
                   <td style={tdStyle}>{audit.audit_type || "N/A"}</td>
                   <td style={tdStyle}>{audit.audit_method || "N/A"}</td>
                   <td style={tdStyle}>{audit.planned_audit_date || "N/A"}</td>
-                  <td style={tdStyle}>{audit.audit_status || "planned"}</td>
-                  <td style={tdStyle}>{audit.audit_result || "N/A"}</td>
+                  <td style={tdStyle}>
+                    <StatusBadge status={audit.audit_status || "planned"} />
+                  </td>
+                  <td style={tdStyle}>
+                    <StatusBadge status={audit.audit_result || "N/A"} />
+                  </td>
                   <td style={tdStyle}>{audit.compliance_score ?? "N/A"}</td>
                   <td style={tdStyle}>
                     <Link href={`/suppliers/${supplierId}/audits/${audit.id}`}>Open Audit</Link>
@@ -220,15 +232,6 @@ export default function SupplierAuditsPage() {
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div style={{ marginBottom: "12px" }}>
-      <label>{label}</label><br />
-      {children}
-    </div>
-  );
-}
-
 const sectionStyle: React.CSSProperties = {
   border: "1px solid #d1d5db",
   borderRadius: "10px",
@@ -236,17 +239,7 @@ const sectionStyle: React.CSSProperties = {
   marginBottom: "20px",
 };
 
-const inputStyle: React.CSSProperties = {
-  padding: "8px",
-  width: "100%",
-  maxWidth: "700px",
-};
 
-const textareaStyle: React.CSSProperties = {
-  padding: "8px",
-  width: "100%",
-  maxWidth: "800px",
-};
 
 const thStyle: React.CSSProperties = {
   border: "1px solid #d1d5db",
