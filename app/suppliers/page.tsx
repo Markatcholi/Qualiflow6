@@ -53,10 +53,12 @@ export default function SuppliersPage() {
     display: "flex",
     flexDirection: "column",
     gap: "6px",
+    transition: "0.2s",
   };
 
   return (
     <main style={{ padding: "24px", fontFamily: "Arial" }}>
+      {/* Header */}
       <div
         style={{
           display: "flex",
@@ -68,7 +70,10 @@ export default function SuppliersPage() {
         }}
       >
         <div>
-          <h1 style={{ marginBottom: "6px" }}>Supplier Quality Management</h1>
+          <h1 style={{ marginBottom: "6px" }}>
+            Supplier Quality Management
+          </h1>
+
           <p style={{ color: "#4b5563", marginTop: 0 }}>
             Supplier qualification, audits, scorecards, receiving inspection,
             SCAR management, and supplier quality oversight.
@@ -76,10 +81,13 @@ export default function SuppliersPage() {
         </div>
 
         <Link href="/suppliers/new">
-          <button style={primaryButtonStyle}>Add Supplier</button>
+          <button style={primaryButtonStyle}>
+            Add Supplier
+          </button>
         </Link>
       </div>
 
+      {/* Navigation */}
       <section
         style={{
           border: "1px solid #d1d5db",
@@ -89,7 +97,9 @@ export default function SuppliersPage() {
           background: "#f9fafb",
         }}
       >
-        <h2 style={{ marginTop: 0 }}>Supplier Quality Navigation</h2>
+        <h2 style={{ marginTop: 0 }}>
+          Supplier Quality Navigation
+        </h2>
 
         <div
           style={{
@@ -101,42 +111,53 @@ export default function SuppliersPage() {
         >
           <Link href="/suppliers" style={navCardStyle}>
             <span>Supplier List</span>
-            <small style={{ color: "#6b7280" }}>View and manage suppliers</small>
+            <small style={{ color: "#6b7280" }}>
+              View and manage suppliers
+            </small>
           </Link>
 
           <Link href="/supplier-quality-dashboard" style={navCardStyle}>
             <span>Supplier Dashboard</span>
-            <small style={{ color: "#6b7280" }}>Supplier quality KPIs and trends</small>
+            <small style={{ color: "#6b7280" }}>
+              Supplier quality KPIs and trends
+            </small>
           </Link>
 
           <Link href="/supplier-quality/scorecards" style={navCardStyle}>
             <span>Supplier Scorecards</span>
-            <small style={{ color: "#6b7280" }}>Supplier performance monitoring</small>
+            <small style={{ color: "#6b7280" }}>
+              Supplier performance monitoring
+            </small>
           </Link>
 
           <Link href="/supplier-quality/scars" style={navCardStyle}>
             <span>SCAR Management</span>
-            <small style={{ color: "#6b7280" }}>Supplier corrective actions</small>
+            <small style={{ color: "#6b7280" }}>
+              Supplier corrective actions
+            </small>
           </Link>
 
-          <div style={navCardStyle}>
+          <Link href="/supplier-quality/audits" style={navCardStyle}>
             <span>Supplier Audits</span>
             <small style={{ color: "#6b7280" }}>
-              Open a supplier profile, then select Supplier Audits.
+              Global audit register and audit creation
             </small>
-          </div>
+          </Link>
+
+          <Link
+            href="/supplier-quality/receiving-inspections"
+            style={navCardStyle}
+          >
+            <span>Receiving Inspection</span>
+            <small style={{ color: "#6b7280" }}>
+              Global inspection register for enabled suppliers
+            </small>
+          </Link>
 
           <div style={navCardStyle}>
             <span>Supplier Documents</span>
             <small style={{ color: "#6b7280" }}>
               Open a supplier profile, then select Supplier Documents.
-            </small>
-          </div>
-
-          <div style={navCardStyle}>
-            <span>Receiving Inspection</span>
-            <small style={{ color: "#6b7280" }}>
-              Optional per supplier. Enable/open from the supplier profile.
             </small>
           </div>
 
@@ -149,6 +170,7 @@ export default function SuppliersPage() {
         </div>
       </section>
 
+      {/* Search */}
       <div
         style={{
           marginBottom: "20px",
@@ -169,9 +191,12 @@ export default function SuppliersPage() {
           }}
         />
 
-        <div style={{ color: "#6b7280" }}>{suppliers.length} supplier(s)</div>
+        <div style={{ color: "#6b7280" }}>
+          {suppliers.length} supplier(s)
+        </div>
       </div>
 
+      {/* Supplier Table */}
       {loading ? (
         <p>Loading suppliers...</p>
       ) : suppliers.length === 0 ? (
@@ -180,12 +205,19 @@ export default function SuppliersPage() {
           message="Create a supplier to begin supplier qualification and quality management."
           action={
             <Link href="/suppliers/new">
-              <button style={primaryButtonStyle}>Add Supplier</button>
+              <button style={primaryButtonStyle}>
+                Add Supplier
+              </button>
             </Link>
           }
         />
       ) : (
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <table
+          style={{
+            width: "100%",
+            borderCollapse: "collapse",
+          }}
+        >
           <thead>
             <tr>
               <th style={thStyle}>Supplier Number</th>
@@ -201,26 +233,40 @@ export default function SuppliersPage() {
           <tbody>
             {suppliers.map((supplier) => (
               <tr key={supplier.id}>
-                <td style={tdStyle}>{supplier.supplier_number || "N/A"}</td>
-
                 <td style={tdStyle}>
-                  <strong>{supplier.supplier_name || "Unnamed Supplier"}</strong>
-                </td>
-
-                <td style={tdStyle}>{supplier.supplier_category || "N/A"}</td>
-
-                <td style={tdStyle}>
-                  <StatusBadge status={supplier.supplier_status || "unknown"} />
+                  {supplier.supplier_number || "N/A"}
                 </td>
 
                 <td style={tdStyle}>
-                  <StatusBadge status={supplier.supplier_risk_level || "unknown"} />
+                  <strong>
+                    {supplier.supplier_name || "Unnamed Supplier"}
+                  </strong>
                 </td>
 
-                <td style={tdStyle}>{supplier.iso_expiration_date || "N/A"}</td>
+                <td style={tdStyle}>
+                  {supplier.supplier_category || "N/A"}
+                </td>
 
                 <td style={tdStyle}>
-                  <Link href={`/suppliers/${supplier.id}`}>Open Supplier</Link>
+                  <StatusBadge
+                    status={supplier.supplier_status || "unknown"}
+                  />
+                </td>
+
+                <td style={tdStyle}>
+                  <StatusBadge
+                    status={supplier.supplier_risk_level || "unknown"}
+                  />
+                </td>
+
+                <td style={tdStyle}>
+                  {supplier.iso_expiration_date || "N/A"}
+                </td>
+
+                <td style={tdStyle}>
+                  <Link href={`/suppliers/${supplier.id}`}>
+                    Open Supplier
+                  </Link>
                 </td>
               </tr>
             ))}
