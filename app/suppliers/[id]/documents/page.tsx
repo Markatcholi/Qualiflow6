@@ -4,6 +4,17 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "../../../../lib/supabaseClient";
+import {
+  WorkflowSection,
+  WorkflowActionBar,
+  SaveCancelActions,
+  StatusBadge,
+  EmptyStateCard,
+  FormField,
+  standardInputStyle,
+  standardTextareaStyle,
+  primaryButtonStyle,
+} from "../../../components/workflow/WorkflowComponents";
 
 export default function SupplierDocumentsPage() {
   const params = useParams<{ id: string }>();
@@ -211,42 +222,22 @@ export default function SupplierDocumentsPage() {
         <Link href={`/suppliers/${supplierId}`}>Supplier Profile</Link>
       </div>
 
-      <section style={sectionStyle}>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            gap: "12px",
-            alignItems: "center",
-            flexWrap: "wrap",
-          }}
-        >
-          <div>
-            <h2 style={{ marginBottom: "4px" }}>Supplier Documents</h2>
-            <p style={{ color: "#4b5563", marginTop: 0 }}>
-              Add supplier documents using an uploaded file, an external URL/storage link, or both.
-            </p>
-          </div>
-
-          {!showAddForm ? (
+      <WorkflowSection
+        title="Supplier Documents"
+        subtitle="Add supplier documents using an uploaded file, an external URL/storage link, or both."
+        defaultOpen={true}
+        rightAction={
+          !showAddForm ? (
             <button
               type="button"
               onClick={() => setShowAddForm(true)}
-              style={{
-                padding: "8px 12px",
-                background: "#2563eb",
-                color: "white",
-                border: "none",
-                borderRadius: "6px",
-                cursor: "pointer",
-                fontWeight: 600,
-              }}
+              style={primaryButtonStyle}
             >
               + Add Supplier Document
             </button>
-          ) : null}
-        </div>
-
+          ) : null
+        }
+      >
         {showAddForm ? (
           <div
             style={{
@@ -259,12 +250,12 @@ export default function SupplierDocumentsPage() {
           >
             <h3 style={{ marginTop: 0 }}>New Supplier Document</h3>
 
-            <Field label="Document Title">
-              <input value={documentTitle} onChange={(e) => setDocumentTitle(e.target.value)} style={inputStyle} />
-            </Field>
+            <FormField label="Document Title">
+              <input value={documentTitle} onChange={(e) => setDocumentTitle(e.target.value)} style={standardInputStyle} />
+            </FormField>
 
-            <Field label="Document Type">
-              <select value={documentType} onChange={(e) => setDocumentType(e.target.value)} style={inputStyle}>
+            <FormField label="Document Type">
+              <select value={documentType} onChange={(e) => setDocumentType(e.target.value)} style={standardInputStyle}>
                 <option value="quality_agreement">Quality Agreement</option>
                 <option value="iso_certificate">ISO Certificate</option>
                 <option value="audit_report">Audit Report</option>
@@ -273,24 +264,24 @@ export default function SupplierDocumentsPage() {
                 <option value="supplier_questionnaire">Supplier Questionnaire</option>
                 <option value="other">Other</option>
               </select>
-            </Field>
+            </FormField>
 
-            <Field label="Document Status">
-              <select value={documentStatus} onChange={(e) => setDocumentStatus(e.target.value)} style={inputStyle}>
+            <FormField label="Document Status">
+              <select value={documentStatus} onChange={(e) => setDocumentStatus(e.target.value)} style={standardInputStyle}>
                 <option value="active">Active</option>
                 <option value="pending_review">Pending Review</option>
                 <option value="expired">Expired</option>
                 <option value="retired">Retired</option>
               </select>
-            </Field>
+            </FormField>
 
-            <Field label="Effective Date">
-              <input type="date" value={effectiveDate} onChange={(e) => setEffectiveDate(e.target.value)} style={inputStyle} />
-            </Field>
+            <FormField label="Effective Date">
+              <input type="date" value={effectiveDate} onChange={(e) => setEffectiveDate(e.target.value)} style={standardInputStyle} />
+            </FormField>
 
-            <Field label="Expiration Date">
-              <input type="date" value={expirationDate} onChange={(e) => setExpirationDate(e.target.value)} style={inputStyle} />
-            </Field>
+            <FormField label="Expiration Date">
+              <input type="date" value={expirationDate} onChange={(e) => setExpirationDate(e.target.value)} style={standardInputStyle} />
+            </FormField>
 
             <div
               style={{
@@ -343,44 +334,40 @@ export default function SupplierDocumentsPage() {
                 value={documentUrl}
                 onChange={(e) => setDocumentUrl(e.target.value)}
                 placeholder="SharePoint, Google Drive, Supabase, or other controlled document link"
-                style={inputStyle}
+                style={standardInputStyle}
               />
             </div>
 
-            <Field label="Notes">
-              <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} style={textareaStyle} />
-            </Field>
+            <FormField label="Notes">
+              <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} style={standardTextareaStyle} />
+            </FormField>
 
-            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-              <button
-                type="button"
-                onClick={addDocument}
-                style={{
-                  padding: "8px 12px",
-                  background: "#16a34a",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "6px",
-                  cursor: "pointer",
-                  fontWeight: 600,
-                }}
-              >
-                Save Document
-              </button>
-
-              <button type="button" onClick={resetForm}>
-                Cancel
-              </button>
-            </div>
+            <SaveCancelActions
+              onSave={addDocument}
+              onCancel={resetForm}
+              saveLabel="Save Document"
+              cancelLabel="Cancel"
+            />
           </div>
         ) : null}
-      </section>
+      </WorkflowSection>
 
-      <section style={sectionStyle}>
-        <h2>Supplier Document Register</h2>
+      <WorkflowSection
+        title="Supplier Document Register"
+        subtitle="Controlled supplier document register with upload, external link, expiration, and retirement tracking."
+        defaultOpen={true}
+      >
 
         {documents.length === 0 ? (
-          <p>No supplier documents recorded.</p>
+          <EmptyStateCard
+            title="No supplier documents recorded"
+            message="Use + Add Supplier Document to add a quality agreement, certificate, audit report, or supplier questionnaire."
+            action={
+              <button type="button" onClick={() => setShowAddForm(true)} style={primaryButtonStyle}>
+                + Add Supplier Document
+              </button>
+            }
+          />
         ) : (
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
@@ -405,7 +392,9 @@ export default function SupplierDocumentsPage() {
                   <tr key={doc.id}>
                     <td style={tdStyle}>{doc.document_title || "N/A"}</td>
                     <td style={tdStyle}>{doc.document_type || "N/A"}</td>
-                    <td style={tdStyle}>{doc.document_status || "N/A"}</td>
+                    <td style={tdStyle}>
+                      <StatusBadge status={doc.document_status || "N/A"} />
+                    </td>
                     <td style={tdStyle}>{doc.effective_date || "N/A"}</td>
                     <td style={tdStyle}>{doc.expiration_date || "N/A"}</td>
                     <td style={tdStyle}>{alertText}</td>
@@ -430,38 +419,10 @@ export default function SupplierDocumentsPage() {
             </tbody>
           </table>
         )}
-      </section>
+      </WorkflowSection>
     </main>
   );
 }
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div style={{ marginBottom: "12px" }}>
-      <label>{label}</label><br />
-      {children}
-    </div>
-  );
-}
-
-const sectionStyle: React.CSSProperties = {
-  border: "1px solid #d1d5db",
-  borderRadius: "10px",
-  padding: "14px",
-  marginBottom: "20px",
-};
-
-const inputStyle: React.CSSProperties = {
-  padding: "8px",
-  width: "100%",
-  maxWidth: "700px",
-};
-
-const textareaStyle: React.CSSProperties = {
-  padding: "8px",
-  width: "100%",
-  maxWidth: "800px",
-};
 
 const thStyle: React.CSSProperties = {
   border: "1px solid #d1d5db",
