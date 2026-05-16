@@ -17,6 +17,7 @@ export default function NcmrDetailPage() {
   const [mrbApprovers, setMrbApprovers] = useState<any[]>([]);
   const [affectedItems, setAffectedItems] = useState<any[]>([]);
   const [auditTimeline, setAuditTimeline] = useState<any[]>([]);
+  const [timelineFilter, setTimelineFilter] = useState("");
   const [loading, setLoading] = useState(true);
 
   const [userEmail, setUserEmail] = useState("");
@@ -1607,6 +1608,72 @@ This approval becomes part of the official electronic quality record.`,
   const isEvidenceComplete = !!evidenceUrl || !!record?.evidence_url;
   const isClosureComplete = !!record?.ncmr_closed_by || record?.status === "closed";
 
+  const recordAgeDays = record?.created_at
+    ? Math.max(
+        0,
+        Math.floor(
+          (new Date().getTime() - new Date(record.created_at).getTime()) /
+            (1000 * 60 * 60 * 24)
+        )
+      )
+    : 0;
+
+  const closureTargetDays = 45;
+  const dispositionTargetDays = 15;
+
+  const closureSlaStatus =
+    record?.status === "closed"
+      ? "Closed"
+      : recordAgeDays > closureTargetDays
+      ? "Overdue"
+      : recordAgeDays > 35
+      ? "At Risk"
+      : "On Track";
+
+  const dispositionSlaStatus =
+    record?.mrb_approved_by
+      ? "Complete"
+      : recordAgeDays > dispositionTargetDays
+      ? "Overdue"
+      : recordAgeDays > 10
+      ? "At Risk"
+      : "On Track";
+
+  const approvalHistory = approvalTasks.filter(
+    (task) => task.status === "approved" || task.status === "rejected"
+  );
+
+  const filteredAuditTimeline = timelineFilter
+    ? auditTimeline.filter((event) =>
+        [event.action, event.details, event.user_email]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase()
+          .includes(timelineFilter.trim().toLowerCase())
+      )
+    : auditTimeline;
+
+  const metricCard = (label: string, value: any, helperText?: string) => (
+    <div
+      style={{
+        border: "1px solid #d1d5db",
+        borderRadius: "10px",
+        padding: "12px",
+        background: "#f9fafb",
+      }}
+    >
+      <div style={{ color: "#4b5563", fontSize: "13px", marginBottom: "4px" }}>
+        {label}
+      </div>
+      <div style={{ fontSize: "22px", fontWeight: 700 }}>{value}</div>
+      {helperText ? (
+        <div style={{ color: "#6b7280", fontSize: "12px", marginTop: "4px" }}>
+          {helperText}
+        </div>
+      ) : null}
+    </div>
+  );
+
   return (
     <main style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
       <h1>NCMR Controlled Workflow</h1>
@@ -1644,6 +1711,46 @@ This approval becomes part of the official electronic quality record.`,
           </div>
         </div>
       </div>
+
+      {/* Phase 3 Executive Workflow Summary */}
+      <SectionCard
+        title="Executive Workflow Summary"
+        subtitle="High-level NCMR health, aging, SLA, approval, and closure readiness indicators."
+        defaultOpen={true}
+      >
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+            gap: "12px",
+          }}
+        >
+          {metricCard("Record Age", `${recordAgeDays} day(s)`, "Days since NCMR creation")}
+          {metricCard("Workflow Progress", `${workflowPercentComplete}%`, `${completedWorkflowSteps} of ${workflowProgressSteps.length} sections complete`)}
+          {metricCard("Disposition SLA", dispositionSlaStatus, `Target: MRB disposition ≤ ${dispositionTargetDays} days`)}
+          {metricCard("Closure SLA", closureSlaStatus, `Target: closure ≤ ${closureTargetDays} days`)}
+          {metricCard("Approval Tasks", `${approvalTasks.filter((task) => task.status === "approved").length}/${approvalTasks.length}`, "Approved / total MRB approval tasks")}
+          {metricCard("Timeline Events", auditTimeline.length, "Audit log activity count")}
+        </div>
+
+        <div
+          style={{
+            marginTop: "14px",
+            border: "1px solid #cbd5e1",
+            borderRadius: "8px",
+            padding: "12px",
+            background: "white",
+          }}
+        >
+          <strong>Executive Readiness</strong>
+          <div style={{ marginTop: "8px", display: "grid", gap: "6px" }}>
+            <div>{isRiskAssessmentComplete ? "✓" : "○"} Risk assessment complete</div>
+            <div>{isMrbComplete ? "✓" : "○"} MRB approval complete</div>
+            <div>{isImplementationComplete ? "✓" : "○"} Correction implementation complete</div>
+            <div>{isClosureComplete ? "✓" : "○"} NCMR closure complete</div>
+          </div>
+        </div>
+      </SectionCard>
 
       {/* NCMR StatusBadge Row */}
       <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "16px" }}>
@@ -1755,6 +1862,13 @@ This approval becomes part of the official electronic quality record.`,
               onClick={() => window.open(`/ncmrs/${id}/report`, "_blank")}
             >
               Print Report
+            </button>
+
+            <button
+              type="button"
+              onClick={() => window.print()}
+            >
+              Print Summary
             </button>
 
             {linkedCapa ? (
@@ -2554,6 +2668,66 @@ This approval becomes part of the official electronic quality record.`,
       </SectionCard>
 
       <SectionCard
+        title="MRB Approval History"
+        subtitle="Approval task decisions, signer identity, comments, and timestamps."
+        defaultOpen={false}
+        rightAction={
+          <span
+            style={{
+              border: "1px solid #d1d5db",
+              background: "#f9fafb",
+              color: "#374151",
+              borderRadius: "999px",
+              padding: "4px 10px",
+              fontSize: "12px",
+              fontWeight: 700,
+            }}
+          >
+            {approvalHistory.length} decision(s)
+          </span>
+        }
+      >
+        {approvalTasks.length === 0 ? (
+          <p>No MRB approval tasks generated yet.</p>
+        ) : (
+          <div style={{ display: "grid", gap: "12px" }}>
+            {approvalTasks.map((task) => (
+              <div
+                key={task.id}
+                style={{
+                  border:
+                    task.status === "approved"
+                      ? "1px solid #86efac"
+                      : task.status === "rejected"
+                      ? "1px solid #fca5a5"
+                      : "1px solid #facc15",
+                  background:
+                    task.status === "approved"
+                      ? "#f0fdf4"
+                      : task.status === "rejected"
+                      ? "#fef2f2"
+                      : "#fefce8",
+                  borderRadius: "10px",
+                  padding: "12px",
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", flexWrap: "wrap" }}>
+                  <strong>{task.required_function || task.task_title || "Approval Task"}</strong>
+                  <span>{task.status || "pending"}</span>
+                </div>
+                <div style={{ marginTop: "8px", fontSize: "14px" }}>
+                  <div><strong>Assigned To:</strong> {task.assigned_to_email || "N/A"}</div>
+                  <div><strong>Signed By:</strong> {task.signed_by || "N/A"}</div>
+                  <div><strong>Signed At:</strong> {task.signed_at || "N/A"}</div>
+                  <div><strong>Comment:</strong> {task.approver_comment || "N/A"}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </SectionCard>
+
+      <SectionCard
         title="NCMR Timeline / Activity Feed"
         subtitle="Audit-ready history of major NCMR actions captured from audit logs."
         defaultOpen={false}
@@ -2573,11 +2747,33 @@ This approval becomes part of the official electronic quality record.`,
           </span>
         }
       >
+        <div style={{ marginBottom: "12px" }}>
+          <label>Filter timeline events</label><br />
+          <input
+            value={timelineFilter}
+            onChange={(e) => setTimelineFilter(e.target.value)}
+            placeholder="Search action, details, or user"
+            style={{ width: "100%", maxWidth: "500px", padding: "8px" }}
+          />
+
+          {timelineFilter ? (
+            <button
+              type="button"
+              onClick={() => setTimelineFilter("")}
+              style={{ marginLeft: "8px" }}
+            >
+              Clear
+            </button>
+          ) : null}
+        </div>
+
         {auditTimeline.length === 0 ? (
           <p>No activity recorded yet.</p>
+        ) : filteredAuditTimeline.length === 0 ? (
+          <p>No timeline events match the filter.</p>
         ) : (
           <div style={{ display: "grid", gap: "12px" }}>
-            {auditTimeline.map((event) => (
+            {filteredAuditTimeline.map((event) => (
               <div
                 key={event.id}
                 style={{
