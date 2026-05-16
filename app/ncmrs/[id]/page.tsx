@@ -83,7 +83,6 @@ export default function NcmrDetailPage() {
   const [summaryLotNumber, setSummaryLotNumber] = useState("");
   const [summaryWorkorderNumber, setSummaryWorkorderNumber] = useState("");
   const [summaryOwner, setSummaryOwner] = useState("");
-  const [initialWorkflowSnapshot, setInitialWorkflowSnapshot] = useState<any>(null);
 
 
   const fetchUserRole = async () => {
@@ -279,27 +278,6 @@ export default function NcmrDetailPage() {
     setAdditionalMrbApprovers(data.mrb_additional_approvers || "");
     setEvidenceUrl(data.evidence_url || "");
     setEvidenceNotes(data.evidence_notes || "");
-
-    setInitialWorkflowSnapshot({
-      investigator: data.investigator || "",
-      problemDescription: data.problem_description || "",
-      containmentAction: data.containment_action || "",
-      investigationSummary: data.investigation_summary || "",
-      rootCause: data.root_cause || "",
-      rootCauseCategory: data.root_cause_category || "",
-      correctionActionProposal: data.correction_action_proposal || "",
-      correctiveAction: data.corrective_action || "",
-      riskAssessment: data.risk_assessment || "",
-      severity: data.severity || "not_assessed",
-      capaJustification: data.capa_justification || "",
-      capaDecision: data.capa_decision || "",
-      capaDecisionJustification: data.capa_decision_justification || "",
-      productDisposition: data.product_disposition || data.disposition || "",
-      dispositionJustification: data.disposition_justification || "",
-      correctionImplementation: data.correction_implementation || "",
-      evidenceUrl: data.evidence_url || "",
-      evidenceNotes: data.evidence_notes || "",
-    });
 
     await fetchLinkedCapa(data.capa_id || null);
     await fetchMrbApprovers();
@@ -1436,61 +1414,6 @@ This approval becomes part of the official electronic quality record.`,
     fetchRecord();
   };
 
-
-  const cancelSectionChanges = (section: string) => {
-    if (!initialWorkflowSnapshot) {
-      alert("No saved snapshot available to restore.");
-      return;
-    }
-
-    if (section === "containment") {
-      setInvestigator(initialWorkflowSnapshot.investigator);
-      setProblemDescription(initialWorkflowSnapshot.problemDescription);
-      setContainmentAction(initialWorkflowSnapshot.containmentAction);
-    }
-
-    if (section === "investigation") {
-      setInvestigationSummary(initialWorkflowSnapshot.investigationSummary);
-      setRootCause(initialWorkflowSnapshot.rootCause);
-      setRootCauseCategory(initialWorkflowSnapshot.rootCauseCategory);
-    }
-
-    if (section === "correctionProposal") {
-      setCorrectionActionProposal(initialWorkflowSnapshot.correctionActionProposal);
-      setCorrectiveAction(initialWorkflowSnapshot.correctiveAction);
-    }
-
-    if (section === "risk") {
-      setRiskAssessment(initialWorkflowSnapshot.riskAssessment);
-      setSeverity(initialWorkflowSnapshot.severity);
-      setCapaJustification(initialWorkflowSnapshot.capaJustification);
-      setCapaDecision(initialWorkflowSnapshot.capaDecision);
-      setCapaDecisionJustification(initialWorkflowSnapshot.capaDecisionJustification);
-    }
-
-    if (section === "mrb") {
-      setProductDisposition(initialWorkflowSnapshot.productDisposition);
-      setDispositionJustification(initialWorkflowSnapshot.dispositionJustification);
-      setMrbSignatureEmail("");
-      setAdditionalMrbApprovers(record?.mrb_additional_approvers || "");
-    }
-
-    if (section === "correctionTask") {
-      setCorrectionTaskAssignee("");
-      setCorrectionTaskDueDate("");
-      setCorrectionTaskInstructions("");
-      setCorrectionImplementation(initialWorkflowSnapshot.correctionImplementation);
-    }
-
-    if (section === "evidence") {
-      setEvidenceUrl(initialWorkflowSnapshot.evidenceUrl);
-      setEvidenceNotes(initialWorkflowSnapshot.evidenceNotes);
-      setSelectedFile(null);
-    }
-
-    alert("Section changes reverted to the last saved record values.");
-  };
-
   const closeNcmr = async () => {
     if (record?.is_locked) {
       alert("This record is locked after electronic signature and cannot be edited.");
@@ -1729,6 +1652,37 @@ This approval becomes part of the official electronic quality record.`,
           .includes(timelineFilter.trim().toLowerCase())
       )
     : auditTimeline;
+
+  const cancelCurrentFormChanges = () => {
+    fetchRecord();
+    setCorrectionTaskAssignee("");
+    setCorrectionTaskDueDate("");
+    setCorrectionTaskInstructions("");
+    setReworkTaskAssignee("");
+    setReworkTaskDueDate("");
+    setReworkTaskInstructions("");
+    alert("Unsaved changes were reverted to the last saved record.");
+  };
+
+  const SectionSaveCancelActions = () => (
+    <div
+      style={{
+        display: "flex",
+        gap: "8px",
+        flexWrap: "wrap",
+        marginTop: "14px",
+        borderTop: "1px solid #e5e7eb",
+        paddingTop: "12px",
+      }}
+    >
+      <button type="button" onClick={saveWorkflow} disabled={isLocked}>
+        Save Section
+      </button>
+      <button type="button" onClick={cancelCurrentFormChanges} disabled={isLocked}>
+        Cancel Section Changes
+      </button>
+    </div>
+  );
 
   const metricCard = (label: string, value: any, helperText?: string) => (
     <div
@@ -2166,24 +2120,7 @@ This approval becomes part of the official electronic quality record.`,
           style={{ width: "100%", maxWidth: "700px" }}
         />
 
-
-        <div
-          style={
-            display: "flex",
-            gap: "8px",
-            flexWrap: "wrap",
-            marginTop: "14px",
-            borderTop: "1px solid #e5e7eb",
-            paddingTop: "12px",
-          }
-        >
-          <button type="button" onClick={saveWorkflow} disabled={isLocked}>
-            Save Section
-          </button>
-          <button type="button" onClick={() => cancelSectionChanges("containment")} disabled={isLocked}>
-            Cancel Section Changes
-          </button>
-        </div>
+        <SectionSaveCancelActions />
       </SectionCard>
 
       <SectionCard
@@ -2249,24 +2186,7 @@ This approval becomes part of the official electronic quality record.`,
           style={{ width: "100%", maxWidth: "700px" }}
         />
 
-
-        <div
-          style={
-            display: "flex",
-            gap: "8px",
-            flexWrap: "wrap",
-            marginTop: "14px",
-            borderTop: "1px solid #e5e7eb",
-            paddingTop: "12px",
-          }
-        >
-          <button type="button" onClick={saveWorkflow} disabled={isLocked}>
-            Save Section
-          </button>
-          <button type="button" onClick={() => cancelSectionChanges("investigation")} disabled={isLocked}>
-            Cancel Section Changes
-          </button>
-        </div>
+        <SectionSaveCancelActions />
       </SectionCard>
 
       <SectionCard
@@ -2306,24 +2226,7 @@ This approval becomes part of the official electronic quality record.`,
           style={{ width: "100%", maxWidth: "700px" }}
         />
 
-
-        <div
-          style={
-            display: "flex",
-            gap: "8px",
-            flexWrap: "wrap",
-            marginTop: "14px",
-            borderTop: "1px solid #e5e7eb",
-            paddingTop: "12px",
-          }
-        >
-          <button type="button" onClick={saveWorkflow} disabled={isLocked}>
-            Save Section
-          </button>
-          <button type="button" onClick={() => cancelSectionChanges("correctionProposal")} disabled={isLocked}>
-            Cancel Section Changes
-          </button>
-        </div>
+        <SectionSaveCancelActions />
       </SectionCard>
 
       <SectionCard
@@ -2435,24 +2338,7 @@ This approval becomes part of the official electronic quality record.`,
           </div>
         ) : null}
 
-
-        <div
-          style={
-            display: "flex",
-            gap: "8px",
-            flexWrap: "wrap",
-            marginTop: "14px",
-            borderTop: "1px solid #e5e7eb",
-            paddingTop: "12px",
-          }
-        >
-          <button type="button" onClick={saveWorkflow} disabled={isLocked}>
-            Save Section
-          </button>
-          <button type="button" onClick={() => cancelSectionChanges("risk")} disabled={isLocked}>
-            Cancel Section Changes
-          </button>
-        </div>
+        <SectionSaveCancelActions />
       </SectionCard>
 
       <SectionCard
@@ -2565,7 +2451,6 @@ This approval becomes part of the official electronic quality record.`,
             <button type="button" onClick={generateReworkTask} disabled={isLocked} style={{ marginTop: "10px" }}>
               Generate Rework Task
             </button>
-
             <button
               type="button"
               onClick={() => {
@@ -2692,24 +2577,7 @@ This approval becomes part of the official electronic quality record.`,
           </div>
         ) : null}
 
-
-        <div
-          style={
-            display: "flex",
-            gap: "8px",
-            flexWrap: "wrap",
-            marginTop: "14px",
-            borderTop: "1px solid #e5e7eb",
-            paddingTop: "12px",
-          }
-        >
-          <button type="button" onClick={saveWorkflow} disabled={isLocked}>
-            Save Section
-          </button>
-          <button type="button" onClick={() => cancelSectionChanges("mrb")} disabled={isLocked}>
-            Cancel Section Changes
-          </button>
-        </div>
+        <SectionSaveCancelActions />
       </SectionCard>
 
       <SectionCard
@@ -2770,7 +2638,6 @@ This approval becomes part of the official electronic quality record.`,
           <button type="button" onClick={generateCorrectionTask} disabled={isLocked} style={{ marginTop: "10px" }}>
             Generate Correction Task
           </button>
-
           <button
             type="button"
             onClick={() => {
@@ -2809,24 +2676,7 @@ This approval becomes part of the official electronic quality record.`,
           </div>
         ) : null}
 
-
-        <div
-          style={
-            display: "flex",
-            gap: "8px",
-            flexWrap: "wrap",
-            marginTop: "14px",
-            borderTop: "1px solid #e5e7eb",
-            paddingTop: "12px",
-          }
-        >
-          <button type="button" onClick={saveWorkflow} disabled={isLocked}>
-            Save Section
-          </button>
-          <button type="button" onClick={() => cancelSectionChanges("correctionTask")} disabled={isLocked}>
-            Cancel Section Changes
-          </button>
-        </div>
+        <SectionSaveCancelActions />
       </SectionCard>
 
       <SectionCard
@@ -2876,24 +2726,7 @@ This approval becomes part of the official electronic quality record.`,
           </p>
         ) : null}
 
-
-        <div
-          style={
-            display: "flex",
-            gap: "8px",
-            flexWrap: "wrap",
-            marginTop: "14px",
-            borderTop: "1px solid #e5e7eb",
-            paddingTop: "12px",
-          }
-        >
-          <button type="button" onClick={saveWorkflow} disabled={isLocked}>
-            Save Section
-          </button>
-          <button type="button" onClick={() => cancelSectionChanges("evidence")} disabled={isLocked}>
-            Cancel Section Changes
-          </button>
-        </div>
+        <SectionSaveCancelActions />
       </SectionCard>
 
       <SectionCard
@@ -3473,34 +3306,6 @@ function AffectedItemCard({
     item.final_rework_quantity_rejected,
   ]);
 
-  const cancelItemDispositionChanges = () => {
-    setProductDisposition(item.product_disposition || "");
-    setDispositionJustification(item.disposition_justification || "");
-    setQuantityAccepted(
-      item.quantity_accepted !== null && item.quantity_accepted !== undefined
-        ? String(item.quantity_accepted)
-        : ""
-    );
-    setQuantityRejected(
-      item.quantity_rejected !== null && item.quantity_rejected !== undefined
-        ? String(item.quantity_rejected)
-        : ""
-    );
-    setFinalDispositionAfterRework(item.final_disposition_after_rework || "");
-    setFinalReworkQuantityAccepted(
-      item.final_rework_quantity_accepted !== null &&
-        item.final_rework_quantity_accepted !== undefined
-        ? String(item.final_rework_quantity_accepted)
-        : ""
-    );
-    setFinalReworkQuantityRejected(
-      item.final_rework_quantity_rejected !== null &&
-        item.final_rework_quantity_rejected !== undefined
-        ? String(item.final_rework_quantity_rejected)
-        : ""
-    );
-  };
-
   return (
     <div
       style={{
@@ -3652,15 +3457,6 @@ function AffectedItemCard({
           style={{ width: "fit-content" }}
         >
           Save Item Disposition
-        </button>
-
-        <button
-          type="button"
-          onClick={cancelItemDispositionChanges}
-          disabled={isLocked}
-          style={{ width: "fit-content" }}
-        >
-          Cancel Item Changes
         </button>
 
         <div
