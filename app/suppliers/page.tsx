@@ -58,7 +58,6 @@ export default function SuppliersPage() {
 
   return (
     <main style={{ padding: "24px", fontFamily: "Arial" }}>
-      {/* Header */}
       <div
         style={{
           display: "flex",
@@ -70,24 +69,19 @@ export default function SuppliersPage() {
         }}
       >
         <div>
-          <h1 style={{ marginBottom: "6px" }}>
-            Supplier Quality Management
-          </h1>
-
+          <h1 style={{ marginBottom: "6px" }}>Supplier Quality Management</h1>
           <p style={{ color: "#4b5563", marginTop: 0 }}>
             Supplier qualification, audits, scorecards, receiving inspection,
-            SCAR management, and supplier quality oversight.
+            SCAR management, supplier documents, ASL governance, and supplier
+            quality oversight.
           </p>
         </div>
 
         <Link href="/suppliers/new">
-          <button style={primaryButtonStyle}>
-            Add Supplier
-          </button>
+          <button style={primaryButtonStyle}>Add Supplier</button>
         </Link>
       </div>
 
-      {/* Navigation */}
       <section
         style={{
           border: "1px solid #d1d5db",
@@ -97,9 +91,7 @@ export default function SuppliersPage() {
           background: "#f9fafb",
         }}
       >
-        <h2 style={{ marginTop: 0 }}>
-          Supplier Quality Navigation
-        </h2>
+        <h2 style={{ marginTop: 0 }}>Supplier Quality Navigation</h2>
 
         <div
           style={{
@@ -154,12 +146,12 @@ export default function SuppliersPage() {
             </small>
           </Link>
 
-          <div style={navCardStyle}>
+          <Link href="/supplier-quality/documents" style={navCardStyle}>
             <span>Supplier Documents</span>
             <small style={{ color: "#6b7280" }}>
-              Open a supplier profile, then select Supplier Documents.
+              Global supplier document management
             </small>
-          </div>
+          </Link>
 
           <div style={navCardStyle}>
             <span>ASL / Qualification</span>
@@ -170,7 +162,6 @@ export default function SuppliersPage() {
         </div>
       </section>
 
-      {/* Search */}
       <div
         style={{
           marginBottom: "20px",
@@ -196,7 +187,6 @@ export default function SuppliersPage() {
         </div>
       </div>
 
-      {/* Supplier Table */}
       {loading ? (
         <p>Loading suppliers...</p>
       ) : suppliers.length === 0 ? (
@@ -205,9 +195,7 @@ export default function SuppliersPage() {
           message="Create a supplier to begin supplier qualification and quality management."
           action={
             <Link href="/suppliers/new">
-              <button style={primaryButtonStyle}>
-                Add Supplier
-              </button>
+              <button style={primaryButtonStyle}>Add Supplier</button>
             </Link>
           }
         />
@@ -233,24 +221,16 @@ export default function SuppliersPage() {
           <tbody>
             {suppliers.map((supplier) => (
               <tr key={supplier.id}>
-                <td style={tdStyle}>
-                  {supplier.supplier_number || "N/A"}
-                </td>
+                <td style={tdStyle}>{supplier.supplier_number || "N/A"}</td>
 
                 <td style={tdStyle}>
-                  <strong>
-                    {supplier.supplier_name || "Unnamed Supplier"}
-                  </strong>
+                  <strong>{supplier.supplier_name || "Unnamed Supplier"}</strong>
                 </td>
 
-                <td style={tdStyle}>
-                  {supplier.supplier_category || "N/A"}
-                </td>
+                <td style={tdStyle}>{supplier.supplier_category || "N/A"}</td>
 
                 <td style={tdStyle}>
-                  <StatusBadge
-                    status={supplier.supplier_status || "unknown"}
-                  />
+                  <StatusBadge status={supplier.supplier_status || "unknown"} />
                 </td>
 
                 <td style={tdStyle}>
@@ -259,14 +239,10 @@ export default function SuppliersPage() {
                   />
                 </td>
 
-                <td style={tdStyle}>
-                  {supplier.iso_expiration_date || "N/A"}
-                </td>
+                <td style={tdStyle}>{supplier.iso_expiration_date || "N/A"}</td>
 
                 <td style={tdStyle}>
-                  <Link href={`/suppliers/${supplier.id}`}>
-                    Open Supplier
-                  </Link>
+                  <Link href={`/suppliers/${supplier.id}`}>Open Supplier</Link>
                 </td>
               </tr>
             ))}
