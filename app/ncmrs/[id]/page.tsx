@@ -43,6 +43,7 @@ export default function NcmrDetailPage() {
   const [reviewStatus, setReviewStatus] = useState("draft");
 
   const [mrbSignatureEmail, setMrbSignatureEmail] = useState("");
+  const [closureSignatureEmail, setClosureSignatureEmail] = useState("");
   const [additionalMrbApprovers, setAdditionalMrbApprovers] = useState("");
 
   const [requireQualityApproval, setRequireQualityApproval] = useState(true);
@@ -272,6 +273,7 @@ export default function NcmrDetailPage() {
     setCorrectionImplementation(data.correction_implementation || "");
     setReviewStatus(data.review_status || "draft");
     setMrbSignatureEmail("");
+    setClosureSignatureEmail("");
     setAdditionalMrbApprovers(data.mrb_additional_approvers || "");
     setEvidenceUrl(data.evidence_url || "");
     setEvidenceNotes(data.evidence_notes || "");
@@ -1153,7 +1155,7 @@ This approval becomes part of the official electronic quality record.`,
     }
 
     const confirmed = window.confirm(
-      "Electronic Signature:\n\nI have reviewed the nonconformance, risk assessment, severity, CAPA decision, product disposition, MRB rules, and approve the MRB decision."
+      "Electronic Signature - MRB Approval:\n\nBy selecting OK, I certify that I am the logged-in user, I have reviewed the nonconformance record, investigation, risk assessment, severity assessment, CAPA decision, product disposition, MRB approval tasks, and I approve the MRB decision.\n\nThis action will be recorded with signer identity, timestamp, and signature meaning."
     );
 
     if (!confirmed) return;
@@ -1161,7 +1163,7 @@ This approval becomes part of the official electronic quality record.`,
     const now = new Date().toISOString();
 
     const meaning =
-      "I have reviewed the nonconformance, risk assessment, severity, CAPA decision, product disposition, MRB rules, and approve the MRB decision.";
+      "MRB Approval: I certify that I am the logged-in user, I have reviewed the nonconformance record, investigation, risk assessment, severity assessment, CAPA decision, product disposition, MRB approval tasks, and I approve the MRB decision.";
 
     const { error } = await supabase
       .from("ncmrs")
@@ -1457,15 +1459,23 @@ This approval becomes part of the official electronic quality record.`,
       return alert("Correction implementation must be formally recorded before closure.");
     }
 
+    if (!closureSignatureEmail) {
+      return alert("Please re-enter your email before signing NCMR closure.");
+    }
+
+    if (closureSignatureEmail.trim().toLowerCase() !== userEmail.trim().toLowerCase()) {
+      return alert("Closure electronic signature email does not match the logged-in user.");
+    }
+
     const confirmed = window.confirm(
-      "Electronic Signature:\n\nI confirm this NCMR investigation, risk assessment, severity assessment, CAPA decision, disposition, MRB approval, correction implementation, and closure review are complete."
+      "Electronic Signature - NCMR Closure:\n\nBy selecting OK, I certify that I am the logged-in user, I have completed final quality review of this NCMR, including investigation, risk assessment, severity assessment, CAPA decision, disposition, MRB approval, correction implementation, evidence, and closure readiness.\n\nThis action will close and lock the record and will be recorded with signer identity, timestamp, and signature meaning."
     );
 
     if (!confirmed) return;
 
     const now = new Date().toISOString();
     const meaning =
-      "I confirm this NCMR investigation, risk assessment, severity assessment, CAPA decision, disposition, MRB approval, correction implementation, and closure review are complete.";
+      "NCMR Closure: I certify that I am the logged-in user, I have completed final quality review of this NCMR, including investigation, risk assessment, severity assessment, CAPA decision, disposition, MRB approval, correction implementation, evidence, and closure readiness.";
 
     const { error } = await supabase
       .from("ncmrs")
@@ -1475,6 +1485,7 @@ This approval becomes part of the official electronic quality record.`,
         closed_at: now,
         ncmr_closed_by: userEmail,
         ncmr_signature_meaning: meaning,
+        ncmr_signature_email_entered: closureSignatureEmail,
         investigation_completed_at: now,
         is_locked: true,
         locked_at: now,
@@ -2621,6 +2632,35 @@ This approval becomes part of the official electronic quality record.`,
           <option value="completed">Completed</option>
         </select>
 
+        <div
+          style={{
+            marginTop: "16px",
+            border: "1px solid #cbd5e1",
+            borderRadius: "8px",
+            padding: "12px",
+            background: "#f8fafc",
+          }}
+        >
+          <h3 style={{ marginTop: 0 }}>Closure Electronic Signature</h3>
+          <p style={{ color: "#4b5563", fontSize: "14px" }}>
+            Signature Meaning: I certify that I am the logged-in user and I have completed final quality review of this NCMR, including investigation, risk assessment, CAPA decision, disposition, MRB approval, correction implementation, evidence, and closure readiness.
+          </p>
+
+          <label>Re-enter Your Email for Closure E-Signature</label><br />
+          <input
+            value={closureSignatureEmail}
+            onChange={(e) => setClosureSignatureEmail(e.target.value)}
+            placeholder={userEmail || "your.email@company.com"}
+            disabled={isLocked}
+            style={{ width: "100%", maxWidth: "500px", padding: "8px" }}
+          />
+
+          <div style={{ marginTop: "8px", color: "#6b7280", fontSize: "13px" }}>
+            <strong>Logged-in User:</strong> {userEmail || "none"}<br />
+            <strong>Signature Timestamp:</strong> recorded automatically at closure
+          </div>
+        </div>
+
         {/* Section 9 Closure Action Buttons */}
         <div
           style={{
@@ -2666,6 +2706,7 @@ This approval becomes part of the official electronic quality record.`,
           <div style={{ marginTop: "12px" }}>
             <strong>NCMR Closed By:</strong> {record.ncmr_closed_by}<br />
             <strong>Closed At:</strong> {record.closed_at}<br />
+            <strong>Signature Email Entered:</strong> {record.ncmr_signature_email_entered || "N/A"}<br />
             <strong>Signature Meaning:</strong> {record.ncmr_signature_meaning}
           </div>
         ) : null}
