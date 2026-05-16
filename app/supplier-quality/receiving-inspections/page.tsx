@@ -41,7 +41,9 @@ export default function GlobalReceivingInspectionsPage() {
     return map;
   }, [suppliers]);
 
-  const enabledSuppliers = suppliers.filter((supplier) => supplier.receiving_inspection_enabled);
+  const enabledSuppliers = suppliers.filter(
+    (supplier) => supplier.receiving_inspection_enabled
+  );
 
   const filteredInspections = inspections.filter((inspection) => {
     const supplier = supplierMap[inspection.supplier_id];
@@ -67,7 +69,9 @@ export default function GlobalReceivingInspectionsPage() {
 
     const suppliersRes = await supabase
       .from("suppliers")
-      .select("id, supplier_name, supplier_number, supplier_status, supplier_risk_level, receiving_inspection_enabled")
+      .select(
+        "id, supplier_name, supplier_number, supplier_status, supplier_risk_level, receiving_inspection_enabled"
+      )
       .order("supplier_name", { ascending: true });
 
     if (suppliersRes.error) {
@@ -150,9 +154,115 @@ export default function GlobalReceivingInspectionsPage() {
     fetchData();
   };
 
+  const inspectionRequiresNcmr = (inspection: any) => {
+    const result = String(inspection.inspection_result || "").toLowerCase();
+
+    return (
+      result.includes("reject") ||
+      result.includes("fail") ||
+      result.includes("nonconform") ||
+      result.includes("non-conform") ||
+      result.includes("ncmr")
+    );
+  };
+
+  const createLinkedNcmr = async (inspection: any) => {
+    if (inspection.linked_ncmr_id) {
+      alert("This receiving inspection already has a linked NCMR.");
+      return;
+    }
+
+    if (!inspectionRequiresNcmr(inspection)) {
+      alert("NCMR creation is intended for rejected, failed, or nonconforming inspections.");
+      return;
+    }
+
+    const supplier = supplierMap[inspection.supplier_id];
+
+    const confirmed = window.confirm(
+      "Create a linked NCMR from this receiving inspection?\\n\\nThis will auto-populate supplier, part, lot, quantity, source, and inspection reference."
+    );
+
+    if (!confirmed) return;
+
+    const { data: userData } = await supabase.auth.getUser();
+    const userEmail = userData?.user?.email || "unknown";
+
+    const title = `Receiving Inspection Nonconformance - ${inspection.part_number || "Part"} / Lot ${inspection.lot_number || "N/A"}`;
+
+    const issueDescription = `Receiving inspection identified a nonconforming or rejected result. Supplier: ${supplier?.supplier_name || "N/A"}. Part: ${inspection.part_number || "N/A"}. Lot: ${inspection.lot_number || "N/A"}. Quantity received: ${inspection.quantity_received ?? "N/A"}. Quantity rejected: ${inspection.quantity_rejected ?? "N/A"}. Inspection result: ${inspection.inspection_result || "N/A"}.`;
+
+    const { data: ncmrData, error: ncmrError } = await supabase
+      .from("ncmrs")
+      .insert({
+        title,
+        issue_description: issueDescription,
+        status: "open",
+        source_of_detection: "receiving_inspection",
+        source_module: "receiving_inspection",
+        source_record_id: inspection.id,
+        linked_receiving_inspection_id: inspection.id,
+        linked_supplier_id: inspection.supplier_id || null,
+        product_part_number: inspection.part_number || null,
+        lot_number: inspection.lot_number || null,
+        quantity_affected: inspection.quantity_rejected ?? inspection.quantity_received ?? null,
+        owner: userEmail,
+      })
+      .select()
+      .single();
+
+    if (ncmrError) {
+      alert(ncmrError.message);
+      return;
+    }
+
+    const { error: inspectionUpdateError } = await supabase
+      .from("receiving_inspections")
+      .update({
+        linked_ncmr_id: ncmrData.id,
+        ncmr_created: true,
+      })
+      .eq("id", inspection.id);
+
+    if (inspectionUpdateError) {
+      alert(inspectionUpdateError.message);
+      return;
+    }
+
+    await supabase.from("audit_logs").insert([
+      {
+        entity_type: "receiving_inspection",
+        entity_id: inspection.id,
+        action: "linked_ncmr_created",
+        details: `Linked NCMR created from receiving inspection. NCMR title: ${title}.`,
+        user_email: userEmail,
+      },
+      {
+        entity_type: "ncmr",
+        entity_id: ncmrData.id,
+        action: "ncmr_created_from_receiving_inspection",
+        details: `NCMR created from receiving inspection for supplier ${supplier?.supplier_name || "N/A"}, part ${inspection.part_number || "N/A"}, lot ${inspection.lot_number || "N/A"}.`,
+        user_email: userEmail,
+      },
+    ]);
+
+    alert("Linked NCMR created.");
+    fetchData();
+    window.open(`/ncmrs/${ncmrData.id}`, "_blank");
+  };
+
   return (
     <main style={{ padding: "24px", fontFamily: "Arial" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", alignItems: "flex-start", flexWrap: "wrap", marginBottom: "20px" }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          gap: "12px",
+          alignItems: "flex-start",
+          flexWrap: "wrap",
+          marginBottom: "20px",
+        }}
+      >
         <div>
           <h1 style={{ marginBottom: "6px" }}>Global Receiving Inspections</h1>
           <p style={{ color: "#4b5563", marginTop: 0 }}>
@@ -164,11 +274,20 @@ export default function GlobalReceivingInspectionsPage() {
           <Link href="/suppliers">Supplier Quality</Link>
           <Link href="/supplier-quality/audits">Supplier Audits</Link>
           <Link href="/supplier-quality/scars">SCARs</Link>
+          <Link href="/supplier-quality/asl">ASL / Qualification</Link>
         </div>
       </div>
 
       <section style={sectionStyle}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", flexWrap: "wrap", alignItems: "center" }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: "12px",
+            flexWrap: "wrap",
+            alignItems: "center",
+          }}
+        >
           <div>
             <h2 style={{ marginTop: 0 }}>Create Receiving Inspection</h2>
             <p style={{ color: "#4b5563", marginTop: 0 }}>
@@ -177,16 +296,32 @@ export default function GlobalReceivingInspectionsPage() {
           </div>
 
           {!showCreateInspection ? (
-            <button type="button" onClick={() => setShowCreateInspection(true)} style={primaryButtonStyle}>
+            <button
+              type="button"
+              onClick={() => setShowCreateInspection(true)}
+              style={primaryButtonStyle}
+            >
               + Create Inspection
             </button>
           ) : null}
         </div>
 
         {showCreateInspection ? (
-          <div style={{ border: "1px solid #d1d5db", borderRadius: "10px", padding: "14px", background: "#f9fafb", marginTop: "12px" }}>
+          <div
+            style={{
+              border: "1px solid #d1d5db",
+              borderRadius: "10px",
+              padding: "14px",
+              background: "#f9fafb",
+              marginTop: "12px",
+            }}
+          >
             <FormField label="Supplier">
-              <select value={supplierId} onChange={(e) => setSupplierId(e.target.value)} style={standardInputStyle}>
+              <select
+                value={supplierId}
+                onChange={(e) => setSupplierId(e.target.value)}
+                style={standardInputStyle}
+              >
                 <option value="">Select supplier</option>
                 {enabledSuppliers.map((supplier) => (
                   <option key={supplier.id} value={supplier.id}>
@@ -198,15 +333,38 @@ export default function GlobalReceivingInspectionsPage() {
             </FormField>
 
             {enabledSuppliers.length === 0 ? (
-              <div style={{ border: "1px solid #facc15", background: "#fefce8", borderRadius: "8px", padding: "10px", marginBottom: "12px" }}>
-                No suppliers currently have receiving inspection enabled. Enable it from a supplier profile first.
+              <div
+                style={{
+                  border: "1px solid #facc15",
+                  background: "#fefce8",
+                  borderRadius: "8px",
+                  padding: "10px",
+                  marginBottom: "12px",
+                }}
+              >
+                No suppliers currently have receiving inspection enabled. Enable it from ASL / Qualification or a supplier profile first.
               </div>
             ) : null}
 
             {supplierId ? (
-              <div style={{ border: "1px solid #d1d5db", borderRadius: "8px", padding: "10px", background: "white", marginBottom: "12px" }}>
+              <div
+                style={{
+                  border: "1px solid #d1d5db",
+                  borderRadius: "8px",
+                  padding: "10px",
+                  background: "white",
+                  marginBottom: "12px",
+                }}
+              >
                 <strong>Selected Supplier</strong>
-                <div style={{ marginTop: "6px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                <div
+                  style={{
+                    marginTop: "6px",
+                    display: "flex",
+                    gap: "8px",
+                    flexWrap: "wrap",
+                  }}
+                >
                   <StatusBadge status={supplierMap[supplierId]?.supplier_status || "unknown"} />
                   <StatusBadge status={supplierMap[supplierId]?.supplier_risk_level || "unknown"} />
                   <Link href={`/suppliers/${supplierId}`}>Open Supplier Profile</Link>
@@ -242,16 +400,29 @@ export default function GlobalReceivingInspectionsPage() {
         <h2 style={{ marginTop: 0 }}>Receiving Inspection Register</h2>
 
         <div style={{ marginBottom: "14px" }}>
-          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search inspections by supplier, part, lot, result" style={{ padding: "10px", width: "360px", maxWidth: "100%" }} />
-          <span style={{ marginLeft: "10px", color: "#6b7280" }}>Showing {filteredInspections.length} of {inspections.length}</span>
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search inspections by supplier, part, lot, result"
+            style={{ padding: "10px", width: "360px", maxWidth: "100%" }}
+          />
+          <span style={{ marginLeft: "10px", color: "#6b7280" }}>
+            Showing {filteredInspections.length} of {inspections.length}
+          </span>
         </div>
 
         {loading ? (
           <p>Loading receiving inspections...</p>
         ) : inspections.length === 0 ? (
-          <EmptyStateCard title="No receiving inspections recorded" message="Create receiving inspections from this page or from an enabled supplier profile." />
+          <EmptyStateCard
+            title="No receiving inspections recorded"
+            message="Create receiving inspections from this page or from an enabled supplier profile."
+          />
         ) : filteredInspections.length === 0 ? (
-          <EmptyStateCard title="No inspections match the search" message="Adjust the search field to view more receiving inspections." />
+          <EmptyStateCard
+            title="No inspections match the search"
+            message="Adjust the search field to view more receiving inspections."
+          />
         ) : (
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
@@ -265,25 +436,60 @@ export default function GlobalReceivingInspectionsPage() {
                 <th style={thStyle}>Qty Rejected</th>
                 <th style={thStyle}>Result</th>
                 <th style={thStyle}>NCMR</th>
-                <th style={thStyle}>Open</th>
+                <th style={thStyle}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {filteredInspections.map((inspection) => {
                 const supplier = supplierMap[inspection.supplier_id];
+                const shouldCreateNcmr = inspectionRequiresNcmr(inspection);
 
                 return (
                   <tr key={inspection.id}>
-                    <td style={tdStyle}>{supplier ? <Link href={`/suppliers/${supplier.id}`}>{supplier.supplier_name}</Link> : "N/A"}</td>
+                    <td style={tdStyle}>
+                      {supplier ? (
+                        <Link href={`/suppliers/${supplier.id}`}>
+                          {supplier.supplier_name}
+                        </Link>
+                      ) : (
+                        "N/A"
+                      )}
+                    </td>
                     <td style={tdStyle}>{inspection.part_number || "N/A"}</td>
                     <td style={tdStyle}>{inspection.lot_number || "N/A"}</td>
                     <td style={tdStyle}>{inspection.receipt_date || "N/A"}</td>
                     <td style={tdStyle}>{inspection.quantity_received ?? "N/A"}</td>
                     <td style={tdStyle}>{inspection.quantity_accepted ?? "N/A"}</td>
                     <td style={tdStyle}>{inspection.quantity_rejected ?? "N/A"}</td>
-                    <td style={tdStyle}><StatusBadge status={inspection.inspection_result || "pending"} /></td>
-                    <td style={tdStyle}>{inspection.linked_ncmr_id ? <Link href={`/ncmrs/${inspection.linked_ncmr_id}`}>Open NCMR</Link> : "N/A"}</td>
-                    <td style={tdStyle}>{inspection.supplier_id ? <Link href={`/suppliers/${inspection.supplier_id}/receiving-inspections/${inspection.id}`}>Open Inspection</Link> : "N/A"}</td>
+                    <td style={tdStyle}>
+                      <StatusBadge status={inspection.inspection_result || "pending"} />
+                    </td>
+                    <td style={tdStyle}>
+                      {inspection.linked_ncmr_id ? (
+                        <Link href={`/ncmrs/${inspection.linked_ncmr_id}`}>
+                          Open NCMR
+                        </Link>
+                      ) : shouldCreateNcmr ? (
+                        <StatusBadge status="NCMR Needed" />
+                      ) : (
+                        "N/A"
+                      )}
+                    </td>
+                    <td style={tdStyle}>
+                      <div style={{ display: "grid", gap: "6px" }}>
+                        {inspection.supplier_id ? (
+                          <Link href={`/suppliers/${inspection.supplier_id}/receiving-inspections/${inspection.id}`}>
+                            Open Inspection
+                          </Link>
+                        ) : null}
+
+                        {shouldCreateNcmr && !inspection.linked_ncmr_id ? (
+                          <button type="button" onClick={() => createLinkedNcmr(inspection)}>
+                            Create Linked NCMR
+                          </button>
+                        ) : null}
+                      </div>
+                    </td>
                   </tr>
                 );
               })}
