@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useParams } from "next/navigation";
 import { supabase } from "../../../lib/supabaseClient";
 import {
@@ -14,6 +15,8 @@ export default function NcmrDetailPage() {
 
   const [record, setRecord] = useState<any>(null);
   const [linkedCapa, setLinkedCapa] = useState<any>(null);
+  const [linkedScar, setLinkedScar] = useState<any>(null);
+  const [scarJustification, setScarJustification] = useState("");
   const [mrbApprovers, setMrbApprovers] = useState<any[]>([]);
   const [affectedItems, setAffectedItems] = useState<any[]>([]);
   const [auditTimeline, setAuditTimeline] = useState<any[]>([]);
@@ -129,6 +132,21 @@ export default function NcmrDetailPage() {
       .maybeSingle();
 
     setLinkedCapa(data || null);
+  };
+
+  const fetchLinkedScar = async (scarId: string | null) => {
+    if (!scarId) {
+      setLinkedScar(null);
+      return;
+    }
+
+    const { data } = await supabase
+      .from("scars")
+      .select("*")
+      .eq("id", scarId)
+      .maybeSingle();
+
+    setLinkedScar(data || null);
   };
 
   const fetchMrbApprovers = async () => {
@@ -266,6 +284,7 @@ export default function NcmrDetailPage() {
     setRiskAssessment(data.risk_assessment || "");
     setSeverity(data.severity || "not_assessed");
     setCapaJustification(data.capa_justification || "");
+    setScarJustification(data.scar_justification || "");
     setCapaRecommended(data.capa_recommended || false);
     setCapaDecision(data.capa_decision || "");
     setCapaDecisionJustification(data.capa_decision_justification || "");
@@ -280,6 +299,7 @@ export default function NcmrDetailPage() {
     setEvidenceNotes(data.evidence_notes || "");
 
     await fetchLinkedCapa(data.capa_id || null);
+    await fetchLinkedScar(data.linked_scar_id || null);
     await fetchMrbApprovers();
     await fetchAffectedItems();
     await fetchApprovalTasks();
@@ -872,6 +892,141 @@ This approval becomes part of the official electronic quality record.`,
     );
 
     alert("CAPA created and linked to this NCMR.");
+    fetchRecord();
+  };
+
+  const isSupplierRelatedNcmr = () => {
+    return !!record?.linked_supplier_id || !!record?.supplier_id || !!record?.supplier_name;
+  };
+
+  const createScarFromNcmr = async () => {
+    if (record?.is_locked) {
+      alert("This record is locked and cannot be edited.");
+      return;
+    }
+
+    if (record?.linked_scar_id || linkedScar) {
+      alert("This NCMR already has a linked SCAR.");
+      return;
+    }
+
+    if (!isSupplierRelatedNcmr()) {
+      const confirmedNoSupplier = window.confirm(
+        "This NCMR does not appear to have a linked supplier. Create a SCAR anyway?"
+      );
+      if (!confirmedNoSupplier) return;
+    }
+
+    const confirmed = window.confirm(
+      "Create a linked SCAR from this NCMR? This will auto-populate supplier, issue, part, lot, severity, containment, investigation, and disposition information where available."
+    );
+
+    if (!confirmed) return;
+
+    const scarTitle = `SCAR for ${record?.ncmr_number || record?.title || "NCMR"}`;
+    const scarProblemDescription = [
+      `SCAR initiated from NCMR: ${record?.ncmr_number || record?.title || id}.`,
+      problemDescription || record?.issue_description || "",
+      summaryProductPartNumber ? `Part: ${summaryProductPartNumber}.` : "",
+      summaryLotNumber ? `Lot: ${summaryLotNumber}.` : "",
+      severity ? `Severity: ${severity}.` : "",
+      productDisposition ? `Disposition: ${productDisposition}.` : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    const scarPayload: any = {
+      title: scarTitle,
+      scar_title: scarTitle,
+      status: "open",
+      scar_status: "open",
+      source_type: "ncmr",
+      source_ncmr_id: id,
+      linked_supplier_id: record?.linked_supplier_id || record?.supplier_id || null,
+      supplier_id: record?.linked_supplier_id || record?.supplier_id || null,
+      problem_description: scarProblemDescription,
+      issue_description: scarProblemDescription,
+      containment_action: containmentAction || null,
+      investigation_summary: investigationSummary || null,
+      root_cause: rootCause || null,
+      severity: severity || null,
+      part_number: summaryProductPartNumber || record?.product_part_number || null,
+      lot_number: summaryLotNumber || record?.lot_number || null,
+      created_from_module: "ncmr",
+    };
+
+    const { data: scarData, error: scarError } = await supabase
+      .from("scars")
+      .insert(scarPayload)
+      .select()
+      .single();
+
+    if (scarError) {
+      alert(scarError.message);
+      return;
+    }
+
+    const { error: ncmrUpdateError } = await supabase
+      .from("ncmrs")
+      .update({
+        linked_scar_id: scarData.id,
+        scar_required: true,
+        scar_justification: null,
+      })
+      .eq("id", id);
+
+    if (ncmrUpdateError) {
+      alert(ncmrUpdateError.message);
+      return;
+    }
+
+    await addAuditLog(
+      "scar_created_from_ncmr",
+      `SCAR created and linked from NCMR. SCAR title: ${scarTitle}.`
+    );
+
+    await supabase.from("audit_logs").insert({
+      entity_type: "scar",
+      entity_id: scarData.id,
+      action: "scar_created_from_ncmr",
+      details: `SCAR created from NCMR ${record?.ncmr_number || record?.title || id}.`,
+      user_email: userEmail || "unknown",
+    });
+
+    alert("Linked SCAR created.");
+    fetchRecord();
+  };
+
+  const saveScarJustification = async () => {
+    if (record?.is_locked) {
+      alert("This record is locked and cannot be edited.");
+      return;
+    }
+
+    if (!scarJustification.trim()) {
+      alert("SCAR justification is required.");
+      return;
+    }
+
+    const { error } = await supabase
+      .from("ncmrs")
+      .update({
+        scar_required: false,
+        scar_justification: scarJustification,
+      })
+      .eq("id", id);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    await addAuditLog(
+      "scar_not_required_justification",
+      `SCAR not opened. Justification: ${scarJustification}`
+    );
+
+    alert("SCAR justification saved.");
     fetchRecord();
   };
 
@@ -2578,6 +2733,112 @@ This approval becomes part of the official electronic quality record.`,
         ) : null}
 
         <SectionSaveCancelActions />
+      </SectionCard>
+
+      <SectionCard
+        title="Supplier Escalation / SCAR"
+        subtitle={linkedScar ? "Complete: linked SCAR exists for supplier escalation." : scarJustification ? "Complete: no-SCAR justification documented." : "Evaluate whether supplier corrective action is needed."}
+        defaultOpen={false}
+        rightAction={sectionStatusBadge(!!linkedScar || !!scarJustification, "SCAR")}
+      >
+        <div
+          style={{
+            border: "1px solid #d1d5db",
+            borderRadius: "10px",
+            padding: "12px",
+            background: "#f9fafb",
+            marginBottom: "14px",
+          }}
+        >
+          <h3 style={{ marginTop: 0 }}>SCAR Evaluation</h3>
+          <p style={{ color: "#4b5563", fontSize: "14px" }}>
+            Use this section when the NCMR is supplier-related, recurring, major/critical, or requires supplier corrective action.
+          </p>
+
+          <div style={{ display: "grid", gap: "8px", maxWidth: "800px" }}>
+            <div>
+              <strong>Supplier Related:</strong>{" "}
+              {isSupplierRelatedNcmr() ? "Yes" : "Not identified"}
+            </div>
+            <div>
+              <strong>Severity:</strong> {severity || "N/A"}
+            </div>
+            <div>
+              <strong>Part:</strong> {summaryProductPartNumber || record?.product_part_number || "N/A"}
+            </div>
+            <div>
+              <strong>Lot:</strong> {summaryLotNumber || record?.lot_number || "N/A"}
+            </div>
+          </div>
+        </div>
+
+        {linkedScar ? (
+          <div
+            style={{
+              border: "1px solid #86efac",
+              background: "#f0fdf4",
+              borderRadius: "10px",
+              padding: "12px",
+              marginBottom: "14px",
+            }}
+          >
+            <strong>Linked SCAR:</strong>{" "}
+            <Link href={`/supplier-quality/scars/${linkedScar.id}`}>
+              {linkedScar.scar_title || linkedScar.title || "Open Linked SCAR"}
+            </Link>
+          </div>
+        ) : record?.linked_scar_id ? (
+          <div
+            style={{
+              border: "1px solid #86efac",
+              background: "#f0fdf4",
+              borderRadius: "10px",
+              padding: "12px",
+              marginBottom: "14px",
+            }}
+          >
+            <strong>Linked SCAR:</strong>{" "}
+            <Link href={`/supplier-quality/scars/${record.linked_scar_id}`}>
+              Open Linked SCAR
+            </Link>
+          </div>
+        ) : (
+          <>
+            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "14px" }}>
+              <button type="button" onClick={createScarFromNcmr} disabled={isLocked}>
+                Create Linked SCAR
+              </button>
+            </div>
+
+            <div>
+              <label>Justification if SCAR is Not Opened</label>
+              <br />
+              <textarea
+                value={scarJustification}
+                onChange={(e) => setScarJustification(e.target.value)}
+                rows={4}
+                disabled={isLocked}
+                placeholder="Document the risk-based rationale if supplier corrective action is not required."
+                style={{ width: "100%", maxWidth: "800px", padding: "8px" }}
+              />
+            </div>
+
+            <button
+              type="button"
+              onClick={saveScarJustification}
+              disabled={isLocked}
+              style={{ marginTop: "10px" }}
+            >
+              Save SCAR Justification
+            </button>
+          </>
+        )}
+
+        {record?.scar_justification ? (
+          <div style={{ marginTop: "12px", color: "#374151" }}>
+            <strong>Saved SCAR Justification:</strong> {record.scar_justification}
+          </div>
+        ) : null}
       </SectionCard>
 
       <SectionCard
