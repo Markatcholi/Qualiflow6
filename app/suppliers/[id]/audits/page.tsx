@@ -14,7 +14,7 @@ import {
   standardInputStyle,
   standardTextareaStyle,
   primaryButtonStyle,
-} from "../../../../components/workflow/WorkflowComponents";
+} from "../../../components/workflow/WorkflowComponents";
 
 export default function SupplierAuditsPage() {
   const params = useParams<{ id: string }>();
