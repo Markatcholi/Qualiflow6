@@ -1134,7 +1134,7 @@ This approval becomes part of the official electronic quality record.`,
     fetchRecord();
   };
 
-  const createCapaFromNcmr = async () => {
+  const createGovernedCapaFromNcmr = async () => {
     if (record?.is_locked) {
       alert("This record is locked and cannot be edited.");
       return;
@@ -3029,7 +3029,7 @@ This approval becomes part of the official electronic quality record.`,
                 Save CAPA Evaluation
               </button>
 
-              <button type="button" onClick={createCapaFromNcmr} disabled={isLocked}>
+              <button type="button" onClick={createGovernedCapaFromNcmr} disabled={isLocked}>
                 Create Linked CAPA
               </button>
             </div>
