@@ -591,41 +591,13 @@ export default function NcmrPage() {
     }
 
     if (recurrence.recurring) {
-      const { data: capaData, error: capaError } = await supabase
-        .from("capas")
-        .insert({
-          ncmr_id: data.id,
-          title: `CAPA for ${title}`,
-          linked_ncmr_title: title,
-          source_type: "ncmr",
-          capa_source: "Recurring NCMR",
-          capa_type: "internal_capa",
-          problem_description: issueDescription || title,
-          status: "open",
-        })
-        .select()
-        .single();
-
-      if (capaError) {
-        alert(capaError.message);
-        return;
-      }
-
-      await supabase
-        .from("ncmrs")
-        .update({ capa_id: capaData.id })
-        .eq("id", data.id);
-
       await addAuditLog(
         "ncmr",
         data.id,
-        "capa_triggered",
-        "CAPA automatically created due to recurring issue."
+        "capa_evaluation_required",
+        `CAPA evaluation required due to recurrence. Risk-based decision required before CAPA creation. Reason: ${recurrence.reason}`
       );
     }
-
-    const { data: currentUserData } = await supabase.auth.getUser();
-    const currentUserEmail = currentUserData?.user?.email || "unknown";
 
     await createScarFromInitiatedNcmr(data, currentUserEmail);
 
@@ -1367,7 +1339,7 @@ export default function NcmrPage() {
           <div style={summaryValueStyle}>{list.filter((x) => x.status !== "closed").length}</div>
         </div>
         <div style={summaryCardStyle}>
-          <div style={summaryLabelStyle}>CAPA Required</div>
+          <div style={summaryLabelStyle}>CAPA Evaluation Required</div>
           <div style={summaryValueStyle}>{list.filter((x) => x.capa_required).length}</div>
         </div>
         <div style={summaryCardStyle}>
@@ -1449,7 +1421,7 @@ export default function NcmrPage() {
                     <span style={{ ...badgeStyle, background: "#f59e0b" }}>Recurring</span>
                   ) : null}
                   {item.capa_required ? (
-                    <span style={{ ...badgeStyle, background: "#dc2626" }}>CAPA Required</span>
+                    <span style={{ ...badgeStyle, background: "#dc2626" }}>CAPA Evaluation Required</span>
                   ) : null}
                   {item.supplier_capa_required ? (
                     <span style={{ ...badgeStyle, background: "#7c3aed" }}>Supplier CAPA / SCAR</span>
