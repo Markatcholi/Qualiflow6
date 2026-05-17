@@ -444,7 +444,7 @@ export default function NcmrPage() {
       supplier_lot: supplierLot || null,
 
       // Risk/governance fields displayed by SCAR detail page
-      severity: severity || null,
+      severity: null,
       risk_level: null,
 
       // Ownership/timestamps displayed by SCAR detail page
