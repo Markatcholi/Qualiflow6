@@ -387,7 +387,7 @@ export default function NcmrPage() {
     }
 
     const scarTitle = `SCAR from ${ncmrRecord?.ncmr_number || ncmrRecord?.title || "NCMR"}`;
-    const firstAffectedItem = affectedItems?.[0] || {};
+    const firstAffectedItem: any = affectedItems?.[0] || {};
 
     const scarProblemDescription = [
       "SCAR initiated from NCMR initiation.",
