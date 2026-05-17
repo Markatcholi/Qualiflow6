@@ -377,7 +377,7 @@ export default function NcmrPage() {
   };
 
   const createScarFromInitiatedNcmr = async (ncmrRecord: any, createdByEmail: string) => {
-    if (!supplierScarRecommended) {
+    if (supplierScarDecision !== "yes") {
       return null;
     }
 
@@ -476,7 +476,7 @@ export default function NcmrPage() {
     const recurrence = await checkRecurrence();
     const supplierScar = await checkSupplierScar();
 
-    const capaRequired = recurrence.recurring || supplierScar.required;
+    const capaRequired = recurrence.recurring;
     const supplierNameForInsert = isSupplierSource
       ? selectedSupplier?.supplier_name || supplierName
       : "";
@@ -580,45 +580,17 @@ export default function NcmrPage() {
     if (supplierScar.required) {
       await addAuditLog("ncmr", data.id, "supplier_scar_required", supplierScar.reason);
 
-      const { data: scarData, error: scarError } = await supabase
-        .from("capas")
-        .insert({
-          ncmr_id: data.id,
-          title: `SCAR for ${supplierNameForInsert}`,
-          linked_ncmr_title: title,
-          source_type: "supplier_quality",
-          capa_source: "Supplier recurrence",
-          capa_type: "scar",
-          supplier_name: supplierNameForInsert,
-          scar_required: true,
-          scar_reason: supplierScar.reason,
-          problem_description:
-            issueDescription || `Supplier recurrence identified for ${supplierName}`,
-          status: "open",
-        })
-        .select()
-        .single();
-
-      if (scarError) {
-        alert(scarError.message);
-        return;
+      if (supplierScarDecision === "no") {
+        await addAuditLog(
+          "ncmr",
+          data.id,
+          "supplier_scar_not_initiated",
+          supplierScarDecisionJustification || "SCAR was not initiated based on risk-based decision."
+        );
       }
+    }
 
-      await supabase
-        .from("ncmrs")
-        .update({
-          capa_id: scarData.id,
-          capa_required: true,
-        })
-        .eq("id", data.id);
-
-      await addAuditLog(
-        "ncmr",
-        data.id,
-        "scar_created",
-        `Supplier CAPA/SCAR automatically created for supplier: ${supplierNameForInsert}`
-      );
-    } else if (recurrence.recurring) {
+    if (recurrence.recurring) {
       const { data: capaData, error: capaError } = await supabase
         .from("capas")
         .insert({
