@@ -386,6 +386,9 @@ export default function NcmrPage() {
       return null;
     }
 
+    const selectedSupplierForScar =
+      suppliers.find((supplier: any) => supplier.id === supplierId) || null;
+
     const scarTitle = `SCAR from ${ncmrRecord?.ncmr_number || ncmrRecord?.title || "NCMR"}`;
     const firstAffectedItem: any = affectedItems?.[0] || {};
 
@@ -407,19 +410,54 @@ export default function NcmrPage() {
     const scarPayload: any = {
       title: scarTitle,
       scar_title: scarTitle,
+
       status: "open",
       scar_status: "open",
-      source_type: "ncmr",
+
+      // NCMR linkage used by the SCAR detail page
+      linked_ncmr_id: ncmrRecord.id,
+      linked_ncmr_number:
+        ncmrRecord?.ncmr_number || ncmrRecord?.title || null,
+
+      // Source traceability
       source_ncmr_id: ncmrRecord.id,
+      source_type: "ncmr",
+
+      // Supplier linkage used by the SCAR detail page
       linked_supplier_id: supplierId,
       supplier_id: supplierId,
-      problem_description: scarProblemDescription,
+      supplier_name:
+        selectedSupplierForScar?.supplier_name ||
+        supplierName ||
+        null,
+
+      // Supplier issue fields used by the SCAR detail page
+      description: issueDescription || scarProblemDescription || null,
+      issue_summary:
+        title ||
+        defectCategory ||
+        "Supplier related nonconformance",
+
+      // Keep legacy/alternate fields populated for future compatibility
       issue_description: scarProblemDescription,
+      problem_description: scarProblemDescription,
+
+      // Traceability fields
       part_number: firstAffectedItem.product_part_number || null,
       lot_number: firstAffectedItem.lot_number || null,
       supplier_lot: supplierLot || null,
-      created_from_module: "ncmr",
+
+      // Risk/governance fields displayed by SCAR detail page
+      severity: severity || null,
+      risk_level: null,
+
+      // Ownership/timestamps displayed by SCAR detail page
+      initiated_by: createdByEmail,
+      initiated_at: new Date().toISOString(),
+
+      // Created metadata
       created_by: createdByEmail,
+      created_from_module: "ncmr",
     };
 
     const { data: scarData, error: scarError } = await supabase
