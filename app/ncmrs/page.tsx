@@ -376,6 +376,97 @@ export default function NcmrPage() {
     ]);
   };
 
+  const createScarFromInitiatedNcmr = async (ncmrRecord: any, createdByEmail: string) => {
+    if (!supplierScarRecommended) {
+      return null;
+    }
+
+    if (!supplierId) {
+      alert("SCAR was selected, but no supplier was selected. NCMR was created, but SCAR was not created.");
+      return null;
+    }
+
+    const scarTitle = `SCAR from ${ncmrRecord?.ncmr_number || ncmrRecord?.title || "NCMR"}`;
+    const firstAffectedItem = affectedItems?.[0] || {};
+
+    const scarProblemDescription = [
+      "SCAR initiated from NCMR initiation.",
+      title ? `NCMR Title: ${title}` : "",
+      issueDescription ? `Issue: ${issueDescription}` : "",
+      defectCategory ? `Defect Category: ${defectCategory}` : "",
+      defectSubcategory ? `Defect Subcategory: ${defectSubcategory}` : "",
+      firstAffectedItem.product_part_number ? `Part Number: ${firstAffectedItem.product_part_number}` : "",
+      firstAffectedItem.lot_number ? `Lot Number: ${firstAffectedItem.lot_number}` : "",
+      supplierLot ? `Supplier Lot: ${supplierLot}` : "",
+      supplierScarDecision ? `Initial SCAR Decision: ${supplierScarDecision}` : "",
+      supplierScarDecisionJustification ? `Initial SCAR Justification: ${supplierScarDecisionJustification}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    const scarPayload: any = {
+      title: scarTitle,
+      scar_title: scarTitle,
+      status: "open",
+      scar_status: "open",
+      source_type: "ncmr",
+      source_ncmr_id: ncmrRecord.id,
+      linked_supplier_id: supplierId,
+      supplier_id: supplierId,
+      problem_description: scarProblemDescription,
+      issue_description: scarProblemDescription,
+      part_number: firstAffectedItem.product_part_number || null,
+      lot_number: firstAffectedItem.lot_number || null,
+      supplier_lot: supplierLot || null,
+      created_from_module: "ncmr",
+      created_by: createdByEmail,
+    };
+
+    const { data: scarData, error: scarError } = await supabase
+      .from("scars")
+      .insert(scarPayload)
+      .select()
+      .single();
+
+    if (scarError) {
+      alert(`NCMR was created, but SCAR creation failed: ${scarError.message}`);
+      return null;
+    }
+
+    const { error: ncmrUpdateError } = await supabase
+      .from("ncmrs")
+      .update({
+        linked_scar_id: scarData.id,
+        scar_required: true,
+        scar_justification: supplierScarDecisionJustification || null,
+      })
+      .eq("id", ncmrRecord.id);
+
+    if (ncmrUpdateError) {
+      alert(`SCAR was created, but NCMR link update failed: ${ncmrUpdateError.message}`);
+      return scarData;
+    }
+
+    await supabase.from("audit_logs").insert([
+      {
+        entity_type: "ncmr",
+        entity_id: ncmrRecord.id,
+        action: "scar_created_from_ncmr_initiation",
+        details: `SCAR created during NCMR initiation. SCAR title: ${scarTitle}.`,
+        user_email: createdByEmail,
+      },
+      {
+        entity_type: "scar",
+        entity_id: scarData.id,
+        action: "scar_created_from_ncmr_initiation",
+        details: `SCAR created from NCMR initiation: ${ncmrRecord?.ncmr_number || ncmrRecord?.title || ncmrRecord.id}.`,
+        user_email: createdByEmail,
+      },
+    ]);
+
+    return scarData;
+  };
+
   const addNcmr = async () => {
     if (!title) {
       alert("Title is required.");
@@ -560,6 +651,11 @@ export default function NcmrPage() {
         "CAPA automatically created due to recurring issue."
       );
     }
+
+    const { data: currentUserData } = await supabase.auth.getUser();
+    const currentUserEmail = currentUserData?.user?.email || "unknown";
+
+    await createScarFromInitiatedNcmr(data, currentUserEmail);
 
     resetNcmrForm();
     fetchData();
