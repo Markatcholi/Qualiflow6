@@ -38,6 +38,9 @@ export default function NcmrDetailPage() {
   const [riskAssessment, setRiskAssessment] = useState("");
   const [severity, setSeverity] = useState("not_assessed");
   const [capaJustification, setCapaJustification] = useState("");
+  const [capaNotRequiredJustification, setCapaNotRequiredJustification] = useState("");
+  const [capaEvaluationOutcome, setCapaEvaluationOutcome] = useState("");
+  const [capaEvaluationRationale, setCapaEvaluationRationale] = useState("");
   const [capaRecommended, setCapaRecommended] = useState(false);
   const [capaDecision, setCapaDecision] = useState("");
   const [capaDecisionJustification, setCapaDecisionJustification] = useState("");
@@ -298,7 +301,7 @@ export default function NcmrDetailPage() {
     setEvidenceUrl(data.evidence_url || "");
     setEvidenceNotes(data.evidence_notes || "");
 
-    await fetchLinkedCapa(data.capa_id || null);
+    await fetchLinkedCapa(data.linked_capa_id || data.capa_id || null);
     await fetchLinkedScar(data.linked_scar_id || null);
     await fetchMrbApprovers();
     await fetchAffectedItems();
@@ -1027,6 +1030,234 @@ This approval becomes part of the official electronic quality record.`,
     );
 
     alert("SCAR justification saved.");
+    fetchRecord();
+  };
+
+  const evaluateCapaGovernance = () => {
+    const severityValue = String(severity || record?.severity || "").toLowerCase();
+    const riskText = [
+      riskAssessment,
+      record?.risk_assessment,
+      problemDescription,
+      investigationSummary,
+      rootCause,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+
+    const recurrenceText = [
+      record?.recurrence_reason,
+      record?.recurrence_analysis,
+      record?.recurrence_summary,
+      record?.capa_trigger_reason,
+      capaJustification,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+
+    const isCritical = severityValue.includes("critical");
+    const isMajor = severityValue.includes("major");
+    const hasRecurrence =
+      recurrenceText.includes("recurr") ||
+      recurrenceText.includes("third") ||
+      recurrenceText.includes("3") ||
+      record?.capa_required === true;
+
+    const hasCustomerImpact =
+      riskText.includes("customer") ||
+      riskText.includes("field") ||
+      riskText.includes("complaint") ||
+      riskText.includes("patient");
+
+    const hasSystemicSignal =
+      riskText.includes("systemic") ||
+      riskText.includes("trend") ||
+      riskText.includes("repeat") ||
+      recurrenceText.includes("trend");
+
+    if (isCritical || (isMajor && hasRecurrence) || hasCustomerImpact || hasSystemicSignal) {
+      return {
+        outcome: "required",
+        label: "CAPA Evaluation Required",
+        rationale:
+          "CAPA evaluation is required based on severity, recurrence, customer impact, systemic signal, or existing governance trigger. If CAPA is not opened, a risk-based justification is required.",
+      };
+    }
+
+    if (isMajor || hasRecurrence) {
+      return {
+        outcome: "recommended",
+        label: "CAPA Evaluation Recommended",
+        rationale:
+          "CAPA evaluation is recommended based on recurrence or major severity. Quality judgment should determine whether a CAPA is needed.",
+      };
+    }
+
+    return {
+      outcome: "not_required",
+      label: "CAPA Not Automatically Required",
+      rationale:
+        "No automatic CAPA trigger identified from the available NCMR data. Document rationale if CAPA is not opened.",
+    };
+  };
+
+  const saveCapaGovernanceEvaluation = async () => {
+    if (record?.is_locked) {
+      alert("This record is locked and cannot be edited.");
+      return;
+    }
+
+    const evaluation = evaluateCapaGovernance();
+
+    const { error } = await supabase
+      .from("ncmrs")
+      .update({
+        capa_required: evaluation.outcome === "required",
+        capa_evaluation_outcome: evaluation.outcome,
+        capa_evaluation_rationale: evaluation.rationale,
+      })
+      .eq("id", id);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    await addAuditLog(
+      "capa_governance_evaluated",
+      `${evaluation.label}: ${evaluation.rationale}`
+    );
+
+    alert("CAPA governance evaluation saved.");
+    fetchRecord();
+  };
+
+  const createCapaFromNcmr = async () => {
+    if (record?.is_locked) {
+      alert("This record is locked and cannot be edited.");
+      return;
+    }
+
+    if (record?.linked_capa_id || record?.capa_id || linkedCapa) {
+      alert("This NCMR already has a linked CAPA.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Create a linked CAPA from this NCMR? This will auto-populate the CAPA with the NCMR issue, risk, root cause, containment, and investigation information where available."
+    );
+
+    if (!confirmed) return;
+
+    const evaluation = evaluateCapaGovernance();
+    const capaTitle = `CAPA for ${record?.ncmr_number || record?.title || "NCMR"}`;
+
+    const capaDescription = [
+      `CAPA initiated from NCMR: ${record?.ncmr_number || record?.title || id}.`,
+      problemDescription || record?.issue_description || "",
+      rootCause ? `Root Cause: ${rootCause}` : "",
+      containmentAction ? `Containment: ${containmentAction}` : "",
+      investigationSummary ? `Investigation: ${investigationSummary}` : "",
+      riskAssessment ? `Risk Assessment: ${riskAssessment}` : "",
+      severity ? `Severity: ${severity}` : "",
+      productDisposition ? `Disposition: ${productDisposition}` : "",
+    ]
+      .filter(Boolean)
+      .join("\\n");
+
+    const { data: capaData, error: capaError } = await supabase
+      .from("capas")
+      .insert({
+        title: capaTitle,
+        description: capaDescription,
+        status: "open",
+        capa_source: "ncmr",
+        capa_type: "internal_capa",
+        linked_ncmr_id: id,
+        source_ncmr_id: id,
+        source_module: "ncmr",
+        severity: severity || null,
+        risk_level: evaluation.outcome,
+        created_by: userEmail || "unknown",
+      })
+      .select()
+      .single();
+
+    if (capaError) {
+      alert(capaError.message);
+      return;
+    }
+
+    const { error: ncmrUpdateError } = await supabase
+      .from("ncmrs")
+      .update({
+        linked_capa_id: capaData.id,
+        capa_id: capaData.id,
+        capa_required: true,
+        capa_evaluation_outcome: "capa_opened",
+        capa_evaluation_rationale: evaluation.rationale,
+        capa_not_required_justification: null,
+      })
+      .eq("id", id);
+
+    if (ncmrUpdateError) {
+      alert(ncmrUpdateError.message);
+      return;
+    }
+
+    await addAuditLog(
+      "capa_created_from_ncmr",
+      `CAPA created and linked from NCMR. CAPA title: ${capaTitle}.`
+    );
+
+    await supabase.from("audit_logs").insert({
+      entity_type: "capa",
+      entity_id: capaData.id,
+      action: "capa_created_from_ncmr",
+      details: `CAPA created from NCMR ${record?.ncmr_number || record?.title || id}.`,
+      user_email: userEmail || "unknown",
+    });
+
+    alert("Linked CAPA created.");
+    fetchRecord();
+  };
+
+  const saveCapaNotRequiredJustification = async () => {
+    if (record?.is_locked) {
+      alert("This record is locked and cannot be edited.");
+      return;
+    }
+
+    if (!capaNotRequiredJustification.trim()) {
+      alert("CAPA not-required justification is required.");
+      return;
+    }
+
+    const evaluation = evaluateCapaGovernance();
+
+    const { error } = await supabase
+      .from("ncmrs")
+      .update({
+        capa_required: false,
+        capa_evaluation_outcome: "not_opened_with_justification",
+        capa_evaluation_rationale: evaluation.rationale,
+        capa_not_required_justification: capaNotRequiredJustification,
+      })
+      .eq("id", id);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    await addAuditLog(
+      "capa_not_required_justification",
+      `CAPA not opened. Risk-based justification: ${capaNotRequiredJustification}`
+    );
+
+    alert("CAPA risk-based justification saved.");
     fetchRecord();
   };
 
@@ -2733,6 +2964,105 @@ This approval becomes part of the official electronic quality record.`,
         ) : null}
 
         <SectionSaveCancelActions />
+      </SectionCard>
+
+      <SectionCard
+        title="CAPA Governance / Evaluation"
+        subtitle={linkedCapa || record?.linked_capa_id || record?.capa_id ? "Complete: linked CAPA exists." : record?.capa_not_required_justification ? "Complete: CAPA not-required justification documented." : "Evaluate whether CAPA is required based on recurrence, severity, risk, or governance rules."}
+        defaultOpen={false}
+        rightAction={sectionStatusBadge(!!linkedCapa || !!record?.linked_capa_id || !!record?.capa_id || !!record?.capa_not_required_justification, "CAPA")}
+      >
+        <div
+          style={{
+            border: "1px solid #d1d5db",
+            borderRadius: "10px",
+            padding: "12px",
+            background: "#f9fafb",
+            marginBottom: "14px",
+          }}
+        >
+          <h3 style={{ marginTop: 0 }}>Governance Evaluation</h3>
+          <p style={{ color: "#4b5563", fontSize: "14px" }}>
+            CAPA should be created through risk-based decision making, not automatic recurrence alone.
+          </p>
+
+          <div style={{ display: "grid", gap: "8px", maxWidth: "900px" }}>
+            <div>
+              <strong>Current Evaluation:</strong>{" "}
+              <StatusBadge status={record?.capa_evaluation_outcome || evaluateCapaGovernance().label} />
+            </div>
+            <div>
+              <strong>Rationale:</strong>{" "}
+              {record?.capa_evaluation_rationale || evaluateCapaGovernance().rationale}
+            </div>
+            <div>
+              <strong>Severity:</strong> {severity || record?.severity || "N/A"}
+            </div>
+            <div>
+              <strong>Root Cause:</strong> {rootCause || "N/A"}
+            </div>
+            <div>
+              <strong>Risk Assessment:</strong> {riskAssessment || "N/A"}
+            </div>
+          </div>
+        </div>
+
+        {linkedCapa || record?.linked_capa_id || record?.capa_id ? (
+          <div
+            style={{
+              border: "1px solid #86efac",
+              background: "#f0fdf4",
+              borderRadius: "10px",
+              padding: "12px",
+              marginBottom: "14px",
+            }}
+          >
+            <strong>Linked CAPA:</strong>{" "}
+            <Link href={`/capa/${linkedCapa?.id || record?.linked_capa_id || record?.capa_id}`}>
+              {linkedCapa?.title || "Open Linked CAPA"}
+            </Link>
+          </div>
+        ) : (
+          <>
+            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "14px" }}>
+              <button type="button" onClick={saveCapaGovernanceEvaluation} disabled={isLocked}>
+                Save CAPA Evaluation
+              </button>
+
+              <button type="button" onClick={createCapaFromNcmr} disabled={isLocked}>
+                Create Linked CAPA
+              </button>
+            </div>
+
+            <div>
+              <label>Risk-Based Justification if CAPA is Not Opened</label>
+              <br />
+              <textarea
+                value={capaNotRequiredJustification}
+                onChange={(e) => setCapaNotRequiredJustification(e.target.value)}
+                rows={4}
+                disabled={isLocked}
+                placeholder="Document rationale if CAPA is not required after evaluation."
+                style={{ width: "100%", maxWidth: "900px", padding: "8px" }}
+              />
+            </div>
+
+            <button
+              type="button"
+              onClick={saveCapaNotRequiredJustification}
+              disabled={isLocked}
+              style={{ marginTop: "10px" }}
+            >
+              Save No-CAPA Justification
+            </button>
+          </>
+        )}
+
+        {record?.capa_not_required_justification ? (
+          <div style={{ marginTop: "12px", color: "#374151" }}>
+            <strong>Saved No-CAPA Justification:</strong> {record.capa_not_required_justification}
+          </div>
+        ) : null}
       </SectionCard>
 
       <SectionCard
