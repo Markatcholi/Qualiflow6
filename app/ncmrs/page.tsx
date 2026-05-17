@@ -386,8 +386,7 @@ export default function NcmrPage() {
       return null;
     }
 
-    const selectedSupplierForScar =
-      suppliers.find((supplier: any) => supplier.id === supplierId) || null;
+    const selectedSupplierForScar = null;
 
     const scarTitle = `SCAR from ${ncmrRecord?.ncmr_number || ncmrRecord?.title || "NCMR"}`;
     const firstAffectedItem: any = affectedItems?.[0] || {};
@@ -426,10 +425,7 @@ export default function NcmrPage() {
       // Supplier linkage used by the SCAR detail page
       linked_supplier_id: supplierId,
       supplier_id: supplierId,
-      supplier_name:
-        selectedSupplierForScar?.supplier_name ||
-        supplierName ||
-        null,
+      supplier_name: supplierName || null,
 
       // Supplier issue fields used by the SCAR detail page
       description: issueDescription || scarProblemDescription || null,
@@ -636,6 +632,9 @@ export default function NcmrPage() {
         `CAPA evaluation required due to recurrence. Risk-based decision required before CAPA creation. Reason: ${recurrence.reason}`
       );
     }
+
+    const { data: currentUserData } = await supabase.auth.getUser();
+    const currentUserEmail = currentUserData?.user?.email || "unknown";
 
     await createScarFromInitiatedNcmr(data, currentUserEmail);
 
