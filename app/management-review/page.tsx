@@ -3,601 +3,1074 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
 
-type MonthTrend = {
-  key: string;
+type TrendItem = {
   label: string;
-  created: number;
-  closed: number;
-  closureRate: number;
-  recurring: number;
-  overdue: number;
-  findings: number;
+  count: number;
+};
+
+type NotificationItem = {
+  type: string;
+  message: string;
+  link: string;
+};
+
+type SupplierCount = {
+  supplier: string;
+  count: number;
+};
+
+type ReportConfig = {
+  executiveSummary: boolean;
+  capaPerformance: boolean;
+  capaEffectiveness: boolean;
+  scarPerformance: boolean;
+  supplierQuality: boolean;
+  auditPerformance: boolean;
+  oosPerformance: boolean;
+  escalationQueues: boolean;
+  trendCharts: boolean;
+  executiveNotifications: boolean;
+  recurrenceAnalysis: boolean;
 };
 
 export default function ManagementReviewPage() {
-  const [ncmrs, setNcmrs] = useState<any[]>([]);
-  const [capas, setCapas] = useState<any[]>([]);
-  const [audits, setAudits] = useState<any[]>([]);
-  const [auditFindings, setAuditFindings] = useState<any[]>([]);
-  const [savedReports, setSavedReports] = useState<any[]>([]);
+  const [reportConfig, setReportConfig] = useState<ReportConfig>({
+    executiveSummary: true,
+    capaPerformance: true,
+    capaEffectiveness: true,
+    scarPerformance: true,
+    supplierQuality: true,
+    auditPerformance: true,
+    oosPerformance: true,
+    escalationQueues: true,
+    trendCharts: true,
+    executiveNotifications: true,
+    recurrenceAnalysis: true,
+  });
 
-  const [reportTitle, setReportTitle] = useState("Management Review Report");
-  const [reportPeriod, setReportPeriod] = useState("");
+  const [ncmrOpen, setNcmrOpen] = useState(0);
+  const [ncmrInvestigation, setNcmrInvestigation] = useState(0);
+  const [ncmrTotal, setNcmrTotal] = useState(0);
+  const [ncmrClosed, setNcmrClosed] = useState(0);
+  const [avgNcmrCloseDays, setAvgNcmrCloseDays] = useState("0.0");
+  const [ncmrTrend, setNcmrTrend] = useState<TrendItem[]>([]);
+
+  const [capaTotal, setCapaTotal] = useState(0);
+  const [capaOpen, setCapaOpen] = useState(0);
+  const [capaClosed, setCapaClosed] = useState(0);
+  const [capaOverdue, setCapaOverdue] = useState(0);
+  const [capaOverdueRate, setCapaOverdueRate] = useState("0.0");
+  const [capaDueSoon, setCapaDueSoon] = useState(0);
+  const [avgCapaCloseDays, setAvgCapaCloseDays] = useState("0.0");
+  const [capaTrend, setCapaTrend] = useState<TrendItem[]>([]);
+
+  const [capaAwaitingEffectiveness, setCapaAwaitingEffectiveness] = useState(0);
+  const [capaEffectivenessOverdue, setCapaEffectivenessOverdue] = useState(0);
+  const [capaEffectivenessDueSoon, setCapaEffectivenessDueSoon] = useState(0);
+  const [capaEffective, setCapaEffective] = useState(0);
+  const [capaPartiallyEffective, setCapaPartiallyEffective] = useState(0);
+  const [capaNotEffective, setCapaNotEffective] = useState(0);
+  const [capaEffectivenessRate, setCapaEffectivenessRate] = useState("0.0");
+  const [capaFollowupRequired, setCapaFollowupRequired] = useState(0);
+
+  const [openScars, setOpenScars] = useState(0);
+  const [scarEffective, setScarEffective] = useState(0);
+  const [scarNotEffective, setScarNotEffective] = useState(0);
+  const [scarEffectivenessRate, setScarEffectivenessRate] = useState("0.0");
+  const [scarAwaitingEffectiveness, setScarAwaitingEffectiveness] = useState(0);
+
+  const [supplierScarRequired, setSupplierScarRequired] = useState(0);
+  const [openSupplierCapas, setOpenSupplierCapas] = useState(0);
+  const [topSuppliers, setTopSuppliers] = useState<SupplierCount[]>([]);
+  const [supplierRecurrenceEvents, setSupplierRecurrenceEvents] = useState(0);
+
+  const [oosTotal, setOosTotal] = useState(0);
+  const [oosOpen, setOosOpen] = useState(0);
+  const [oosClosed, setOosClosed] = useState(0);
+  const [oosProductImpact, setOosProductImpact] = useState(0);
+  const [oosNcmrRequired, setOosNcmrRequired] = useState(0);
+  const [oosSystemicIssues, setOosSystemicIssues] = useState(0);
+  const [oosEscalations, setOosEscalations] = useState(0);
+  const [oosTrend, setOosTrend] = useState<TrendItem[]>([]);
+
+  const [auditTotal, setAuditTotal] = useState(0);
+  const [auditOpen, setAuditOpen] = useState(0);
+  const [auditClosed, setAuditClosed] = useState(0);
+  const [auditOverdue, setAuditOverdue] = useState(0);
+  const [findingTotal, setFindingTotal] = useState(0);
+  const [findingOpen, setFindingOpen] = useState(0);
+  const [findingClosed, setFindingClosed] = useState(0);
+  const [majorFindings, setMajorFindings] = useState(0);
+  const [criticalFindings, setCriticalFindings] = useState(0);
+  const [findingsRequiringCapa, setFindingsRequiringCapa] = useState(0);
+  const [auditTrend, setAuditTrend] = useState<TrendItem[]>([]);
+  const [findingTrend, setFindingTrend] = useState<TrendItem[]>([]);
+
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [capaGovernanceQueue, setCapaGovernanceQueue] = useState<any[]>([]);
+  const [scarGovernanceQueue, setScarGovernanceQueue] = useState<any[]>([]);
+  const [auditEscalationQueue, setAuditEscalationQueue] = useState<any[]>([]);
+
+  const getLast6Months = () => {
+    const months: { key: string; label: string }[] = [];
+    const now = new Date();
+
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, "0");
+      const key = `${year}-${month}`;
+      const label = d.toLocaleString("en-US", {
+        month: "short",
+        year: "2-digit",
+      });
+
+      months.push({ key, label });
+    }
+
+    return months;
+  };
+
+  const buildTrend = (items: any[]) => {
+    const months = getLast6Months();
+    const counts: Record<string, number> = {};
+
+    months.forEach((m) => {
+      counts[m.key] = 0;
+    });
+
+    items.forEach((item) => {
+      if (!item.created_at) return;
+
+      const d = new Date(item.created_at);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+
+      if (counts[key] !== undefined) {
+        counts[key] += 1;
+      }
+    });
+
+    return months.map((m) => ({
+      label: m.label,
+      count: counts[m.key],
+    }));
+  };
+
+  const daysBetween = (dateString: string) => {
+    const start = new Date(dateString).getTime();
+    const now = new Date().getTime();
+    return Math.floor((now - start) / (1000 * 60 * 60 * 24));
+  };
+
+  const buildSupplierCounts = (allNcmrs: any[]) => {
+    const supplierMap: Record<string, number> = {};
+
+    allNcmrs.forEach((ncmr: any) => {
+      const supplier = (ncmr.supplier_name || "").trim();
+      if (!supplier) return;
+      supplierMap[supplier] = (supplierMap[supplier] || 0) + 1;
+    });
+
+    const sorted = Object.entries(supplierMap)
+      .map(([supplier, count]) => ({ supplier, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+
+    setTopSuppliers(sorted);
+  };
+
+  const buildNotifications = (
+    allNcmrs: any[],
+    allCapas: any[],
+    allScars: any[],
+    allOos: any[],
+    allAudits: any[],
+    allFindings: any[]
+  ) => {
+    const alerts: NotificationItem[] = [];
+    const today = new Date();
+    const todayStr = today.toISOString().split("T")[0];
+
+    allCapas.forEach((capa: any) => {
+      if (capa.status !== "closed" && capa.due_date && capa.due_date < todayStr) {
+        alerts.push({
+          type: "CAPA Overdue",
+          message: `CAPA overdue: ${capa.title || "Untitled CAPA"} was due on ${capa.due_date}.`,
+          link: `/capa/${capa.id}`,
+        });
+      }
+
+      if (
+        capa.status !== "closed" &&
+        capa.implemented_by &&
+        !capa.effectiveness_check &&
+        capa.effectiveness_due_date &&
+        capa.effectiveness_due_date < todayStr
+      ) {
+        alerts.push({
+          type: "Effectiveness Overdue",
+          message: `Effectiveness check overdue for CAPA: ${capa.title || "Untitled CAPA"}.`,
+          link: `/capa/${capa.id}`,
+        });
+      }
+
+      if (
+        capa.status !== "closed" &&
+        capa.effectiveness_rating === "not_effective" &&
+        !capa.followup_capa_id
+      ) {
+        alerts.push({
+          type: "Follow-up CAPA Needed",
+          message: `CAPA rated Not Effective and needs follow-up CAPA: ${capa.title || "Untitled CAPA"}.`,
+          link: `/capa/${capa.id}`,
+        });
+      }
+    });
+
+    allScars.forEach((scar: any) => {
+      const scarStatus = scar.status || scar.scar_status;
+
+      if (scarStatus !== "closed") {
+        alerts.push({
+          type: "Open SCAR",
+          message: `Open SCAR: ${scar.title || scar.scar_title || "Untitled SCAR"}.`,
+          link: `/supplier-quality/scars/${scar.id}`,
+        });
+      }
+    });
+
+    allNcmrs.forEach((ncmr: any) => {
+      if (
+        ncmr.status === "investigation" &&
+        ncmr.investigation_opened_at &&
+        daysBetween(ncmr.investigation_opened_at) > 10
+      ) {
+        alerts.push({
+          type: "NCMR Stuck",
+          message: `NCMR in investigation >10 days: ${ncmr.title || "Untitled NCMR"}.`,
+          link: `/ncmrs/${ncmr.id}`,
+        });
+      }
+
+      if (
+        ncmr.status !== "closed" &&
+        ncmr.capa_evaluation_outcome === "required" &&
+        !ncmr.linked_capa_id &&
+        !ncmr.capa_id &&
+        !ncmr.capa_not_required_justification
+      ) {
+        alerts.push({
+          type: "CAPA Evaluation Required",
+          message: `NCMR requires CAPA decision: ${ncmr.title || "Untitled NCMR"}.`,
+          link: `/ncmrs/${ncmr.id}`,
+        });
+      }
+
+      if (
+        ncmr.status !== "closed" &&
+        ncmr.scar_required &&
+        !ncmr.linked_scar_id &&
+        !ncmr.scar_justification
+      ) {
+        alerts.push({
+          type: "SCAR Evaluation Required",
+          message: `NCMR requires SCAR decision: ${ncmr.title || "Untitled NCMR"}.`,
+          link: `/ncmrs/${ncmr.id}`,
+        });
+      }
+    });
+
+    allOos.forEach((item: any) => {
+      if (item.status !== "closed" && item.product_impact && item.ncmr_required && !item.linked_ncmr_number) {
+        alerts.push({
+          type: "OOS/OOT Missing NCMR Link",
+          message: `${item.investigation_number || "OOS/OOT"} has product impact and requires NCMR linkage.`,
+          link: `/oos-oot/${item.id}`,
+        });
+      }
+
+      if (item.status !== "closed" && item.systemic_issue && item.escalation_required) {
+        alerts.push({
+          type: "OOS/OOT Escalation Required",
+          message: `${item.investigation_number || "OOS/OOT"} has systemic issue requiring escalation.`,
+          link: `/oos-oot/${item.id}`,
+        });
+      }
+    });
+
+    allAudits.forEach((audit: any) => {
+      if (audit.status !== "closed" && audit.audit_date && audit.audit_date < todayStr) {
+        alerts.push({
+          type: "Audit Overdue / Past Due",
+          message: `Audit past due or still open: ${audit.audit_number || "AUD"} - ${audit.audit_title || "Untitled Audit"}.`,
+          link: `/audits/${audit.id}`,
+        });
+      }
+    });
+
+    allFindings.forEach((finding: any) => {
+      if (finding.finding_status !== "closed" && finding.finding_severity === "critical") {
+        alerts.push({
+          type: "Critical Audit Finding Open",
+          message: `Critical audit finding open: ${finding.finding_title || "Untitled Finding"}.`,
+          link: finding.linked_capa_id ? `/capa/${finding.linked_capa_id}` : `/audits/${finding.audit_id}`,
+        });
+      }
+    });
+
+    setNotifications(alerts);
+  };
 
   const fetchData = async () => {
-    const ncmrRes = await supabase.from("ncmrs").select("*");
-    const capaRes = await supabase.from("capas").select("*");
-    const auditRes = await supabase.from("audits").select("*");
-    const findingsRes = await supabase.from("audit_findings").select("*");
-    const reportsRes = await supabase
-      .from("management_review_reports")
-      .select("*")
-      .order("created_at", { ascending: false });
+    const { data: ncmrAllData, error: ncmrAllError } = await supabase
+      .from("ncmrs")
+      .select("*");
 
-    if (ncmrRes.error) alert(ncmrRes.error.message);
-    if (capaRes.error) alert(capaRes.error.message);
-    if (auditRes.error) alert(auditRes.error.message);
-    if (findingsRes.error) alert(findingsRes.error.message);
-    if (reportsRes.error) alert(reportsRes.error.message);
+    if (ncmrAllError) {
+      alert(ncmrAllError.message);
+      return;
+    }
 
-    setNcmrs(ncmrRes.data || []);
-    setCapas(capaRes.data || []);
-    setAudits(auditRes.data || []);
-    setAuditFindings(findingsRes.data || []);
-    setSavedReports(reportsRes.data || []);
+    const allNcmrs = ncmrAllData || [];
+    setNcmrTotal(allNcmrs.length);
+
+    const closedNcmrs = allNcmrs.filter((item: any) => item.status === "closed");
+    setNcmrClosed(closedNcmrs.length);
+    setNcmrOpen(allNcmrs.filter((item: any) => item.status === "open").length);
+    setNcmrInvestigation(allNcmrs.filter((item: any) => item.status === "investigation").length);
+    setSupplierScarRequired(
+      allNcmrs.filter((item: any) => item.scar_required || item.supplier_capa_required).length
+    );
+
+    buildSupplierCounts(allNcmrs);
+
+    const ncmrDurations = closedNcmrs
+      .filter((item: any) => item.created_at && item.closed_at)
+      .map((item: any) => {
+        const created = new Date(item.created_at).getTime();
+        const closed = new Date(item.closed_at).getTime();
+        return (closed - created) / (1000 * 60 * 60 * 24);
+      });
+
+    setAvgNcmrCloseDays(
+      ncmrDurations.length > 0
+        ? (ncmrDurations.reduce((sum: number, d: number) => sum + d, 0) / ncmrDurations.length).toFixed(1)
+        : "0.0"
+    );
+
+    setNcmrTrend(buildTrend(allNcmrs));
+
+    setCapaGovernanceQueue(
+      allNcmrs.filter(
+        (item: any) =>
+          item.status !== "closed" &&
+          !item.linked_capa_id &&
+          !item.capa_id &&
+          !item.capa_not_required_justification &&
+          (
+            item.capa_required ||
+            item.capa_evaluation_outcome === "required" ||
+            item.capa_evaluation_outcome === "recommended" ||
+            item.recurring_issue ||
+            item.severity === "major" ||
+            item.severity === "critical"
+          )
+      )
+    );
+
+    setScarGovernanceQueue(
+      allNcmrs.filter(
+        (item: any) =>
+          item.status !== "closed" &&
+          !item.linked_scar_id &&
+          !item.scar_justification &&
+          (
+            item.scar_required ||
+            item.supplier_capa_required ||
+            item.linked_supplier_id ||
+            item.supplier_id ||
+            item.supplier_name
+          )
+      )
+    );
+
+    const { data: capaAllData, error: capaAllError } = await supabase
+      .from("capas")
+      .select("*");
+
+    if (capaAllError) {
+      alert(capaAllError.message);
+      return;
+    }
+
+    const allCapas = capaAllData || [];
+    setCapaTotal(allCapas.length);
+
+    const closedCapas = allCapas.filter((item: any) => item.status === "closed");
+    setCapaClosed(closedCapas.length);
+
+    const activeCapas = allCapas.filter((item: any) => item.status !== "closed");
+    setCapaOpen(activeCapas.length);
+
+    const supplierCapas = allCapas.filter(
+      (item: any) => item.status !== "closed" && item.capa_type === "supplier_capa"
+    );
+    setOpenSupplierCapas(supplierCapas.length);
+
+    const today = new Date();
+    const todayStr = today.toISOString().split("T")[0];
+
+    const next7 = new Date();
+    next7.setDate(today.getDate() + 7);
+    const next7Str = next7.toISOString().split("T")[0];
+
+    const overdueCapas = activeCapas.filter((item: any) => item.due_date && item.due_date < todayStr);
+    setCapaOverdue(overdueCapas.length);
+
+    setCapaOverdueRate(
+      activeCapas.length > 0
+        ? ((overdueCapas.length / activeCapas.length) * 100).toFixed(1)
+        : "0.0"
+    );
+
+    setCapaDueSoon(
+      activeCapas.filter(
+        (item: any) => item.due_date && item.due_date >= todayStr && item.due_date <= next7Str
+      ).length
+    );
+
+    const awaitingEffectiveness = allCapas.filter(
+      (item: any) => item.status !== "closed" && item.implemented_by && !item.effectiveness_check
+    );
+    setCapaAwaitingEffectiveness(awaitingEffectiveness.length);
+
+    setCapaEffectivenessOverdue(
+      allCapas.filter(
+        (item: any) =>
+          item.status !== "closed" &&
+          item.implemented_by &&
+          !item.effectiveness_check &&
+          item.effectiveness_due_date &&
+          item.effectiveness_due_date < todayStr
+      ).length
+    );
+
+    setCapaEffectivenessDueSoon(
+      allCapas.filter(
+        (item: any) =>
+          item.status !== "closed" &&
+          item.implemented_by &&
+          !item.effectiveness_check &&
+          item.effectiveness_due_date &&
+          item.effectiveness_due_date >= todayStr &&
+          item.effectiveness_due_date <= next7Str
+      ).length
+    );
+
+    const effectiveCapas = allCapas.filter((item: any) => item.effectiveness_rating === "effective");
+    const partiallyEffectiveCapas = allCapas.filter((item: any) => item.effectiveness_rating === "partially_effective");
+    const notEffectiveCapas = allCapas.filter((item: any) => item.effectiveness_rating === "not_effective");
+    const completedEffectivenessCapas = effectiveCapas.length + partiallyEffectiveCapas.length + notEffectiveCapas.length;
+
+    setCapaEffective(effectiveCapas.length);
+    setCapaPartiallyEffective(partiallyEffectiveCapas.length);
+    setCapaNotEffective(notEffectiveCapas.length);
+    setCapaEffectivenessRate(
+      completedEffectivenessCapas > 0
+        ? ((effectiveCapas.length / completedEffectivenessCapas) * 100).toFixed(1)
+        : "0.0"
+    );
+    setCapaFollowupRequired(
+      allCapas.filter((item: any) => item.effectiveness_rating === "not_effective" && !item.followup_capa_id).length
+    );
+
+    const capaDurations = closedCapas
+      .filter((item: any) => item.created_at && item.closed_at)
+      .map((item: any) => {
+        const created = new Date(item.created_at).getTime();
+        const closed = new Date(item.closed_at).getTime();
+        return (closed - created) / (1000 * 60 * 60 * 24);
+      });
+
+    setAvgCapaCloseDays(
+      capaDurations.length > 0
+        ? (capaDurations.reduce((sum: number, d: number) => sum + d, 0) / capaDurations.length).toFixed(1)
+        : "0.0"
+    );
+
+    setCapaTrend(buildTrend(allCapas));
+
+    const { data: scarData, error: scarError } = await supabase
+      .from("scars")
+      .select("*");
+
+    if (scarError) {
+      alert(scarError.message);
+      return;
+    }
+
+    const allScars = scarData || [];
+    const activeScars = allScars.filter((item: any) => (item.status || item.scar_status) !== "closed");
+    setOpenScars(activeScars.length);
+
+    const effectiveScars = allScars.filter((item: any) => item.effectiveness_rating === "effective");
+    const notEffectiveScars = allScars.filter((item: any) => item.effectiveness_rating === "not_effective");
+    const completedScarEffectiveness = effectiveScars.length + notEffectiveScars.length;
+
+    setScarEffective(effectiveScars.length);
+    setScarNotEffective(notEffectiveScars.length);
+    setScarEffectivenessRate(
+      completedScarEffectiveness > 0
+        ? ((effectiveScars.length / completedScarEffectiveness) * 100).toFixed(1)
+        : "0.0"
+    );
+    setScarAwaitingEffectiveness(
+      allScars.filter(
+        (item: any) =>
+          (item.status || item.scar_status) !== "closed" &&
+          !item.effectiveness_verification &&
+          !item.effectiveness_rating
+      ).length
+    );
+
+    setSupplierRecurrenceEvents(
+      allNcmrs.filter((item: any) => item.recurring_issue || item.scar_required || item.linked_scar_id).length
+    );
+
+    const { data: oosData, error: oosError } = await supabase
+      .from("oos_oot_investigations")
+      .select("*");
+
+    if (oosError) {
+      alert(oosError.message);
+      return;
+    }
+
+    const allOos = oosData || [];
+    setOosTotal(allOos.length);
+    setOosOpen(allOos.filter((item: any) => item.status !== "closed").length);
+    setOosClosed(allOos.filter((item: any) => item.status === "closed").length);
+    setOosProductImpact(allOos.filter((item: any) => item.product_impact).length);
+    setOosNcmrRequired(allOos.filter((item: any) => item.ncmr_required).length);
+    setOosSystemicIssues(allOos.filter((item: any) => item.systemic_issue).length);
+    setOosEscalations(allOos.filter((item: any) => item.escalation_required).length);
+    setOosTrend(buildTrend(allOos));
+
+    const { data: auditData, error: auditError } = await supabase
+      .from("audits")
+      .select("*");
+
+    if (auditError) {
+      alert(auditError.message);
+      return;
+    }
+
+    const { data: findingData, error: findingError } = await supabase
+      .from("audit_findings")
+      .select("*");
+
+    if (findingError) {
+      alert(findingError.message);
+      return;
+    }
+
+    const allAudits = auditData || [];
+    const allFindings = findingData || [];
+
+    setAuditTotal(allAudits.length);
+    setAuditOpen(allAudits.filter((item: any) => item.status !== "closed").length);
+    setAuditClosed(allAudits.filter((item: any) => item.status === "closed").length);
+    setAuditOverdue(
+      allAudits.filter((item: any) => item.status !== "closed" && item.audit_date && item.audit_date < todayStr).length
+    );
+
+    setFindingTotal(allFindings.length);
+    setFindingOpen(allFindings.filter((item: any) => item.finding_status !== "closed").length);
+    setFindingClosed(allFindings.filter((item: any) => item.finding_status === "closed").length);
+    setMajorFindings(allFindings.filter((item: any) => item.finding_severity === "major").length);
+    setCriticalFindings(allFindings.filter((item: any) => item.finding_severity === "critical").length);
+    setFindingsRequiringCapa(
+      allFindings.filter((item: any) => item.capa_required || item.linked_capa_id).length
+    );
+    setAuditTrend(buildTrend(allAudits));
+    setFindingTrend(buildTrend(allFindings));
+
+    setAuditEscalationQueue(
+      allFindings.filter(
+        (item: any) =>
+          item.finding_status !== "closed" &&
+          !item.escalation_justification &&
+          (
+            item.finding_severity === "major" ||
+            item.finding_severity === "critical" ||
+            item.capa_evaluation_outcome === "required" ||
+            item.scar_evaluation_outcome === "required" ||
+            (!item.linked_capa_id && !item.linked_scar_id)
+          )
+      )
+    );
+
+    buildNotifications(allNcmrs, allCapas, allScars, allOos, allAudits, allFindings);
   };
 
   useEffect(() => {
     fetchData();
   }, []);
 
-  const todayStr = new Date().toISOString().split("T")[0];
+  const ncmrClosureRate = ncmrTotal > 0 ? ((ncmrClosed / ncmrTotal) * 100).toFixed(1) : "0.0";
+  const capaClosureRate = capaTotal > 0 ? ((capaClosed / capaTotal) * 100).toFixed(1) : "0.0";
+  const oosClosureRate = oosTotal > 0 ? ((oosClosed / oosTotal) * 100).toFixed(1) : "0.0";
+  const auditClosureRate = auditTotal > 0 ? ((auditClosed / auditTotal) * 100).toFixed(1) : "0.0";
+  const findingClosureRate = findingTotal > 0 ? ((findingClosed / findingTotal) * 100).toFixed(1) : "0.0";
 
-  const closedNcmrs = ncmrs.filter((x) => x.status === "closed");
-  const openNcmrs = ncmrs.filter((x) => x.status !== "closed");
+  const totalHighPriorityAlerts = notifications.length;
+  const totalOpenQualityItems = ncmrOpen + ncmrInvestigation + capaOpen + oosOpen + auditOpen + findingOpen + openScars;
+  const totalRiskEvents =
+    capaOverdue +
+    capaEffectivenessOverdue +
+    capaNotEffective +
+    scarNotEffective +
+    oosProductImpact +
+    oosSystemicIssues +
+    auditOverdue +
+    criticalFindings +
+    majorFindings;
 
-  const closedCapas = capas.filter((x) => x.status === "closed");
-  const openCapas = capas.filter((x) => x.status !== "closed");
+  const overallClosureRate =
+    ncmrTotal + capaTotal + oosTotal + auditTotal + findingTotal > 0
+      ? (((ncmrClosed + capaClosed + oosClosed + auditClosed + findingClosed) /
+          (ncmrTotal + capaTotal + oosTotal + auditTotal + findingTotal)) * 100).toFixed(1)
+      : "0.0";
 
-  const overdueCapas = capas.filter(
-    (x) => x.status !== "closed" && x.due_date && x.due_date < todayStr
-  );
+  const executiveRiskScore =
+    capaOverdue * 3 +
+    capaEffectivenessOverdue * 3 +
+    capaNotEffective * 4 +
+    scarNotEffective * 4 +
+    supplierRecurrenceEvents * 2 +
+    oosProductImpact * 4 +
+    oosSystemicIssues * 5 +
+    auditOverdue * 2 +
+    criticalFindings * 5 +
+    majorFindings * 3 +
+    ncmrInvestigation * 1;
 
-  const scars = capas.filter((x) => x.capa_type === "scar");
+  const executiveHealth =
+    executiveRiskScore === 0
+      ? "Controlled"
+      : executiveRiskScore < 10
+      ? "Watch"
+      : executiveRiskScore < 25
+      ? "Elevated"
+      : "Critical";
 
-  const effectiveness = {
-    effective: capas.filter((x) => x.effectiveness_rating === "effective").length,
-    partial: capas.filter((x) => x.effectiveness_rating === "partially_effective").length,
-    notEffective: capas.filter((x) => x.effectiveness_rating === "not_effective").length,
-  };
-
-  const totalAudits = audits.length;
-  const openAudits = audits.filter((a) => a.status !== "closed").length;
-  const closedAudits = audits.filter((a) => a.status === "closed").length;
-  const overdueAudits = audits.filter(
-    (a) => a.status !== "closed" && a.audit_date && a.audit_date < todayStr
-  ).length;
-
-  const totalFindings = auditFindings.length;
-  const openFindings = auditFindings.filter((f) => f.finding_status !== "closed").length;
-  const closedFindings = auditFindings.filter((f) => f.finding_status === "closed").length;
-  const minorFindings = auditFindings.filter((f) => f.finding_severity === "minor").length;
-  const majorFindings = auditFindings.filter((f) => f.finding_severity === "major").length;
-  const criticalFindings = auditFindings.filter((f) => f.finding_severity === "critical").length;
-  const capaFindings = auditFindings.filter((f) => f.capa_required).length;
-
-  const capaFindingsPercent =
-    totalFindings > 0 ? ((capaFindings / totalFindings) * 100).toFixed(1) : "0.0";
-
-  const supplierMap = new Map<string, number>();
-  ncmrs.forEach((n) => {
-    const supplier = n.supplier_name || "";
-    if (!supplier) return;
-    supplierMap.set(supplier, (supplierMap.get(supplier) || 0) + 1);
-  });
-
-  const topSuppliers = Array.from(supplierMap.entries())
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5);
-
-  const closureRate = (closed: number, total: number) =>
-    total > 0 ? ((closed / total) * 100).toFixed(1) : "0.0";
-
-  const getLast6Months = () => {
-    const months: MonthTrend[] = [];
-    const now = new Date();
-
-    for (let i = 5; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-
-      months.push({
-        key,
-        label: d.toLocaleString("en-US", { month: "short", year: "2-digit" }),
-        created: 0,
-        closed: 0,
-        closureRate: 0,
-        recurring: 0,
-        overdue: 0,
-        findings: 0,
-      });
-    }
-
-    return months;
-  };
-
-  const monthKey = (dateString: string) => {
-    const d = new Date(dateString);
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-  };
-
-  const buildRecordTrend = (items: any[], type: "ncmr" | "capa") => {
-    const months = getLast6Months();
-
-    months.forEach((month) => {
-      const createdThisMonth = items.filter(
-        (item) => item.created_at && monthKey(item.created_at) === month.key
-      );
-
-      const closedThisMonth = items.filter(
-        (item) => item.closed_at && monthKey(item.closed_at) === month.key
-      );
-
-      month.created = createdThisMonth.length;
-      month.closed = closedThisMonth.length;
-      month.closureRate =
-        createdThisMonth.length > 0
-          ? Number(((closedThisMonth.length / createdThisMonth.length) * 100).toFixed(1))
-          : 0;
-
-      if (type === "ncmr") {
-        month.recurring = createdThisMonth.filter((item) => item.recurring_issue).length;
-      }
-
-      if (type === "capa") {
-        month.overdue = createdThisMonth.filter(
-          (item) => item.status !== "closed" && item.due_date && item.due_date < todayStr
-        ).length;
-      }
+  const loadExecutivePreset = () => {
+    setReportConfig({
+      executiveSummary: true,
+      capaPerformance: true,
+      capaEffectiveness: true,
+      scarPerformance: false,
+      supplierQuality: false,
+      auditPerformance: true,
+      oosPerformance: false,
+      escalationQueues: false,
+      trendCharts: true,
+      executiveNotifications: true,
+      recurrenceAnalysis: false,
     });
-
-    return months;
   };
 
-  const buildAuditFindingTrend = () => {
-    const months = getLast6Months();
-
-    months.forEach((month) => {
-      month.findings = auditFindings.filter(
-        (finding) =>
-          finding.created_at && monthKey(finding.created_at) === month.key
-      ).length;
+  const loadFullQualityPreset = () => {
+    setReportConfig({
+      executiveSummary: true,
+      capaPerformance: true,
+      capaEffectiveness: true,
+      scarPerformance: true,
+      supplierQuality: true,
+      auditPerformance: true,
+      oosPerformance: true,
+      escalationQueues: true,
+      trendCharts: true,
+      executiveNotifications: true,
+      recurrenceAnalysis: true,
     });
-
-    return months;
   };
 
-  const ncmrTrend = buildRecordTrend(ncmrs, "ncmr");
-  const capaTrend = buildRecordTrend(capas, "capa");
-  const auditFindingTrend = buildAuditFindingTrend();
+  return (
+    <main style={{ padding: "24px", fontFamily: "Arial, sans-serif", background: "#f8fafc", minHeight: "100vh" }}>
+      <div style={{ marginBottom: "22px" }}>
+        <h1 style={{ marginBottom: "4px" }}>Management Review Report Builder</h1>
+        <p style={{ margin: 0, color: "#4b5563" }}>
+          Configure, preview, and print management review content using live quality system data.
+        </p>
 
-  const buildReportData = () => {
-    return {
-      generated_at: new Date().toISOString(),
-      executive_summary: {
-        total_ncmrs: ncmrs.length,
-        open_ncmrs: openNcmrs.length,
-        closed_ncmrs: closedNcmrs.length,
-        ncmr_closure_rate: closureRate(closedNcmrs.length, ncmrs.length),
-        total_capas: capas.length,
-        open_capas: openCapas.length,
-        closed_capas: closedCapas.length,
-        capa_closure_rate: closureRate(closedCapas.length, capas.length),
-        overdue_capas: overdueCapas.length,
-      },
-      charts: {
-        ncmr_trend: ncmrTrend,
-        capa_trend: capaTrend,
-        audit_finding_trend: auditFindingTrend,
-        findings_by_severity: {
-          minor: minorFindings,
-          major: majorFindings,
-          critical: criticalFindings,
-        },
-        capa_effectiveness: effectiveness,
-        top_suppliers: topSuppliers.map(([supplier, count]) => ({
-          supplier,
-          count,
-        })),
-      },
-      trend_over_time: {
-        ncmr_monthly_closure_rate: ncmrTrend.map((m) => ({
-          label: m.label,
-          closureRate: m.closureRate,
-        })),
-        capa_monthly_closure_rate: capaTrend.map((m) => ({
-          label: m.label,
-          closureRate: m.closureRate,
-        })),
-        ncmr_monthly_recurrence: ncmrTrend.map((m) => ({
-          label: m.label,
-          recurring: m.recurring,
-        })),
-        capa_monthly_overdue: capaTrend.map((m) => ({
-          label: m.label,
-          overdue: m.overdue,
-        })),
-        audit_monthly_findings: auditFindingTrend.map((m) => ({
-          label: m.label,
-          findings: m.findings,
-        })),
-      },
-      risk_escalation: {
-        critical_ncmrs: ncmrs.filter((x) => x.severity === "critical").length,
-        major_ncmrs: ncmrs.filter((x) => x.severity === "major").length,
-        recurring_ncmrs: ncmrs.filter((x) => x.recurring_issue).length,
-        supplier_capa_required: ncmrs.filter((x) => x.supplier_capa_required).length,
-      },
-      capa_effectiveness: effectiveness,
-      supplier_quality: {
-        total_scars: scars.length,
-        top_suppliers: topSuppliers.map(([supplier, count]) => ({
-          supplier,
-          count,
-        })),
-      },
-      audit_metrics: {
-        total_audits: totalAudits,
-        open_audits: openAudits,
-        closed_audits: closedAudits,
-        overdue_audits: overdueAudits,
-        total_findings: totalFindings,
-        open_findings: openFindings,
-        closed_findings: closedFindings,
-        minor_findings: minorFindings,
-        major_findings: majorFindings,
-        critical_findings: criticalFindings,
-        findings_requiring_capa: capaFindings,
-        percent_findings_requiring_capa: capaFindingsPercent,
-      },
-    };
-  };
-
-  const saveReport = async () => {
-  if (!reportTitle) {
-    alert("Report title is required.");
-    return;
-  }
-
-  if (!reportPeriod) {
-    alert("Report period is required.");
-    return;
-  }
-
-  const { data: userData } = await supabase.auth.getUser();
-  const email = userData?.user?.email || "unknown";
-
-  if (!email || email === "unknown") {
-    alert("You must be logged in to sign this report.");
-    return;
-  }
-
-  const confirmed = window.confirm(
-    "Electronic Signature:\n\nI confirm this Management Review report snapshot is accurate at the time of generation.\n\nBy clicking OK, my active login session will be used as my electronic signature."
-  );
-
-  if (!confirmed) return;
-
-  const now = new Date().toISOString();
-
-  const signatureMeaning =
-    "I confirm this Management Review report snapshot is accurate at the time of generation.";
-
-  const { error } = await supabase.from("management_review_reports").insert({
-    report_title: reportTitle,
-    report_period: reportPeriod,
-    report_data: buildReportData(),
-    created_by: email,
-    signed_by: email,
-    signed_at: now,
-    signature_email_entered: email,
-    signature_meaning: signatureMeaning,
-    signature_method: "session_confirm",
-    auth_reverified: false,
-  });
-
-  if (error) {
-    alert(error.message);
-    return;
-  }
-
-  alert("Management Review report saved with session-based electronic signature.");
-  fetchData();
-};
-
-  const Bar = ({ label, value, max }: { label: string; value: number; max: number }) => {
-    const percent = max > 0 ? (value / max) * 100 : 0;
-
-    return (
-      <div style={{ marginBottom: "10px" }}>
-        <div>{label}: {value}</div>
-        <div
-          style={{
-            background: "#ddd",
-            width: "100%",
-            maxWidth: "500px",
-            height: "18px",
-            borderRadius: "4px",
-            overflow: "hidden",
-            border: "1px solid #bbb",
-          }}
-        >
-          <div
-            style={{
-              background: "#2563eb",
-              width: `${value > 0 ? Math.max(percent, 5) : 0}%`,
-              height: "100%",
-            }}
-          />
+        <div style={{ marginTop: "16px", display: "flex", gap: "10px", flexWrap: "wrap" }}>
+          <button onClick={loadExecutivePreset} style={buttonStyle}>Executive Summary Preset</button>
+          <button onClick={loadFullQualityPreset} style={buttonStyle}>Full Quality Review Preset</button>
+          <button onClick={() => window.print()} style={darkButtonStyle}>Print Selected Report</button>
+          <button onClick={() => window.open("/management-review/print", "_blank")} style={buttonStyle}>Open Legacy Print Report</button>
         </div>
       </div>
-    );
-  };
 
-  const maxNcmrClosureRate = Math.max(...ncmrTrend.map((x) => x.closureRate), 100);
-  const maxCapaClosureRate = Math.max(...capaTrend.map((x) => x.closureRate), 100);
-  const maxRecurring = Math.max(...ncmrTrend.map((x) => x.recurring), 1);
-  const maxOverdue = Math.max(...capaTrend.map((x) => x.overdue), 1);
-  const maxAuditFindings = Math.max(...auditFindingTrend.map((x) => x.findings), 1);
+      <ReportBuilder config={reportConfig} setConfig={setReportConfig} />
 
-  const maxFinding = Math.max(minorFindings, majorFindings, criticalFindings, 1);
-  const maxEffectiveness = Math.max(
-    effectiveness.effective,
-    effectiveness.partial,
-    effectiveness.notEffective,
-    1
-  );
-  const maxSupplier = Math.max(...topSuppliers.map((x) => x[1]), 1);
+      {reportConfig.executiveSummary && (
+        <Section title="Executive Summary">
+          <div style={gridStyle}>
+            <KpiCard title="Quality Health" value={executiveHealth} color={getStatusColor(executiveRiskScore)} subtitle={`Risk score: ${executiveRiskScore}`} />
+            <KpiCard title="Total Open Quality Items" value={totalOpenQualityItems} color={getStatusColor(totalOpenQualityItems, "warning")} />
+            <KpiCard title="Total Risk Events" value={totalRiskEvents} color={getStatusColor(totalRiskEvents)} />
+            <KpiCard title="Overall Closure Rate" value={`${overallClosureRate}%`} color="#2563eb" />
+          </div>
+        </Section>
+      )}
 
-  return (
-    <main style={{ padding: "25px", fontFamily: "Arial, sans-serif" }}>
-      <button onClick={() => window.print()} className="no-print">
-        Print / Save as PDF
-      </button>
+      {reportConfig.executiveNotifications && (
+        <Section title="Executive Notifications">
+          {notifications.length === 0 ? (
+            <p style={{ color: "#15803d", fontWeight: 700 }}>No active quality alerts.</p>
+          ) : (
+            <ul style={{ paddingLeft: "20px" }}>
+              {notifications.map((alert, index) => (
+                <li key={index} style={{ marginBottom: "10px" }}>
+                  <strong style={{ color: "#b91c1c" }}>{alert.type}:</strong> {alert.message} <a href={alert.link}>Open</a>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Section>
+      )}
 
-      <h1>Management Review Dashboard</h1>
-      <p><strong>Date:</strong> {new Date().toLocaleDateString()}</p>
+      {reportConfig.capaPerformance && (
+        <Section title="CAPA Performance">
+          <div style={gridStyle}>
+            <KpiCard title="Total CAPAs" value={capaTotal} color="#2563eb" />
+            <KpiCard title="Active CAPAs" value={capaOpen} color={getStatusColor(capaOpen, "warning")} />
+            <KpiCard title="Closed CAPAs" value={capaClosed} color="#15803d" />
+            <KpiCard title="Closure Rate" value={`${capaClosureRate}%`} color="#2563eb" />
+            <KpiCard title="Overdue CAPAs" value={capaOverdue} color={getStatusColor(capaOverdue)} />
+            <KpiCard title="Overdue Rate" value={`${capaOverdueRate}%`} color={getStatusColor(capaOverdue)} />
+            <KpiCard title="Due Next 7 Days" value={capaDueSoon} color={getStatusColor(capaDueSoon, "warning")} />
+            <KpiCard title="Avg Close Time" value={`${avgCapaCloseDays} d`} color="#374151" />
+          </div>
+          {reportConfig.trendCharts && <TrendChart title="CAPA Monthly Trend" data={capaTrend} />}
+        </Section>
+      )}
 
-      <section style={sectionStyle} className="no-print">
-        <h2>Generate Saved Management Review Report</h2>
+      {reportConfig.capaEffectiveness && (
+        <Section title="CAPA & SCAR Effectiveness">
+          <div style={gridStyle}>
+            <KpiCard title="CAPA Effectiveness Rate" value={`${capaEffectivenessRate}%`} color="#2563eb" />
+            <KpiCard title="Effective CAPAs" value={capaEffective} color="#15803d" />
+            <KpiCard title="Partially Effective CAPAs" value={capaPartiallyEffective} color={getStatusColor(capaPartiallyEffective, "warning")} />
+            <KpiCard title="Not Effective CAPAs" value={capaNotEffective} color={getStatusColor(capaNotEffective)} />
+            <KpiCard title="Follow-up CAPAs Required" value={capaFollowupRequired} color={getStatusColor(capaFollowupRequired)} />
+            <KpiCard title="Awaiting CAPA Effectiveness" value={capaAwaitingEffectiveness} color={getStatusColor(capaAwaitingEffectiveness, "warning")} />
+            <KpiCard title="CAPA Effectiveness Overdue" value={capaEffectivenessOverdue} color={getStatusColor(capaEffectivenessOverdue)} />
+            <KpiCard title="CAPA Effectiveness Due Soon" value={capaEffectivenessDueSoon} color={getStatusColor(capaEffectivenessDueSoon, "warning")} />
+            <KpiCard title="SCAR Effectiveness Rate" value={`${scarEffectivenessRate}%`} color="#2563eb" />
+            <KpiCard title="Effective SCARs" value={scarEffective} color="#15803d" />
+            <KpiCard title="Not Effective SCARs" value={scarNotEffective} color={getStatusColor(scarNotEffective)} />
+            <KpiCard title="SCAR Awaiting Effectiveness" value={scarAwaitingEffectiveness} color={getStatusColor(scarAwaitingEffectiveness, "warning")} />
+          </div>
+        </Section>
+      )}
 
-        <div style={{ marginBottom: "10px" }}>
-          <label>Report Title</label><br />
-          <input
-            value={reportTitle}
-            onChange={(e) => setReportTitle(e.target.value)}
-            style={{ padding: "8px", width: "100%", maxWidth: "400px" }}
+      {reportConfig.scarPerformance && (
+        <Section title="SCAR Performance">
+          <div style={gridStyle}>
+            <KpiCard title="Open SCARs" value={openScars} color={getStatusColor(openScars, "warning")} />
+            <KpiCard title="SCAR Effectiveness Rate" value={`${scarEffectivenessRate}%`} color="#2563eb" />
+            <KpiCard title="Effective SCARs" value={scarEffective} color="#15803d" />
+            <KpiCard title="Not Effective SCARs" value={scarNotEffective} color={getStatusColor(scarNotEffective)} />
+            <KpiCard title="SCAR Awaiting Effectiveness" value={scarAwaitingEffectiveness} color={getStatusColor(scarAwaitingEffectiveness, "warning")} />
+          </div>
+        </Section>
+      )}
+
+      {reportConfig.supplierQuality && (
+        <Section title="Supplier Quality">
+          <div style={gridStyle}>
+            <KpiCard title="Supplier CAPA / SCAR Required NCMRs" value={supplierScarRequired} color={getStatusColor(supplierScarRequired, "warning")} />
+            <KpiCard title="Open Supplier CAPAs" value={openSupplierCapas} color={getStatusColor(openSupplierCapas, "warning")} />
+            <KpiCard title="Open SCARs" value={openScars} color={getStatusColor(openScars, "warning")} />
+            <KpiCard title="Supplier Recurrence Events" value={supplierRecurrenceEvents} color={getStatusColor(supplierRecurrenceEvents)} />
+          </div>
+
+          <div style={{ marginTop: "12px" }}>
+            <strong>Top Suppliers by NCMR Count</strong>
+            {topSuppliers.length === 0 ? (
+              <p>No supplier NCMR data yet.</p>
+            ) : (
+              <ol>{topSuppliers.map((item) => <li key={item.supplier}>{item.supplier}: {item.count}</li>)}</ol>
+            )}
+          </div>
+        </Section>
+      )}
+
+      {reportConfig.auditPerformance && (
+        <Section title="Audit Performance">
+          <div style={gridStyle}>
+            <KpiCard title="Total Audits" value={auditTotal} color="#2563eb" />
+            <KpiCard title="Open Audits" value={auditOpen} color={getStatusColor(auditOpen, "warning")} />
+            <KpiCard title="Closed Audits" value={auditClosed} color="#15803d" />
+            <KpiCard title="Audit Closure Rate" value={`${auditClosureRate}%`} color="#2563eb" />
+            <KpiCard title="Overdue / Past Due Audits" value={auditOverdue} color={getStatusColor(auditOverdue)} />
+            <KpiCard title="Total Findings" value={findingTotal} color="#374151" />
+            <KpiCard title="Open Findings" value={findingOpen} color={getStatusColor(findingOpen, "warning")} />
+            <KpiCard title="Findings Closure Rate" value={`${findingClosureRate}%`} color="#2563eb" />
+            <KpiCard title="Major Findings" value={majorFindings} color={getStatusColor(majorFindings)} />
+            <KpiCard title="Critical Findings" value={criticalFindings} color={getStatusColor(criticalFindings)} />
+            <KpiCard title="Findings Requiring CAPA" value={findingsRequiringCapa} color={getStatusColor(findingsRequiringCapa, "warning")} />
+          </div>
+
+          {reportConfig.trendCharts && (
+            <>
+              <TrendChart title="Audit Monthly Trend" data={auditTrend} />
+              <div style={{ marginTop: "14px" }}><TrendChart title="Audit Finding Monthly Trend" data={findingTrend} /></div>
+            </>
+          )}
+        </Section>
+      )}
+
+      {reportConfig.oosPerformance && (
+        <Section title="OOS / OOT / Environmental Monitoring">
+          <div style={gridStyle}>
+            <KpiCard title="Total Investigations" value={oosTotal} color="#0f766e" />
+            <KpiCard title="Open Investigations" value={oosOpen} color={getStatusColor(oosOpen, "warning")} />
+            <KpiCard title="Closed Investigations" value={oosClosed} color="#15803d" />
+            <KpiCard title="Closure Rate" value={`${oosClosureRate}%`} color="#0f766e" />
+            <KpiCard title="Product Impact" value={oosProductImpact} color={getStatusColor(oosProductImpact)} />
+            <KpiCard title="NCMR Required" value={oosNcmrRequired} color={getStatusColor(oosNcmrRequired)} />
+            <KpiCard title="Systemic Issues" value={oosSystemicIssues} color={getStatusColor(oosSystemicIssues)} />
+            <KpiCard title="Escalations" value={oosEscalations} color={getStatusColor(oosEscalations)} />
+          </div>
+
+          {reportConfig.trendCharts && <TrendChart title="OOS/OOT Monthly Trend" data={oosTrend} />}
+        </Section>
+      )}
+
+      {reportConfig.recurrenceAnalysis && (
+        <Section title="Recurrence Analysis">
+          <div style={gridStyle}>
+            <KpiCard title="Supplier Recurrence Events" value={supplierRecurrenceEvents} color={getStatusColor(supplierRecurrenceEvents)} />
+            <KpiCard title="Not Effective CAPAs" value={capaNotEffective} color={getStatusColor(capaNotEffective)} />
+            <KpiCard title="Not Effective SCARs" value={scarNotEffective} color={getStatusColor(scarNotEffective)} />
+            <KpiCard title="Follow-up CAPAs Required" value={capaFollowupRequired} color={getStatusColor(capaFollowupRequired)} />
+          </div>
+        </Section>
+      )}
+
+      {reportConfig.escalationQueues && (
+        <Section title="Escalation Queues">
+          <h3>CAPA Governance Queue</h3>
+          <SimpleQueueTable
+            items={capaGovernanceQueue}
+            columns={[
+              { label: "Record", render: (item) => item.ncmr_number || item.title || "NCMR" },
+              { label: "Severity", render: (item) => item.severity || "N/A" },
+              { label: "Evaluation", render: (item) => item.capa_evaluation_outcome || "Pending" },
+              { label: "Action", render: (item) => <a href={`/ncmrs/${item.id}`}>Open</a> },
+            ]}
           />
-        </div>
 
-        <div style={{ marginBottom: "10px" }}>
-          <label>Report Period</label><br />
-          <input
-            value={reportPeriod}
-            onChange={(e) => setReportPeriod(e.target.value)}
-            placeholder="Example: Q1 2026 or January 2026"
-            style={{ padding: "8px", width: "100%", maxWidth: "400px" }}
+          <h3>SCAR Governance Queue</h3>
+          <SimpleQueueTable
+            items={scarGovernanceQueue}
+            columns={[
+              { label: "Record", render: (item) => item.ncmr_number || item.title || "NCMR" },
+              { label: "Supplier", render: (item) => item.supplier_name || "N/A" },
+              { label: "SCAR", render: (item) => (item.linked_scar_id ? "Linked" : "Pending") },
+              { label: "Action", render: (item) => <a href={`/ncmrs/${item.id}`}>Open</a> },
+            ]}
           />
-        </div>
 
-        <button onClick={saveReport}>Generate & Save Report Snapshot</button>
-      </section>
-
-      <section style={sectionStyle}>
-        <h2>Executive Summary</h2>
-        <p><strong>Total NCMRs:</strong> {ncmrs.length}</p>
-        <p><strong>Open NCMRs:</strong> {openNcmrs.length}</p>
-        <p><strong>Closed NCMRs:</strong> {closedNcmrs.length}</p>
-        <p><strong>NCMR Closure Rate:</strong> {closureRate(closedNcmrs.length, ncmrs.length)}%</p>
-
-        <p><strong>Total CAPAs:</strong> {capas.length}</p>
-        <p><strong>Open CAPAs:</strong> {openCapas.length}</p>
-        <p><strong>Closed CAPAs:</strong> {closedCapas.length}</p>
-        <p><strong>CAPA Closure Rate:</strong> {closureRate(closedCapas.length, capas.length)}%</p>
-        <p><strong>Overdue CAPAs:</strong> {overdueCapas.length}</p>
-      </section>
-
-      <section style={sectionStyle}>
-        <h2>Trend Over Time</h2>
-
-       <h3>Monthly NCMR Created vs Closed</h3>
-{ncmrTrend.map((item) => (
-  <div key={item.key} style={{ marginBottom: "12px" }}>
-    <strong>{item.label}</strong>
-    <Bar
-      label="Created"
-      value={item.created}
-      max={Math.max(...ncmrTrend.map((x) => x.created), 1)}
-    />
-    <Bar
-      label="Closed"
-      value={item.closed}
-      max={Math.max(...ncmrTrend.map((x) => x.created), 1)}
-    />
-  </div>
-))}
-
-       <h3>Monthly CAPA Created vs Closed</h3>
-{capaTrend.map((item) => (
-  <div key={item.key} style={{ marginBottom: "12px" }}>
-    <strong>{item.label}</strong>
-    <Bar
-      label="Created"
-      value={item.created}
-      max={Math.max(...capaTrend.map((x) => x.created), 1)}
-    />
-    <Bar
-      label="Closed"
-      value={item.closed}
-      max={Math.max(...capaTrend.map((x) => x.created), 1)}
-    />
-  </div>
-))}
-
-        <h3>Monthly NCMR Recurrence</h3>
-        {ncmrTrend.map((item) => (
-          <Bar
-            key={`ncmr-rec-${item.key}`}
-            label={`${item.label} Recurring NCMRs`}
-            value={item.recurring}
-            max={maxRecurring}
+          <h3>Audit Escalation Queue</h3>
+          <SimpleQueueTable
+            items={auditEscalationQueue}
+            columns={[
+              { label: "Finding", render: (item) => item.finding_title || "Finding" },
+              { label: "Severity", render: (item) => item.finding_severity || "N/A" },
+              { label: "CAPA", render: (item) => (item.linked_capa_id ? "Linked" : "Pending") },
+              { label: "SCAR", render: (item) => (item.linked_scar_id ? "Linked" : "Pending") },
+              { label: "Action", render: (item) => <a href={`/audits/${item.audit_id}`}>Open</a> },
+            ]}
           />
-        ))}
-
-        <h3>Monthly CAPA Overdue</h3>
-        {capaTrend.map((item) => (
-          <Bar
-            key={`capa-overdue-${item.key}`}
-            label={`${item.label} Overdue CAPAs`}
-            value={item.overdue}
-            max={maxOverdue}
-          />
-        ))}
-
-        <h3>NCMR Backlog Trend</h3>
-{ncmrTrend.map((item, index) => {
-  const backlog =
-    ncmrTrend
-      .slice(0, index + 1)
-      .reduce((acc, m) => acc + m.created - m.closed, 0);
-
-  return (
-    <Bar
-      key={item.key}
-      label={`${item.label} Backlog`}
-      value={backlog}
-      max={Math.max(...ncmrTrend.map((x) => x.created), 1)}
-    />
-  );
-})}
-        <h3>Monthly Audit Findings</h3>
-        {auditFindingTrend.map((item) => (
-          <Bar
-            key={`audit-find-${item.key}`}
-            label={`${item.label} Findings`}
-            value={item.findings}
-            max={maxAuditFindings}
-          />
-        ))}
-      </section>
-
-      <section style={sectionStyle}>
-        <h2>Executive Charts</h2>
-
-        <h3>Audit Findings by Severity</h3>
-        <Bar label="Minor" value={minorFindings} max={maxFinding} />
-        <Bar label="Major" value={majorFindings} max={maxFinding} />
-        <Bar label="Critical" value={criticalFindings} max={maxFinding} />
-
-        <h3>CAPA Effectiveness</h3>
-        <Bar label="Effective" value={effectiveness.effective} max={maxEffectiveness} />
-        <Bar label="Partially Effective" value={effectiveness.partial} max={maxEffectiveness} />
-        <Bar label="Not Effective" value={effectiveness.notEffective} max={maxEffectiveness} />
-
-        <h3>Top Suppliers by NCMR Count</h3>
-        {topSuppliers.length === 0 ? (
-          <p>No supplier data.</p>
-        ) : (
-          topSuppliers.map(([supplier, count]) => (
-            <Bar key={supplier} label={supplier} value={count} max={maxSupplier} />
-          ))
-        )}
-      </section>
-
-      <section style={sectionStyle}>
-        <h2>Risk & Escalation</h2>
-        <p><strong>Critical NCMRs:</strong> {ncmrs.filter((x) => x.severity === "critical").length}</p>
-        <p><strong>Major NCMRs:</strong> {ncmrs.filter((x) => x.severity === "major").length}</p>
-        <p><strong>Recurring NCMRs:</strong> {ncmrs.filter((x) => x.recurring_issue).length}</p>
-        <p><strong>Supplier CAPA Required:</strong> {ncmrs.filter((x) => x.supplier_capa_required).length}</p>
-      </section>
-
-      <section style={sectionStyle}>
-        <h2>CAPA Effectiveness</h2>
-        <p><strong>Effective:</strong> {effectiveness.effective}</p>
-        <p><strong>Partially Effective:</strong> {effectiveness.partial}</p>
-        <p><strong>Not Effective:</strong> {effectiveness.notEffective}</p>
-      </section>
-
-      <section style={sectionStyle}>
-        <h2>Supplier Quality</h2>
-        <p><strong>Total SCARs:</strong> {scars.length}</p>
-      </section>
-
-      <section style={sectionStyle}>
-        <h2>Audit Metrics</h2>
-        <p><strong>Total Audits:</strong> {totalAudits}</p>
-        <p><strong>Open Audits:</strong> {openAudits}</p>
-        <p><strong>Closed Audits:</strong> {closedAudits}</p>
-        <p><strong>Overdue Audits:</strong> {overdueAudits}</p>
-        <p><strong>Total Findings:</strong> {totalFindings}</p>
-        <p><strong>Open Findings:</strong> {openFindings}</p>
-        <p><strong>Closed Findings:</strong> {closedFindings}</p>
-        <p><strong>Findings Requiring CAPA:</strong> {capaFindings}</p>
-        <p><strong>% Findings Requiring CAPA:</strong> {capaFindingsPercent}%</p>
-      </section>
-
-      <section style={sectionStyle} className="no-print">
-        <h2>Saved Management Review Reports</h2>
-
-        {savedReports.length === 0 ? (
-          <p>No saved reports yet.</p>
-        ) : (
-          <ul>
-            {savedReports.map((report) => (
-              <li key={report.id} style={{ marginBottom: "10px" }}>
-                <strong>{report.report_title}</strong> — {report.report_period}
-                <br />
-                Created: {report.created_at}
-                <br />
-                Created By: {report.created_by || "unknown"}
-                <br />
-                Signed By: {report.signed_by || "Not signed"}
-                <br />
-                Signed At: {report.signed_at || "N/A"}
-                <br />
-                <a href={`/management-review/${report.id}`}>Open Saved Report</a>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <style jsx global>{`
-        @media print {
-          .no-print {
-            display: none;
-          }
-
-          body {
-            color: black;
-            -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
-          }
-
-          * {
-            -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
-          }
-        }
-      `}</style>
+        </Section>
+      )}
     </main>
   );
 }
 
-const sectionStyle: React.CSSProperties = {
-  border: "1px solid #ccc",
-  padding: "15px",
-  marginBottom: "20px",
+function ReportBuilder({
+  config,
+  setConfig,
+}: {
+  config: ReportConfig;
+  setConfig: React.Dispatch<React.SetStateAction<ReportConfig>>;
+}) {
+  const toggle = (key: keyof ReportConfig) => {
+    setConfig((prev) => ({
+      ...prev,
+      [key]: !prev[key],
+    }));
+  };
+
+  return (
+    <section style={sectionStyle}>
+      <h2 style={{ marginTop: 0 }}>Report Sections</h2>
+      <p style={{ color: "#4b5563" }}>Select which sections should appear in the management review report.</p>
+
+      <div style={builderGridStyle}>
+        <Checkbox label="Executive Summary" checked={config.executiveSummary} onChange={() => toggle("executiveSummary")} />
+        <Checkbox label="CAPA Performance" checked={config.capaPerformance} onChange={() => toggle("capaPerformance")} />
+        <Checkbox label="CAPA Effectiveness" checked={config.capaEffectiveness} onChange={() => toggle("capaEffectiveness")} />
+        <Checkbox label="SCAR Performance" checked={config.scarPerformance} onChange={() => toggle("scarPerformance")} />
+        <Checkbox label="Supplier Quality" checked={config.supplierQuality} onChange={() => toggle("supplierQuality")} />
+        <Checkbox label="Audit Performance" checked={config.auditPerformance} onChange={() => toggle("auditPerformance")} />
+        <Checkbox label="OOS/OOT Performance" checked={config.oosPerformance} onChange={() => toggle("oosPerformance")} />
+        <Checkbox label="Escalation Queues" checked={config.escalationQueues} onChange={() => toggle("escalationQueues")} />
+        <Checkbox label="Trend Charts" checked={config.trendCharts} onChange={() => toggle("trendCharts")} />
+        <Checkbox label="Executive Notifications" checked={config.executiveNotifications} onChange={() => toggle("executiveNotifications")} />
+        <Checkbox label="Recurrence Analysis" checked={config.recurrenceAnalysis} onChange={() => toggle("recurrenceAnalysis")} />
+      </div>
+    </section>
+  );
+}
+
+function Checkbox({ label, checked, onChange }: { label: string; checked: boolean; onChange: () => void }) {
+  return (
+    <label style={{ display: "flex", alignItems: "center", gap: "10px", padding: "10px", border: "1px solid #d1d5db", borderRadius: "8px", background: checked ? "#eff6ff" : "white", cursor: "pointer" }}>
+      <input type="checkbox" checked={checked} onChange={onChange} />
+      <span>{label}</span>
+    </label>
+  );
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section style={sectionStyle}>
+      <h2 style={{ marginTop: 0 }}>{title}</h2>
+      {children}
+    </section>
+  );
+}
+
+function KpiCard({ title, value, subtitle, color }: { title: string; value: string | number; subtitle?: string; color: string }) {
+  return (
+    <div style={cardStyle(color)}>
+      <div style={{ fontSize: "13px", fontWeight: 700, color: "#374151", marginBottom: "8px" }}>{title}</div>
+      <div style={{ fontSize: "30px", fontWeight: 800, color }}>{value}</div>
+      {subtitle ? <div style={{ marginTop: "6px", fontSize: "12px", color: "#6b7280" }}>{subtitle}</div> : null}
+    </div>
+  );
+}
+
+function TrendChart({ title, data }: { title: string; data: TrendItem[] }) {
+  const max = Math.max(...data.map((d) => d.count), 1);
+
+  return (
+    <div style={{ padding: "15px", border: "1px solid #ccc" }}>
+      <strong>{title}</strong>
+      <div style={{ marginTop: "10px" }}>
+        {data.map((item) => (
+          <div key={item.label} style={{ marginBottom: "10px" }}>
+            <div style={{ fontSize: "14px", marginBottom: "4px" }}>{item.label}: {item.count}</div>
+            <div style={{ background: "#eee", height: "12px", width: "100%", maxWidth: "300px" }}>
+              <div style={{ background: "#3b82f6", height: "12px", width: `${item.count > 0 ? Math.max((item.count / max) * 100, 5) : 0}%` }} />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SimpleQueueTable({
+  items,
+  columns,
+}: {
+  items: any[];
+  columns: { label: string; render: (item: any) => React.ReactNode }[];
+}) {
+  if (items.length === 0) {
+    return <p style={{ color: "#15803d", fontWeight: 700 }}>No actions pending.</p>;
+  }
+
+  return (
+    <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "20px" }}>
+      <thead>
+        <tr>{columns.map((column) => <th key={column.label} style={thStyle}>{column.label}</th>)}</tr>
+      </thead>
+      <tbody>
+        {items.map((item) => (
+          <tr key={item.id}>{columns.map((column) => <td key={column.label} style={tdStyle}>{column.render(item)}</td>)}</tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+const getStatusColor = (value: number, riskType: "risk" | "warning" = "risk") => {
+  if (value === 0) return "#15803d";
+  if (riskType === "warning") return "#b45309";
+  return "#b91c1c";
+};
+
+const buttonStyle: React.CSSProperties = {
+  padding: "10px 14px",
+  background: "#2563eb",
+  color: "white",
   borderRadius: "8px",
+  border: "none",
+  cursor: "pointer",
+  fontWeight: 700,
+};
+
+const darkButtonStyle: React.CSSProperties = {
+  ...buttonStyle,
+  background: "#374151",
+};
+
+const cardStyle = (borderColor: string): React.CSSProperties => ({
+  border: `2px solid ${borderColor}`,
+  borderRadius: "10px",
+  padding: "16px",
+  background: "#fff",
+  boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+});
+
+const sectionStyle: React.CSSProperties = {
+  border: "1px solid #d1d5db",
+  borderRadius: "10px",
+  padding: "18px",
+  marginBottom: "20px",
+  background: "#fff",
+};
+
+const gridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
+  gap: "14px",
+  marginBottom: "20px",
+};
+
+const builderGridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))",
+  gap: "12px",
+  marginTop: "16px",
+};
+
+const thStyle: React.CSSProperties = {
+  border: "1px solid #d1d5db",
+  padding: "10px",
+  background: "#f3f4f6",
+  textAlign: "left",
+};
+
+const tdStyle: React.CSSProperties = {
+  border: "1px solid #d1d5db",
+  padding: "10px",
+  verticalAlign: "top",
 };
