@@ -13,6 +13,9 @@ import OosPerformanceSection from "./components/OosPerformanceSection";
 import AuditPerformanceSection from "./components/AuditPerformanceSection";
 import SupplierQualitySection from "./components/SupplierQualitySection";
 import QuickActionsSection from "./components/QuickActionsSection";
+import CapaGovernanceQueueSection from "./components/CapaGovernanceQueueSection";
+import ScarGovernanceQueueSection from "./components/ScarGovernanceQueueSection";
+import AuditEscalationQueueSection from "./components/AuditEscalationQueueSection";
 
 import {
   TrendItem,
@@ -84,6 +87,10 @@ export default function DashboardPage() {
   const [findingsRequiringCapa, setFindingsRequiringCapa] = useState(0);
   const [auditTrend, setAuditTrend] = useState<TrendItem[]>([]);
   const [findingTrend, setFindingTrend] = useState<TrendItem[]>([]);
+
+  const [capaGovernanceQueue, setCapaGovernanceQueue] = useState<any[]>([]);
+  const [scarGovernanceQueue, setScarGovernanceQueue] = useState<any[]>([]);
+  const [auditEscalationQueue, setAuditEscalationQueue] = useState<any[]>([]);
 
   const getLast6Months = () => {
     const months: { key: string; label: string }[] = [];
@@ -360,6 +367,40 @@ export default function DashboardPage() {
 
     setNcmrTrend(buildTrend(allNcmrs));
 
+    setCapaGovernanceQueue(
+      allNcmrs.filter(
+        (item: any) =>
+          item.status !== "closed" &&
+          !item.linked_capa_id &&
+          !item.capa_id &&
+          !item.capa_not_required_justification &&
+          (
+            item.capa_required ||
+            item.capa_evaluation_outcome === "required" ||
+            item.capa_evaluation_outcome === "recommended" ||
+            item.recurring_issue ||
+            item.severity === "major" ||
+            item.severity === "critical"
+          )
+      )
+    );
+
+    setScarGovernanceQueue(
+      allNcmrs.filter(
+        (item: any) =>
+          item.status !== "closed" &&
+          !item.linked_scar_id &&
+          !item.scar_justification &&
+          (
+            item.scar_required ||
+            item.supplier_capa_required ||
+            item.linked_supplier_id ||
+            item.supplier_id ||
+            item.supplier_name
+          )
+      )
+    );
+
     const { data: capaAllData, error: capaAllError } = await supabase
       .from("capas")
       .select("*");
@@ -561,6 +602,21 @@ export default function DashboardPage() {
     setAuditTrend(buildTrend(allAudits));
     setFindingTrend(buildTrend(allFindings));
 
+    setAuditEscalationQueue(
+      allFindings.filter(
+        (item: any) =>
+          item.finding_status !== "closed" &&
+          !item.escalation_justification &&
+          (
+            item.finding_severity === "major" ||
+            item.finding_severity === "critical" ||
+            item.capa_evaluation_outcome === "required" ||
+            item.scar_evaluation_outcome === "required" ||
+            (!item.linked_capa_id && !item.linked_scar_id)
+          )
+      )
+    );
+
     buildNotifications(allNcmrs, allCapas, allScars, allOos, allAudits, allFindings);
   };
 
@@ -747,6 +803,18 @@ export default function DashboardPage() {
         openSupplierCapas={openSupplierCapas}
         openScars={openScars}
         topSuppliers={topSuppliers}
+      />
+
+      <CapaGovernanceQueueSection
+        capaGovernanceQueue={capaGovernanceQueue}
+      />
+
+      <ScarGovernanceQueueSection
+        scarGovernanceQueue={scarGovernanceQueue}
+      />
+
+      <AuditEscalationQueueSection
+        auditEscalationQueue={auditEscalationQueue}
       />
 
       <QuickActionsSection />
