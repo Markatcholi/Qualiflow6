@@ -869,12 +869,38 @@ export default function ManagementReviewPage() {
   const selectedReviewForReport = managementReviews.find((review) => review.id === selectedReviewId);
   const approversForReport = selectedReviewForReport?.management_review_approvers || [];
 
+  const scarClosureRate = openScars + scarEffective + scarNotEffective > 0
+    ? (((scarEffective + scarNotEffective) / (openScars + scarEffective + scarNotEffective)) * 100).toFixed(1)
+    : "0.0";
+
+  const scarOverdueRate = openScars > 0
+    ? ((scarAwaitingEffectiveness / openScars) * 100).toFixed(1)
+    : "0.0";
+
   const kpiTargetRows = [
     {
       kpi: "Overall Closure Rate",
       actual: `${overallClosureRate}%`,
       target: "≥ 90%",
       status: Number(overallClosureRate) >= 90 ? "Meets Target" : "Below Target",
+    },
+    {
+      kpi: "NCMR Closure Rate",
+      actual: `${ncmrClosureRate}%`,
+      target: "≥ 90%",
+      status: Number(ncmrClosureRate) >= 90 ? "Meets Target" : "Below Target",
+    },
+    {
+      kpi: "Avg NCMR Close Time",
+      actual: `${avgNcmrCloseDays} d`,
+      target: "≤ 30 d",
+      status: Number(avgNcmrCloseDays) <= 30 ? "Meets Target" : "Below Target",
+    },
+    {
+      kpi: "Open NCMRs",
+      actual: ncmrOpen,
+      target: "Trending Down",
+      status: ncmrOpen <= 5 ? "Healthy" : "Monitor",
     },
     {
       kpi: "CAPA Closure Rate",
@@ -887,6 +913,30 @@ export default function ManagementReviewPage() {
       actual: `${capaEffectivenessRate}%`,
       target: "≥ 90%",
       status: Number(capaEffectivenessRate) >= 90 ? "Meets Target" : "Below Target",
+    },
+    {
+      kpi: "SCAR Closure Rate",
+      actual: `${scarClosureRate}%`,
+      target: "≥ 90%",
+      status: Number(scarClosureRate) >= 90 ? "Meets Target" : "Below Target",
+    },
+    {
+      kpi: "SCAR Effectiveness Rate",
+      actual: `${scarEffectivenessRate}%`,
+      target: "≥ 90%",
+      status: Number(scarEffectivenessRate) >= 90 ? "Meets Target" : "Below Target",
+    },
+    {
+      kpi: "SCAR Overdue / Awaiting Effectiveness Rate",
+      actual: `${scarOverdueRate}%`,
+      target: "≤ 5%",
+      status: Number(scarOverdueRate) <= 5 ? "Meets Target" : "Below Target",
+    },
+    {
+      kpi: "Supplier Recurrence Events",
+      actual: supplierRecurrenceEvents,
+      target: "Trending Down",
+      status: supplierRecurrenceEvents <= 3 ? "Healthy" : "Monitor",
     },
     {
       kpi: "Audit Closure Rate",
@@ -1131,7 +1181,7 @@ export default function ManagementReviewPage() {
             break-inside: avoid;
             box-shadow: none !important;
             border: 1px solid #d1d5db !important;
-            margin-bottom: 18px !important;
+            margin-bottom: 24px !important;
           }
 
           .page-break {
@@ -1143,6 +1193,19 @@ export default function ManagementReviewPage() {
             min-height: 95vh;
             page-break-after: always;
             break-after: page;
+          }
+
+          .executive-dashboard-page {
+            page-break-after: always;
+            break-after: page;
+          }
+
+          .kpi-grid {
+            grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+          }
+
+          .report-card {
+            box-shadow: none !important;
           }
 
           .print-only {
@@ -1188,7 +1251,7 @@ export default function ManagementReviewPage() {
         </div>
       </div>
 
-      <Section title="Create Management Review Record">
+      <Section title="Create Management Review Record" className="no-print">
         <p style={{ color: "#4b5563", marginTop: 0 }}>
           Save the selected report configuration and current KPI values as a formal management review record.
         </p>
@@ -1272,7 +1335,7 @@ export default function ManagementReviewPage() {
         </div>
       </Section>
 
-      <Section title="Recent Management Review Records">
+      <Section title="Recent Management Review Records" className="no-print">
         {managementReviews.length === 0 ? (
           <p>No management review records created yet.</p>
         ) : (
@@ -1318,7 +1381,7 @@ export default function ManagementReviewPage() {
         )}
       </Section>
 
-      <Section title="Flexible Approval Routing">
+      <Section title="Flexible Approval Routing" className="no-print">
         <p style={{ color: "#4b5563", marginTop: 0 }}>
           Add approvers as needed for the selected management review. The record locks when all listed approvers have signed.
         </p>
@@ -1533,6 +1596,57 @@ export default function ManagementReviewPage() {
         </div>
       </section>
 
+      {reportConfig.executiveSummary && (
+        <section className="report-section executive-dashboard-page page-break" style={executiveDashboardPageStyle}>
+          <div style={executiveBannerStyle}>
+            <div>
+              <div style={executiveBannerLabelStyle}>Quality Health</div>
+              <div style={executiveBannerValueStyle}>{executiveHealth}</div>
+            </div>
+
+            <div>
+              <div style={executiveBannerLabelStyle}>Risk Score</div>
+              <div style={executiveBannerValueStyle}>{executiveRiskScore}</div>
+            </div>
+
+            <div>
+              <div style={executiveBannerLabelStyle}>Open Quality Items</div>
+              <div style={executiveBannerValueStyle}>{totalOpenQualityItems}</div>
+            </div>
+
+            <div>
+              <div style={executiveBannerLabelStyle}>Leadership Attention</div>
+              <div style={executiveBannerValueStyle}>{leadershipAttentionItems.length}</div>
+            </div>
+          </div>
+
+          <div style={executiveTwoColumnStyle}>
+            <div style={executivePanelStyle}>
+              <h2 style={{ marginTop: 0 }}>Executive Conclusions</h2>
+              <p style={{ lineHeight: 1.7 }}>{executiveNarrative}</p>
+              {leadershipAttentionItems.length === 0 ? (
+                <p style={{ color: "#15803d", fontWeight: 700 }}>No high-priority leadership attention items identified.</p>
+              ) : (
+                <ul style={{ lineHeight: 1.7, paddingLeft: "20px" }}>
+                  {leadershipAttentionItems.map((item, index) => <li key={index}>{item}</li>)}
+                </ul>
+              )}
+            </div>
+
+            <div style={executivePanelStyle}>
+              <h2 style={{ marginTop: 0 }}>Required Leadership Actions</h2>
+              <ul style={{ lineHeight: 1.7, paddingLeft: "20px" }}>
+                {supplierRecurrenceEvents > 0 ? <li>Review supplier recurrence escalation strategy and supplier oversight actions.</li> : null}
+                {capaNotEffective > 0 ? <li>Review not-effective CAPAs and confirm follow-up actions remain appropriate.</li> : null}
+                {scarAwaitingEffectiveness > 0 ? <li>Monitor SCAR effectiveness verification and supplier response performance.</li> : null}
+                {auditOverdue > 0 ? <li>Review overdue or past-due audits and assign closure priorities.</li> : null}
+                {executiveRiskScore >= 25 ? <li>Prioritize high-risk governance activities until quality health improves.</li> : null}
+              </ul>
+            </div>
+          </div>
+        </section>
+      )}
+
       <ReportBuilder config={reportConfig} setConfig={setReportConfig} />
 
       {reportConfig.executiveSummary && (
@@ -1573,20 +1687,13 @@ export default function ManagementReviewPage() {
               </tr>
             </thead>
             <tbody>
-              {kpiTargetRows.map((row) => (
-                <tr key={row.kpi}>
+              {kpiTargetRows.map((row, index) => (
+                <tr key={row.kpi} style={stripedRowStyle(index)}>
                   <td style={tdStyle}>{row.kpi}</td>
                   <td style={tdStyle}>{row.actual}</td>
                   <td style={tdStyle}>{row.target}</td>
                   <td style={tdStyle}>
-                    <span
-                      style={{
-                        fontWeight: 700,
-                        color: row.status === "Meets Target" ? "#15803d" : "#b91c1c",
-                      }}
-                    >
-                      {row.status}
-                    </span>
+                    <StatusChip status={row.status} />
                   </td>
                 </tr>
               ))}
@@ -1628,8 +1735,16 @@ export default function ManagementReviewPage() {
       )}
 
       {reportConfig.ncmrPerformance && (
-        <Section title="NCMR Performance">
-          <div style={gridStyle}>
+        <Section
+          title="NCMR Performance Review"
+          label="QUALITY SYSTEM PERFORMANCE"
+          description="Operational nonconformance trends, investigation performance, closure effectiveness, and recurrence monitoring."
+        >
+          <SectionSummary>
+            NCMR closure performance is measured against timeliness and closure expectations. Open and investigation-stage NCMRs should be monitored for escalation, recurrence, and potential CAPA linkage.
+          </SectionSummary>
+
+          <div className="kpi-grid" style={gridStyle}>
             <KpiCard title="Total NCMRs" value={ncmrTotal} color="#2563eb" />
             <KpiCard title="Open NCMRs" value={ncmrOpen} color={getStatusColor(ncmrOpen, "warning")} />
             <KpiCard title="In Investigation" value={ncmrInvestigation} color={getStatusColor(ncmrInvestigation, "warning")} />
@@ -1678,13 +1793,23 @@ export default function ManagementReviewPage() {
       )}
 
       {reportConfig.scarPerformance && (
-        <Section title="SCAR Performance">
-          <div style={gridStyle}>
+        <Section
+          title="SCAR Performance Review"
+          label="SUPPLIER QUALITY GOVERNANCE"
+          description="Supplier corrective action escalation, effectiveness monitoring, recurrence reduction, and supplier governance performance."
+        >
+          <SectionSummary>
+            SCAR performance is monitored through open supplier actions, effectiveness verification, and supplier recurrence signals. Supplier recurrence should trigger management review of supplier oversight strategy.
+          </SectionSummary>
+
+          <div className="kpi-grid" style={gridStyle}>
             <KpiCard title="Open SCARs" value={openScars} color={getStatusColor(openScars, "warning")} />
+            <KpiCard title="SCAR Closure Rate" value={`${scarClosureRate}%`} color="#2563eb" />
             <KpiCard title="SCAR Effectiveness Rate" value={`${scarEffectivenessRate}%`} color="#2563eb" />
             <KpiCard title="Effective SCARs" value={scarEffective} color="#15803d" />
             <KpiCard title="Not Effective SCARs" value={scarNotEffective} color={getStatusColor(scarNotEffective)} />
             <KpiCard title="SCAR Awaiting Effectiveness" value={scarAwaitingEffectiveness} color={getStatusColor(scarAwaitingEffectiveness, "warning")} />
+            <KpiCard title="Supplier Recurrence Events" value={supplierRecurrenceEvents} color={getStatusColor(supplierRecurrenceEvents)} />
           </div>
         </Section>
       )}
@@ -1915,22 +2040,70 @@ function Checkbox({ label, checked, onChange }: { label: string; checked: boolea
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({
+  title,
+  children,
+  className = "",
+  label,
+  description,
+}: {
+  title: string;
+  children: React.ReactNode;
+  className?: string;
+  label?: string;
+  description?: string;
+}) {
   return (
-    <section className="report-section" style={sectionStyle}>
-      <h2 style={{ marginTop: 0 }}>{title}</h2>
+    <section className={`report-section ${className}`} style={sectionStyle}>
+      {label || description ? (
+        <div style={sectionHeaderStyle}>
+          {label ? <div style={sectionLabelStyle}>{label}</div> : null}
+          <h1 style={sectionTitleStyle}>{title}</h1>
+          {description ? <p style={sectionDescriptionStyle}>{description}</p> : null}
+        </div>
+      ) : (
+        <h2 style={{ marginTop: 0 }}>{title}</h2>
+      )}
       {children}
     </section>
   );
 }
 
+function SectionSummary({ children }: { children: React.ReactNode }) {
+  return <div style={sectionSummaryStyle}>{children}</div>;
+}
+
 function KpiCard({ title, value, subtitle, color }: { title: string; value: string | number; subtitle?: string; color: string }) {
   return (
-    <div style={cardStyle(color)}>
-      <div style={{ fontSize: "13px", fontWeight: 700, color: "#374151", marginBottom: "8px" }}>{title}</div>
-      <div style={{ fontSize: "30px", fontWeight: 800, color }}>{value}</div>
-      {subtitle ? <div style={{ marginTop: "6px", fontSize: "12px", color: "#6b7280" }}>{subtitle}</div> : null}
+    <div className="report-card" style={cardStyle(color)}>
+      <div style={{ fontSize: "13px", fontWeight: 700, color: "#4b5563", marginBottom: "10px" }}>{title}</div>
+      <div style={{ fontSize: "34px", fontWeight: 800, color: "#111827" }}>{value}</div>
+      {subtitle ? <div style={{ marginTop: "8px", fontSize: "12px", color: "#6b7280" }}>{subtitle}</div> : null}
     </div>
+  );
+}
+
+function StatusChip({ status }: { status: string }) {
+  const isGood = status === "Meets Target" || status === "Healthy";
+  const background = isGood ? "#dcfce7" : status === "Monitor" ? "#fef3c7" : "#fee2e2";
+  const color = isGood ? "#166534" : status === "Monitor" ? "#92400e" : "#991b1b";
+  const border = isGood ? "#bbf7d0" : status === "Monitor" ? "#fde68a" : "#fecaca";
+
+  return (
+    <span
+      style={{
+        display: "inline-block",
+        padding: "5px 10px",
+        borderRadius: "999px",
+        background,
+        color,
+        border: `1px solid ${border}`,
+        fontSize: "12px",
+        fontWeight: 700,
+      }}
+    >
+      {status}
+    </span>
   );
 }
 
@@ -1938,17 +2111,27 @@ function TrendChart({ title, data }: { title: string; data: TrendItem[] }) {
   const max = Math.max(...data.map((d) => d.count), 1);
 
   return (
-    <div style={{ padding: "15px", border: "1px solid #ccc" }}>
-      <strong>{title}</strong>
-      <div style={{ marginTop: "10px" }}>
-        {data.map((item) => (
-          <div key={item.label} style={{ marginBottom: "10px" }}>
-            <div style={{ fontSize: "14px", marginBottom: "4px" }}>{item.label}: {item.count}</div>
-            <div style={{ background: "#eee", height: "12px", width: "100%", maxWidth: "300px" }}>
-              <div style={{ background: "#3b82f6", height: "12px", width: `${item.count > 0 ? Math.max((item.count / max) * 100, 5) : 0}%` }} />
+    <div style={chartCardStyle}>
+      <h3 style={{ marginTop: 0 }}>{title}</h3>
+      <div style={{ display: "flex", alignItems: "flex-end", gap: "14px", height: "220px", paddingTop: "18px" }}>
+        {data.map((item) => {
+          const height = item.count > 0 ? Math.max((item.count / max) * 180, 10) : 4;
+          return (
+            <div key={item.label} style={{ flex: 1, textAlign: "center" }}>
+              <div style={{ fontSize: "12px", fontWeight: 700, marginBottom: "6px" }}>{item.count}</div>
+              <div
+                style={{
+                  height: `${height}px`,
+                  background: "#2563eb",
+                  borderRadius: "8px 8px 0 0",
+                  margin: "0 auto",
+                  maxWidth: "44px",
+                }}
+              />
+              <div style={{ marginTop: "8px", fontSize: "12px", color: "#4b5563" }}>{item.label}</div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -2001,26 +2184,29 @@ const darkButtonStyle: React.CSSProperties = {
 };
 
 const cardStyle = (borderColor: string): React.CSSProperties => ({
-  border: `2px solid ${borderColor}`,
-  borderRadius: "10px",
-  padding: "16px",
+  border: "1px solid #e5e7eb",
+  borderLeft: `6px solid ${borderColor}`,
+  borderRadius: "16px",
+  padding: "22px",
   background: "#fff",
-  boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+  boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
+  minHeight: "118px",
 });
 
 const sectionStyle: React.CSSProperties = {
-  border: "1px solid #d1d5db",
-  borderRadius: "10px",
-  padding: "18px",
-  marginBottom: "20px",
+  border: "1px solid #e5e7eb",
+  borderRadius: "18px",
+  padding: "28px",
+  marginBottom: "26px",
   background: "#fff",
+  boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
 };
 
 const gridStyle: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
-  gap: "14px",
-  marginBottom: "20px",
+  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+  gap: "18px",
+  marginBottom: "24px",
 };
 
 const builderGridStyle: React.CSSProperties = {
@@ -2061,6 +2247,101 @@ const tdStyle: React.CSSProperties = {
   padding: "10px",
   verticalAlign: "top",
 };
+
+const sectionHeaderStyle: React.CSSProperties = {
+  marginBottom: "28px",
+  paddingBottom: "18px",
+  borderBottom: "2px solid #e5e7eb",
+};
+
+const sectionLabelStyle: React.CSSProperties = {
+  fontSize: "12px",
+  letterSpacing: "0.08em",
+  color: "#6b7280",
+  fontWeight: 700,
+  textTransform: "uppercase",
+};
+
+const sectionTitleStyle: React.CSSProperties = {
+  fontSize: "30px",
+  margin: "10px 0",
+  color: "#111827",
+};
+
+const sectionDescriptionStyle: React.CSSProperties = {
+  color: "#4b5563",
+  maxWidth: "900px",
+  lineHeight: 1.6,
+};
+
+const sectionSummaryStyle: React.CSSProperties = {
+  background: "#eff6ff",
+  border: "1px solid #bfdbfe",
+  borderRadius: "14px",
+  padding: "18px",
+  marginBottom: "24px",
+  color: "#1e3a8a",
+  lineHeight: 1.7,
+};
+
+const chartCardStyle: React.CSSProperties = {
+  background: "white",
+  border: "1px solid #e5e7eb",
+  borderRadius: "16px",
+  padding: "20px",
+  marginTop: "20px",
+  boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
+};
+
+const executiveDashboardPageStyle: React.CSSProperties = {
+  border: "1px solid #e5e7eb",
+  borderRadius: "18px",
+  padding: "30px",
+  marginBottom: "26px",
+  background: "#f8fafc",
+};
+
+const executiveBannerStyle: React.CSSProperties = {
+  background: "#111827",
+  color: "white",
+  borderRadius: "18px",
+  padding: "30px",
+  marginBottom: "30px",
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+  gap: "20px",
+};
+
+const executiveBannerLabelStyle: React.CSSProperties = {
+  opacity: 0.72,
+  fontSize: "13px",
+  fontWeight: 700,
+  textTransform: "uppercase",
+  letterSpacing: "0.06em",
+};
+
+const executiveBannerValueStyle: React.CSSProperties = {
+  fontSize: "36px",
+  fontWeight: 800,
+  marginTop: "8px",
+};
+
+const executiveTwoColumnStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+  gap: "24px",
+};
+
+const executivePanelStyle: React.CSSProperties = {
+  background: "white",
+  border: "1px solid #e5e7eb",
+  borderRadius: "16px",
+  padding: "24px",
+};
+
+const stripedRowStyle = (index: number): React.CSSProperties => ({
+  background: index % 2 === 0 ? "#ffffff" : "#f9fafb",
+});
 
 const coverPageStyle: React.CSSProperties = {
   border: "1px solid #d1d5db",
