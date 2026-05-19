@@ -1702,6 +1702,28 @@ export default function ManagementReviewPage() {
         </Section>
       )}
 
+      {reportConfig.trendCharts && (
+        <Section
+          title="Executive Trend Analytics"
+          label="QUALITY INTELLIGENCE"
+          description="Visual trend review of nonconformance, corrective action, audit, environmental monitoring, and supplier recurrence signals."
+          className="page-break"
+        >
+          <SectionSummary>
+            Trend analytics provide leadership with a visual view of quality system movement over time. Peaks, recurring signals, and supplier concentration should be reviewed for escalation, resource planning, and management review actions.
+          </SectionSummary>
+
+          <div style={twoColumnChartGridStyle}>
+            <TrendChart title="NCMR Monthly Trend" data={ncmrTrend} />
+            <TrendChart title="CAPA Monthly Trend" data={capaTrend} />
+            <TrendChart title="Audit Monthly Trend" data={auditTrend} />
+            <TrendChart title="Audit Finding Monthly Trend" data={findingTrend} />
+            <TrendChart title="OOS/OOT Monthly Trend" data={oosTrend} />
+            <SupplierParetoChart title="Top Suppliers by NCMR Count" data={topSuppliers} />
+          </div>
+        </Section>
+      )}
+
       {reportConfig.executiveSummary && (
         <Section title="Key Risks Requiring Leadership Attention">
           {leadershipAttentionItems.length === 0 ? (
@@ -2109,23 +2131,43 @@ function StatusChip({ status }: { status: string }) {
 
 function TrendChart({ title, data }: { title: string; data: TrendItem[] }) {
   const max = Math.max(...data.map((d) => d.count), 1);
+  const latest = data.length > 0 ? data[data.length - 1]?.count || 0 : 0;
+  const previous = data.length > 1 ? data[data.length - 2]?.count || 0 : 0;
+  const change = latest - previous;
+  const changeLabel = change > 0 ? `+${change}` : `${change}`;
+  const changeColor = change > 0 ? "#b91c1c" : change < 0 ? "#15803d" : "#4b5563";
 
   return (
     <div style={chartCardStyle}>
-      <h3 style={{ marginTop: 0 }}>{title}</h3>
-      <div style={{ display: "flex", alignItems: "flex-end", gap: "14px", height: "220px", paddingTop: "18px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: "16px", alignItems: "flex-start", marginBottom: "16px" }}>
+        <div>
+          <h3 style={{ margin: 0 }}>{title}</h3>
+          <p style={{ margin: "6px 0 0", color: "#6b7280", fontSize: "13px" }}>
+            Last 6 months | Latest: {latest} | Change vs prior month: <span style={{ color: changeColor, fontWeight: 700 }}>{changeLabel}</span>
+          </p>
+        </div>
+
+        <div style={{ ...miniTrendBadgeStyle, color: changeColor, borderColor: changeColor }}>
+          {change === 0 ? "Flat" : change > 0 ? "Increasing" : "Improving"}
+        </div>
+      </div>
+
+      <div style={{ display: "flex", alignItems: "flex-end", gap: "14px", height: "230px", paddingTop: "18px", borderBottom: "1px solid #d1d5db" }}>
         {data.map((item) => {
-          const height = item.count > 0 ? Math.max((item.count / max) * 180, 10) : 4;
+          const height = item.count > 0 ? Math.max((item.count / max) * 185, 10) : 4;
+          const intensity = item.count === max && max > 0 ? "#1d4ed8" : "#60a5fa";
+
           return (
             <div key={item.label} style={{ flex: 1, textAlign: "center" }}>
-              <div style={{ fontSize: "12px", fontWeight: 700, marginBottom: "6px" }}>{item.count}</div>
+              <div style={{ fontSize: "12px", fontWeight: 700, marginBottom: "6px", color: "#111827" }}>{item.count}</div>
               <div
                 style={{
                   height: `${height}px`,
-                  background: "#2563eb",
-                  borderRadius: "8px 8px 0 0",
+                  background: intensity,
+                  borderRadius: "10px 10px 0 0",
                   margin: "0 auto",
-                  maxWidth: "44px",
+                  maxWidth: "48px",
+                  boxShadow: "0 2px 6px rgba(37,99,235,0.25)",
                 }}
               />
               <div style={{ marginTop: "8px", fontSize: "12px", color: "#4b5563" }}>{item.label}</div>
@@ -2133,6 +2175,41 @@ function TrendChart({ title, data }: { title: string; data: TrendItem[] }) {
           );
         })}
       </div>
+    </div>
+  );
+}
+
+function SupplierParetoChart({ title, data }: { title: string; data: SupplierCount[] }) {
+  const filtered = data.filter((item) => item.supplier && item.supplier !== "N/A");
+  const max = Math.max(...filtered.map((d) => d.count), 1);
+
+  return (
+    <div style={chartCardStyle}>
+      <h3 style={{ marginTop: 0 }}>{title}</h3>
+      <p style={{ marginTop: 0, color: "#6b7280", fontSize: "13px" }}>
+        Supplier concentration view for recurrence and oversight prioritization.
+      </p>
+
+      {filtered.length === 0 ? (
+        <p>No supplier concentration data available.</p>
+      ) : (
+        <div style={{ display: "grid", gap: "12px" }}>
+          {filtered.map((item, index) => {
+            const width = Math.max((item.count / max) * 100, 5);
+            return (
+              <div key={item.supplier}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "13px", marginBottom: "4px" }}>
+                  <strong>{index + 1}. {item.supplier}</strong>
+                  <span>{item.count}</span>
+                </div>
+                <div style={{ height: "14px", background: "#e5e7eb", borderRadius: "999px", overflow: "hidden" }}>
+                  <div style={{ height: "100%", width: `${width}%`, background: index === 0 ? "#1d4ed8" : "#60a5fa" }} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -2282,6 +2359,23 @@ const sectionSummaryStyle: React.CSSProperties = {
   marginBottom: "24px",
   color: "#1e3a8a",
   lineHeight: 1.7,
+};
+
+const twoColumnChartGridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))",
+  gap: "22px",
+  alignItems: "stretch",
+};
+
+const miniTrendBadgeStyle: React.CSSProperties = {
+  border: "1px solid #d1d5db",
+  borderRadius: "999px",
+  padding: "6px 10px",
+  fontSize: "12px",
+  fontWeight: 700,
+  background: "white",
+  whiteSpace: "nowrap",
 };
 
 const chartCardStyle: React.CSSProperties = {
