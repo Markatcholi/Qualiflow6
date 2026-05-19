@@ -32,6 +32,7 @@ type ReportConfig = {
   trendCharts: boolean;
   executiveNotifications: boolean;
   recurrenceAnalysis: boolean;
+  managementActions: boolean;
 };
 
 export default function ManagementReviewPage() {
@@ -48,6 +49,7 @@ export default function ManagementReviewPage() {
     trendCharts: true,
     executiveNotifications: true,
     recurrenceAnalysis: true,
+    managementActions: true,
   });
 
   const [managementReviews, setManagementReviews] = useState<any[]>([]);
@@ -56,6 +58,14 @@ export default function ManagementReviewPage() {
   const [approverEmail, setApproverEmail] = useState("");
   const [approverRole, setApproverRole] = useState("");
   const [signatureMeaning, setSignatureMeaning] = useState("I approve this management review record and confirm that the reviewed quality system performance, risks, actions, and conclusions are acceptable.");
+  const [managementReviewActions, setManagementReviewActions] = useState<any[]>([]);
+  const [actionTitle, setActionTitle] = useState("");
+  const [actionDescription, setActionDescription] = useState("");
+  const [actionOwner, setActionOwner] = useState("");
+  const [actionOwnerEmail, setActionOwnerEmail] = useState("");
+  const [actionDueDate, setActionDueDate] = useState("");
+  const [actionPriority, setActionPriority] = useState("Medium");
+  const [actionClosureNotes, setActionClosureNotes] = useState<Record<string, string>>({});
   const [reviewTitle, setReviewTitle] = useState("Monthly Management Review");
   const [reviewPeriodStart, setReviewPeriodStart] = useState("");
   const [reviewPeriodEnd, setReviewPeriodEnd] = useState("");
@@ -350,6 +360,26 @@ export default function ManagementReviewPage() {
     }
 
     setManagementReviews(data || []);
+  };
+
+  const fetchManagementReviewActions = async () => {
+    const { data, error } = await supabase
+      .from("management_review_actions")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.warn(error.message);
+      return;
+    }
+
+    setManagementReviewActions(data || []);
+
+    const notes: Record<string, string> = {};
+    (data || []).forEach((action: any) => {
+      notes[action.id] = action.closure_notes || "";
+    });
+    setActionClosureNotes(notes);
   };
 
   const fetchData = async () => {
@@ -647,6 +677,7 @@ export default function ManagementReviewPage() {
   useEffect(() => {
     fetchData();
     fetchManagementReviews();
+    fetchManagementReviewActions();
   }, []);
 
   const ncmrClosureRate = ncmrTotal > 0 ? ((ncmrClosed / ncmrTotal) * 100).toFixed(1) : "0.0";
@@ -698,6 +729,9 @@ export default function ManagementReviewPage() {
 
   const selectedReview = managementReviews.find((review) => review.id === selectedReviewId);
   const selectedApprovers = selectedReview?.management_review_approvers || [];
+  const selectedReviewActions = managementReviewActions.filter(
+    (action) => action.management_review_id === selectedReviewId
+  );
   const selectedReviewLocked = selectedReview?.is_locked === true;
 
   const addApprover = async () => {
@@ -864,6 +898,120 @@ export default function ManagementReviewPage() {
     fetchManagementReviews();
   };
 
+  const createManagementReviewAction = async () => {
+    if (!selectedReviewId) {
+      alert("Select a management review record first.");
+      return;
+    }
+
+    if (selectedReviewLocked) {
+      alert("This management review is locked. You cannot add actions to a locked review.");
+      return;
+    }
+
+    if (!actionTitle.trim()) {
+      alert("Action title is required.");
+      return;
+    }
+
+    const { data: userData } = await supabase.auth.getUser();
+    const userEmail = userData?.user?.email || "unknown";
+
+    const { error } = await supabase.from("management_review_actions").insert({
+      management_review_id: selectedReviewId,
+      action_title: actionTitle,
+      action_description: actionDescription || null,
+      action_owner: actionOwner || null,
+      action_owner_email: actionOwnerEmail || null,
+      due_date: actionDueDate || null,
+      priority: actionPriority,
+      action_status: "open",
+      created_by: userEmail,
+    });
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    await supabase.from("audit_logs").insert({
+      entity_type: "management_review",
+      entity_id: selectedReviewId,
+      action: "management_review_action_created",
+      details: `Management review action created: ${actionTitle}`,
+      user_email: userEmail,
+    });
+
+    alert("Management review action created.");
+    setActionTitle("");
+    setActionDescription("");
+    setActionOwner("");
+    setActionOwnerEmail("");
+    setActionDueDate("");
+    setActionPriority("Medium");
+    fetchManagementReviewActions();
+  };
+
+  const updateManagementReviewActionStatus = async (action: any, status: string) => {
+    const { data: userData } = await supabase.auth.getUser();
+    const userEmail = userData?.user?.email || "unknown";
+
+    const updatePayload: any = {
+      action_status: status,
+      updated_at: new Date().toISOString(),
+    };
+
+    if (status === "closed") {
+      updatePayload.closed_at = new Date().toISOString();
+      updatePayload.closed_by = userEmail;
+      updatePayload.closure_notes = actionClosureNotes[action.id] || null;
+    }
+
+    const { error } = await supabase
+      .from("management_review_actions")
+      .update(updatePayload)
+      .eq("id", action.id);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    await supabase.from("audit_logs").insert({
+      entity_type: "management_review_action",
+      entity_id: action.id,
+      action: "management_review_action_status_updated",
+      details: `Action status updated to ${status}.`,
+      user_email: userEmail,
+    });
+
+    alert("Action updated.");
+    fetchManagementReviewActions();
+  };
+
+  const deleteManagementReviewAction = async (action: any) => {
+    if (selectedReviewLocked) {
+      alert("This management review is locked. You cannot delete actions.");
+      return;
+    }
+
+    const confirmed = window.confirm(`Delete action: ${action.action_title}?`);
+    if (!confirmed) return;
+
+    const { error } = await supabase
+      .from("management_review_actions")
+      .delete()
+      .eq("id", action.id);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    alert("Action deleted.");
+    fetchManagementReviewActions();
+  };
+
   const reportGeneratedAt = new Date().toLocaleString();
 
   const selectedReviewForReport = managementReviews.find((review) => review.id === selectedReviewId);
@@ -959,6 +1107,7 @@ export default function ManagementReviewPage() {
     auditOverdue > 0 ? `${auditOverdue} audit(s) are overdue or past due.` : "",
     capaEffectivenessOverdue > 0 ? `${capaEffectivenessOverdue} CAPA effectiveness check(s) are overdue.` : "",
     executiveRiskScore >= 25 ? "Executive quality health is Critical. Leadership review and action prioritization are recommended." : "",
+    managementReviewActions.filter((action) => action.management_review_id === selectedReviewId && action.action_status !== "closed").length > 0 ? `${managementReviewActions.filter((action) => action.management_review_id === selectedReviewId && action.action_status !== "closed").length} management review action(s) remain open.` : "",
   ].filter(Boolean);
 
   const executiveNarrative =
@@ -984,6 +1133,7 @@ export default function ManagementReviewPage() {
       trendCharts: true,
       executiveNotifications: true,
       recurrenceAnalysis: false,
+      managementActions: true,
     });
   };
 
@@ -1001,6 +1151,7 @@ export default function ManagementReviewPage() {
       trendCharts: true,
       executiveNotifications: true,
       recurrenceAnalysis: true,
+      managementActions: true,
     });
   };
 
@@ -1084,6 +1235,7 @@ export default function ManagementReviewPage() {
         audit_escalation: auditEscalationQueue,
       },
       notifications,
+      management_actions: managementReviewActions.filter((action) => action.management_review_id === selectedReviewId),
       trends: {
         ncmr: ncmrTrend,
         capa: capaTrend,
@@ -1520,6 +1672,181 @@ export default function ManagementReviewPage() {
         )}
       </Section>
 
+      <Section title="Management Review Action Tracker" className="no-print">
+        <p style={{ color: "#4b5563", marginTop: 0 }}>
+          Create and track leadership actions from the selected management review record.
+        </p>
+
+        {!selectedReviewId ? (
+          <p>Select a management review record before creating actions.</p>
+        ) : selectedReviewLocked ? (
+          <p style={{ color: "#b45309", fontWeight: 700 }}>
+            This management review is locked. Actions can be viewed but not added or deleted.
+          </p>
+        ) : (
+          <>
+            <div style={builderGridStyle}>
+              <label>
+                <strong>Action Title</strong>
+                <input
+                  value={actionTitle}
+                  onChange={(e) => setActionTitle(e.target.value)}
+                  placeholder="Example: Review supplier recurrence trend"
+                  style={inputStyle}
+                />
+              </label>
+
+              <label>
+                <strong>Owner</strong>
+                <input
+                  value={actionOwner}
+                  onChange={(e) => setActionOwner(e.target.value)}
+                  placeholder="Owner name"
+                  style={inputStyle}
+                />
+              </label>
+
+              <label>
+                <strong>Owner Email</strong>
+                <input
+                  value={actionOwnerEmail}
+                  onChange={(e) => setActionOwnerEmail(e.target.value)}
+                  placeholder="owner@email.com"
+                  style={inputStyle}
+                />
+              </label>
+
+              <label>
+                <strong>Due Date</strong>
+                <input
+                  type="date"
+                  value={actionDueDate}
+                  onChange={(e) => setActionDueDate(e.target.value)}
+                  style={inputStyle}
+                />
+              </label>
+
+              <label>
+                <strong>Priority</strong>
+                <select
+                  value={actionPriority}
+                  onChange={(e) => setActionPriority(e.target.value)}
+                  style={inputStyle}
+                >
+                  <option value="High">High</option>
+                  <option value="Medium">Medium</option>
+                  <option value="Low">Low</option>
+                </select>
+              </label>
+            </div>
+
+            <label>
+              <strong>Action Description</strong>
+              <textarea
+                value={actionDescription}
+                onChange={(e) => setActionDescription(e.target.value)}
+                rows={3}
+                style={textareaStyle}
+              />
+            </label>
+
+            <button type="button" onClick={createManagementReviewAction} style={buttonStyle}>
+              Add Management Review Action
+            </button>
+          </>
+        )}
+
+        <h3>Actions for Selected Review</h3>
+
+        {selectedReviewActions.length === 0 ? (
+          <p>No actions created for this review yet.</p>
+        ) : (
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr>
+                <th style={thStyle}>Action</th>
+                <th style={thStyle}>Owner</th>
+                <th style={thStyle}>Due Date</th>
+                <th style={thStyle}>Priority</th>
+                <th style={thStyle}>Status</th>
+                <th style={thStyle}>Closure Notes</th>
+                <th style={thStyle}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {selectedReviewActions.map((action: any) => (
+                <tr key={action.id}>
+                  <td style={tdStyle}>
+                    <strong>{action.action_title}</strong>
+                    {action.action_description ? (
+                      <div style={{ color: "#6b7280", fontSize: "12px", marginTop: "4px" }}>
+                        {action.action_description}
+                      </div>
+                    ) : null}
+                  </td>
+                  <td style={tdStyle}>
+                    {action.action_owner || "N/A"}
+                    {action.action_owner_email ? (
+                      <div style={{ color: "#6b7280", fontSize: "12px" }}>
+                        {action.action_owner_email}
+                      </div>
+                    ) : null}
+                  </td>
+                  <td style={tdStyle}>{action.due_date || "N/A"}</td>
+                  <td style={tdStyle}>{action.priority || "Medium"}</td>
+                  <td style={tdStyle}>{action.action_status || "open"}</td>
+                  <td style={tdStyle}>
+                    <textarea
+                      value={actionClosureNotes[action.id] || ""}
+                      onChange={(e) =>
+                        setActionClosureNotes({
+                          ...actionClosureNotes,
+                          [action.id]: e.target.value,
+                        })
+                      }
+                      rows={2}
+                      style={{ ...textareaStyle, marginTop: 0 }}
+                      disabled={selectedReviewLocked || action.action_status === "closed"}
+                    />
+                  </td>
+                  <td style={tdStyle}>
+                    {action.action_status !== "closed" ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => updateManagementReviewActionStatus(action, "in_progress")}
+                        >
+                          In Progress
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => updateManagementReviewActionStatus(action, "closed")}
+                          style={{ marginLeft: "6px" }}
+                        >
+                          Close
+                        </button>
+                      </>
+                    ) : (
+                      <span>Closed</span>
+                    )}
+
+                    {!selectedReviewLocked && action.action_status !== "closed" ? (
+                      <button
+                        type="button"
+                        onClick={() => deleteManagementReviewAction(action)}
+                        style={{ marginLeft: "6px" }}
+                      >
+                        Delete
+                      </button>
+                    ) : null}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </Section>
+
       <section className="cover-page print-only" style={coverPageStyle}>
         <div>
           <div style={{ fontSize: "14px", letterSpacing: "0.08em", color: "#4b5563", fontWeight: 700 }}>
@@ -1946,6 +2273,54 @@ export default function ManagementReviewPage() {
           />
         </Section>
       )}
+      {reportConfig.managementActions && (
+        <Section
+          title="Management Review Leadership Actions"
+          label="CLOSED-LOOP MANAGEMENT REVIEW GOVERNANCE"
+          description="Leadership actions assigned from the management review, including owner, due date, status, and closure evidence."
+        >
+          {selectedReviewActions.length === 0 ? (
+            <p style={{ color: "#15803d", fontWeight: 700 }}>
+              No management review actions are currently assigned for the selected review.
+            </p>
+          ) : (
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr>
+                  <th style={thStyle}>Action</th>
+                  <th style={thStyle}>Owner</th>
+                  <th style={thStyle}>Due Date</th>
+                  <th style={thStyle}>Priority</th>
+                  <th style={thStyle}>Status</th>
+                  <th style={thStyle}>Closure Evidence</th>
+                </tr>
+              </thead>
+              <tbody>
+                {selectedReviewActions.map((action: any, index: number) => (
+                  <tr key={action.id} style={stripedRowStyle(index)}>
+                    <td style={tdStyle}>
+                      <strong>{action.action_title}</strong>
+                      {action.action_description ? (
+                        <div style={{ color: "#6b7280", fontSize: "12px", marginTop: "4px" }}>
+                          {action.action_description}
+                        </div>
+                      ) : null}
+                    </td>
+                    <td style={tdStyle}>{action.action_owner || "N/A"}</td>
+                    <td style={tdStyle}>{action.due_date || "N/A"}</td>
+                    <td style={tdStyle}>{action.priority || "Medium"}</td>
+                    <td style={tdStyle}>
+                      <StatusChip status={action.action_status || "open"} />
+                    </td>
+                    <td style={tdStyle}>{action.closure_notes || "N/A"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </Section>
+      )}
+
       <section className="report-section page-break" style={sectionStyle}>
         <h2 style={{ marginTop: 0 }}>Approval Signature Summary</h2>
 
@@ -2048,6 +2423,7 @@ function ReportBuilder({
         <Checkbox label="Trend Charts" checked={config.trendCharts} onChange={() => toggle("trendCharts")} />
         <Checkbox label="Executive Notifications" checked={config.executiveNotifications} onChange={() => toggle("executiveNotifications")} />
         <Checkbox label="Recurrence Analysis" checked={config.recurrenceAnalysis} onChange={() => toggle("recurrenceAnalysis")} />
+        <Checkbox label="Management Actions" checked={config.managementActions} onChange={() => toggle("managementActions")} />
       </div>
     </section>
   );
