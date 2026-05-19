@@ -48,6 +48,15 @@ export default function ManagementReviewPage() {
     recurrenceAnalysis: true,
   });
 
+  const [managementReviews, setManagementReviews] = useState<any[]>([]);
+  const [reviewTitle, setReviewTitle] = useState("Monthly Management Review");
+  const [reviewPeriodStart, setReviewPeriodStart] = useState("");
+  const [reviewPeriodEnd, setReviewPeriodEnd] = useState("");
+  const [reviewDate, setReviewDate] = useState(new Date().toISOString().split("T")[0]);
+  const [site, setSite] = useState("");
+  const [businessUnit, setBusinessUnit] = useState("");
+  const [executiveSummaryText, setExecutiveSummaryText] = useState("");
+
   const [ncmrOpen, setNcmrOpen] = useState(0);
   const [ncmrInvestigation, setNcmrInvestigation] = useState(0);
   const [ncmrTotal, setNcmrTotal] = useState(0);
@@ -319,6 +328,21 @@ export default function ManagementReviewPage() {
     });
 
     setNotifications(alerts);
+  };
+
+  const fetchManagementReviews = async () => {
+    const { data, error } = await supabase
+      .from("management_reviews")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(10);
+
+    if (error) {
+      console.warn(error.message);
+      return;
+    }
+
+    setManagementReviews(data || []);
   };
 
   const fetchData = async () => {
@@ -615,6 +639,7 @@ export default function ManagementReviewPage() {
 
   useEffect(() => {
     fetchData();
+    fetchManagementReviews();
   }, []);
 
   const ncmrClosureRate = ncmrTotal > 0 ? ((ncmrClosed / ncmrTotal) * 100).toFixed(1) : "0.0";
@@ -696,6 +721,144 @@ export default function ManagementReviewPage() {
     });
   };
 
+
+  const buildReportSnapshot = () => {
+    return {
+      generated_at: new Date().toISOString(),
+      report_config: reportConfig,
+      executive: {
+        quality_health: executiveHealth,
+        risk_score: executiveRiskScore,
+        total_open_quality_items: totalOpenQualityItems,
+        total_risk_events: totalRiskEvents,
+        overall_closure_rate: overallClosureRate,
+      },
+      ncmr: {
+        total: ncmrTotal,
+        open: ncmrOpen,
+        investigation: ncmrInvestigation,
+        closed: ncmrClosed,
+        closure_rate: ncmrClosureRate,
+        avg_close_days: avgNcmrCloseDays,
+      },
+      capa: {
+        total: capaTotal,
+        open: capaOpen,
+        closed: capaClosed,
+        overdue: capaOverdue,
+        overdue_rate: capaOverdueRate,
+        due_soon: capaDueSoon,
+        closure_rate: capaClosureRate,
+        avg_close_days: avgCapaCloseDays,
+        effectiveness_rate: capaEffectivenessRate,
+        effective: capaEffective,
+        partially_effective: capaPartiallyEffective,
+        not_effective: capaNotEffective,
+        awaiting_effectiveness: capaAwaitingEffectiveness,
+        effectiveness_overdue: capaEffectivenessOverdue,
+        followup_required: capaFollowupRequired,
+      },
+      scar: {
+        open: openScars,
+        effectiveness_rate: scarEffectivenessRate,
+        effective: scarEffective,
+        not_effective: scarNotEffective,
+        awaiting_effectiveness: scarAwaitingEffectiveness,
+      },
+      supplier_quality: {
+        supplier_scar_required: supplierScarRequired,
+        open_supplier_capas: openSupplierCapas,
+        recurrence_events: supplierRecurrenceEvents,
+        top_suppliers: topSuppliers,
+      },
+      oos_oot: {
+        total: oosTotal,
+        open: oosOpen,
+        closed: oosClosed,
+        closure_rate: oosClosureRate,
+        product_impact: oosProductImpact,
+        ncmr_required: oosNcmrRequired,
+        systemic_issues: oosSystemicIssues,
+        escalations: oosEscalations,
+      },
+      audits: {
+        total: auditTotal,
+        open: auditOpen,
+        closed: auditClosed,
+        closure_rate: auditClosureRate,
+        overdue: auditOverdue,
+        findings_total: findingTotal,
+        findings_open: findingOpen,
+        findings_closed: findingClosed,
+        findings_closure_rate: findingClosureRate,
+        major_findings: majorFindings,
+        critical_findings: criticalFindings,
+        findings_requiring_capa: findingsRequiringCapa,
+      },
+      queues: {
+        capa_governance: capaGovernanceQueue,
+        scar_governance: scarGovernanceQueue,
+        audit_escalation: auditEscalationQueue,
+      },
+      notifications,
+      trends: {
+        ncmr: ncmrTrend,
+        capa: capaTrend,
+        oos: oosTrend,
+        audit: auditTrend,
+        findings: findingTrend,
+      },
+    };
+  };
+
+  const createManagementReviewRecord = async () => {
+    if (!reviewTitle.trim()) {
+      alert("Review title is required.");
+      return;
+    }
+
+    const { data: userData } = await supabase.auth.getUser();
+    const userEmail = userData?.user?.email || "unknown";
+
+    const now = new Date();
+    const reviewNumber = `MR-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}-${String(now.getHours()).padStart(2, "0")}${String(now.getMinutes()).padStart(2, "0")}${String(now.getSeconds()).padStart(2, "0")}`;
+
+    const snapshot = buildReportSnapshot();
+
+    const { error } = await supabase.from("management_reviews").insert({
+      review_number: reviewNumber,
+      review_title: reviewTitle,
+      review_period_start: reviewPeriodStart || null,
+      review_period_end: reviewPeriodEnd || null,
+      review_date: reviewDate || null,
+      site: site || null,
+      business_unit: businessUnit || null,
+      status: "draft",
+      prepared_by: userEmail,
+      report_config_json: reportConfig,
+      report_snapshot_json: snapshot,
+      executive_summary: executiveSummaryText || null,
+      risk_score: executiveRiskScore,
+      quality_health: executiveHealth,
+    });
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    await supabase.from("audit_logs").insert({
+      entity_type: "management_review",
+      entity_id: reviewNumber,
+      action: "management_review_created",
+      details: `Management review record created: ${reviewTitle}`,
+      user_email: userEmail,
+    });
+
+    alert(`Management review record created: ${reviewNumber}`);
+    fetchManagementReviews();
+  };
+
   return (
     <main style={{ padding: "24px", fontFamily: "Arial, sans-serif", background: "#f8fafc", minHeight: "100vh" }}>
       <div style={{ marginBottom: "22px" }}>
@@ -711,6 +874,121 @@ export default function ManagementReviewPage() {
           <button onClick={() => window.open("/management-review/print", "_blank")} style={buttonStyle}>Open Legacy Print Report</button>
         </div>
       </div>
+
+      <Section title="Create Management Review Record">
+        <p style={{ color: "#4b5563", marginTop: 0 }}>
+          Save the selected report configuration and current KPI values as a formal management review record.
+        </p>
+
+        <div style={builderGridStyle}>
+          <label>
+            <strong>Review Title</strong>
+            <input
+              value={reviewTitle}
+              onChange={(e) => setReviewTitle(e.target.value)}
+              style={inputStyle}
+            />
+          </label>
+
+          <label>
+            <strong>Review Period Start</strong>
+            <input
+              type="date"
+              value={reviewPeriodStart}
+              onChange={(e) => setReviewPeriodStart(e.target.value)}
+              style={inputStyle}
+            />
+          </label>
+
+          <label>
+            <strong>Review Period End</strong>
+            <input
+              type="date"
+              value={reviewPeriodEnd}
+              onChange={(e) => setReviewPeriodEnd(e.target.value)}
+              style={inputStyle}
+            />
+          </label>
+
+          <label>
+            <strong>Review Date</strong>
+            <input
+              type="date"
+              value={reviewDate}
+              onChange={(e) => setReviewDate(e.target.value)}
+              style={inputStyle}
+            />
+          </label>
+
+          <label>
+            <strong>Site</strong>
+            <input
+              value={site}
+              onChange={(e) => setSite(e.target.value)}
+              placeholder="Example: Minneapolis"
+              style={inputStyle}
+            />
+          </label>
+
+          <label>
+            <strong>Business Unit</strong>
+            <input
+              value={businessUnit}
+              onChange={(e) => setBusinessUnit(e.target.value)}
+              placeholder="Example: Operations / Quality"
+              style={inputStyle}
+            />
+          </label>
+        </div>
+
+        <label>
+          <strong>Executive Summary / Notes</strong>
+          <textarea
+            value={executiveSummaryText}
+            onChange={(e) => setExecutiveSummaryText(e.target.value)}
+            rows={4}
+            placeholder="Summarize quality performance, risks, decisions, and management review conclusions."
+            style={textareaStyle}
+          />
+        </label>
+
+        <div style={{ marginTop: "14px", display: "flex", gap: "10px", flexWrap: "wrap" }}>
+          <button onClick={createManagementReviewRecord} style={buttonStyle}>
+            Create Management Review Record
+          </button>
+        </div>
+      </Section>
+
+      <Section title="Recent Management Review Records">
+        {managementReviews.length === 0 ? (
+          <p>No management review records created yet.</p>
+        ) : (
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr>
+                <th style={thStyle}>Review Number</th>
+                <th style={thStyle}>Title</th>
+                <th style={thStyle}>Review Date</th>
+                <th style={thStyle}>Status</th>
+                <th style={thStyle}>Quality Health</th>
+                <th style={thStyle}>Prepared By</th>
+              </tr>
+            </thead>
+            <tbody>
+              {managementReviews.map((review) => (
+                <tr key={review.id}>
+                  <td style={tdStyle}>{review.review_number || "N/A"}</td>
+                  <td style={tdStyle}>{review.review_title}</td>
+                  <td style={tdStyle}>{review.review_date || "N/A"}</td>
+                  <td style={tdStyle}>{review.status || "draft"}</td>
+                  <td style={tdStyle}>{review.quality_health || "N/A"}</td>
+                  <td style={tdStyle}>{review.prepared_by || "N/A"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </Section>
 
       <ReportBuilder config={reportConfig} setConfig={setReportConfig} />
 
@@ -1060,6 +1338,25 @@ const builderGridStyle: React.CSSProperties = {
   gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))",
   gap: "12px",
   marginTop: "16px",
+};
+
+const inputStyle: React.CSSProperties = {
+  display: "block",
+  width: "100%",
+  padding: "10px",
+  border: "1px solid #d1d5db",
+  borderRadius: "8px",
+  marginTop: "6px",
+};
+
+const textareaStyle: React.CSSProperties = {
+  display: "block",
+  width: "100%",
+  padding: "10px",
+  border: "1px solid #d1d5db",
+  borderRadius: "8px",
+  marginTop: "6px",
+  marginBottom: "10px",
 };
 
 const thStyle: React.CSSProperties = {
