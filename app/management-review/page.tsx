@@ -1476,7 +1476,7 @@ export default function ManagementReviewPage() {
 
           <div>
             <strong>Review Number</strong>
-            <div>{selectedReviewForReport?.review_number || reviewNumber || "Draft / Not Saved"}</div>
+            <div>{selectedReviewForReport?.review_number || "Draft / Not Saved"}</div>
           </div>
 
           <div>
