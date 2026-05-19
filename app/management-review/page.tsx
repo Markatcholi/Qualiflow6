@@ -49,6 +49,11 @@ export default function ManagementReviewPage() {
   });
 
   const [managementReviews, setManagementReviews] = useState<any[]>([]);
+  const [selectedReviewId, setSelectedReviewId] = useState("");
+  const [approverName, setApproverName] = useState("");
+  const [approverEmail, setApproverEmail] = useState("");
+  const [approverRole, setApproverRole] = useState("");
+  const [signatureMeaning, setSignatureMeaning] = useState("I approve this management review record and confirm that the reviewed quality system performance, risks, actions, and conclusions are acceptable.");
   const [reviewTitle, setReviewTitle] = useState("Monthly Management Review");
   const [reviewPeriodStart, setReviewPeriodStart] = useState("");
   const [reviewPeriodEnd, setReviewPeriodEnd] = useState("");
@@ -333,7 +338,7 @@ export default function ManagementReviewPage() {
   const fetchManagementReviews = async () => {
     const { data, error } = await supabase
       .from("management_reviews")
-      .select("*")
+      .select("*, management_review_approvers(*)")
       .order("created_at", { ascending: false })
       .limit(10);
 
@@ -373,7 +378,175 @@ export default function ManagementReviewPage() {
       .map((item: any) => {
         const created = new Date(item.created_at).getTime();
         const closed = new Date(item.closed_at).getTime();
-        return (closed - created) / (1000 * 60 * 60 * 24);
+        const selectedReview = managementReviews.find((review) => review.id === selectedReviewId);
+  const selectedApprovers = selectedReview?.management_review_approvers || [];
+  const selectedReviewLocked = selectedReview?.is_locked === true;
+
+  const addApprover = async () => {
+    if (!selectedReviewId) {
+      alert("Select a management review record first.");
+      return;
+    }
+
+    if (selectedReviewLocked) {
+      alert("This management review is locked and cannot be changed.");
+      return;
+    }
+
+    if (!approverName.trim()) {
+      alert("Approver name is required.");
+      return;
+    }
+
+    if (!approverEmail.trim()) {
+      alert("Approver email is required.");
+      return;
+    }
+
+    const { error } = await supabase.from("management_review_approvers").insert({
+      management_review_id: selectedReviewId,
+      approver_name: approverName,
+      approver_email: approverEmail,
+      approver_role: approverRole || null,
+      approval_status: "pending",
+      signature_meaning: signatureMeaning || null,
+    });
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    await supabase
+      .from("management_reviews")
+      .update({
+        approval_status: "pending_approval",
+        status: "pending_approval",
+      })
+      .eq("id", selectedReviewId);
+
+    alert("Approver added.");
+    setApproverName("");
+    setApproverEmail("");
+    setApproverRole("");
+    fetchManagementReviews();
+  };
+
+  const approveReviewApprover = async (approver: any) => {
+    if (selectedReviewLocked) {
+      alert("This management review is already locked.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Apply electronic approval for ${approver.approver_name}?\\n\\nMeaning: ${approver.signature_meaning || signatureMeaning}`
+    );
+
+    if (!confirmed) return;
+
+    const { data: userData } = await supabase.auth.getUser();
+    const userEmail = userData?.user?.email || "unknown";
+
+    const { error } = await supabase
+      .from("management_review_approvers")
+      .update({
+        approval_status: "approved",
+        signed_by: userEmail,
+        signed_at: new Date().toISOString(),
+        signature_meaning: approver.signature_meaning || signatureMeaning,
+      })
+      .eq("id", approver.id);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    const { data: approvers, error: approverFetchError } = await supabase
+      .from("management_review_approvers")
+      .select("*")
+      .eq("management_review_id", approver.management_review_id);
+
+    if (approverFetchError) {
+      alert(approverFetchError.message);
+      return;
+    }
+
+    const allApproved =
+      (approvers || []).length > 0 &&
+      (approvers || []).every((item: any) => item.approval_status === "approved");
+
+    if (allApproved) {
+      const now = new Date().toISOString();
+
+      await supabase
+        .from("management_reviews")
+        .update({
+          approval_status: "approved",
+          status: "approved",
+          is_locked: true,
+          locked_at: now,
+          locked_by: userEmail,
+          fully_approved_at: now,
+        })
+        .eq("id", approver.management_review_id);
+
+      await supabase.from("audit_logs").insert({
+        entity_type: "management_review",
+        entity_id: approver.management_review_id,
+        action: "management_review_fully_approved_locked",
+        details: "All required approvers signed. Management review record locked.",
+        user_email: userEmail,
+      });
+
+      alert("Approval saved. All approvers have signed, and the management review record is now locked.");
+    } else {
+      await supabase
+        .from("management_reviews")
+        .update({
+          approval_status: "pending_approval",
+          status: "pending_approval",
+        })
+        .eq("id", approver.management_review_id);
+
+      alert("Approval saved.");
+    }
+
+    await supabase.from("audit_logs").insert({
+      entity_type: "management_review_approver",
+      entity_id: approver.id,
+      action: "management_review_approver_signed",
+      details: `Approver ${approver.approver_name} signed management review approval.`,
+      user_email: userEmail,
+    });
+
+    fetchManagementReviews();
+  };
+
+  const removeApprover = async (approver: any) => {
+    if (selectedReviewLocked) {
+      alert("This management review is locked and cannot be changed.");
+      return;
+    }
+
+    const confirmed = window.confirm(`Remove approver ${approver.approver_name}?`);
+    if (!confirmed) return;
+
+    const { error } = await supabase
+      .from("management_review_approvers")
+      .delete()
+      .eq("id", approver.id);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    alert("Approver removed.");
+    fetchManagementReviews();
+  };
+
+  return (closed - created) / (1000 * 60 * 60 * 24);
       });
 
     setAvgNcmrCloseDays(
@@ -825,22 +998,27 @@ export default function ManagementReviewPage() {
 
     const snapshot = buildReportSnapshot();
 
-    const { error } = await supabase.from("management_reviews").insert({
-      review_number: reviewNumber,
-      review_title: reviewTitle,
-      review_period_start: reviewPeriodStart || null,
-      review_period_end: reviewPeriodEnd || null,
-      review_date: reviewDate || null,
-      site: site || null,
-      business_unit: businessUnit || null,
-      status: "draft",
-      prepared_by: userEmail,
-      report_config_json: reportConfig,
-      report_snapshot_json: snapshot,
-      executive_summary: executiveSummaryText || null,
-      risk_score: executiveRiskScore,
-      quality_health: executiveHealth,
-    });
+    const { data: reviewData, error } = await supabase
+      .from("management_reviews")
+      .insert({
+        review_number: reviewNumber,
+        review_title: reviewTitle,
+        review_period_start: reviewPeriodStart || null,
+        review_period_end: reviewPeriodEnd || null,
+        review_date: reviewDate || null,
+        site: site || null,
+        business_unit: businessUnit || null,
+        status: "draft",
+        approval_status: "draft",
+        prepared_by: userEmail,
+        report_config_json: reportConfig,
+        report_snapshot_json: snapshot,
+        executive_summary: executiveSummaryText || null,
+        risk_score: executiveRiskScore,
+        quality_health: executiveHealth,
+      })
+      .select()
+      .single();
 
     if (error) {
       alert(error.message);
@@ -856,6 +1034,7 @@ export default function ManagementReviewPage() {
     });
 
     alert(`Management review record created: ${reviewNumber}`);
+    setSelectedReviewId(reviewData?.id || "");
     fetchManagementReviews();
   };
 
@@ -970,8 +1149,10 @@ export default function ManagementReviewPage() {
                 <th style={thStyle}>Title</th>
                 <th style={thStyle}>Review Date</th>
                 <th style={thStyle}>Status</th>
+                <th style={thStyle}>Approval</th>
                 <th style={thStyle}>Quality Health</th>
                 <th style={thStyle}>Prepared By</th>
+                <th style={thStyle}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -981,12 +1162,164 @@ export default function ManagementReviewPage() {
                   <td style={tdStyle}>{review.review_title}</td>
                   <td style={tdStyle}>{review.review_date || "N/A"}</td>
                   <td style={tdStyle}>{review.status || "draft"}</td>
+                  <td style={tdStyle}>
+                    {review.approval_status || "draft"}
+                    {review.is_locked ? (
+                      <div style={{ color: "#15803d", fontSize: "12px", marginTop: "4px" }}>
+                        Locked: {review.locked_at || "N/A"}
+                      </div>
+                    ) : null}
+                  </td>
                   <td style={tdStyle}>{review.quality_health || "N/A"}</td>
                   <td style={tdStyle}>{review.prepared_by || "N/A"}</td>
+                  <td style={tdStyle}>
+                    <button type="button" onClick={() => setSelectedReviewId(review.id)}>
+                      Manage Approvals
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
+        )}
+      </Section>
+
+      <Section title="Flexible Approval Routing">
+        <p style={{ color: "#4b5563", marginTop: 0 }}>
+          Add approvers as needed for the selected management review. The record locks when all listed approvers have signed.
+        </p>
+
+        <label>
+          <strong>Select Management Review Record</strong>
+          <select
+            value={selectedReviewId}
+            onChange={(e) => setSelectedReviewId(e.target.value)}
+            style={inputStyle}
+          >
+            <option value="">Select review</option>
+            {managementReviews.map((review) => (
+              <option key={review.id} value={review.id}>
+                {review.review_number || "MR"} - {review.review_title || "Untitled"} ({review.approval_status || review.status || "draft"})
+              </option>
+            ))}
+          </select>
+        </label>
+
+        {selectedReview ? (
+          <div
+            style={{
+              border: "1px solid #d1d5db",
+              borderRadius: "10px",
+              padding: "12px",
+              marginTop: "14px",
+              background: selectedReviewLocked ? "#f3f4f6" : "white",
+            }}
+          >
+            <h3 style={{ marginTop: 0 }}>{selectedReview.review_title}</h3>
+            <p><strong>Review Number:</strong> {selectedReview.review_number || "N/A"}</p>
+            <p><strong>Approval Status:</strong> {selectedReview.approval_status || "draft"}</p>
+            <p><strong>Locked:</strong> {selectedReviewLocked ? `Yes — ${selectedReview.locked_at || "N/A"}` : "No"}</p>
+
+            {!selectedReviewLocked ? (
+              <>
+                <h3>Add Approver</h3>
+
+                <div style={builderGridStyle}>
+                  <label>
+                    <strong>Approver Name</strong>
+                    <input
+                      value={approverName}
+                      onChange={(e) => setApproverName(e.target.value)}
+                      style={inputStyle}
+                    />
+                  </label>
+
+                  <label>
+                    <strong>Approver Email</strong>
+                    <input
+                      value={approverEmail}
+                      onChange={(e) => setApproverEmail(e.target.value)}
+                      style={inputStyle}
+                    />
+                  </label>
+
+                  <label>
+                    <strong>Role / Title</strong>
+                    <input
+                      value={approverRole}
+                      onChange={(e) => setApproverRole(e.target.value)}
+                      placeholder="Example: VP Quality, Operations Leader"
+                      style={inputStyle}
+                    />
+                  </label>
+                </div>
+
+                <label>
+                  <strong>Signature Meaning</strong>
+                  <textarea
+                    value={signatureMeaning}
+                    onChange={(e) => setSignatureMeaning(e.target.value)}
+                    rows={3}
+                    style={textareaStyle}
+                  />
+                </label>
+
+                <button type="button" onClick={addApprover} style={buttonStyle}>
+                  Add Approver
+                </button>
+              </>
+            ) : null}
+
+            <h3>Approvers</h3>
+
+            {selectedApprovers.length === 0 ? (
+              <p>No approvers added yet.</p>
+            ) : (
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead>
+                  <tr>
+                    <th style={thStyle}>Name</th>
+                    <th style={thStyle}>Email</th>
+                    <th style={thStyle}>Role</th>
+                    <th style={thStyle}>Status</th>
+                    <th style={thStyle}>Signed By</th>
+                    <th style={thStyle}>Signed At</th>
+                    <th style={thStyle}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {selectedApprovers.map((approver: any) => (
+                    <tr key={approver.id}>
+                      <td style={tdStyle}>{approver.approver_name || "N/A"}</td>
+                      <td style={tdStyle}>{approver.approver_email || "N/A"}</td>
+                      <td style={tdStyle}>{approver.approver_role || "N/A"}</td>
+                      <td style={tdStyle}>{approver.approval_status || "pending"}</td>
+                      <td style={tdStyle}>{approver.signed_by || "N/A"}</td>
+                      <td style={tdStyle}>{approver.signed_at || "N/A"}</td>
+                      <td style={tdStyle}>
+                        {approver.approval_status !== "approved" && !selectedReviewLocked ? (
+                          <button type="button" onClick={() => approveReviewApprover(approver)}>
+                            Approve / Sign
+                          </button>
+                        ) : null}
+                        {approver.approval_status !== "approved" && !selectedReviewLocked ? (
+                          <button
+                            type="button"
+                            onClick={() => removeApprover(approver)}
+                            style={{ marginLeft: "8px" }}
+                          >
+                            Remove
+                          </button>
+                        ) : null}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        ) : (
+          <p>Select a management review record to manage approvals.</p>
         )}
       </Section>
 
