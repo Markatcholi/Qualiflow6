@@ -378,174 +378,6 @@ export default function ManagementReviewPage() {
       .map((item: any) => {
         const created = new Date(item.created_at).getTime();
         const closed = new Date(item.closed_at).getTime();
-        const selectedReview = managementReviews.find((review) => review.id === selectedReviewId);
-  const selectedApprovers = selectedReview?.management_review_approvers || [];
-  const selectedReviewLocked = selectedReview?.is_locked === true;
-
-  const addApprover = async () => {
-    if (!selectedReviewId) {
-      alert("Select a management review record first.");
-      return;
-    }
-
-    if (selectedReviewLocked) {
-      alert("This management review is locked and cannot be changed.");
-      return;
-    }
-
-    if (!approverName.trim()) {
-      alert("Approver name is required.");
-      return;
-    }
-
-    if (!approverEmail.trim()) {
-      alert("Approver email is required.");
-      return;
-    }
-
-    const { error } = await supabase.from("management_review_approvers").insert({
-      management_review_id: selectedReviewId,
-      approver_name: approverName,
-      approver_email: approverEmail,
-      approver_role: approverRole || null,
-      approval_status: "pending",
-      signature_meaning: signatureMeaning || null,
-    });
-
-    if (error) {
-      alert(error.message);
-      return;
-    }
-
-    await supabase
-      .from("management_reviews")
-      .update({
-        approval_status: "pending_approval",
-        status: "pending_approval",
-      })
-      .eq("id", selectedReviewId);
-
-    alert("Approver added.");
-    setApproverName("");
-    setApproverEmail("");
-    setApproverRole("");
-    fetchManagementReviews();
-  };
-
-  const approveReviewApprover = async (approver: any) => {
-    if (selectedReviewLocked) {
-      alert("This management review is already locked.");
-      return;
-    }
-
-    const confirmed = window.confirm(
-      `Apply electronic approval for ${approver.approver_name}?\\n\\nMeaning: ${approver.signature_meaning || signatureMeaning}`
-    );
-
-    if (!confirmed) return;
-
-    const { data: userData } = await supabase.auth.getUser();
-    const userEmail = userData?.user?.email || "unknown";
-
-    const { error } = await supabase
-      .from("management_review_approvers")
-      .update({
-        approval_status: "approved",
-        signed_by: userEmail,
-        signed_at: new Date().toISOString(),
-        signature_meaning: approver.signature_meaning || signatureMeaning,
-      })
-      .eq("id", approver.id);
-
-    if (error) {
-      alert(error.message);
-      return;
-    }
-
-    const { data: approvers, error: approverFetchError } = await supabase
-      .from("management_review_approvers")
-      .select("*")
-      .eq("management_review_id", approver.management_review_id);
-
-    if (approverFetchError) {
-      alert(approverFetchError.message);
-      return;
-    }
-
-    const allApproved =
-      (approvers || []).length > 0 &&
-      (approvers || []).every((item: any) => item.approval_status === "approved");
-
-    if (allApproved) {
-      const now = new Date().toISOString();
-
-      await supabase
-        .from("management_reviews")
-        .update({
-          approval_status: "approved",
-          status: "approved",
-          is_locked: true,
-          locked_at: now,
-          locked_by: userEmail,
-          fully_approved_at: now,
-        })
-        .eq("id", approver.management_review_id);
-
-      await supabase.from("audit_logs").insert({
-        entity_type: "management_review",
-        entity_id: approver.management_review_id,
-        action: "management_review_fully_approved_locked",
-        details: "All required approvers signed. Management review record locked.",
-        user_email: userEmail,
-      });
-
-      alert("Approval saved. All approvers have signed, and the management review record is now locked.");
-    } else {
-      await supabase
-        .from("management_reviews")
-        .update({
-          approval_status: "pending_approval",
-          status: "pending_approval",
-        })
-        .eq("id", approver.management_review_id);
-
-      alert("Approval saved.");
-    }
-
-    await supabase.from("audit_logs").insert({
-      entity_type: "management_review_approver",
-      entity_id: approver.id,
-      action: "management_review_approver_signed",
-      details: `Approver ${approver.approver_name} signed management review approval.`,
-      user_email: userEmail,
-    });
-
-    fetchManagementReviews();
-  };
-
-  const removeApprover = async (approver: any) => {
-    if (selectedReviewLocked) {
-      alert("This management review is locked and cannot be changed.");
-      return;
-    }
-
-    const confirmed = window.confirm(`Remove approver ${approver.approver_name}?`);
-    if (!confirmed) return;
-
-    const { error } = await supabase
-      .from("management_review_approvers")
-      .delete()
-      .eq("id", approver.id);
-
-    if (error) {
-      alert(error.message);
-      return;
-    }
-
-    alert("Approver removed.");
-    fetchManagementReviews();
-  };
-
   return (closed - created) / (1000 * 60 * 60 * 24);
       });
 
@@ -861,6 +693,174 @@ export default function ManagementReviewPage() {
       : executiveRiskScore < 25
       ? "Elevated"
       : "Critical";
+
+  const selectedReview = managementReviews.find((review) => review.id === selectedReviewId);
+  const selectedApprovers = selectedReview?.management_review_approvers || [];
+  const selectedReviewLocked = selectedReview?.is_locked === true;
+
+  const addApprover = async () => {
+    if (!selectedReviewId) {
+      alert("Select a management review record first.");
+      return;
+    }
+
+    if (selectedReviewLocked) {
+      alert("This management review is locked and cannot be changed.");
+      return;
+    }
+
+    if (!approverName.trim()) {
+      alert("Approver name is required.");
+      return;
+    }
+
+    if (!approverEmail.trim()) {
+      alert("Approver email is required.");
+      return;
+    }
+
+    const { error } = await supabase.from("management_review_approvers").insert({
+      management_review_id: selectedReviewId,
+      approver_name: approverName,
+      approver_email: approverEmail,
+      approver_role: approverRole || null,
+      approval_status: "pending",
+      signature_meaning: signatureMeaning || null,
+    });
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    await supabase
+      .from("management_reviews")
+      .update({
+        approval_status: "pending_approval",
+        status: "pending_approval",
+      })
+      .eq("id", selectedReviewId);
+
+    alert("Approver added.");
+    setApproverName("");
+    setApproverEmail("");
+    setApproverRole("");
+    fetchManagementReviews();
+  };
+
+  const approveReviewApprover = async (approver: any) => {
+    if (selectedReviewLocked) {
+      alert("This management review is already locked.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Apply electronic approval for ${approver.approver_name}?\\n\\nMeaning: ${approver.signature_meaning || signatureMeaning}`
+    );
+
+    if (!confirmed) return;
+
+    const { data: userData } = await supabase.auth.getUser();
+    const userEmail = userData?.user?.email || "unknown";
+
+    const { error } = await supabase
+      .from("management_review_approvers")
+      .update({
+        approval_status: "approved",
+        signed_by: userEmail,
+        signed_at: new Date().toISOString(),
+        signature_meaning: approver.signature_meaning || signatureMeaning,
+      })
+      .eq("id", approver.id);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    const { data: approvers, error: approverFetchError } = await supabase
+      .from("management_review_approvers")
+      .select("*")
+      .eq("management_review_id", approver.management_review_id);
+
+    if (approverFetchError) {
+      alert(approverFetchError.message);
+      return;
+    }
+
+    const allApproved =
+      (approvers || []).length > 0 &&
+      (approvers || []).every((item: any) => item.approval_status === "approved");
+
+    if (allApproved) {
+      const now = new Date().toISOString();
+
+      await supabase
+        .from("management_reviews")
+        .update({
+          approval_status: "approved",
+          status: "approved",
+          is_locked: true,
+          locked_at: now,
+          locked_by: userEmail,
+          fully_approved_at: now,
+        })
+        .eq("id", approver.management_review_id);
+
+      await supabase.from("audit_logs").insert({
+        entity_type: "management_review",
+        entity_id: approver.management_review_id,
+        action: "management_review_fully_approved_locked",
+        details: "All required approvers signed. Management review record locked.",
+        user_email: userEmail,
+      });
+
+      alert("Approval saved. All approvers have signed, and the management review record is now locked.");
+    } else {
+      await supabase
+        .from("management_reviews")
+        .update({
+          approval_status: "pending_approval",
+          status: "pending_approval",
+        })
+        .eq("id", approver.management_review_id);
+
+      alert("Approval saved.");
+    }
+
+    await supabase.from("audit_logs").insert({
+      entity_type: "management_review_approver",
+      entity_id: approver.id,
+      action: "management_review_approver_signed",
+      details: `Approver ${approver.approver_name} signed management review approval.`,
+      user_email: userEmail,
+    });
+
+    fetchManagementReviews();
+  };
+
+  const removeApprover = async (approver: any) => {
+    if (selectedReviewLocked) {
+      alert("This management review is locked and cannot be changed.");
+      return;
+    }
+
+    const confirmed = window.confirm(`Remove approver ${approver.approver_name}?`);
+    if (!confirmed) return;
+
+    const { error } = await supabase
+      .from("management_review_approvers")
+      .delete()
+      .eq("id", approver.id);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    alert("Approver removed.");
+    fetchManagementReviews();
+  };
 
   const loadExecutivePreset = () => {
     setReportConfig({
