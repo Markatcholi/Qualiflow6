@@ -21,6 +21,7 @@ type SupplierCount = {
 
 type ReportConfig = {
   executiveSummary: boolean;
+  ncmrPerformance: boolean;
   capaPerformance: boolean;
   capaEffectiveness: boolean;
   scarPerformance: boolean;
@@ -36,6 +37,7 @@ type ReportConfig = {
 export default function ManagementReviewPage() {
   const [reportConfig, setReportConfig] = useState<ReportConfig>({
     executiveSummary: true,
+    ncmrPerformance: true,
     capaPerformance: true,
     capaEffectiveness: true,
     scarPerformance: true,
@@ -921,6 +923,7 @@ export default function ManagementReviewPage() {
   const loadExecutivePreset = () => {
     setReportConfig({
       executiveSummary: true,
+      ncmrPerformance: true,
       capaPerformance: true,
       capaEffectiveness: true,
       scarPerformance: false,
@@ -937,6 +940,7 @@ export default function ManagementReviewPage() {
   const loadFullQualityPreset = () => {
     setReportConfig({
       executiveSummary: true,
+      ncmrPerformance: true,
       capaPerformance: true,
       capaEffectiveness: true,
       scarPerformance: true,
@@ -1623,6 +1627,21 @@ export default function ManagementReviewPage() {
         </Section>
       )}
 
+      {reportConfig.ncmrPerformance && (
+        <Section title="NCMR Performance">
+          <div style={gridStyle}>
+            <KpiCard title="Total NCMRs" value={ncmrTotal} color="#2563eb" />
+            <KpiCard title="Open NCMRs" value={ncmrOpen} color={getStatusColor(ncmrOpen, "warning")} />
+            <KpiCard title="In Investigation" value={ncmrInvestigation} color={getStatusColor(ncmrInvestigation, "warning")} />
+            <KpiCard title="Closed NCMRs" value={ncmrClosed} color="#15803d" />
+            <KpiCard title="NCMR Closure Rate" value={`${ncmrClosureRate}%`} color="#2563eb" />
+            <KpiCard title="Avg NCMR Close Time" value={`${avgNcmrCloseDays} d`} color="#374151" />
+          </div>
+
+          {reportConfig.trendCharts && <TrendChart title="NCMR Monthly Trend" data={ncmrTrend} />}
+        </Section>
+      )}
+
       {reportConfig.capaPerformance && (
         <Section title="CAPA Performance">
           <div style={gridStyle}>
@@ -1871,6 +1890,7 @@ function ReportBuilder({
 
       <div style={builderGridStyle}>
         <Checkbox label="Executive Summary" checked={config.executiveSummary} onChange={() => toggle("executiveSummary")} />
+        <Checkbox label="NCMR Performance" checked={config.ncmrPerformance} onChange={() => toggle("ncmrPerformance")} />
         <Checkbox label="CAPA Performance" checked={config.capaPerformance} onChange={() => toggle("capaPerformance")} />
         <Checkbox label="CAPA Effectiveness" checked={config.capaEffectiveness} onChange={() => toggle("capaEffectiveness")} />
         <Checkbox label="SCAR Performance" checked={config.scarPerformance} onChange={() => toggle("scarPerformance")} />
