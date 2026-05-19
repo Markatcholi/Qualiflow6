@@ -862,6 +862,62 @@ export default function ManagementReviewPage() {
     fetchManagementReviews();
   };
 
+  const reportGeneratedAt = new Date().toLocaleString();
+
+  const selectedReviewForReport = managementReviews.find((review) => review.id === selectedReviewId);
+  const approversForReport = selectedReviewForReport?.management_review_approvers || [];
+
+  const kpiTargetRows = [
+    {
+      kpi: "Overall Closure Rate",
+      actual: `${overallClosureRate}%`,
+      target: "≥ 90%",
+      status: Number(overallClosureRate) >= 90 ? "Meets Target" : "Below Target",
+    },
+    {
+      kpi: "CAPA Closure Rate",
+      actual: `${capaClosureRate}%`,
+      target: "≥ 90%",
+      status: Number(capaClosureRate) >= 90 ? "Meets Target" : "Below Target",
+    },
+    {
+      kpi: "CAPA Effectiveness Rate",
+      actual: `${capaEffectivenessRate}%`,
+      target: "≥ 90%",
+      status: Number(capaEffectivenessRate) >= 90 ? "Meets Target" : "Below Target",
+    },
+    {
+      kpi: "Audit Closure Rate",
+      actual: `${auditClosureRate}%`,
+      target: "≥ 95%",
+      status: Number(auditClosureRate) >= 95 ? "Meets Target" : "Below Target",
+    },
+    {
+      kpi: "OOS/OOT Closure Rate",
+      actual: `${oosClosureRate}%`,
+      target: "≥ 95%",
+      status: Number(oosClosureRate) >= 95 ? "Meets Target" : "Below Target",
+    },
+  ];
+
+  const leadershipAttentionItems = [
+    capaNotEffective > 0 ? `${capaNotEffective} CAPA(s) were rated not effective and require management attention.` : "",
+    scarAwaitingEffectiveness > 0 ? `${scarAwaitingEffectiveness} SCAR(s) are awaiting effectiveness verification.` : "",
+    supplierRecurrenceEvents > 0 ? `${supplierRecurrenceEvents} supplier recurrence event(s) were identified and should be reviewed for supplier oversight actions.` : "",
+    auditOverdue > 0 ? `${auditOverdue} audit(s) are overdue or past due.` : "",
+    capaEffectivenessOverdue > 0 ? `${capaEffectivenessOverdue} CAPA effectiveness check(s) are overdue.` : "",
+    executiveRiskScore >= 25 ? "Executive quality health is Critical. Leadership review and action prioritization are recommended." : "",
+  ].filter(Boolean);
+
+  const executiveNarrative =
+    executiveRiskScore >= 25
+      ? "Overall quality system performance requires leadership attention due to elevated risk signals, open governance actions, recurrence indicators, or overdue items."
+      : executiveRiskScore >= 10
+      ? "Overall quality system performance is elevated and should continue to be monitored through routine governance review and escalation follow-up."
+      : executiveRiskScore > 0
+      ? "Overall quality system performance remains generally controlled with selected items requiring routine follow-up."
+      : "Overall quality system performance appears controlled based on available dashboard indicators.";
+
   const loadExecutivePreset = () => {
     setReportConfig({
       executiveSummary: true,
@@ -1040,7 +1096,81 @@ export default function ManagementReviewPage() {
 
   return (
     <main style={{ padding: "24px", fontFamily: "Arial, sans-serif", background: "#f8fafc", minHeight: "100vh" }}>
-      <div style={{ marginBottom: "22px" }}>
+      <style id="management-review-print-style">{`
+        @media print {
+          body {
+            background: white !important;
+            color: #111827 !important;
+          }
+
+          nav,
+          header,
+          .no-print,
+          button,
+          input,
+          textarea,
+          select {
+            display: none !important;
+          }
+
+          main {
+            padding: 0 !important;
+            background: white !important;
+          }
+
+          .print-report-shell {
+            background: white !important;
+          }
+
+          .report-section {
+            page-break-inside: avoid;
+            break-inside: avoid;
+            box-shadow: none !important;
+            border: 1px solid #d1d5db !important;
+            margin-bottom: 18px !important;
+          }
+
+          .page-break {
+            page-break-before: always;
+            break-before: page;
+          }
+
+          .cover-page {
+            min-height: 95vh;
+            page-break-after: always;
+            break-after: page;
+          }
+
+          .print-only {
+            display: block !important;
+          }
+
+          .screen-only {
+            display: none !important;
+          }
+
+          a {
+            color: #111827 !important;
+            text-decoration: none !important;
+          }
+
+          table {
+            page-break-inside: auto;
+          }
+
+          tr {
+            page-break-inside: avoid;
+            break-inside: avoid;
+          }
+        }
+
+        @media screen {
+          .print-only {
+            display: none;
+          }
+        }
+      `}</style>
+      <div className="no-print" style={{ marginBottom: "22px" }}>
         <h1 style={{ marginBottom: "4px" }}>Management Review Report Builder</h1>
         <p style={{ margin: 0, color: "#4b5563" }}>
           Configure, preview, and print management review content using live quality system data.
@@ -1323,6 +1453,82 @@ export default function ManagementReviewPage() {
         )}
       </Section>
 
+      <section className="cover-page print-only" style={coverPageStyle}>
+        <div>
+          <div style={{ fontSize: "14px", letterSpacing: "0.08em", color: "#4b5563", fontWeight: 700 }}>
+            Formal Management Review Cover Page
+          </div>
+
+          <h1 style={{ fontSize: "36px", marginBottom: "8px" }}>
+            QualiFlow Management Review Report
+          </h1>
+
+          <p style={{ color: "#4b5563", fontSize: "16px" }}>
+            Audit-ready management review summary generated from live quality system data.
+          </p>
+        </div>
+
+        <div style={coverGridStyle}>
+          <div>
+            <strong>Review Title</strong>
+            <div>{selectedReviewForReport?.review_title || reviewTitle || "Management Review"}</div>
+          </div>
+
+          <div>
+            <strong>Review Number</strong>
+            <div>{selectedReviewForReport?.review_number || reviewNumber || "Draft / Not Saved"}</div>
+          </div>
+
+          <div>
+            <strong>Review Period</strong>
+            <div>
+              {selectedReviewForReport?.review_period_start || reviewPeriodStart || "N/A"} to {selectedReviewForReport?.review_period_end || reviewPeriodEnd || "N/A"}
+            </div>
+          </div>
+
+          <div>
+            <strong>Review Date</strong>
+            <div>{selectedReviewForReport?.review_date || reviewDate || "N/A"}</div>
+          </div>
+
+          <div>
+            <strong>Site / Business Unit</strong>
+            <div>
+              {selectedReviewForReport?.site || site || "N/A"} / {selectedReviewForReport?.business_unit || businessUnit || "N/A"}
+            </div>
+          </div>
+
+          <div>
+            <strong>Prepared By</strong>
+            <div>{selectedReviewForReport?.prepared_by || "N/A"}</div>
+          </div>
+
+          <div>
+            <strong>Quality Health</strong>
+            <div>{executiveHealth}</div>
+          </div>
+
+          <div>
+            <strong>Executive Risk Score</strong>
+            <div>{executiveRiskScore}</div>
+          </div>
+
+          <div>
+            <strong>Approval Status</strong>
+            <div>{selectedReviewForReport?.approval_status || "Draft / Pending"}</div>
+          </div>
+
+          <div>
+            <strong>Generated At</strong>
+            <div>{reportGeneratedAt}</div>
+          </div>
+        </div>
+
+        <div style={{ marginTop: "40px", color: "#4b5563", fontSize: "13px" }}>
+          Confidential Quality System Record. This report is intended for management review, quality governance, and audit readiness purposes.
+        </div>
+      </section>
+
       <ReportBuilder config={reportConfig} setConfig={setReportConfig} />
 
       {reportConfig.executiveSummary && (
@@ -1333,6 +1539,71 @@ export default function ManagementReviewPage() {
             <KpiCard title="Total Risk Events" value={totalRiskEvents} color={getStatusColor(totalRiskEvents)} />
             <KpiCard title="Overall Closure Rate" value={`${overallClosureRate}%`} color="#2563eb" />
           </div>
+        </Section>
+      )}
+
+      {reportConfig.executiveSummary && (
+        <Section title="Executive Narrative">
+          <p style={{ fontSize: "15px", lineHeight: 1.6, color: "#374151" }}>
+            {executiveNarrative}
+          </p>
+
+          {executiveSummaryText ? (
+            <div style={{ marginTop: "12px" }}>
+              <strong>Management Notes:</strong>
+              <p style={{ whiteSpace: "pre-wrap" }}>{executiveSummaryText}</p>
+            </div>
+          ) : null}
+        </Section>
+      )}
+
+      {reportConfig.executiveSummary && (
+        <Section title="KPI Target vs Actual">
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr>
+                <th style={thStyle}>KPI</th>
+                <th style={thStyle}>Actual</th>
+                <th style={thStyle}>Target</th>
+                <th style={thStyle}>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {kpiTargetRows.map((row) => (
+                <tr key={row.kpi}>
+                  <td style={tdStyle}>{row.kpi}</td>
+                  <td style={tdStyle}>{row.actual}</td>
+                  <td style={tdStyle}>{row.target}</td>
+                  <td style={tdStyle}>
+                    <span
+                      style={{
+                        fontWeight: 700,
+                        color: row.status === "Meets Target" ? "#15803d" : "#b91c1c",
+                      }}
+                    >
+                      {row.status}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Section>
+      )}
+
+      {reportConfig.executiveSummary && (
+        <Section title="Key Risks Requiring Leadership Attention">
+          {leadershipAttentionItems.length === 0 ? (
+            <p style={{ color: "#15803d", fontWeight: 700 }}>
+              No high-priority leadership attention items identified from the selected report data.
+            </p>
+          ) : (
+            <ul style={{ paddingLeft: "20px", lineHeight: 1.6 }}>
+              {leadershipAttentionItems.map((item, index) => (
+                <li key={index}>{item}</li>
+              ))}
+            </ul>
+          )}
         </Section>
       )}
 
@@ -1509,6 +1780,72 @@ export default function ManagementReviewPage() {
           />
         </Section>
       )}
+      <section className="report-section page-break" style={sectionStyle}>
+        <h2 style={{ marginTop: 0 }}>Approval Signature Summary</h2>
+
+        <p style={{ color: "#4b5563" }}>
+          This section documents management review approval routing, electronic signatures, and record lock status.
+        </p>
+
+        <div style={gridStyle}>
+          <KpiCard
+            title="Approval Status"
+            value={selectedReviewForReport?.approval_status || "Draft / Pending"}
+            color={selectedReviewForReport?.approval_status === "approved" ? "#15803d" : "#b45309"}
+          />
+
+          <KpiCard
+            title="Approvers Required"
+            value={approversForReport.length}
+            color="#2563eb"
+          />
+
+          <KpiCard
+            title="Approvers Signed"
+            value={approversForReport.filter((a: any) => a.approval_status === "approved").length}
+            color="#15803d"
+          />
+
+          <KpiCard
+            title="Record Locked"
+            value={selectedReviewForReport?.is_locked ? "Yes" : "No"}
+            color={selectedReviewForReport?.is_locked ? "#15803d" : "#b45309"}
+          />
+        </div>
+
+        {approversForReport.length === 0 ? (
+          <p>No approvers have been added to the selected management review record.</p>
+        ) : (
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr>
+                <th style={thStyle}>Approver</th>
+                <th style={thStyle}>Role</th>
+                <th style={thStyle}>Status</th>
+                <th style={thStyle}>Signed By</th>
+                <th style={thStyle}>Signed At</th>
+                <th style={thStyle}>Signature Meaning</th>
+              </tr>
+            </thead>
+            <tbody>
+              {approversForReport.map((approver: any) => (
+                <tr key={approver.id}>
+                  <td style={tdStyle}>{approver.approver_name || "N/A"}</td>
+                  <td style={tdStyle}>{approver.approver_role || "N/A"}</td>
+                  <td style={tdStyle}>{approver.approval_status || "pending"}</td>
+                  <td style={tdStyle}>{approver.signed_by || "N/A"}</td>
+                  <td style={tdStyle}>{approver.signed_at || "N/A"}</td>
+                  <td style={tdStyle}>{approver.signature_meaning || "N/A"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
+
+      <div className="print-only" style={footerStyle}>
+        QualiFlow Management Review Report | Generated {reportGeneratedAt}
+      </div>
     </main>
   );
 }
@@ -1528,7 +1865,7 @@ function ReportBuilder({
   };
 
   return (
-    <section style={sectionStyle}>
+    <section className="no-print" style={sectionStyle}>
       <h2 style={{ marginTop: 0 }}>Report Sections</h2>
       <p style={{ color: "#4b5563" }}>Select which sections should appear in the management review report.</p>
 
@@ -1560,7 +1897,7 @@ function Checkbox({ label, checked, onChange }: { label: string; checked: boolea
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section style={sectionStyle}>
+    <section className="report-section" style={sectionStyle}>
       <h2 style={{ marginTop: 0 }}>{title}</h2>
       {children}
     </section>
@@ -1703,4 +2040,36 @@ const tdStyle: React.CSSProperties = {
   border: "1px solid #d1d5db",
   padding: "10px",
   verticalAlign: "top",
+};
+
+const coverPageStyle: React.CSSProperties = {
+  border: "1px solid #d1d5db",
+  borderRadius: "12px",
+  padding: "48px",
+  background: "white",
+  display: "flex",
+  flexDirection: "column",
+  justifyContent: "space-between",
+};
+
+const coverGridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+  gap: "18px",
+  marginTop: "36px",
+  padding: "20px",
+  border: "1px solid #d1d5db",
+  borderRadius: "10px",
+  background: "#f9fafb",
+};
+
+const footerStyle: React.CSSProperties = {
+  position: "fixed",
+  bottom: "8px",
+  left: "24px",
+  right: "24px",
+  borderTop: "1px solid #d1d5db",
+  paddingTop: "6px",
+  fontSize: "10px",
+  color: "#6b7280",
 };
