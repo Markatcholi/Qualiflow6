@@ -118,7 +118,7 @@ export default function SupplierQualityDashboardPage() {
           Math.min(100, baseScore - openPenalty - majorPenalty - totalPenalty - statusPenalty)
         );
 
-        const recurrenceSignal =
+        const recurrenceSignal: "Low" | "Medium" | "High" =
           supplierNcmrs.length >= 4 || openNcmrs.length >= 2
             ? "High"
             : supplierNcmrs.length >= 2
