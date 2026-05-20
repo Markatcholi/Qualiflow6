@@ -90,8 +90,9 @@ export default function SuppliersPage() {
           </h1>
 
           <p style={{ margin: 0, color: "#4b5563" }}>
-            Supplier master data, quality performance, SCAR governance,
-            risk escalation, audits, documents, and qualification status.
+            Supplier master data, operational supplier quality dashboard,
+            scorecards, SCAR governance, risk escalation, audits, documents,
+            and qualification status.
           </p>
         </div>
 
@@ -148,10 +149,10 @@ export default function SuppliersPage() {
         <div style={navGridStyle}>
           <NavigationCard
             title="Supplier Quality Dashboard"
-            description="Operational supplier quality dashboard route is not connected yet. Disabled to prevent 404."
-            badge="Route Pending"
+            description="Operational supplier quality performance, supplier KPIs, supplier-linked NCMRs, defect trends, recurrence signals, and supplier quality score."
+            href="/supplier-quality/dashboard"
+            badge="Operational Intelligence"
             color="#2563eb"
-            disabled
           />
 
           <NavigationCard
@@ -204,7 +205,7 @@ export default function SuppliersPage() {
 
           <NavigationCard
             title="Receiving Inspection"
-            description="Receiving inspection route is not connected yet. Disabled to prevent 404."
+            description="Receiving inspection route is not connected yet. Disabled to prevent 404 until the receiving inspection module is created."
             badge="Route Pending"
             color="#0891b2"
             disabled
@@ -308,6 +309,10 @@ export default function SuppliersPage() {
                         >
                           <Link href={`/suppliers/${supplier.id}`}>
                             Open Supplier
+                          </Link>
+
+                          <Link href="/supplier-quality/dashboard">
+                            Quality Dashboard
                           </Link>
 
                           <Link href="/scar/dashboard">
