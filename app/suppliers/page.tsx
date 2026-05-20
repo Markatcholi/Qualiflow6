@@ -84,38 +84,73 @@ export default function SuppliersPage() {
       <div style={headerStyle}>
         <div>
           <div style={eyebrowStyle}>SUPPLIER QUALITY MANAGEMENT</div>
-          <h1 style={{ margin: "6px 0" }}>Supplier Quality Intelligence</h1>
+
+          <h1 style={{ margin: "6px 0" }}>
+            Supplier Quality Intelligence
+          </h1>
+
           <p style={{ margin: 0, color: "#4b5563" }}>
-            Supplier master data, quality performance, SCAR governance, risk
-            escalation, audits, documents, and qualification status.
+            Supplier master data, quality performance, SCAR governance,
+            risk escalation, audits, documents, and qualification status.
           </p>
         </div>
 
         <Link href="/suppliers/new">
-          <button style={primaryButtonStyle}>Add Supplier</button>
+          <button style={primaryButtonStyle}>
+            Add Supplier
+          </button>
         </Link>
       </div>
 
       <section style={sectionStyle}>
-        <h2 style={{ marginTop: 0 }}>Supplier Intelligence Overview</h2>
+        <h2 style={{ marginTop: 0 }}>
+          Supplier Intelligence Overview
+        </h2>
 
         <div style={kpiGridStyle}>
-          <KpiCard title="Total Suppliers" value={totalSuppliers} color="#2563eb" />
-          <KpiCard title="Critical Suppliers" value={criticalSuppliers} color="#dc2626" />
-          <KpiCard title="High Risk Suppliers" value={highRiskSuppliers} color="#ea580c" />
-          <KpiCard title="Open SCARs" value={totalOpenScars} color="#7c3aed" />
-          <KpiCard title="Recurring Supplier NCMRs" value={totalRecurringNcmrs} color="#b91c1c" />
+          <KpiCard
+            title="Total Suppliers"
+            value={totalSuppliers}
+            color="#2563eb"
+          />
+
+          <KpiCard
+            title="Critical Suppliers"
+            value={criticalSuppliers}
+            color="#dc2626"
+          />
+
+          <KpiCard
+            title="High Risk Suppliers"
+            value={highRiskSuppliers}
+            color="#ea580c"
+          />
+
+          <KpiCard
+            title="Open SCARs"
+            value={totalOpenScars}
+            color="#7c3aed"
+          />
+
+          <KpiCard
+            title="Recurring Supplier NCMRs"
+            value={totalRecurringNcmrs}
+            color="#b91c1c"
+          />
         </div>
       </section>
 
       <section style={sectionStyle}>
-        <h2 style={{ marginTop: 0 }}>Supplier Quality Navigation</h2>
+        <h2 style={{ marginTop: 0 }}>
+          Supplier Quality Navigation
+        </h2>
 
         <div style={navGridStyle}>
+
           <NavigationCard
             title="Supplier Quality Dashboard"
             description="Operational supplier quality performance, supplier KPIs, SCAR metrics, and quality trends."
-            href="/suppliers/dashboard"
+            href="/supplier-quality/dashboard"
             badge="Performance"
             color="#2563eb"
           />
@@ -131,7 +166,7 @@ export default function SuppliersPage() {
           <NavigationCard
             title="Supplier Scorecards"
             description="Supplier performance history, quality performance, responsiveness, and supplier health."
-            href="/suppliers/scorecards"
+            href="/supplier-quality/scorecards"
             badge="Scorecards"
             color="#7c3aed"
           />
@@ -171,17 +206,21 @@ export default function SuppliersPage() {
           <NavigationCard
             title="Receiving Inspection"
             description="Supplier receiving inspection activity, inspection status, and incoming quality controls."
-            href="/supplier-quality/receiving-inspection"
+            href="/inspection"
             badge="Inspection"
             color="#0891b2"
           />
+
         </div>
       </section>
 
       <section style={sectionStyle}>
         <div style={tableHeaderStyle}>
           <div>
-            <h2 style={{ marginTop: 0 }}>Supplier List</h2>
+            <h2 style={{ marginTop: 0 }}>
+              Supplier List
+            </h2>
+
             <p style={{ marginTop: 0, color: "#4b5563" }}>
               Supplier master list with quality, status, risk, and record access.
             </p>
@@ -222,12 +261,24 @@ export default function SuppliersPage() {
 
                   return (
                     <tr key={supplier.id} style={stripedRowStyle(index)}>
-                      <td style={tdStyle}>{supplier.supplier_number || "N/A"}</td>
                       <td style={tdStyle}>
-                        <strong>{supplier.supplier_name || "Unnamed Supplier"}</strong>
+                        {supplier.supplier_number || "N/A"}
                       </td>
-                      <td style={tdStyle}>{supplier.supplier_category || "N/A"}</td>
-                      <td style={tdStyle}>{supplier.supplier_status || "N/A"}</td>
+
+                      <td style={tdStyle}>
+                        <strong>
+                          {supplier.supplier_name || "Unnamed Supplier"}
+                        </strong>
+                      </td>
+
+                      <td style={tdStyle}>
+                        {supplier.supplier_category || "N/A"}
+                      </td>
+
+                      <td style={tdStyle}>
+                        {supplier.supplier_status || "N/A"}
+                      </td>
+
                       <td style={tdStyle}>
                         <RiskBadge
                           level={
@@ -236,6 +287,7 @@ export default function SuppliersPage() {
                             "Low"
                           }
                         />
+
                         <div style={subTextStyle}>
                           Score:{" "}
                           {riskRecord?.supplier_risk_score ??
@@ -243,11 +295,26 @@ export default function SuppliersPage() {
                             0}
                         </div>
                       </td>
-                      <td style={tdStyle}>{supplier.iso_expiration_date || "N/A"}</td>
+
                       <td style={tdStyle}>
-                        <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
-                          <Link href={`/suppliers/${supplier.id}`}>Open Supplier</Link>
-                          <Link href="/scar/dashboard">Governance</Link>
+                        {supplier.iso_expiration_date || "N/A"}
+                      </td>
+
+                      <td style={tdStyle}>
+                        <div
+                          style={{
+                            display: "flex",
+                            gap: "10px",
+                            flexWrap: "wrap",
+                          }}
+                        >
+                          <Link href={`/suppliers/${supplier.id}`}>
+                            Open Supplier
+                          </Link>
+
+                          <Link href="/scar/dashboard">
+                            Governance
+                          </Link>
                         </div>
                       </td>
                     </tr>
@@ -293,7 +360,15 @@ function KpiCard({
         {title}
       </div>
 
-      <div style={{ fontSize: "30px", fontWeight: 800, color }}>{value}</div>
+      <div
+        style={{
+          fontSize: "30px",
+          fontWeight: 800,
+          color,
+        }}
+      >
+        {value}
+      </div>
     </div>
   );
 }
@@ -312,7 +387,13 @@ function NavigationCard({
   color: string;
 }) {
   return (
-    <Link href={href} style={{ textDecoration: "none", color: "inherit" }}>
+    <Link
+      href={href}
+      style={{
+        textDecoration: "none",
+        color: "inherit",
+      }}
+    >
       <div
         style={{
           borderRadius: "16px",
@@ -341,8 +422,17 @@ function NavigationCard({
           {badge}
         </div>
 
-        <h3 style={{ marginTop: 0, marginBottom: "8px" }}>{title}</h3>
-        <p style={{ color: "#4b5563", lineHeight: 1.5, marginBottom: 0 }}>
+        <h3 style={{ marginTop: 0, marginBottom: "8px" }}>
+          {title}
+        </h3>
+
+        <p
+          style={{
+            color: "#4b5563",
+            lineHeight: 1.5,
+            marginBottom: 0,
+          }}
+        >
           {description}
         </p>
       </div>
@@ -480,6 +570,8 @@ const subTextStyle: React.CSSProperties = {
   marginTop: "4px",
 };
 
-const stripedRowStyle = (index: number): React.CSSProperties => ({
+const stripedRowStyle = (
+  index: number
+): React.CSSProperties => ({
   background: index % 2 === 0 ? "#ffffff" : "#f9fafb",
 });
