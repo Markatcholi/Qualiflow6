@@ -35,9 +35,11 @@ export default function GlobalReceivingInspectionsPage() {
 
   const supplierMap = useMemo(() => {
     const map: Record<string, SupplierOption> = {};
+
     suppliers.forEach((supplier) => {
       map[supplier.id] = supplier;
     });
+
     return map;
   }, [suppliers]);
 
@@ -47,6 +49,7 @@ export default function GlobalReceivingInspectionsPage() {
 
   const filteredInspections = inspections.filter((inspection) => {
     const supplier = supplierMap[inspection.supplier_id];
+
     const haystack = [
       supplier?.supplier_name,
       supplier?.supplier_number,
@@ -131,7 +134,9 @@ export default function GlobalReceivingInspectionsPage() {
         part_number: partNumber,
         lot_number: lotNumber,
         receipt_date: receiptDate || null,
-        quantity_received: quantityReceived ? Number(quantityReceived) : null,
+        quantity_received: quantityReceived
+          ? Number(quantityReceived)
+          : null,
         inspection_result: "pending",
         created_by: userEmail,
       })
@@ -144,18 +149,23 @@ export default function GlobalReceivingInspectionsPage() {
       entity_type: "receiving_inspection",
       entity_id: data.id,
       action: "receiving_inspection_created",
-      details: `Receiving inspection created for supplier ${selectedSupplier?.supplier_name || "supplier"}.`,
+      details: `Receiving inspection created for supplier ${
+        selectedSupplier?.supplier_name || "supplier"
+      }.`,
       user_email: userEmail,
     });
 
     alert("Receiving inspection created.");
+
     resetInspectionForm();
     setShowCreateInspection(false);
     fetchData();
   };
 
   const inspectionRequiresNcmr = (inspection: any) => {
-    const result = String(inspection.inspection_result || "").toLowerCase();
+    const result = String(
+      inspection.inspection_result || ""
+    ).toLowerCase();
 
     return (
       result.includes("reject") ||
@@ -168,19 +178,23 @@ export default function GlobalReceivingInspectionsPage() {
 
   const createLinkedNcmr = async (inspection: any) => {
     if (inspection.linked_ncmr_id) {
-      alert("This receiving inspection already has a linked NCMR.");
+      alert(
+        "This receiving inspection already has a linked NCMR."
+      );
       return;
     }
 
     if (!inspectionRequiresNcmr(inspection)) {
-      alert("NCMR creation is intended for rejected, failed, or nonconforming inspections.");
+      alert(
+        "NCMR creation is intended for rejected, failed, or nonconforming inspections."
+      );
       return;
     }
 
     const supplier = supplierMap[inspection.supplier_id];
 
     const confirmed = window.confirm(
-      "Create a linked NCMR from this receiving inspection?\\n\\nThis will auto-populate supplier, part, lot, quantity, source, and inspection reference."
+      "Create a linked NCMR from this receiving inspection?\n\nThis will auto-populate supplier, part, lot, quantity, source, and inspection reference."
     );
 
     if (!confirmed) return;
@@ -188,41 +202,62 @@ export default function GlobalReceivingInspectionsPage() {
     const { data: userData } = await supabase.auth.getUser();
     const userEmail = userData?.user?.email || "unknown";
 
-    const title = `Receiving Inspection Nonconformance - ${inspection.part_number || "Part"} / Lot ${inspection.lot_number || "N/A"}`;
+    const title = `Receiving Inspection Nonconformance - ${
+      inspection.part_number || "Part"
+    } / Lot ${inspection.lot_number || "N/A"}`;
 
-    const issueDescription = `Receiving inspection identified a nonconforming or rejected result. Supplier: ${supplier?.supplier_name || "N/A"}. Part: ${inspection.part_number || "N/A"}. Lot: ${inspection.lot_number || "N/A"}. Quantity received: ${inspection.quantity_received ?? "N/A"}. Quantity rejected: ${inspection.quantity_rejected ?? "N/A"}. Inspection result: ${inspection.inspection_result || "N/A"}.`;
+    const issueDescription = `Receiving inspection identified a nonconforming or rejected result. Supplier: ${
+      supplier?.supplier_name || "N/A"
+    }. Part: ${
+      inspection.part_number || "N/A"
+    }. Lot: ${
+      inspection.lot_number || "N/A"
+    }. Quantity received: ${
+      inspection.quantity_received ?? "N/A"
+    }. Quantity rejected: ${
+      inspection.quantity_rejected ?? "N/A"
+    }. Inspection result: ${
+      inspection.inspection_result || "N/A"
+    }.`;
 
-    const { data: ncmrData, error: ncmrError } = await supabase
-      .from("ncmrs")
-      .insert({
-        title,
-        issue_description: issueDescription,
-        status: "open",
-        source_of_detection: "receiving_inspection",
-        source_module: "receiving_inspection",
-        source_record_id: inspection.id,
-        linked_receiving_inspection_id: inspection.id,
-        linked_supplier_id: inspection.supplier_id || null,
-        product_part_number: inspection.part_number || null,
-        lot_number: inspection.lot_number || null,
-        quantity_affected: inspection.quantity_rejected ?? inspection.quantity_received ?? null,
-        owner: userEmail,
-      })
-      .select()
-      .single();
+    const { data: ncmrData, error: ncmrError } =
+      await supabase
+        .from("ncmrs")
+        .insert({
+          title,
+          issue_description: issueDescription,
+          status: "open",
+          source_of_detection: "receiving_inspection",
+          source_module: "receiving_inspection",
+          source_record_id: inspection.id,
+          linked_receiving_inspection_id: inspection.id,
+          linked_supplier_id:
+            inspection.supplier_id || null,
+          product_part_number:
+            inspection.part_number || null,
+          lot_number: inspection.lot_number || null,
+          quantity_affected:
+            inspection.quantity_rejected ??
+            inspection.quantity_received ??
+            null,
+          owner: userEmail,
+        })
+        .select()
+        .single();
 
     if (ncmrError) {
       alert(ncmrError.message);
       return;
     }
 
-    const { error: inspectionUpdateError } = await supabase
-      .from("receiving_inspections")
-      .update({
-        linked_ncmr_id: ncmrData.id,
-        ncmr_created: true,
-      })
-      .eq("id", inspection.id);
+    const { error: inspectionUpdateError } =
+      await supabase
+        .from("receiving_inspections")
+        .update({
+          linked_ncmr_id: ncmrData.id,
+          ncmr_created: true,
+        })
+        .eq("id", inspection.id);
 
     if (inspectionUpdateError) {
       alert(inspectionUpdateError.message);
@@ -240,43 +275,230 @@ export default function GlobalReceivingInspectionsPage() {
       {
         entity_type: "ncmr",
         entity_id: ncmrData.id,
-        action: "ncmr_created_from_receiving_inspection",
-        details: `NCMR created from receiving inspection for supplier ${supplier?.supplier_name || "N/A"}, part ${inspection.part_number || "N/A"}, lot ${inspection.lot_number || "N/A"}.`,
+        action:
+          "ncmr_created_from_receiving_inspection",
+        details: `NCMR created from receiving inspection for supplier ${
+          supplier?.supplier_name || "N/A"
+        }, part ${
+          inspection.part_number || "N/A"
+        }, lot ${
+          inspection.lot_number || "N/A"
+        }.`,
         user_email: userEmail,
       },
     ]);
 
     alert("Linked NCMR created.");
+
     fetchData();
+
     window.open(`/ncmrs/${ncmrData.id}`, "_blank");
   };
 
+  const totalInspections = inspections.length;
+
+  const pendingInspections = inspections.filter(
+    (inspection) =>
+      String(
+        inspection.inspection_result || ""
+      ).toLowerCase() === "pending"
+  ).length;
+
+  const rejectedInspections = inspections.filter(
+    (inspection) =>
+      inspectionRequiresNcmr(inspection)
+  ).length;
+
+  const linkedNcmrs = inspections.filter(
+    (inspection) => inspection.linked_ncmr_id
+  ).length;
+
+  const supplierRejectRate =
+    totalInspections > 0
+      ? (
+          (rejectedInspections / totalInspections) *
+          100
+        ).toFixed(1)
+      : "0.0";
+
+  const highRiskSuppliers = suppliers.filter(
+    (supplier) => {
+      const risk = String(
+        supplier.supplier_risk_level || ""
+      ).toLowerCase();
+
+      return (
+        risk === "high" || risk === "critical"
+      );
+    }
+  ).length;
+
+  const inspectionsNeedingNcmr = inspections.filter(
+    (inspection) =>
+      inspectionRequiresNcmr(inspection) &&
+      !inspection.linked_ncmr_id
+  );
+
+  const operationalAlerts = [
+    pendingInspections > 0
+      ? `${pendingInspections} inspection(s) are pending disposition.`
+      : "",
+
+    inspectionsNeedingNcmr.length > 0
+      ? `${inspectionsNeedingNcmr.length} inspection(s) require NCMR creation.`
+      : "",
+
+    Number(supplierRejectRate) > 10
+      ? `Supplier reject rate is ${supplierRejectRate}%, above target threshold.`
+      : "",
+
+    highRiskSuppliers > 0
+      ? `${highRiskSuppliers} supplier(s) are currently high or critical risk.`
+      : "",
+  ].filter(Boolean);
+
   return (
-    <main style={{ padding: "24px", fontFamily: "Arial" }}>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          gap: "12px",
-          alignItems: "flex-start",
-          flexWrap: "wrap",
-          marginBottom: "20px",
-        }}
-      >
+    <main
+      style={{
+        padding: "24px",
+        fontFamily: "Arial",
+        background: "#f8fafc",
+        minHeight: "100vh",
+      }}
+    >
+      <div style={headerStyle}>
         <div>
-          <h1 style={{ marginBottom: "6px" }}>Global Receiving Inspections</h1>
+          <div style={eyebrowStyle}>
+            INCOMING QUALITY OPERATIONS
+          </div>
+
+          <h1 style={{ marginBottom: "6px" }}>
+            Global Receiving Inspections
+          </h1>
+
           <p style={{ color: "#4b5563", marginTop: 0 }}>
-            Create and view receiving inspections for suppliers where receiving inspection is enabled.
+            Incoming inspection operations,
+            supplier lot acceptance,
+            reject intelligence,
+            inspection-driven NCMR creation,
+            and supplier incoming quality controls.
           </p>
         </div>
 
-        <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
-          <Link href="/suppliers">Supplier Quality</Link>
-          <Link href="/supplier-quality/audits">Supplier Audits</Link>
-          <Link href="/supplier-quality/scars">SCARs</Link>
-          <Link href="/supplier-quality/asl">ASL / Qualification</Link>
+        <div
+          style={{
+            display: "flex",
+            gap: "10px",
+            flexWrap: "wrap",
+          }}
+        >
+          <Link href="/suppliers">
+            Supplier Quality
+          </Link>
+
+          <Link href="/supplier-quality-dashboard">
+            Supplier Dashboard
+          </Link>
+
+          <Link href="/supplier-quality/scars">
+            SCARs
+          </Link>
+
+          <Link href="/scar/dashboard">
+            Governance
+          </Link>
         </div>
       </div>
+
+      <section style={sectionStyle}>
+        <h2 style={{ marginTop: 0 }}>
+          Receiving Inspection Intelligence
+        </h2>
+
+        <div style={kpiGridStyle}>
+          <KpiCard
+            title="Total Inspections"
+            value={totalInspections}
+            color="#2563eb"
+          />
+
+          <KpiCard
+            title="Pending Inspections"
+            value={pendingInspections}
+            color={
+              pendingInspections > 0
+                ? "#d97706"
+                : "#15803d"
+            }
+          />
+
+          <KpiCard
+            title="Rejected / Nonconforming"
+            value={rejectedInspections}
+            color={
+              rejectedInspections > 0
+                ? "#dc2626"
+                : "#15803d"
+            }
+          />
+
+          <KpiCard
+            title="Linked NCMRs"
+            value={linkedNcmrs}
+            color="#7c3aed"
+          />
+
+          <KpiCard
+            title="Reject Rate"
+            value={`${supplierRejectRate}%`}
+            color={
+              Number(supplierRejectRate) > 10
+                ? "#dc2626"
+                : "#15803d"
+            }
+          />
+
+          <KpiCard
+            title="High Risk Suppliers"
+            value={highRiskSuppliers}
+            color={
+              highRiskSuppliers > 0
+                ? "#dc2626"
+                : "#15803d"
+            }
+          />
+        </div>
+      </section>
+
+      <section style={sectionStyle}>
+        <h2 style={{ marginTop: 0 }}>
+          Operational Alerts
+        </h2>
+
+        {operationalAlerts.length === 0 ? (
+          <p
+            style={{
+              color: "#15803d",
+              fontWeight: 700,
+            }}
+          >
+            No significant incoming quality alerts identified.
+          </p>
+        ) : (
+          <div style={alertGridStyle}>
+            {operationalAlerts.map(
+              (alert, index) => (
+                <div
+                  key={index}
+                  style={alertCardStyle}
+                >
+                  {alert}
+                </div>
+              )
+            )}
+          </div>
+        )}
+      </section>
 
       <section style={sectionStyle}>
         <div
@@ -289,8 +511,16 @@ export default function GlobalReceivingInspectionsPage() {
           }}
         >
           <div>
-            <h2 style={{ marginTop: 0 }}>Create Receiving Inspection</h2>
-            <p style={{ color: "#4b5563", marginTop: 0 }}>
+            <h2 style={{ marginTop: 0 }}>
+              Create Receiving Inspection
+            </h2>
+
+            <p
+              style={{
+                color: "#4b5563",
+                marginTop: 0,
+              }}
+            >
               Only suppliers with receiving inspection enabled are available for selection.
             </p>
           </div>
@@ -298,7 +528,9 @@ export default function GlobalReceivingInspectionsPage() {
           {!showCreateInspection ? (
             <button
               type="button"
-              onClick={() => setShowCreateInspection(true)}
+              onClick={() =>
+                setShowCreateInspection(true)
+              }
               style={primaryButtonStyle}
             >
               + Create Inspection
@@ -307,56 +539,47 @@ export default function GlobalReceivingInspectionsPage() {
         </div>
 
         {showCreateInspection ? (
-          <div
-            style={{
-              border: "1px solid #d1d5db",
-              borderRadius: "10px",
-              padding: "14px",
-              background: "#f9fafb",
-              marginTop: "12px",
-            }}
-          >
+          <div style={createCardStyle}>
             <FormField label="Supplier">
               <select
                 value={supplierId}
-                onChange={(e) => setSupplierId(e.target.value)}
+                onChange={(e) =>
+                  setSupplierId(e.target.value)
+                }
                 style={standardInputStyle}
               >
-                <option value="">Select supplier</option>
-                {enabledSuppliers.map((supplier) => (
-                  <option key={supplier.id} value={supplier.id}>
-                    {supplier.supplier_number ? `${supplier.supplier_number} - ` : ""}
-                    {supplier.supplier_name}
-                  </option>
-                ))}
+                <option value="">
+                  Select supplier
+                </option>
+
+                {enabledSuppliers.map(
+                  (supplier) => (
+                    <option
+                      key={supplier.id}
+                      value={supplier.id}
+                    >
+                      {supplier.supplier_number
+                        ? `${supplier.supplier_number} - `
+                        : ""}
+                      {supplier.supplier_name}
+                    </option>
+                  )
+                )}
               </select>
             </FormField>
 
             {enabledSuppliers.length === 0 ? (
-              <div
-                style={{
-                  border: "1px solid #facc15",
-                  background: "#fefce8",
-                  borderRadius: "8px",
-                  padding: "10px",
-                  marginBottom: "12px",
-                }}
-              >
-                No suppliers currently have receiving inspection enabled. Enable it from ASL / Qualification or a supplier profile first.
+              <div style={warningCardStyle}>
+                No suppliers currently have receiving inspection enabled.
               </div>
             ) : null}
 
             {supplierId ? (
-              <div
-                style={{
-                  border: "1px solid #d1d5db",
-                  borderRadius: "8px",
-                  padding: "10px",
-                  background: "white",
-                  marginBottom: "12px",
-                }}
-              >
-                <strong>Selected Supplier</strong>
+              <div style={supplierInfoCardStyle}>
+                <strong>
+                  Selected Supplier
+                </strong>
+
                 <div
                   style={{
                     marginTop: "6px",
@@ -365,54 +588,129 @@ export default function GlobalReceivingInspectionsPage() {
                     flexWrap: "wrap",
                   }}
                 >
-                  <StatusBadge status={supplierMap[supplierId]?.supplier_status || "unknown"} />
-                  <StatusBadge status={supplierMap[supplierId]?.supplier_risk_level || "unknown"} />
-                  <Link href={`/suppliers/${supplierId}`}>Open Supplier Profile</Link>
+                  <StatusBadge
+                    status={
+                      supplierMap[supplierId]
+                        ?.supplier_status ||
+                      "unknown"
+                    }
+                  />
+
+                  <StatusBadge
+                    status={
+                      supplierMap[supplierId]
+                        ?.supplier_risk_level ||
+                      "unknown"
+                    }
+                  />
+
+                  <Link
+                    href={`/suppliers/${supplierId}`}
+                  >
+                    Open Supplier Profile
+                  </Link>
                 </div>
               </div>
             ) : null}
 
             <FormField label="Part Number">
-              <input value={partNumber} onChange={(e) => setPartNumber(e.target.value)} style={standardInputStyle} />
+              <input
+                value={partNumber}
+                onChange={(e) =>
+                  setPartNumber(e.target.value)
+                }
+                style={standardInputStyle}
+              />
             </FormField>
 
             <FormField label="Lot Number">
-              <input value={lotNumber} onChange={(e) => setLotNumber(e.target.value)} style={standardInputStyle} />
+              <input
+                value={lotNumber}
+                onChange={(e) =>
+                  setLotNumber(e.target.value)
+                }
+                style={standardInputStyle}
+              />
             </FormField>
 
             <FormField label="Receipt Date">
-              <input type="date" value={receiptDate} onChange={(e) => setReceiptDate(e.target.value)} style={standardInputStyle} />
+              <input
+                type="date"
+                value={receiptDate}
+                onChange={(e) =>
+                  setReceiptDate(e.target.value)
+                }
+                style={standardInputStyle}
+              />
             </FormField>
 
             <FormField label="Quantity Received">
-              <input type="number" value={quantityReceived} onChange={(e) => setQuantityReceived(e.target.value)} style={standardInputStyle} />
+              <input
+                type="number"
+                value={quantityReceived}
+                onChange={(e) =>
+                  setQuantityReceived(
+                    e.target.value
+                  )
+                }
+                style={standardInputStyle}
+              />
             </FormField>
 
-            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-              <button type="button" onClick={createInspection}>Create Inspection</button>
-              <button type="button" onClick={() => { resetInspectionForm(); setShowCreateInspection(false); }}>Cancel</button>
+            <div
+              style={{
+                display: "flex",
+                gap: "8px",
+                flexWrap: "wrap",
+              }}
+            >
+              <button
+                type="button"
+                onClick={createInspection}
+                style={primaryButtonStyle}
+              >
+                Create Inspection
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  resetInspectionForm();
+                  setShowCreateInspection(false);
+                }}
+              >
+                Cancel
+              </button>
             </div>
           </div>
         ) : null}
       </section>
 
       <section style={sectionStyle}>
-        <h2 style={{ marginTop: 0 }}>Receiving Inspection Register</h2>
+        <h2 style={{ marginTop: 0 }}>
+          Receiving Inspection Queue
+        </h2>
 
         <div style={{ marginBottom: "14px" }}>
           <input
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) =>
+              setSearch(e.target.value)
+            }
             placeholder="Search inspections by supplier, part, lot, result"
-            style={{ padding: "10px", width: "360px", maxWidth: "100%" }}
+            style={searchInputStyle}
           />
-          <span style={{ marginLeft: "10px", color: "#6b7280" }}>
-            Showing {filteredInspections.length} of {inspections.length}
+
+          <span style={searchSummaryStyle}>
+            Showing {filteredInspections.length} of{" "}
+            {inspections.length}
           </span>
         </div>
 
         {loading ? (
-          <p>Loading receiving inspections...</p>
+          <p>
+            Loading receiving inspections...
+          </p>
         ) : inspections.length === 0 ? (
           <EmptyStateCard
             title="No receiving inspections recorded"
@@ -424,89 +722,321 @@ export default function GlobalReceivingInspectionsPage() {
             message="Adjust the search field to view more receiving inspections."
           />
         ) : (
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr>
-                <th style={thStyle}>Supplier</th>
-                <th style={thStyle}>Part Number</th>
-                <th style={thStyle}>Lot Number</th>
-                <th style={thStyle}>Receipt Date</th>
-                <th style={thStyle}>Qty Received</th>
-                <th style={thStyle}>Qty Accepted</th>
-                <th style={thStyle}>Qty Rejected</th>
-                <th style={thStyle}>Result</th>
-                <th style={thStyle}>NCMR</th>
-                <th style={thStyle}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredInspections.map((inspection) => {
-                const supplier = supplierMap[inspection.supplier_id];
-                const shouldCreateNcmr = inspectionRequiresNcmr(inspection);
+          <div style={{ overflowX: "auto" }}>
+            <table style={tableStyle}>
+              <thead>
+                <tr>
+                  <th style={thStyle}>
+                    Supplier
+                  </th>
 
-                return (
-                  <tr key={inspection.id}>
-                    <td style={tdStyle}>
-                      {supplier ? (
-                        <Link href={`/suppliers/${supplier.id}`}>
-                          {supplier.supplier_name}
-                        </Link>
-                      ) : (
-                        "N/A"
-                      )}
-                    </td>
-                    <td style={tdStyle}>{inspection.part_number || "N/A"}</td>
-                    <td style={tdStyle}>{inspection.lot_number || "N/A"}</td>
-                    <td style={tdStyle}>{inspection.receipt_date || "N/A"}</td>
-                    <td style={tdStyle}>{inspection.quantity_received ?? "N/A"}</td>
-                    <td style={tdStyle}>{inspection.quantity_accepted ?? "N/A"}</td>
-                    <td style={tdStyle}>{inspection.quantity_rejected ?? "N/A"}</td>
-                    <td style={tdStyle}>
-                      <StatusBadge status={inspection.inspection_result || "pending"} />
-                    </td>
-                    <td style={tdStyle}>
-                      {inspection.linked_ncmr_id ? (
-                        <Link href={`/ncmrs/${inspection.linked_ncmr_id}`}>
-                          Open NCMR
-                        </Link>
-                      ) : shouldCreateNcmr ? (
-                        <StatusBadge status="NCMR Needed" />
-                      ) : (
-                        "N/A"
-                      )}
-                    </td>
-                    <td style={tdStyle}>
-                      <div style={{ display: "grid", gap: "6px" }}>
-                        {inspection.supplier_id ? (
-                          <Link href={`/suppliers/${inspection.supplier_id}/receiving-inspections/${inspection.id}`}>
-                            Open Inspection
-                          </Link>
-                        ) : null}
+                  <th style={thStyle}>
+                    Risk
+                  </th>
 
-                        {shouldCreateNcmr && !inspection.linked_ncmr_id ? (
-                          <button type="button" onClick={() => createLinkedNcmr(inspection)}>
-                            Create Linked NCMR
-                          </button>
-                        ) : null}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                  <th style={thStyle}>
+                    Part Number
+                  </th>
+
+                  <th style={thStyle}>
+                    Lot Number
+                  </th>
+
+                  <th style={thStyle}>
+                    Receipt Date
+                  </th>
+
+                  <th style={thStyle}>
+                    Qty Received
+                  </th>
+
+                  <th style={thStyle}>
+                    Qty Rejected
+                  </th>
+
+                  <th style={thStyle}>
+                    Result
+                  </th>
+
+                  <th style={thStyle}>
+                    NCMR Status
+                  </th>
+
+                  <th style={thStyle}>
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {filteredInspections.map(
+                  (inspection, index) => {
+                    const supplier =
+                      supplierMap[
+                        inspection.supplier_id
+                      ];
+
+                    const shouldCreateNcmr =
+                      inspectionRequiresNcmr(
+                        inspection
+                      );
+
+                    return (
+                      <tr
+                        key={inspection.id}
+                        style={stripedRowStyle(
+                          index
+                        )}
+                      >
+                        <td style={tdStyle}>
+                          {supplier ? (
+                            <Link
+                              href={`/suppliers/${supplier.id}`}
+                            >
+                              <strong>
+                                {
+                                  supplier.supplier_name
+                                }
+                              </strong>
+                            </Link>
+                          ) : (
+                            "N/A"
+                          )}
+                        </td>
+
+                        <td style={tdStyle}>
+                          <StatusBadge
+                            status={
+                              supplier?.supplier_risk_level ||
+                              "unknown"
+                            }
+                          />
+                        </td>
+
+                        <td style={tdStyle}>
+                          {inspection.part_number ||
+                            "N/A"}
+                        </td>
+
+                        <td style={tdStyle}>
+                          {inspection.lot_number ||
+                            "N/A"}
+                        </td>
+
+                        <td style={tdStyle}>
+                          {inspection.receipt_date ||
+                            "N/A"}
+                        </td>
+
+                        <td style={tdStyle}>
+                          {inspection.quantity_received ??
+                            "N/A"}
+                        </td>
+
+                        <td style={tdStyle}>
+                          {inspection.quantity_rejected ??
+                            "N/A"}
+                        </td>
+
+                        <td style={tdStyle}>
+                          <StatusBadge
+                            status={
+                              inspection.inspection_result ||
+                              "pending"
+                            }
+                          />
+                        </td>
+
+                        <td style={tdStyle}>
+                          {inspection.linked_ncmr_id ? (
+                            <Link
+                              href={`/ncmrs/${inspection.linked_ncmr_id}`}
+                            >
+                              Open NCMR
+                            </Link>
+                          ) : shouldCreateNcmr ? (
+                            <StatusBadge status="NCMR Needed" />
+                          ) : (
+                            "N/A"
+                          )}
+                        </td>
+
+                        <td style={tdStyle}>
+                          <div
+                            style={{
+                              display: "grid",
+                              gap: "6px",
+                            }}
+                          >
+                            {inspection.supplier_id ? (
+                              <Link
+                                href={`/suppliers/${inspection.supplier_id}/receiving-inspections/${inspection.id}`}
+                              >
+                                Open Inspection
+                              </Link>
+                            ) : null}
+
+                            {shouldCreateNcmr &&
+                            !inspection.linked_ncmr_id ? (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  createLinkedNcmr(
+                                    inspection
+                                  )
+                                }
+                              >
+                                Create Linked NCMR
+                              </button>
+                            ) : null}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  }
+                )}
+              </tbody>
+            </table>
+          </div>
         )}
       </section>
     </main>
   );
 }
 
+function KpiCard({
+  title,
+  value,
+  color,
+}: {
+  title: string;
+  value: string | number;
+  color: string;
+}) {
+  return (
+    <div
+      style={{
+        borderRadius: "14px",
+        padding: "18px",
+        background: "white",
+        border: "1px solid #e5e7eb",
+        borderLeft: `6px solid ${color}`,
+        boxShadow:
+          "0 1px 4px rgba(0,0,0,0.08)",
+      }}
+    >
+      <div
+        style={{
+          color: "#6b7280",
+          fontSize: "13px",
+          fontWeight: 700,
+          marginBottom: "8px",
+        }}
+      >
+        {title}
+      </div>
+
+      <div
+        style={{
+          fontSize: "30px",
+          fontWeight: 800,
+          color,
+        }}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
+const headerStyle: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: "12px",
+  alignItems: "flex-start",
+  flexWrap: "wrap",
+  marginBottom: "20px",
+};
+
+const eyebrowStyle: React.CSSProperties = {
+  fontSize: "12px",
+  letterSpacing: "0.08em",
+  color: "#6b7280",
+  fontWeight: 800,
+};
+
 const sectionStyle: React.CSSProperties = {
+  border: "1px solid #d1d5db",
+  borderRadius: "14px",
+  padding: "18px",
+  marginBottom: "20px",
+  background: "white",
+};
+
+const kpiGridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(220px, 1fr))",
+  gap: "14px",
+};
+
+const alertGridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(260px, 1fr))",
+  gap: "12px",
+};
+
+const alertCardStyle: React.CSSProperties = {
+  padding: "14px",
+  borderRadius: "12px",
+  border: "1px solid #fecaca",
+  background: "#fef2f2",
+  color: "#991b1b",
+  fontWeight: 700,
+};
+
+const createCardStyle: React.CSSProperties = {
   border: "1px solid #d1d5db",
   borderRadius: "10px",
   padding: "14px",
-  marginBottom: "20px",
+  background: "#f9fafb",
+  marginTop: "12px",
+};
+
+const supplierInfoCardStyle: React.CSSProperties = {
+  border: "1px solid #d1d5db",
+  borderRadius: "8px",
+  padding: "10px",
   background: "white",
+  marginBottom: "12px",
+};
+
+const warningCardStyle: React.CSSProperties = {
+  border: "1px solid #facc15",
+  background: "#fefce8",
+  borderRadius: "8px",
+  padding: "10px",
+  marginBottom: "12px",
+};
+
+const searchInputStyle: React.CSSProperties = {
+  padding: "10px",
+  width: "360px",
+  maxWidth: "100%",
+  borderRadius: "8px",
+  border: "1px solid #d1d5db",
+};
+
+const searchSummaryStyle: React.CSSProperties = {
+  marginLeft: "10px",
+  color: "#6b7280",
+};
+
+const tableStyle: React.CSSProperties = {
+  width: "100%",
+  borderCollapse: "collapse",
+  minWidth: "1200px",
 };
 
 const thStyle: React.CSSProperties = {
@@ -514,9 +1044,21 @@ const thStyle: React.CSSProperties = {
   padding: "10px",
   background: "#f3f4f6",
   textAlign: "left",
+  fontSize: "13px",
 };
 
 const tdStyle: React.CSSProperties = {
   border: "1px solid #d1d5db",
   padding: "10px",
+  fontSize: "13px",
+  verticalAlign: "top",
 };
+
+const stripedRowStyle = (
+  index: number
+): React.CSSProperties => ({
+  background:
+    index % 2 === 0
+      ? "#ffffff"
+      : "#f9fafb",
+});
