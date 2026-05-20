@@ -91,7 +91,8 @@ export default function SuppliersPage() {
 
           <p style={{ margin: 0, color: "#4b5563" }}>
             Supplier master data, operational supplier quality dashboard,
-            scorecards, SCAR governance, risk escalation, audits, documents,
+            scorecards, receiving inspections, SCAR governance,
+            supplier risk escalation, audits, documents,
             and qualification status.
           </p>
         </div>
@@ -172,6 +173,14 @@ export default function SuppliersPage() {
           />
 
           <NavigationCard
+            title="Receiving Inspection"
+            description="Incoming inspection activity, supplier lot inspection status, reject trends, inspection-driven NCMR creation, and supplier incoming quality controls."
+            href="/supplier-quality/receiving-inspections"
+            badge="Incoming Quality"
+            color="#0891b2"
+          />
+
+          <NavigationCard
             title="SCAR Management"
             description="Supplier corrective action records, supplier responses, effectiveness verification, and closure."
             href="/supplier-quality/scars"
@@ -202,14 +211,6 @@ export default function SuppliersPage() {
             badge="Qualification"
             color="#9333ea"
           />
-
-          <NavigationCard
-            title="Receiving Inspection"
-            description="Receiving inspection route is not connected yet. Disabled to prevent 404 until the receiving inspection module is created."
-            badge="Route Pending"
-            color="#0891b2"
-            disabled
-          />
         </div>
       </section>
 
@@ -221,7 +222,8 @@ export default function SuppliersPage() {
             </h2>
 
             <p style={{ marginTop: 0, color: "#4b5563" }}>
-              Supplier master list with quality, status, risk, and record access.
+              Supplier master list with quality, status, risk,
+              and operational intelligence access.
             </p>
           </div>
 
@@ -315,6 +317,10 @@ export default function SuppliersPage() {
                             Quality Dashboard
                           </Link>
 
+                          <Link href="/supplier-quality/receiving-inspections">
+                            Receiving Inspection
+                          </Link>
+
                           <Link href="/scar/dashboard">
                             Governance
                           </Link>
@@ -382,63 +388,13 @@ function NavigationCard({
   href,
   badge,
   color,
-  disabled = false,
 }: {
   title: string;
   description: string;
-  href?: string;
+  href: string;
   badge: string;
   color: string;
-  disabled?: boolean;
 }) {
-  const card = (
-    <div
-      style={{
-        borderRadius: "16px",
-        padding: "20px",
-        background: disabled ? "#f9fafb" : "white",
-        border: "1px solid #e5e7eb",
-        borderTop: `5px solid ${color}`,
-        boxShadow: disabled ? "none" : "0 1px 4px rgba(0,0,0,0.08)",
-        minHeight: "150px",
-        cursor: disabled ? "not-allowed" : "pointer",
-        opacity: disabled ? 0.72 : 1,
-      }}
-    >
-      <div
-        style={{
-          display: "inline-block",
-          padding: "4px 10px",
-          borderRadius: "999px",
-          background: disabled ? "#f3f4f6" : "#eff6ff",
-          color,
-          border: "1px solid #bfdbfe",
-          fontSize: "12px",
-          fontWeight: 700,
-          marginBottom: "12px",
-        }}
-      >
-        {badge}
-      </div>
-
-      <h3 style={{ marginTop: 0, marginBottom: "8px" }}>
-        {title}
-      </h3>
-
-      <p
-        style={{
-          color: "#4b5563",
-          lineHeight: 1.5,
-          marginBottom: 0,
-        }}
-      >
-        {description}
-      </p>
-    </div>
-  );
-
-  if (disabled || !href) return card;
-
   return (
     <Link
       href={href}
@@ -447,7 +403,48 @@ function NavigationCard({
         color: "inherit",
       }}
     >
-      {card}
+      <div
+        style={{
+          borderRadius: "16px",
+          padding: "20px",
+          background: "white",
+          border: "1px solid #e5e7eb",
+          borderTop: `5px solid ${color}`,
+          boxShadow: "0 1px 4px rgba(0,0,0,0.08)",
+          minHeight: "150px",
+          cursor: "pointer",
+        }}
+      >
+        <div
+          style={{
+            display: "inline-block",
+            padding: "4px 10px",
+            borderRadius: "999px",
+            background: "#eff6ff",
+            color,
+            border: "1px solid #bfdbfe",
+            fontSize: "12px",
+            fontWeight: 700,
+            marginBottom: "12px",
+          }}
+        >
+          {badge}
+        </div>
+
+        <h3 style={{ marginTop: 0, marginBottom: "8px" }}>
+          {title}
+        </h3>
+
+        <p
+          style={{
+            color: "#4b5563",
+            lineHeight: 1.5,
+            marginBottom: 0,
+          }}
+        >
+          {description}
+        </p>
+      </div>
     </Link>
   );
 }
