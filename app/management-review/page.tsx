@@ -1674,17 +1674,39 @@ export default function ManagementReviewPage() {
 
       <Section title="Management Review Action Tracker" className="no-print">
         <p style={{ color: "#4b5563", marginTop: 0 }}>
-          Create and track leadership actions from the selected management review record.
+          Create and track leadership actions from the selected management review record. Actions can be added only to unlocked draft or pending reviews.
         </p>
 
+        <div style={{ marginBottom: "16px" }}>
+          <label>
+            <strong>Select Review for Action Tracking</strong>
+            <select
+              value={selectedReviewId}
+              onChange={(e) => setSelectedReviewId(e.target.value)}
+              style={inputStyle}
+            >
+              <option value="">Select review</option>
+              {managementReviews.map((review) => (
+                <option key={review.id} value={review.id}>
+                  {review.review_number || "MR"} - {review.review_title || "Untitled"} ({review.approval_status || review.status || "draft"}{review.is_locked ? " / locked" : " / editable"})
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
         {!selectedReviewId ? (
-          <p>Select a management review record before creating actions.</p>
+          <div style={noticeBoxStyle}>
+            Select a management review record above to create or view leadership actions.
+          </div>
         ) : selectedReviewLocked ? (
-          <p style={{ color: "#b45309", fontWeight: 700 }}>
-            This management review is locked. Actions can be viewed but not added or deleted.
-          </p>
+          <div style={warningBoxStyle}>
+            This management review is locked. Existing actions can be viewed, but new actions cannot be added to this locked record. Select an unlocked draft or pending review to add actions.
+          </div>
         ) : (
-          <>
+          <div style={actionFormStyle}>
+            <h3 style={{ marginTop: 0 }}>Add Leadership Action</h3>
+
             <div style={builderGridStyle}>
               <label>
                 <strong>Action Title</strong>
@@ -1746,6 +1768,7 @@ export default function ManagementReviewPage() {
                 value={actionDescription}
                 onChange={(e) => setActionDescription(e.target.value)}
                 rows={3}
+                placeholder="Describe the management review decision, follow-up, or leadership action required."
                 style={textareaStyle}
               />
             </label>
@@ -1753,7 +1776,7 @@ export default function ManagementReviewPage() {
             <button type="button" onClick={createManagementReviewAction} style={buttonStyle}>
               Add Management Review Action
             </button>
-          </>
+          </div>
         )}
 
         <h3>Actions for Selected Review</h3>
@@ -2843,4 +2866,31 @@ const footerStyle: React.CSSProperties = {
   paddingTop: "6px",
   fontSize: "10px",
   color: "#6b7280",
+};
+const actionFormStyle: React.CSSProperties = {
+  border: "1px solid #bfdbfe",
+  background: "#eff6ff",
+  borderRadius: "12px",
+  padding: "16px",
+  marginBottom: "18px",
+};
+
+const noticeBoxStyle: React.CSSProperties = {
+  border: "1px solid #bfdbfe",
+  background: "#eff6ff",
+  color: "#1e3a8a",
+  borderRadius: "12px",
+  padding: "14px",
+  marginBottom: "18px",
+  fontWeight: 700,
+};
+
+const warningBoxStyle: React.CSSProperties = {
+  border: "1px solid #fde68a",
+  background: "#fffbeb",
+  color: "#92400e",
+  borderRadius: "12px",
+  padding: "14px",
+  marginBottom: "18px",
+  fontWeight: 700,
 };
