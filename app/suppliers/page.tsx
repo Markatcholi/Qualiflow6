@@ -150,7 +150,7 @@ export default function SuppliersPage() {
           <NavigationCard
             title="Supplier Quality Dashboard"
             description="Operational supplier quality performance, supplier KPIs, supplier-linked NCMRs, defect trends, recurrence signals, and supplier quality score."
-            href="/supplier-quality/dashboard"
+            href="/supplier-quality-dashboard"
             badge="Operational Intelligence"
             color="#2563eb"
           />
@@ -311,7 +311,7 @@ export default function SuppliersPage() {
                             Open Supplier
                           </Link>
 
-                          <Link href="/supplier-quality/dashboard">
+                          <Link href="/supplier-quality-dashboard">
                             Quality Dashboard
                           </Link>
 
