@@ -113,6 +113,14 @@ export default function SuppliersPage() {
 
         <div style={navGridStyle}>
           <NavigationCard
+            title="Supplier Quality Dashboard"
+            description="Operational supplier quality performance, supplier KPIs, SCAR metrics, and quality trends."
+            href="/suppliers/dashboard"
+            badge="Performance"
+            color="#2563eb"
+          />
+
+          <NavigationCard
             title="Supplier Governance Dashboard"
             description="Supplier risk score, escalation level, recurrence intelligence, and governance decision support."
             href="/scar/dashboard"
@@ -121,11 +129,27 @@ export default function SuppliersPage() {
           />
 
           <NavigationCard
+            title="Supplier Scorecards"
+            description="Supplier performance history, quality performance, responsiveness, and supplier health."
+            href="/suppliers/scorecards"
+            badge="Scorecards"
+            color="#7c3aed"
+          />
+
+          <NavigationCard
             title="SCAR Management"
             description="Supplier corrective action records, supplier responses, effectiveness verification, and closure."
             href="/supplier-quality/scars"
             badge="SCAR"
             color="#ea580c"
+          />
+
+          <NavigationCard
+            title="Supplier Audits"
+            description="Supplier audits, findings, corrective actions, and supplier audit history."
+            href="/supplier-quality/audits"
+            badge="Audits"
+            color="#0f766e"
           />
 
           <NavigationCard
@@ -145,35 +169,11 @@ export default function SuppliersPage() {
           />
 
           <NavigationCard
-            title="Supplier Quality Dashboard"
-            description="Operational supplier quality performance dashboard. This will be connected after the governance layer is finalized."
-            badge="Coming Soon"
-            color="#2563eb"
-            disabled
-          />
-
-          <NavigationCard
-            title="Supplier Scorecards"
-            description="Supplier scorecard package for supplier performance, responsiveness, recurrence, and quality history."
-            badge="Coming Soon"
-            color="#7c3aed"
-            disabled
-          />
-
-          <NavigationCard
-            title="Supplier Audits"
-            description="Supplier audits, findings, corrective actions, and supplier audit history."
-            badge="Coming Soon"
-            color="#0f766e"
-            disabled
-          />
-
-          <NavigationCard
             title="Receiving Inspection"
             description="Supplier receiving inspection activity, inspection status, and incoming quality controls."
-            badge="Coming Soon"
+            href="/supplier-quality/receiving-inspection"
+            badge="Inspection"
             color="#0891b2"
-            disabled
           />
         </div>
       </section>
@@ -304,59 +304,48 @@ function NavigationCard({
   href,
   badge,
   color,
-  disabled = false,
 }: {
   title: string;
   description: string;
-  href?: string;
+  href: string;
   badge: string;
   color: string;
-  disabled?: boolean;
 }) {
-  const card = (
-    <div
-      style={{
-        borderRadius: "16px",
-        padding: "20px",
-        background: disabled ? "#f9fafb" : "white",
-        border: "1px solid #e5e7eb",
-        borderTop: `5px solid ${color}`,
-        boxShadow: disabled ? "none" : "0 1px 4px rgba(0,0,0,0.08)",
-        minHeight: "150px",
-        cursor: disabled ? "not-allowed" : "pointer",
-        opacity: disabled ? 0.72 : 1,
-      }}
-    >
-      <div
-        style={{
-          display: "inline-block",
-          padding: "4px 10px",
-          borderRadius: "999px",
-          background: disabled ? "#f3f4f6" : "#eff6ff",
-          color,
-          border: "1px solid #bfdbfe",
-          fontSize: "12px",
-          fontWeight: 700,
-          marginBottom: "12px",
-        }}
-      >
-        {badge}
-      </div>
-
-      <h3 style={{ marginTop: 0, marginBottom: "8px" }}>{title}</h3>
-      <p style={{ color: "#4b5563", lineHeight: 1.5, marginBottom: 0 }}>
-        {description}
-      </p>
-    </div>
-  );
-
-  if (disabled || !href) {
-    return card;
-  }
-
   return (
     <Link href={href} style={{ textDecoration: "none", color: "inherit" }}>
-      {card}
+      <div
+        style={{
+          borderRadius: "16px",
+          padding: "20px",
+          background: "white",
+          border: "1px solid #e5e7eb",
+          borderTop: `5px solid ${color}`,
+          boxShadow: "0 1px 4px rgba(0,0,0,0.08)",
+          minHeight: "150px",
+          cursor: "pointer",
+        }}
+      >
+        <div
+          style={{
+            display: "inline-block",
+            padding: "4px 10px",
+            borderRadius: "999px",
+            background: "#eff6ff",
+            color,
+            border: "1px solid #bfdbfe",
+            fontSize: "12px",
+            fontWeight: 700,
+            marginBottom: "12px",
+          }}
+        >
+          {badge}
+        </div>
+
+        <h3 style={{ marginTop: 0, marginBottom: "8px" }}>{title}</h3>
+        <p style={{ color: "#4b5563", lineHeight: 1.5, marginBottom: 0 }}>
+          {description}
+        </p>
+      </div>
     </Link>
   );
 }
