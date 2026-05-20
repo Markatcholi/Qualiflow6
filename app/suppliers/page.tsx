@@ -146,13 +146,12 @@ export default function SuppliersPage() {
         </h2>
 
         <div style={navGridStyle}>
-
           <NavigationCard
             title="Supplier Quality Dashboard"
-            description="Operational supplier quality performance, supplier KPIs, SCAR metrics, and quality trends."
-            href="/supplier-quality/dashboard"
-            badge="Performance"
+            description="Operational supplier quality dashboard route is not connected yet. Disabled to prevent 404."
+            badge="Route Pending"
             color="#2563eb"
+            disabled
           />
 
           <NavigationCard
@@ -205,12 +204,11 @@ export default function SuppliersPage() {
 
           <NavigationCard
             title="Receiving Inspection"
-            description="Supplier receiving inspection activity, inspection status, and incoming quality controls."
-            href="/inspection"
-            badge="Inspection"
+            description="Receiving inspection route is not connected yet. Disabled to prevent 404."
+            badge="Route Pending"
             color="#0891b2"
+            disabled
           />
-
         </div>
       </section>
 
@@ -379,13 +377,63 @@ function NavigationCard({
   href,
   badge,
   color,
+  disabled = false,
 }: {
   title: string;
   description: string;
-  href: string;
+  href?: string;
   badge: string;
   color: string;
+  disabled?: boolean;
 }) {
+  const card = (
+    <div
+      style={{
+        borderRadius: "16px",
+        padding: "20px",
+        background: disabled ? "#f9fafb" : "white",
+        border: "1px solid #e5e7eb",
+        borderTop: `5px solid ${color}`,
+        boxShadow: disabled ? "none" : "0 1px 4px rgba(0,0,0,0.08)",
+        minHeight: "150px",
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.72 : 1,
+      }}
+    >
+      <div
+        style={{
+          display: "inline-block",
+          padding: "4px 10px",
+          borderRadius: "999px",
+          background: disabled ? "#f3f4f6" : "#eff6ff",
+          color,
+          border: "1px solid #bfdbfe",
+          fontSize: "12px",
+          fontWeight: 700,
+          marginBottom: "12px",
+        }}
+      >
+        {badge}
+      </div>
+
+      <h3 style={{ marginTop: 0, marginBottom: "8px" }}>
+        {title}
+      </h3>
+
+      <p
+        style={{
+          color: "#4b5563",
+          lineHeight: 1.5,
+          marginBottom: 0,
+        }}
+      >
+        {description}
+      </p>
+    </div>
+  );
+
+  if (disabled || !href) return card;
+
   return (
     <Link
       href={href}
@@ -394,48 +442,7 @@ function NavigationCard({
         color: "inherit",
       }}
     >
-      <div
-        style={{
-          borderRadius: "16px",
-          padding: "20px",
-          background: "white",
-          border: "1px solid #e5e7eb",
-          borderTop: `5px solid ${color}`,
-          boxShadow: "0 1px 4px rgba(0,0,0,0.08)",
-          minHeight: "150px",
-          cursor: "pointer",
-        }}
-      >
-        <div
-          style={{
-            display: "inline-block",
-            padding: "4px 10px",
-            borderRadius: "999px",
-            background: "#eff6ff",
-            color,
-            border: "1px solid #bfdbfe",
-            fontSize: "12px",
-            fontWeight: 700,
-            marginBottom: "12px",
-          }}
-        >
-          {badge}
-        </div>
-
-        <h3 style={{ marginTop: 0, marginBottom: "8px" }}>
-          {title}
-        </h3>
-
-        <p
-          style={{
-            color: "#4b5563",
-            lineHeight: 1.5,
-            marginBottom: 0,
-          }}
-        >
-          {description}
-        </p>
-      </div>
+      {card}
     </Link>
   );
 }
