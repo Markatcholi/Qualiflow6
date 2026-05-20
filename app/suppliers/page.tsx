@@ -87,8 +87,7 @@ export default function SuppliersPage() {
           <h1 style={{ margin: "6px 0" }}>Supplier Quality Intelligence</h1>
           <p style={{ margin: 0, color: "#4b5563" }}>
             Supplier master data, quality performance, SCAR governance, risk
-            escalation, audits, documents, qualification status, and supplier
-            intelligence navigation.
+            escalation, audits, documents, and qualification status.
           </p>
         </div>
 
@@ -111,24 +110,11 @@ export default function SuppliersPage() {
 
       <section style={sectionStyle}>
         <h2 style={{ marginTop: 0 }}>Supplier Quality Navigation</h2>
-        <p style={{ color: "#4b5563", marginTop: 0 }}>
-          The cards below separate supplier operational quality, supplier governance,
-          and future supplier intelligence capabilities. Route-safe cards will not
-          send users to broken 404 or UUID-conflict pages.
-        </p>
 
         <div style={navGridStyle}>
           <NavigationCard
-            title="Supplier Master List / Quality Dashboard"
-            description="Current supplier quality landing page, supplier master data, risk summary, and supplier intelligence overview."
-            href="/suppliers"
-            badge="Current Page"
-            color="#2563eb"
-          />
-
-          <NavigationCard
             title="Supplier Governance Dashboard"
-            description="Supplier risk score, escalation level, recurrence intelligence, SCAR exposure, and governance decision support."
+            description="Supplier risk score, escalation level, recurrence intelligence, and governance decision support."
             href="/scar/dashboard"
             badge="Risk Intelligence"
             color="#dc2626"
@@ -136,7 +122,7 @@ export default function SuppliersPage() {
 
           <NavigationCard
             title="SCAR Management"
-            description="Supplier corrective action records, supplier response tracking, effectiveness verification, and SCAR closure."
+            description="Supplier corrective action records, supplier responses, effectiveness verification, and closure."
             href="/supplier-quality/scars"
             badge="SCAR"
             color="#ea580c"
@@ -144,7 +130,7 @@ export default function SuppliersPage() {
 
           <NavigationCard
             title="Supplier Documents"
-            description="Supplier certificates, quality agreements, ISO records, and controlled supplier documentation."
+            description="Supplier certificates, quality agreements, ISO records, and controlled supplier documents."
             href="/supplier-quality/documents"
             badge="Documents"
             color="#374151"
@@ -152,33 +138,41 @@ export default function SuppliersPage() {
 
           <NavigationCard
             title="ASL / Qualification"
-            description="Approved supplier list status, supplier qualification, probation controls, and supplier approval governance."
+            description="Approved supplier list status, supplier qualification status, probation, and disqualification controls."
             href="/supplier-quality/asl"
             badge="Qualification"
             color="#9333ea"
           />
 
           <NavigationCard
+            title="Supplier Quality Dashboard"
+            description="Operational supplier quality performance dashboard. This will be connected after the governance layer is finalized."
+            badge="Coming Soon"
+            color="#2563eb"
+            disabled
+          />
+
+          <NavigationCard
             title="Supplier Scorecards"
-            description="Supplier scorecard capability exists, but the route is not connected from this landing page yet to avoid UUID route conflicts."
-            badge="Route Not Connected"
+            description="Supplier scorecard package for supplier performance, responsiveness, recurrence, and quality history."
+            badge="Coming Soon"
             color="#7c3aed"
             disabled
           />
 
           <NavigationCard
-            title="Receiving Inspection"
-            description="Receiving inspection capability is planned for supplier quality intelligence. Link is disabled until the page route is confirmed to prevent 404."
-            badge="Route Not Connected"
-            color="#0891b2"
+            title="Supplier Audits"
+            description="Supplier audits, findings, corrective actions, and supplier audit history."
+            badge="Coming Soon"
+            color="#0f766e"
             disabled
           />
 
           <NavigationCard
-            title="Supplier Audits"
-            description="Supplier audits, supplier findings, corrective actions, and supplier audit history will be connected after route confirmation."
-            badge="Route Not Connected"
-            color="#0f766e"
+            title="Receiving Inspection"
+            description="Supplier receiving inspection activity, inspection status, and incoming quality controls."
+            badge="Coming Soon"
+            color="#0891b2"
             disabled
           />
         </div>
@@ -189,7 +183,7 @@ export default function SuppliersPage() {
           <div>
             <h2 style={{ marginTop: 0 }}>Supplier List</h2>
             <p style={{ marginTop: 0, color: "#4b5563" }}>
-              Supplier master list with quality status, risk level, and governance access.
+              Supplier master list with quality, status, risk, and record access.
             </p>
           </div>
 
@@ -229,15 +223,11 @@ export default function SuppliersPage() {
                   return (
                     <tr key={supplier.id} style={stripedRowStyle(index)}>
                       <td style={tdStyle}>{supplier.supplier_number || "N/A"}</td>
-
                       <td style={tdStyle}>
                         <strong>{supplier.supplier_name || "Unnamed Supplier"}</strong>
                       </td>
-
                       <td style={tdStyle}>{supplier.supplier_category || "N/A"}</td>
-
                       <td style={tdStyle}>{supplier.supplier_status || "N/A"}</td>
-
                       <td style={tdStyle}>
                         <RiskBadge
                           level={
@@ -253,14 +243,11 @@ export default function SuppliersPage() {
                             0}
                         </div>
                       </td>
-
                       <td style={tdStyle}>{supplier.iso_expiration_date || "N/A"}</td>
-
                       <td style={tdStyle}>
                         <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
                           <Link href={`/suppliers/${supplier.id}`}>Open Supplier</Link>
                           <Link href="/scar/dashboard">Governance</Link>
-                          <Link href="/supplier-quality/scars">SCARs</Link>
                         </div>
                       </td>
                     </tr>
@@ -357,14 +344,15 @@ function NavigationCard({
       </div>
 
       <h3 style={{ marginTop: 0, marginBottom: "8px" }}>{title}</h3>
-
       <p style={{ color: "#4b5563", lineHeight: 1.5, marginBottom: 0 }}>
         {description}
       </p>
     </div>
   );
 
-  if (disabled || !href) return card;
+  if (disabled || !href) {
+    return card;
+  }
 
   return (
     <Link href={href} style={{ textDecoration: "none", color: "inherit" }}>
