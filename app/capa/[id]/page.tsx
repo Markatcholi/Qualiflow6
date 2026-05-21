@@ -1,65 +1,22 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "../../../lib/supabaseClient";
 
-export default function CapaDetailPage() {
+export default function CapaWorkflowPage() {
   const params = useParams<{ id: string }>();
   const id = params.id;
 
-  const [record, setRecord] = useState<any>(null);
+  const [item, setItem] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
-  const [userEmail, setUserEmail] = useState("");
-  const [userRole, setUserRole] = useState("");
+  const [saving, setSaving] = useState(false);
 
-  const [owner, setOwner] = useState("");
-  const [dueDate, setDueDate] = useState("");
-  const [effectivenessDueDate, setEffectivenessDueDate] = useState("");
-  const [problemDescription, setProblemDescription] = useState("");
-  const [investigationSummary, setInvestigationSummary] = useState("");
-  const [rootCause, setRootCause] = useState("");
-  const [rootCauseCategory, setRootCauseCategory] = useState("");
-  const [rootCauseOptions, setRootCauseOptions] = useState<any[]>([]);
-  const [correctiveActionPlan, setCorrectiveActionPlan] = useState("");
-  const [implementationDetails, setImplementationDetails] = useState("");
-  const [effectiveness, setEffectiveness] = useState("");
-  const [effectivenessRating, setEffectivenessRating] = useState("");
-  const [effectivenessFollowupAction, setEffectivenessFollowupAction] = useState("");
+  const fetchData = async () => {
+    setLoading(true);
 
-  const fetchUserRole = async () => {
-    const { data: userData } = await supabase.auth.getUser();
-    const email = userData?.user?.email || "";
-    setUserEmail(email);
-
-    if (!email) return;
-
-    const { data } = await supabase
-      .from("user_roles")
-      .select("role")
-      .eq("user_email", email)
-      .maybeSingle();
-
-    setUserRole(data?.role || "");
-  };
-
-  const fetchRootCauseOptions = async () => {
-    const { data, error } = await supabase
-      .from("md_root_cause_categories")
-      .select("*")
-      .eq("is_active", true)
-      .order("label");
-
-    if (error) {
-      alert(error.message);
-      return;
-    }
-
-    setRootCauseOptions(data || []);
-  };
-
-  const fetchRecord = async () => {
     const { data, error } = await supabase
       .from("capas")
       .select("*")
@@ -72,448 +29,1110 @@ export default function CapaDetailPage() {
       return;
     }
 
-    if (!data) {
-      alert("CAPA not found.");
-      setRecord(null);
-      setLoading(false);
-      return;
-    }
-
-    setRecord(data);
-    setOwner(data.owner || "");
-    setDueDate(data.due_date || "");
-    setEffectivenessDueDate(data.effectiveness_due_date || "");
-    setProblemDescription(data.problem_description || "");
-    setInvestigationSummary(data.investigation_summary || "");
-    setRootCause(data.root_cause || "");
-    setRootCauseCategory(data.root_cause_category || "");
-    setCorrectiveActionPlan(data.corrective_action_plan || data.action_plan || "");
-    setImplementationDetails(data.implementation_details || "");
-    setEffectiveness(data.effectiveness_check || "");
-    setEffectivenessRating(data.effectiveness_rating || "");
-    setEffectivenessFollowupAction(data.effectiveness_followup_action || "");
+    setItem(data || null);
     setLoading(false);
   };
 
-  const addAuditLog = async (action: string, details: string) => {
-    await supabase.from("audit_logs").insert({
-      entity_type: "capa",
-      entity_id: id,
-      action,
-      details,
-      user_email: userEmail || "unknown",
-    });
-  };
-
-  const saveCapaWorkflow = async () => {
-    if (record?.is_locked) {
-      alert("This record is locked after electronic signature and cannot be edited.");
-      return;
-    }
-
-    const { error } = await supabase
-      .from("capas")
-      .update({
-        owner,
-        due_date: dueDate || null,
-        effectiveness_due_date: effectivenessDueDate || null,
-        problem_description: problemDescription,
-        investigation_summary: investigationSummary,
-        root_cause: rootCause,
-        root_cause_category: rootCauseCategory,
-        corrective_action_plan: correctiveActionPlan,
-        action_plan: correctiveActionPlan,
-        implementation_details: implementationDetails,
-        effectiveness_check: effectiveness,
-        effectiveness_rating: effectivenessRating,
-        effectiveness_followup_action: effectivenessFollowupAction,
-      })
-      .eq("id", id);
-
-    if (error) {
-      alert(error.message);
-      return;
-    }
-
-    await addAuditLog("workflow_saved", "CAPA workflow fields saved.");
-    alert("CAPA workflow saved");
-    fetchRecord();
-  };
-
-  const markImplemented = async () => {
-    if (record?.is_locked) {
-      alert("This record is locked after electronic signature and cannot be edited.");
-      return;
-    }
-
-    if (!implementationDetails) {
-      alert("Implementation details are required.");
-      return;
-    }
-
-    if (!effectivenessDueDate) {
-      alert("Effectiveness due date is required before marking implementation complete.");
-      return;
-    }
-
-    const now = new Date().toISOString();
-
-    const { error } = await supabase
-      .from("capas")
-      .update({
-        implementation_details: implementationDetails,
-        effectiveness_due_date: effectivenessDueDate,
-        implemented_by: userEmail,
-        implemented_at: now,
-        status: "effectiveness_check",
-      })
-      .eq("id", id);
-
-    if (error) {
-      alert(error.message);
-      return;
-    }
-
-    await addAuditLog("implemented", "CAPA implementation documented and moved to effectiveness check.");
-    alert("CAPA implementation recorded");
-    fetchRecord();
-  };
-
-  const createFollowupCapa = async () => {
-    if (record?.is_locked) {
-      alert("This record is locked after electronic signature and cannot be edited.");
-      return;
-    }
-
-    if (record?.followup_capa_id) {
-      alert("A follow-up CAPA already exists.");
-      return;
-    }
-
-    const { data: followup, error } = await supabase
-      .from("capas")
-      .insert({
-        title: `Follow-up CAPA for ineffective action: ${record.title}`,
-        status: "open",
-        source_type: "capa_effectiveness",
-        capa_source: "Ineffective CAPA",
-        problem_description: `Original CAPA was rated Not Effective. Original CAPA: ${record.title}`,
-        investigation_summary: effectiveness,
-        root_cause: rootCause,
-        root_cause_category: rootCauseCategory,
-        corrective_action_plan: effectivenessFollowupAction,
-        action_plan: effectivenessFollowupAction,
-        linked_ncmr_title: record.linked_ncmr_title || null,
-        ncmr_id: record.ncmr_id || null,
-      })
-      .select()
-      .single();
-
-    if (error) {
-      alert(error.message);
-      return;
-    }
-
-    const { error: updateError } = await supabase
-      .from("capas")
-      .update({
-        followup_capa_id: followup.id,
-        effectiveness_followup_action: effectivenessFollowupAction,
-      })
-      .eq("id", id);
-
-    if (updateError) {
-      alert(updateError.message);
-      return;
-    }
-
-    await addAuditLog(
-      "followup_capa_created",
-      `Follow-up CAPA created because effectiveness rating was Not Effective. Follow-up CAPA ID: ${followup.id}`
-    );
-
-    alert("Follow-up CAPA created.");
-    fetchRecord();
-  };
-
-  const closeCapa = async () => {
-    if (record?.is_locked) {
-      alert("This record is locked after electronic signature and cannot be edited.");
-      return;
-    }
-
-    if (userRole !== "approver" && userRole !== "vp_quality") {
-      alert("Only an approver or VP Quality can close CAPA.");
-      return;
-    }
-
-    if (!problemDescription) return alert("Problem description is required.");
-    if (!investigationSummary) return alert("Investigation summary is required.");
-    if (!rootCauseCategory) return alert("Root cause category is required.");
-    if (!rootCause) return alert("Root cause is required.");
-    if (!correctiveActionPlan) return alert("Corrective action plan is required.");
-    if (!implementationDetails) return alert("Implementation details are required.");
-    if (!record?.implemented_by) return alert("Implementation must be formally recorded before closure.");
-    if (!effectivenessDueDate) return alert("Effectiveness due date is required before closure.");
-    if (!effectiveness) return alert("Effectiveness check is required before closure.");
-    if (!effectivenessRating) return alert("Effectiveness rating is required before closure.");
-
-    if (effectivenessRating === "partially_effective" && !effectivenessFollowupAction) {
-      return alert("Partially Effective requires a follow-up action.");
-    }
-
-    if (effectivenessRating === "not_effective") {
-      if (!effectivenessFollowupAction) {
-        return alert("Not Effective requires a follow-up action.");
-      }
-
-      if (!record?.followup_capa_id) {
-        await createFollowupCapa();
-        return alert("Follow-up CAPA was created. Review it before closing the original CAPA.");
-      }
-    }
-
-    const confirmed = window.confirm(
-      "Electronic Signature:\n\nI confirm this CAPA investigation, root cause, corrective action plan, implementation, effectiveness check, effectiveness rating, and closure review are complete."
-    );
-
-    if (!confirmed) return;
-
-    const now = new Date().toISOString();
-    const meaning =
-      "I confirm this CAPA investigation, root cause, corrective action plan, implementation, effectiveness check, effectiveness rating, and closure review are complete.";
-
-    const { error } = await supabase
-      .from("capas")
-      .update({
-        status: "closed",
-        owner,
-        due_date: dueDate || null,
-        effectiveness_due_date: effectivenessDueDate || null,
-        problem_description: problemDescription,
-        investigation_summary: investigationSummary,
-        root_cause: rootCause,
-        root_cause_category: rootCauseCategory,
-        corrective_action_plan: correctiveActionPlan,
-        action_plan: correctiveActionPlan,
-        implementation_details: implementationDetails,
-        effectiveness_check: effectiveness,
-        effectiveness_rating: effectivenessRating,
-        effectiveness_followup_action: effectivenessFollowupAction,
-        approved_by: userEmail,
-        approved_at: now,
-        signed_by: userEmail,
-        signed_at: now,
-        signature_meaning: meaning,
-        capa_closed_by: userEmail,
-        capa_signature_meaning: meaning,
-        closed_at: now,
-        is_locked: true,
-        locked_at: now,
-        locked_by: userEmail,
-      })
-      .eq("id", id);
-
-    if (error) {
-      alert(error.message);
-      return;
-    }
-
-    await addAuditLog(
-      "capa_closed_signature",
-      `CAPA closed with e-signature. Effectiveness rating: ${effectivenessRating}. Meaning: ${meaning}`
-    );
-
-    alert("CAPA closed");
-    fetchRecord();
-  };
-
   useEffect(() => {
-    if (id) {
-      fetchUserRole();
-      fetchRecord();
-      fetchRootCauseOptions();
-    }
+    if (id) fetchData();
   }, [id]);
 
-  if (loading) return <main style={{ padding: "20px" }}>Loading...</main>;
-  if (!record) return <main style={{ padding: "20px" }}>CAPA not found</main>;
+  const updateField = async (
+    field: string,
+    value: any
+  ) => {
+    if (!item) return;
 
-  const isLocked = record?.is_locked === true;
+    if (isLocked) {
+      alert(
+        "This CAPA record is locked and cannot be edited."
+      );
+      return;
+    }
+
+    setItem((prev: any) => ({
+      ...prev,
+      [field]: value,
+    }));
+  };
+
+  const saveChanges = async () => {
+    if (!item) return;
+
+    if (isLocked) {
+      alert(
+        "This CAPA record is locked."
+      );
+      return;
+    }
+
+    setSaving(true);
+
+    const { error } = await supabase
+      .from("capas")
+      .update({
+        problem_statement:
+          item.problem_statement,
+        risk_assessment:
+          item.risk_assessment,
+        investigation:
+          item.investigation,
+        root_cause:
+          item.root_cause,
+        correction:
+          item.correction,
+        corrective_action:
+          item.corrective_action,
+        implementation:
+          item.implementation,
+        effectiveness_plan:
+          item.effectiveness_plan,
+        effectiveness_result:
+          item.effectiveness_result,
+        effectiveness_check:
+          item.effectiveness_check,
+        owner: item.owner,
+        due_date: item.due_date,
+        status: item.status,
+      })
+      .eq("id", item.id);
+
+    setSaving(false);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    alert("CAPA workflow saved.");
+    fetchData();
+  };
+
+  const printWorkflow = () => {
+    window.print();
+  };
+
+  if (loading) {
+    return (
+      <main
+        style={{
+          padding: "24px",
+          fontFamily: "Arial",
+        }}
+      >
+        Loading CAPA workflow...
+      </main>
+    );
+  }
+
+  if (!item) {
+    return (
+      <main
+        style={{
+          padding: "24px",
+          fontFamily: "Arial",
+        }}
+      >
+        CAPA not found.
+      </main>
+    );
+  }
+
+  const isLocked =
+    item.status === "closed" ||
+    item.locked === true;
+
+  const recurrenceDetected =
+    (item.recurrence_count || 0) >=
+    2;
+
+  const predictiveEscalation =
+    getPredictiveEscalation(item);
+
+  const riskLevel =
+    calculateRisk(item);
+
+  const capaHealth =
+    getWorkflowHealth(
+      riskLevel,
+      recurrenceDetected,
+      item.effectiveness_result
+    );
+
+  const stages = [
+    {
+      label: "Initiation",
+      completed:
+        !!item.title,
+    },
+    {
+      label: "Investigation",
+      completed:
+        !!item.investigation,
+    },
+    {
+      label: "Root Cause",
+      completed:
+        !!item.root_cause,
+    },
+    {
+      label: "Correction",
+      completed:
+        !!item.correction,
+    },
+    {
+      label:
+        "Corrective Action",
+      completed:
+        !!item.corrective_action,
+    },
+    {
+      label:
+        "Implementation",
+      completed:
+        !!item.implementation,
+    },
+    {
+      label:
+        "Effectiveness Plan",
+      completed:
+        !!item.effectiveness_plan,
+    },
+    {
+      label:
+        "Effectiveness Review",
+      completed:
+        !!item.effectiveness_result,
+    },
+  ];
 
   return (
-    <main style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
-      <h1>CAPA Controlled Workflow</h1>
-      <div style={{ marginBottom: "16px" }}>
-        <button
-          onClick={() => window.open(`/capa/${id}/report`, "_blank")}
+    <main
+      style={{
+        padding: "24px",
+        background: "#f8fafc",
+        minHeight: "100vh",
+        fontFamily:
+          "Arial, sans-serif",
+      }}
+    >
+      <div style={headerStyle}>
+        <div>
+          <div style={eyebrowStyle}>
+            CONTROLLED CAPA
+            WORKFLOW
+          </div>
+
+          <h1
+            style={{
+              marginBottom: "6px",
+            }}
+          >
+            {item.capa_number ||
+              "CAPA-PENDING"}
+          </h1>
+
+          <p
+            style={{
+              marginTop: 0,
+              color: "#4b5563",
+            }}
+          >
+            Controlled corrective
+            and preventive action
+            execution record.
+          </p>
+        </div>
+
+        <div
           style={{
-            padding: "10px 14px",
-            background: "#2563eb",
-            color: "white",
-            border: "none",
-            borderRadius: "6px",
-            cursor: "pointer",
-            fontWeight: "600",
+            display: "flex",
+            gap: "10px",
+            flexWrap: "wrap",
           }}
         >
-          CAPA Report
-        </button>
+          <button
+            onClick={printWorkflow}
+            style={
+              secondaryButtonStyle
+            }
+          >
+            Print Workflow
+          </button>
+
+          {!isLocked ? (
+            <button
+              onClick={
+                saveChanges
+              }
+              style={
+                primaryButtonStyle
+              }
+            >
+              {saving
+                ? "Saving..."
+                : "Save Changes"}
+            </button>
+          ) : null}
+
+          <Link
+            href="/capa"
+            style={
+              backButtonStyle
+            }
+          >
+            Back
+          </Link>
+        </div>
       </div>
 
-      <p><strong>Logged-in:</strong> {userEmail || "none"}</p>
-      <p><strong>Role:</strong> {userRole || "none"}</p>
+      <section
+        style={{
+          ...healthBannerStyle,
+          borderLeft: `8px solid ${capaHealth.color}`,
+        }}
+      >
+        <div>
+          <div
+            style={bannerLabelStyle}
+          >
+            CAPA HEALTH STATUS
+          </div>
 
-      <div style={{ marginBottom: "20px", padding: "12px", border: "1px solid #ccc" }}>
-        <h2>Record Summary</h2>
-        <p><strong>Title:</strong> {record.title}</p>
-        <p><strong>Status:</strong> {record.status}</p>
-        <p><strong>Linked NCMR:</strong> {record.linked_ncmr_title || "N/A"}</p>
-        <p><strong>Effectiveness Rating:</strong> {record.effectiveness_rating || "Not rated"}</p>
-        {record.followup_capa_id ? (
-          <p>
-            <strong>Follow-up CAPA:</strong>{" "}
-            <a href={`/capa/${record.followup_capa_id}`}>Open Follow-up CAPA</a>
-          </p>
-        ) : null}
-      </div>
+          <div
+            style={{
+              fontSize: "30px",
+              fontWeight: 800,
+              color:
+                capaHealth.color,
+            }}
+          >
+            {capaHealth.label}
+          </div>
+        </div>
 
-      <section style={{ marginBottom: "20px" }}>
-        <h2>1. Initiation</h2>
-
-        <label>Owner</label><br />
-        <input value={owner} onChange={(e) => setOwner(e.target.value)} style={{ padding: "8px", width: "300px", marginBottom: "12px" }} />
-
-        <br />
-        <label>CAPA Due Date</label><br />
-        <input type="date" value={dueDate || ""} onChange={(e) => setDueDate(e.target.value)} style={{ padding: "8px", marginBottom: "12px" }} />
-
-        <br />
-        <label>Problem Description</label><br />
-        <textarea value={problemDescription} onChange={(e) => setProblemDescription(e.target.value)} rows={4} style={{ width: "100%", maxWidth: "800px" }} />
-      </section>
-
-      <section style={{ marginBottom: "20px" }}>
-        <h2>2. Investigation</h2>
-        <textarea value={investigationSummary} onChange={(e) => setInvestigationSummary(e.target.value)} rows={4} style={{ width: "100%", maxWidth: "800px" }} />
-      </section>
-
-      <section style={{ marginBottom: "20px" }}>
-        <h2>3. Root Cause</h2>
-
-        <label>Root Cause Category</label><br />
-        <select
-          value={rootCauseCategory}
-          onChange={(e) => setRootCauseCategory(e.target.value)}
-          style={{ padding: "8px", minWidth: "300px", marginBottom: "12px" }}
+        <div
+          style={{
+            display: "flex",
+            gap: "8px",
+            flexWrap: "wrap",
+          }}
         >
-          <option value="">Select category</option>
-          {rootCauseOptions.map((opt) => (
-            <option key={opt.id} value={opt.code}>
-              {opt.label}
-            </option>
-          ))}
+          <Badge
+            label={
+              item.status ||
+              "unknown"
+            }
+            color="#2563eb"
+          />
+
+          <Badge
+            label={riskLevel}
+            color={getRiskColor(
+              riskLevel
+            )}
+          />
+
+          {recurrenceDetected ? (
+            <Badge
+              label="Recurring Signal"
+              color="#dc2626"
+            />
+          ) : null}
+
+          {predictiveEscalation ? (
+            <Badge
+              label={
+                predictiveEscalation
+              }
+              color="#991b1b"
+            />
+          ) : null}
+
+          {item
+            .effectiveness_result ===
+          "ineffective" ? (
+            <Badge
+              label="Likely Recurrence"
+              color="#7f1d1d"
+            />
+          ) : null}
+        </div>
+      </section>
+
+      {isLocked ? (
+        <section
+          style={
+            lockedBannerStyle
+          }
+        >
+          🔒 CAPA RECORD LOCKED
+          — Approved and
+          protected from further
+          modification.
+        </section>
+      ) : null}
+
+      <section style={sectionStyle}>
+        <h2
+          style={{
+            marginTop: 0,
+          }}
+        >
+          Executive Summary
+        </h2>
+
+        <div style={summaryGridStyle}>
+          <InfoCard
+            label="Status"
+            value={item.status}
+          />
+
+          <InfoCard
+            label="Owner"
+            value={item.owner}
+          />
+
+          <InfoCard
+            label="Due Date"
+            value={item.due_date}
+          />
+
+          <InfoCard
+            label="Supplier"
+            value={
+              item.supplier_name
+            }
+          />
+
+          <InfoCard
+            label="Linked NCMR"
+            value={
+              item.linked_ncmr_title
+            }
+          />
+
+          <InfoCard
+            label="Effectiveness"
+            value={
+              item.effectiveness_result
+            }
+          />
+        </div>
+      </section>
+
+      <section style={sectionStyle}>
+        <h2
+          style={{
+            marginTop: 0,
+          }}
+        >
+          Workflow Stage
+          Completion
+        </h2>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns:
+              "repeat(auto-fit, minmax(220px, 1fr))",
+            gap: "12px",
+          }}
+        >
+          {stages.map(
+            (
+              stage,
+              index
+            ) => (
+              <div
+                key={index}
+                style={{
+                  border:
+                    "1px solid #d1d5db",
+                  borderLeft: `6px solid ${
+                    stage.completed
+                      ? "#15803d"
+                      : "#d97706"
+                  }`,
+                  borderRadius:
+                    "12px",
+                  padding:
+                    "14px",
+                  background:
+                    "white",
+                }}
+              >
+                <div
+                  style={{
+                    fontWeight: 700,
+                  }}
+                >
+                  {stage.completed
+                    ? "✓"
+                    : "⚠"}{" "}
+                  {stage.label}
+                </div>
+
+                <div
+                  style={{
+                    marginTop:
+                      "6px",
+                    color:
+                      "#6b7280",
+                    fontSize:
+                      "13px",
+                  }}
+                >
+                  {stage.completed
+                    ? "Completed"
+                    : "Pending"}
+                </div>
+              </div>
+            )
+          )}
+        </div>
+      </section>
+
+      <WorkflowSection
+        title="1. Problem Statement"
+        locked={isLocked}
+      >
+        <textarea
+          value={
+            item.problem_statement ||
+            ""
+          }
+          onChange={(e) =>
+            updateField(
+              "problem_statement",
+              e.target.value
+            )
+          }
+          disabled={isLocked}
+          style={textareaStyle(
+            isLocked
+          )}
+        />
+      </WorkflowSection>
+
+      <WorkflowSection
+        title="2. Risk Assessment"
+        locked={isLocked}
+      >
+        <textarea
+          value={
+            item.risk_assessment ||
+            ""
+          }
+          onChange={(e) =>
+            updateField(
+              "risk_assessment",
+              e.target.value
+            )
+          }
+          disabled={isLocked}
+          style={textareaStyle(
+            isLocked
+          )}
+        />
+      </WorkflowSection>
+
+      <WorkflowSection
+        title="3. Investigation"
+        locked={isLocked}
+      >
+        <textarea
+          value={
+            item.investigation ||
+            ""
+          }
+          onChange={(e) =>
+            updateField(
+              "investigation",
+              e.target.value
+            )
+          }
+          disabled={isLocked}
+          style={textareaStyle(
+            isLocked
+          )}
+        />
+      </WorkflowSection>
+
+      <WorkflowSection
+        title="4. Root Cause"
+        locked={isLocked}
+      >
+        <textarea
+          value={
+            item.root_cause ||
+            ""
+          }
+          onChange={(e) =>
+            updateField(
+              "root_cause",
+              e.target.value
+            )
+          }
+          disabled={isLocked}
+          style={textareaStyle(
+            isLocked
+          )}
+        />
+      </WorkflowSection>
+
+      <WorkflowSection
+        title="5. Correction / Containment"
+        locked={isLocked}
+      >
+        <textarea
+          value={
+            item.correction ||
+            ""
+          }
+          onChange={(e) =>
+            updateField(
+              "correction",
+              e.target.value
+            )
+          }
+          disabled={isLocked}
+          style={textareaStyle(
+            isLocked
+          )}
+        />
+      </WorkflowSection>
+
+      <WorkflowSection
+        title="6. Corrective Action Plan"
+        locked={isLocked}
+      >
+        <textarea
+          value={
+            item.corrective_action ||
+            ""
+          }
+          onChange={(e) =>
+            updateField(
+              "corrective_action",
+              e.target.value
+            )
+          }
+          disabled={isLocked}
+          style={textareaStyle(
+            isLocked
+          )}
+        />
+      </WorkflowSection>
+
+      <WorkflowSection
+        title="7. Implementation"
+        locked={isLocked}
+      >
+        <textarea
+          value={
+            item.implementation ||
+            ""
+          }
+          onChange={(e) =>
+            updateField(
+              "implementation",
+              e.target.value
+            )
+          }
+          disabled={isLocked}
+          style={textareaStyle(
+            isLocked
+          )}
+        />
+      </WorkflowSection>
+
+      <WorkflowSection
+        title="8. Effectiveness Plan"
+        locked={isLocked}
+      >
+        <textarea
+          value={
+            item.effectiveness_plan ||
+            ""
+          }
+          onChange={(e) =>
+            updateField(
+              "effectiveness_plan",
+              e.target.value
+            )
+          }
+          disabled={isLocked}
+          style={textareaStyle(
+            isLocked
+          )}
+        />
+      </WorkflowSection>
+
+      <WorkflowSection
+        title="9. Effectiveness Verification"
+        locked={isLocked}
+      >
+        <select
+          value={
+            item.effectiveness_result ||
+            ""
+          }
+          onChange={(e) =>
+            updateField(
+              "effectiveness_result",
+              e.target.value
+            )
+          }
+          disabled={isLocked}
+          style={inputStyle(
+            isLocked
+          )}
+        >
+          <option value="">
+            Select Result
+          </option>
+
+          <option value="effective">
+            Effective
+          </option>
+
+          <option value="ineffective">
+            Ineffective
+          </option>
+
+          <option value="pending_review">
+            Pending Review
+          </option>
         </select>
 
-        <br />
-        <label>Root Cause</label><br />
-        <textarea value={rootCause} onChange={(e) => setRootCause(e.target.value)} rows={4} style={{ width: "100%", maxWidth: "800px" }} />
-      </section>
+        <textarea
+          value={
+            item.effectiveness_check ||
+            ""
+          }
+          onChange={(e) =>
+            updateField(
+              "effectiveness_check",
+              e.target.value
+            )
+          }
+          disabled={isLocked}
+          style={{
+            ...textareaStyle(
+              isLocked
+            ),
+            marginTop: "12px",
+          }}
+        />
+      </WorkflowSection>
 
-      <section style={{ marginBottom: "20px" }}>
-        <h2>4. Corrective Action Plan</h2>
-        <textarea value={correctiveActionPlan} onChange={(e) => setCorrectiveActionPlan(e.target.value)} rows={4} style={{ width: "100%", maxWidth: "800px" }} />
-      </section>
+      <section style={sectionStyle}>
+        <h2
+          style={{
+            marginTop: 0,
+          }}
+        >
+          Approval &
+          Electronic Signature
+        </h2>
 
-      <section style={{ marginBottom: "20px" }}>
-        <h2>5. Implementation</h2>
+        <div style={summaryGridStyle}>
+          <InfoCard
+            label="Approved By"
+            value={
+              item.approved_by
+            }
+          />
 
-        <textarea value={implementationDetails} onChange={(e) => setImplementationDetails(e.target.value)} rows={4} style={{ width: "100%", maxWidth: "800px" }} />
+          <InfoCard
+            label="Approved At"
+            value={
+              item.approved_at
+            }
+          />
 
-        <div style={{ marginTop: "12px" }}>
-          <label>Effectiveness Due Date</label><br />
-          <input type="date" value={effectivenessDueDate || ""} onChange={(e) => setEffectivenessDueDate(e.target.value)} style={{ padding: "8px" }} />
+          <InfoCard
+            label="Signed By"
+            value={
+              item.signed_by
+            }
+          />
+
+          <InfoCard
+            label="Signed At"
+            value={
+              item.signed_at
+            }
+          />
         </div>
 
-        <div style={{ marginTop: "12px" }}>
-          <button onClick={markImplemented} disabled={isLocked}>Mark Implementation Complete</button>
-        </div>
-
-        {record.implemented_by ? (
-          <div style={{ marginTop: "12px" }}>
-            <strong>Implemented By:</strong> {record.implemented_by}<br />
-            <strong>Implemented At:</strong> {record.implemented_at}<br />
-            <strong>Effectiveness Due Date:</strong> {record.effectiveness_due_date || "N/A"}
-          </div>
-        ) : null}
-      </section>
-
-      <section style={{ marginBottom: "20px" }}>
-        <h2>6. Effectiveness Check</h2>
-
-        <label>Effectiveness Check</label><br />
-        <textarea value={effectiveness} onChange={(e) => setEffectiveness(e.target.value)} rows={4} style={{ width: "100%", maxWidth: "800px" }} />
-
-        <div style={{ marginTop: "12px" }}>
-          <label>Effectiveness Rating</label><br />
-          <select
-            value={effectivenessRating}
-            onChange={(e) => setEffectivenessRating(e.target.value)}
-            style={{ padding: "8px", minWidth: "240px" }}
+        {item.signature_meaning ? (
+          <div
+            style={{
+              marginTop: "16px",
+              padding: "14px",
+              background:
+                "#f9fafb",
+              borderRadius:
+                "12px",
+              border:
+                "1px solid #d1d5db",
+            }}
           >
-            <option value="">Select rating</option>
-            <option value="effective">Effective</option>
-            <option value="partially_effective">Partially Effective</option>
-            <option value="not_effective">Not Effective</option>
-          </select>
-        </div>
+            <strong>
+              Signature Meaning
+            </strong>
 
-        {(effectivenessRating === "partially_effective" || effectivenessRating === "not_effective") ? (
-          <div style={{ marginTop: "12px" }}>
-            <label>Follow-up Action</label><br />
-            <textarea
-              value={effectivenessFollowupAction}
-              onChange={(e) => setEffectivenessFollowupAction(e.target.value)}
-              placeholder="Required for Partially Effective or Not Effective."
-              rows={3}
-              style={{ width: "100%", maxWidth: "800px" }}
-            />
-          </div>
-        ) : null}
-
-        {effectivenessRating === "not_effective" && !record.followup_capa_id ? (
-          <div style={{ marginTop: "12px" }}>
-            <button onClick={createFollowupCapa} disabled={isLocked}>
-              Create Follow-up CAPA
-            </button>
+            <div
+              style={{
+                marginTop: "8px",
+              }}
+            >
+              {
+                item.signature_meaning
+              }
+            </div>
           </div>
         ) : null}
       </section>
-
-      <section style={{ marginBottom: "20px" }}>
-        <h2>7. Approval / Closure</h2>
-
-        {record.signed_by ? (
-          <div>
-            <strong>Electronic Signature:</strong><br />
-            Signed by: {record.signed_by}<br />
-            Signed at: {record.signed_at}<br />
-            Meaning: {record.signature_meaning}
-          </div>
-        ) : (
-          <p>CAPA has not been signed closed.</p>
-        )}
-      </section>
-
-      <button onClick={saveCapaWorkflow} disabled={isLocked} style={{ marginRight: "10px" }}>
-        Save CAPA Workflow
-      </button>
-
-      <button onClick={closeCapa} disabled={isLocked} style={{ marginRight: "10px" }}>
-        Close CAPA with E-Signature
-      </button>
-
-      <a href="/capa">Back to CAPA</a>
     </main>
   );
 }
+
+function WorkflowSection({
+  title,
+  children,
+  locked,
+}: {
+  title: string;
+  children: React.ReactNode;
+  locked: boolean;
+}) {
+  return (
+    <section
+      style={{
+        border:
+          "1px solid #d1d5db",
+        borderLeft: `8px solid ${
+          locked
+            ? "#9ca3af"
+            : "#2563eb"
+        }`,
+        borderRadius: "14px",
+        padding: "18px",
+        marginBottom: "18px",
+        background: "white",
+      }}
+    >
+      <h2
+        style={{
+          marginTop: 0,
+        }}
+      >
+        {title}
+      </h2>
+
+      {children}
+    </section>
+  );
+}
+
+function InfoCard({
+  label,
+  value,
+}: {
+  label: string;
+  value: any;
+}) {
+  return (
+    <div
+      style={{
+        border:
+          "1px solid #d1d5db",
+        borderRadius: "12px",
+        padding: "14px",
+        background: "#f9fafb",
+      }}
+    >
+      <div
+        style={{
+          fontSize: "12px",
+          fontWeight: 700,
+          color: "#6b7280",
+          marginBottom: "6px",
+        }}
+      >
+        {label}
+      </div>
+
+      <div>
+        {value || "N/A"}
+      </div>
+    </div>
+  );
+}
+
+function Badge({
+  label,
+  color,
+}: {
+  label: string;
+  color: string;
+}) {
+  return (
+    <span
+      style={{
+        background: color,
+        color: "white",
+        padding:
+          "5px 10px",
+        borderRadius:
+          "999px",
+        fontSize: "12px",
+        fontWeight: 700,
+      }}
+    >
+      {label}
+    </span>
+  );
+}
+
+function calculateRisk(
+  item: any
+) {
+  if (
+    item.severity ===
+    "critical"
+  )
+    return "Critical";
+
+  if (
+    item.severity === "high"
+  )
+    return "High";
+
+  if (
+    item.effectiveness_result ===
+    "ineffective"
+  )
+    return "High";
+
+  if (
+    (item.recurrence_count ||
+      0) >= 2
+  )
+    return "High";
+
+  return "Medium";
+}
+
+function getRiskColor(
+  risk: string
+) {
+  if (risk === "Critical")
+    return "#991b1b";
+
+  if (risk === "High")
+    return "#dc2626";
+
+  return "#d97706";
+}
+
+function getWorkflowHealth(
+  risk: string,
+  recurrence: boolean,
+  effectiveness: string
+) {
+  if (
+    risk === "Critical"
+  ) {
+    return {
+      label: "Critical",
+      color: "#991b1b",
+    };
+  }
+
+  if (
+    recurrence ||
+    effectiveness ===
+      "ineffective"
+  ) {
+    return {
+      label: "Elevated",
+      color: "#dc2626",
+    };
+  }
+
+  if (risk === "High") {
+    return {
+      label: "Monitor",
+      color: "#d97706",
+    };
+  }
+
+  return {
+    label: "Controlled",
+    color: "#15803d",
+  };
+}
+
+function getPredictiveEscalation(
+  item: any
+) {
+  if (
+    item.status === "closed"
+  )
+    return null;
+
+  if (
+    item.due_date &&
+    item.due_date <
+      new Date(
+        Date.now() +
+          1000 *
+            60 *
+            60 *
+            24 *
+            7
+      )
+        .toISOString()
+        .split("T")[0]
+  ) {
+    return "Likely Overdue";
+  }
+
+  return null;
+}
+
+const headerStyle: React.CSSProperties =
+  {
+    display: "flex",
+    justifyContent:
+      "space-between",
+    gap: "12px",
+    flexWrap: "wrap",
+    alignItems:
+      "flex-start",
+    marginBottom: "20px",
+  };
+
+const eyebrowStyle: React.CSSProperties =
+  {
+    fontSize: "12px",
+    letterSpacing:
+      "0.08em",
+    color: "#6b7280",
+    fontWeight: 800,
+  };
+
+const healthBannerStyle: React.CSSProperties =
+  {
+    border:
+      "1px solid #d1d5db",
+    borderRadius: "16px",
+    padding: "22px",
+    background: "white",
+    display: "flex",
+    justifyContent:
+      "space-between",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: "12px",
+    marginBottom: "20px",
+  };
+
+const sectionStyle: React.CSSProperties =
+  {
+    border:
+      "1px solid #d1d5db",
+    borderRadius: "14px",
+    padding: "18px",
+    background: "white",
+    marginBottom: "18px",
+  };
+
+const summaryGridStyle: React.CSSProperties =
+  {
+    display: "grid",
+    gridTemplateColumns:
+      "repeat(auto-fit, minmax(220px, 1fr))",
+    gap: "12px",
+  };
+
+const bannerLabelStyle: React.CSSProperties =
+  {
+    fontSize: "13px",
+    color: "#6b7280",
+    fontWeight: 700,
+  };
+
+const lockedBannerStyle: React.CSSProperties =
+  {
+    background: "#111827",
+    color: "white",
+    padding: "14px",
+    borderRadius: "12px",
+    fontWeight: 700,
+    marginBottom: "18px",
+  };
+
+const textareaStyle = (
+  locked: boolean
+): React.CSSProperties => ({
+  width: "100%",
+  minHeight: "140px",
+  padding: "12px",
+  borderRadius: "10px",
+  border: "1px solid #d1d5db",
+  background: locked
+    ? "#f3f4f6"
+    : "white",
+  color: locked
+    ? "#6b7280"
+    : "#111827",
+});
+
+const inputStyle = (
+  locked: boolean
+): React.CSSProperties => ({
+  width: "100%",
+  padding: "10px",
+  borderRadius: "10px",
+  border: "1px solid #d1d5db",
+  background: locked
+    ? "#f3f4f6"
+    : "white",
+});
+
+const primaryButtonStyle: React.CSSProperties =
+  {
+    background: "#2563eb",
+    color: "white",
+    border: "none",
+    borderRadius: "8px",
+    padding: "10px 14px",
+    cursor: "pointer",
+    fontWeight: 700,
+  };
+
+const secondaryButtonStyle: React.CSSProperties =
+  {
+    background: "#15803d",
+    color: "white",
+    border: "none",
+    borderRadius: "8px",
+    padding: "10px 14px",
+    cursor: "pointer",
+    fontWeight: 700,
+  };
+
+const backButtonStyle: React.CSSProperties =
+  {
+    background: "#111827",
+    color: "white",
+    padding: "10px 14px",
+    borderRadius: "8px",
+    textDecoration: "none",
+    fontWeight: 700,
+  };
