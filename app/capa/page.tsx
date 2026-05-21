@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
 
 type Capa = {
@@ -33,6 +33,10 @@ type Capa = {
   supplier_name: string | null;
 
   scar_required: boolean | null;
+
+  severity?: string | null;
+  recurrence_count?: number | null;
+  effectiveness_result?: string | null;
 };
 
 export default function CapaPage() {
@@ -52,7 +56,9 @@ export default function CapaPage() {
 
   const fetchUserRole = async () => {
     const { data: userData } = await supabase.auth.getUser();
+
     const email = userData?.user?.email || "";
+
     setUserEmail(email);
 
     if (!email) return;
@@ -132,6 +138,7 @@ export default function CapaPage() {
     setOwner("");
     setDueDate("");
     setCapaSource("direct");
+
     fetchData();
   };
 
@@ -179,13 +186,16 @@ export default function CapaPage() {
       "capa",
       item.id,
       "electronic_signature",
-      `CAPA closed with electronic signature. Meaning: ${signatureMeaning}`
+      `CAPA closed with electronic signature.`
     );
 
     fetchData();
   };
 
-  const updateStatus = async (item: Capa, status: string) => {
+  const updateStatus = async (
+    item: Capa,
+    status: string
+  ) => {
     if (status === "closed") {
       await closeCapaWithSignature(item);
       return;
@@ -219,363 +229,1106 @@ export default function CapaPage() {
     fetchData();
   }, []);
 
-  const summaryCardStyle: React.CSSProperties = {
-    border: "1px solid #d1d5db",
-    borderRadius: "10px",
-    padding: "14px",
-    background: "#f9fafb",
-  };
+  const filteredList = useMemo(() => {
+    return list.filter((item) => {
+      const searchableText = [
+        item.capa_number,
+        item.title,
+        item.owner,
+        item.linked_ncmr_title,
+        item.capa_source,
+        item.source_type,
+        item.capa_type,
+        item.supplier_name,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
 
-  const summaryLabelStyle: React.CSSProperties = {
-    fontSize: "13px",
-    color: "#4b5563",
-    marginBottom: "4px",
-  };
+      const matchesSearch = search
+        ? searchableText.includes(
+            search.trim().toLowerCase()
+          )
+        : true;
 
-  const summaryValueStyle: React.CSSProperties = {
-    fontSize: "24px",
-    fontWeight: "bold",
-  };
+      const matchesStatus = statusFilter
+        ? item.status === statusFilter
+        : true;
 
-  const badgeStyle: React.CSSProperties = {
-    color: "white",
-    padding: "4px 8px",
-    borderRadius: "999px",
-    fontSize: "12px",
-    fontWeight: 600,
-  };
+      const matchesSource = sourceFilter
+        ? item.capa_source === sourceFilter
+        : true;
 
-  const filteredList = list.filter((item) => {
-    const searchableText = [
-      item.capa_number,
-      item.title,
-      item.owner,
-      item.linked_ncmr_title,
-      item.capa_source,
-      item.source_type,
-      item.capa_type,
-      item.supplier_name,
-    ]
-      .filter(Boolean)
-      .join(" ")
-      .toLowerCase();
+      const matchesType = typeFilter
+        ? item.capa_type === typeFilter
+        : true;
 
-    const matchesSearch = search
-      ? searchableText.includes(search.trim().toLowerCase())
-      : true;
+      return (
+        matchesSearch &&
+        matchesStatus &&
+        matchesSource &&
+        matchesType
+      );
+    });
+  }, [
+    list,
+    search,
+    statusFilter,
+    sourceFilter,
+    typeFilter,
+  ]);
 
-    const matchesStatus = statusFilter ? item.status === statusFilter : true;
-    const matchesSource = sourceFilter ? item.capa_source === sourceFilter : true;
-    const matchesType = typeFilter ? item.capa_type === typeFilter : true;
-
-    return matchesSearch && matchesStatus && matchesSource && matchesType;
+  const overdueCapas = list.filter((x) => {
+    return (
+      x.status !== "closed" &&
+      x.due_date &&
+      x.due_date <
+        new Date()
+          .toISOString()
+          .split("T")[0]
+    );
   });
 
+  const recurringCapas = list.filter(
+    (x) =>
+      (x.recurrence_count || 0) >= 2
+  );
+
+  const ineffectiveCapas = list.filter(
+    (x) =>
+      x.effectiveness_result ===
+      "ineffective"
+  );
+
+  const criticalCapas = list.filter(
+    (x) =>
+      x.severity === "critical" ||
+      x.severity === "high"
+  );
+
+  const capaHealth = getCapaHealth({
+    overdue: overdueCapas.length,
+    recurring: recurringCapas.length,
+    ineffective:
+      ineffectiveCapas.length,
+    critical:
+      criticalCapas.length,
+  });
+
+  const trendStatus = getTrendStatus(
+    overdueCapas.length,
+    recurringCapas.length
+  );
+
   return (
-    <main style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
-      <h1>CAPA Records</h1>
+    <main
+      style={{
+        padding: "24px",
+        fontFamily:
+          "Arial, sans-serif",
+        background: "#f8fafc",
+        minHeight: "100vh",
+      }}
+    >
+      <div style={headerStyle}>
+        <div>
+          <div style={eyebrowStyle}>
+            CAPA INTELLIGENCE
+          </div>
 
-      <p><strong>Logged-in Email:</strong> {userEmail || "none"}</p>
-      <p><strong>Your Role:</strong> {userRole || "none"}</p>
-
-      <section style={{ border: "1px solid #ccc", padding: "15px", marginBottom: "20px" }}>
-        <h2>Initiate Direct CAPA</h2>
-
-        <div style={{ marginBottom: "10px" }}>
-          <label>CAPA Title</label><br />
-          <input
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="CAPA title"
-            style={{ width: "100%", maxWidth: "500px", padding: "8px" }}
-          />
-        </div>
-
-        <div style={{ marginBottom: "10px" }}>
-          <label>Owner</label><br />
-          <input
-            value={owner}
-            onChange={(e) => setOwner(e.target.value)}
-            placeholder="CAPA owner"
-            style={{ width: "100%", maxWidth: "400px", padding: "8px" }}
-          />
-        </div>
-
-        <div style={{ marginBottom: "10px" }}>
-          <label>Due Date</label><br />
-          <input
-            type="date"
-            value={dueDate}
-            onChange={(e) => setDueDate(e.target.value)}
-            style={{ padding: "8px" }}
-          />
-        </div>
-
-        <div style={{ marginBottom: "10px" }}>
-          <label>CAPA Source</label><br />
-          <select
-            value={capaSource}
-            onChange={(e) => setCapaSource(e.target.value)}
-            style={{ padding: "8px", minWidth: "220px" }}
+          <h1
+            style={{
+              marginBottom: "6px",
+            }}
           >
-            <option value="direct">Direct</option>
-            <option value="audit">Audit</option>
-            <option value="complaint">Complaint</option>
-            <option value="trend">Trend</option>
-            <option value="management_review">Management Review</option>
-            <option value="supplier_issue">Supplier Issue</option>
-            <option value="process_issue">Process Issue</option>
-          </select>
+            CAPA Program
+          </h1>
+
+          <p
+            style={{
+              color: "#4b5563",
+              marginTop: 0,
+            }}
+          >
+            Enterprise CAPA
+            workflow, effectiveness,
+            recurrence intelligence,
+            and governance oversight.
+          </p>
         </div>
 
-        <button onClick={createDirectCapa}>Create Direct CAPA</button>
-      </section>
-
-      <h2>Existing CAPAs</h2>
-
-      <section style={{ border: "1px solid #ccc", padding: "15px", marginBottom: "20px", borderRadius: "8px" }}>
-        <h3>Search / Filters</h3>
-
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search by title, CAPA number, owner, supplier, NCMR"
-          style={{ padding: "8px", width: "100%", maxWidth: "650px", marginRight: "10px", marginBottom: "8px" }}
-        />
-
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          style={{ padding: "8px", marginRight: "10px", marginBottom: "8px" }}
+        <a
+          href="/dashboard"
+          style={backButtonStyle}
         >
-          <option value="">All Statuses</option>
-          <option value="open">Open</option>
-          <option value="in_progress">In Progress</option>
-          <option value="effectiveness_check">Effectiveness Check</option>
-          <option value="closed">Closed</option>
-        </select>
+          Dashboard
+        </a>
+      </div>
 
-        <select
-          value={sourceFilter}
-          onChange={(e) => setSourceFilter(e.target.value)}
-          style={{ padding: "8px", marginRight: "10px", marginBottom: "8px" }}
-        >
-          <option value="">All Sources</option>
-          <option value="direct">Direct</option>
-          <option value="audit">Audit</option>
-          <option value="complaint">Complaint</option>
-          <option value="trend">Trend</option>
-          <option value="management_review">Management Review</option>
-          <option value="supplier_issue">Supplier Issue</option>
-          <option value="Supplier recurrence">Supplier Recurrence</option>
-          <option value="Recurring NCMR">Recurring NCMR</option>
-        </select>
+      <section style={healthBannerStyle}>
+        <div>
+          <div
+            style={{
+              fontSize: "13px",
+              color: "#6b7280",
+              fontWeight: 700,
+            }}
+          >
+            CAPA PROGRAM STATUS
+          </div>
 
-        <select
-          value={typeFilter}
-          onChange={(e) => setTypeFilter(e.target.value)}
-          style={{ padding: "8px", marginRight: "10px", marginBottom: "8px" }}
-        >
-          <option value="">All CAPA Types</option>
-          <option value="internal_capa">Internal CAPA</option>
-          <option value="supplier_capa">Supplier CAPA</option>
-          <option value="scar">SCAR</option>
-        </select>
+          <div
+            style={{
+              fontSize: "28px",
+              fontWeight: 800,
+              color: capaHealth.color,
+            }}
+          >
+            {capaHealth.label}
+          </div>
+        </div>
 
-        <button
-          onClick={() => {
-            setSearch("");
-            setStatusFilter("");
-            setSourceFilter("");
-            setTypeFilter("");
+        <div
+          style={{
+            textAlign: "right",
           }}
         >
-          Clear Filters
-        </button>
+          <div
+            style={{
+              fontSize: "13px",
+              color: "#6b7280",
+              fontWeight: 700,
+            }}
+          >
+            TREND TRAJECTORY
+          </div>
 
-        <div style={{ marginTop: "10px", fontSize: "14px", color: "#4b5563" }}>
-          Showing {filteredList.length} of {list.length} CAPA record(s)
+          <div
+            style={{
+              fontSize: "22px",
+              fontWeight: 700,
+              color:
+                trendStatus ===
+                "Improving"
+                  ? "#15803d"
+                  : trendStatus ===
+                    "Stable"
+                  ? "#d97706"
+                  : "#dc2626",
+            }}
+          >
+            {trendStatus}
+          </div>
+        </div>
+      </section>
+
+      <section style={summaryGridStyle}>
+        <SummaryCard
+          label="Total CAPAs"
+          value={list.length}
+          color="#2563eb"
+        />
+
+        <SummaryCard
+          label="Open / Active"
+          value={
+            list.filter(
+              (x) =>
+                x.status !== "closed"
+            ).length
+          }
+          color="#d97706"
+        />
+
+        <SummaryCard
+          label="Overdue"
+          value={overdueCapas.length}
+          color="#dc2626"
+        />
+
+        <SummaryCard
+          label="Recurring"
+          value={recurringCapas.length}
+          color="#7c3aed"
+        />
+
+        <SummaryCard
+          label="Ineffective"
+          value={
+            ineffectiveCapas.length
+          }
+          color="#991b1b"
+        />
+
+        <SummaryCard
+          label="Critical"
+          value={criticalCapas.length}
+          color="#b91c1c"
+        />
+      </section>
+
+      <section style={sectionStyle}>
+        <h2>Initiate Direct CAPA</h2>
+
+        <div style={formGridStyle}>
+          <div>
+            <label>CAPA Title</label>
+
+            <input
+              value={title}
+              onChange={(e) =>
+                setTitle(
+                  e.target.value
+                )
+              }
+              placeholder="CAPA title"
+              style={inputStyle}
+            />
+          </div>
+
+          <div>
+            <label>Owner</label>
+
+            <input
+              value={owner}
+              onChange={(e) =>
+                setOwner(
+                  e.target.value
+                )
+              }
+              placeholder="CAPA owner"
+              style={inputStyle}
+            />
+          </div>
+
+          <div>
+            <label>Due Date</label>
+
+            <input
+              type="date"
+              value={dueDate}
+              onChange={(e) =>
+                setDueDate(
+                  e.target.value
+                )
+              }
+              style={inputStyle}
+            />
+          </div>
+
+          <div>
+            <label>CAPA Source</label>
+
+            <select
+              value={capaSource}
+              onChange={(e) =>
+                setCapaSource(
+                  e.target.value
+                )
+              }
+              style={inputStyle}
+            >
+              <option value="direct">
+                Direct
+              </option>
+
+              <option value="audit">
+                Audit
+              </option>
+
+              <option value="complaint">
+                Complaint
+              </option>
+
+              <option value="trend">
+                Trend
+              </option>
+
+              <option value="management_review">
+                Management Review
+              </option>
+
+              <option value="supplier_issue">
+                Supplier Issue
+              </option>
+
+              <option value="process_issue">
+                Process Issue
+              </option>
+            </select>
+          </div>
+        </div>
+
+        <button
+          onClick={createDirectCapa}
+          style={primaryButtonStyle}
+        >
+          Create CAPA
+        </button>
+      </section>
+
+      <section style={sectionStyle}>
+        <h2>Search / Filters</h2>
+
+        <div style={filterGridStyle}>
+          <input
+            value={search}
+            onChange={(e) =>
+              setSearch(
+                e.target.value
+              )
+            }
+            placeholder="Search CAPA"
+            style={inputStyle}
+          />
+
+          <select
+            value={statusFilter}
+            onChange={(e) =>
+              setStatusFilter(
+                e.target.value
+              )
+            }
+            style={inputStyle}
+          >
+            <option value="">
+              All Statuses
+            </option>
+
+            <option value="open">
+              Open
+            </option>
+
+            <option value="in_progress">
+              In Progress
+            </option>
+
+            <option value="effectiveness_check">
+              Effectiveness
+            </option>
+
+            <option value="closed">
+              Closed
+            </option>
+          </select>
+
+          <select
+            value={sourceFilter}
+            onChange={(e) =>
+              setSourceFilter(
+                e.target.value
+              )
+            }
+            style={inputStyle}
+          >
+            <option value="">
+              All Sources
+            </option>
+
+            <option value="audit">
+              Audit
+            </option>
+
+            <option value="complaint">
+              Complaint
+            </option>
+
+            <option value="trend">
+              Trend
+            </option>
+
+            <option value="supplier_issue">
+              Supplier Issue
+            </option>
+          </select>
+
+          <select
+            value={typeFilter}
+            onChange={(e) =>
+              setTypeFilter(
+                e.target.value
+              )
+            }
+            style={inputStyle}
+          >
+            <option value="">
+              All CAPA Types
+            </option>
+
+            <option value="internal_capa">
+              Internal CAPA
+            </option>
+
+            <option value="supplier_capa">
+              Supplier CAPA
+            </option>
+
+            <option value="scar">
+              SCAR
+            </option>
+          </select>
         </div>
       </section>
 
       <section
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-          gap: "12px",
-          marginBottom: "20px",
+          gap: "16px",
         }}
       >
-        <div style={summaryCardStyle}>
-          <div style={summaryLabelStyle}>Total CAPAs</div>
-          <div style={summaryValueStyle}>{list.length}</div>
-        </div>
-        <div style={summaryCardStyle}>
-          <div style={summaryLabelStyle}>Open / Active</div>
-          <div style={summaryValueStyle}>{list.filter((x) => x.status !== "closed").length}</div>
-        </div>
-        <div style={summaryCardStyle}>
-          <div style={summaryLabelStyle}>Closed</div>
-          <div style={summaryValueStyle}>{list.filter((x) => x.status === "closed").length}</div>
-        </div>
-        <div style={summaryCardStyle}>
-          <div style={summaryLabelStyle}>SCARs</div>
-          <div style={summaryValueStyle}>{list.filter((x) => x.capa_type === "scar" || x.scar_required).length}</div>
-        </div>
-      </section>
+        {filteredList.map((item) => {
+          const isOverdue =
+            item.status !== "closed" &&
+            item.due_date &&
+            item.due_date <
+              new Date()
+                .toISOString()
+                .split("T")[0];
 
-      {list.length === 0 ? (
-        <p>No CAPA records yet.</p>
-      ) : filteredList.length === 0 ? (
-        <p>No CAPA records match the selected filters.</p>
-      ) : (
-        <div style={{ display: "grid", gap: "16px" }}>
-          {filteredList.map((item) => {
-            const statusColor =
-              item.status === "closed"
-                ? "#16a34a"
-                : item.status === "open"
-                ? "#2563eb"
-                : item.status === "effectiveness_check"
-                ? "#7c3aed"
-                : "#f59e0b";
+          const recurrenceDetected =
+            (item.recurrence_count ||
+              0) >= 2;
 
-            const isOverdue =
-              item.status !== "closed" &&
-              item.due_date &&
-              item.due_date < new Date().toISOString().split("T")[0];
+          const riskLevel =
+            calculateRisk(item);
 
-            return (
-              <article
-                key={item.id}
+          const predictiveEscalation =
+            getPredictiveEscalation(
+              item
+            );
+
+          const effectivenessStatus =
+            getEffectivenessStatus(
+              item
+            );
+
+          return (
+            <article
+              key={item.id}
+              style={{
+                border:
+                  isOverdue
+                    ? "2px solid #dc2626"
+                    : "1px solid #d1d5db",
+                borderRadius: "14px",
+                padding: "18px",
+                background: "white",
+                boxShadow:
+                  "0 1px 4px rgba(0,0,0,0.08)",
+              }}
+            >
+              <div
                 style={{
-                  border: isOverdue ? "2px solid #dc2626" : "1px solid #d1d5db",
-                  borderRadius: "12px",
-                  padding: "16px",
-                  background: "#fff",
-                  boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+                  display: "flex",
+                  justifyContent:
+                    "space-between",
+                  gap: "12px",
+                  flexWrap: "wrap",
                 }}
               >
+                <div>
+                  <h3
+                    style={{
+                      marginBottom:
+                        "6px",
+                    }}
+                  >
+                    {item.capa_number ||
+                      "CAPA-PENDING"}{" "}
+                    —{" "}
+                    {item.title ||
+                      "Untitled CAPA"}
+                  </h3>
+
+                  <div
+                    style={{
+                      color:
+                        "#4b5563",
+                      fontSize:
+                        "14px",
+                    }}
+                  >
+                    Source:{" "}
+                    {item.capa_source ||
+                      "N/A"}{" "}
+                    | Type:{" "}
+                    {item.source_type ||
+                      "N/A"}
+                  </div>
+                </div>
+
                 <div
                   style={{
                     display: "flex",
-                    justifyContent: "space-between",
-                    gap: "12px",
-                    alignItems: "flex-start",
+                    gap: "8px",
                     flexWrap: "wrap",
                   }}
                 >
-                  <div>
-                    <h3 style={{ margin: "0 0 6px 0" }}>
-                      {item.capa_number || "CAPA-PENDING"} — {item.title || "Untitled CAPA"}
-                    </h3>
-                    <div style={{ color: "#4b5563", fontSize: "14px" }}>
-                      Source: {item.capa_source || "N/A"} | Type: {item.source_type || "N/A"}
-                    </div>
-                  </div>
+                  <Badge
+                    label={
+                      item.status ||
+                      "unknown"
+                    }
+                    color={
+                      item.status ===
+                      "closed"
+                        ? "#15803d"
+                        : item.status ===
+                          "effectiveness_check"
+                        ? "#7c3aed"
+                        : "#2563eb"
+                    }
+                  />
 
-                  <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                    <span style={{ ...badgeStyle, background: statusColor }}>
-                      {item.status || "unknown"}
-                    </span>
-                    {isOverdue ? (
-                      <span style={{ ...badgeStyle, background: "#dc2626" }}>Overdue</span>
-                    ) : null}
-                    {(item.capa_type === "scar" || item.scar_required) ? (
-                      <span style={{ ...badgeStyle, background: "#7c3aed" }}>SCAR</span>
-                    ) : null}
-                  </div>
+                  <Badge
+                    label={
+                      riskLevel
+                    }
+                    color={getRiskColor(
+                      riskLevel
+                    )}
+                  />
+
+                  {recurrenceDetected ? (
+                    <Badge
+                      label="Recurring"
+                      color="#dc2626"
+                    />
+                  ) : null}
+
+                  {predictiveEscalation ? (
+                    <Badge
+                      label={
+                        predictiveEscalation
+                      }
+                      color="#b91c1c"
+                    />
+                  ) : null}
+
+                  {isOverdue ? (
+                    <Badge
+                      label="Overdue"
+                      color="#991b1b"
+                    />
+                  ) : null}
+                </div>
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns:
+                    "repeat(auto-fit, minmax(220px, 1fr))",
+                  gap: "10px",
+                  marginTop: "16px",
+                  fontSize: "14px",
+                }}
+              >
+                <div>
+                  <strong>
+                    Owner:
+                  </strong>{" "}
+                  {item.owner ||
+                    "Not assigned"}
                 </div>
 
+                <div>
+                  <strong>
+                    Due Date:
+                  </strong>{" "}
+                  {item.due_date ||
+                    "Not set"}
+                </div>
+
+                <div>
+                  <strong>
+                    Supplier:
+                  </strong>{" "}
+                  {item.supplier_name ||
+                    "N/A"}
+                </div>
+
+                <div>
+                  <strong>
+                    Linked NCMR:
+                  </strong>{" "}
+                  {item.linked_ncmr_title ||
+                    "None"}
+                </div>
+
+                <div>
+                  <strong>
+                    Effectiveness:
+                  </strong>{" "}
+                  {
+                    effectivenessStatus
+                  }
+                </div>
+
+                <div>
+                  <strong>
+                    Closed:
+                  </strong>{" "}
+                  {item.closed_at ||
+                    "N/A"}
+                </div>
+              </div>
+
+              {item.signed_by ? (
                 <div
                   style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-                    gap: "8px",
-                    marginTop: "14px",
-                    fontSize: "14px",
+                    marginTop:
+                      "14px",
+                    padding: "12px",
+                    background:
+                      "#f9fafb",
+                    borderRadius:
+                      "10px",
+                    fontSize:
+                      "14px",
                   }}
                 >
-                  <div><strong>Owner:</strong> {item.owner || "Not assigned"}</div>
-                  <div><strong>Due Date:</strong> {item.due_date || "Not set"}</div>
-                  <div><strong>Linked NCMR:</strong> {item.linked_ncmr_title || "None"}</div>
-                  <div><strong>Supplier:</strong> {item.supplier_name || "N/A"}</div>
-                  <div><strong>Effectiveness:</strong> {item.effectiveness_check ? "Completed" : "Not done"}</div>
-                  <div><strong>Closed At:</strong> {item.closed_at || "N/A"}</div>
-                </div>
+                  <strong>
+                    Electronic Signature
+                  </strong>
 
-                {item.signed_by ? (
                   <div
                     style={{
-                      marginTop: "12px",
-                      padding: "10px",
-                      background: "#f9fafb",
-                      borderRadius: "8px",
-                      fontSize: "14px",
+                      marginTop:
+                        "6px",
                     }}
                   >
-                    <strong>Electronic Signature:</strong><br />
-                    Signed by: {item.signed_by}<br />
-                    Signed at: {item.signed_at}<br />
-                    Meaning: {item.signature_meaning}
+                    Signed by:{" "}
+                    {
+                      item.signed_by
+                    }
                   </div>
-                ) : null}
 
-                <div style={{ marginTop: "14px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                  <a
-                    href={`/capa/${item.id}`}
-                    style={{
-                      display: "inline-block",
-                      background: "#2563eb",
-                      color: "white",
-                      padding: "8px 12px",
-                      borderRadius: "8px",
-                      textDecoration: "none",
-                    }}
-                  >
-                    Open Workflow
-                  </a>
-
-                  <a
-                    href={`/capa/${item.id}/report`}
-                    target="_blank"
-                    rel="noreferrer"
-                    style={{
-                      display: "inline-block",
-                      background:
-                        item.status === "closed"
-                          ? "#16a34a"
-                          : item.status === "draft"
-                          ? "#6b7280"
-                          : "#3b82f6",
-                      color: "white",
-                      padding: "8px 12px",
-                      borderRadius: "8px",
-                      textDecoration: "none",
-                    }}
-                  >
-                    CAPA Report
-                  </a>
-
-                  <button onClick={() => updateStatus(item, "in_progress")}>
-                    In Progress
-                  </button>
-
-                  <button onClick={() => updateStatus(item, "effectiveness_check")}>
-                    Effectiveness
-                  </button>
-
-                  <button onClick={() => updateStatus(item, "closed")}>
-                    Close with E-Signature
-                  </button>
+                  <div>
+                    Signed at:{" "}
+                    {
+                      item.signed_at
+                    }
+                  </div>
                 </div>
-              </article>
-            );
-          })}
-        </div>
-      )}
-      <br />
-      <a href="/dashboard">Back to Dashboard</a>
+              ) : null}
+
+              <div
+                style={{
+                  marginTop:
+                    "16px",
+                  display: "flex",
+                  gap: "8px",
+                  flexWrap: "wrap",
+                }}
+              >
+                <a
+                  href={`/capa/${item.id}`}
+                  style={
+                    primaryLinkStyle
+                  }
+                >
+                  Open Workflow
+                </a>
+
+                <a
+                  href={`/capa/${item.id}/report`}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={
+                    secondaryLinkStyle
+                  }
+                >
+                  CAPA Report
+                </a>
+
+                <button
+                  onClick={() =>
+                    updateStatus(
+                      item,
+                      "in_progress"
+                    )
+                  }
+                >
+                  In Progress
+                </button>
+
+                <button
+                  onClick={() =>
+                    updateStatus(
+                      item,
+                      "effectiveness_check"
+                    )
+                  }
+                >
+                  Effectiveness
+                </button>
+
+                <button
+                  onClick={() =>
+                    updateStatus(
+                      item,
+                      "closed"
+                    )
+                  }
+                >
+                  Close
+                </button>
+              </div>
+            </article>
+          );
+        })}
+      </section>
     </main>
   );
 }
+
+function SummaryCard({
+  label,
+  value,
+  color,
+}: {
+  label: string;
+  value:
+    | string
+    | number;
+  color: string;
+}) {
+  return (
+    <div
+      style={{
+        border:
+          "1px solid #d1d5db",
+        borderRadius: "12px",
+        padding: "16px",
+        background: "white",
+        borderLeft: `6px solid ${color}`,
+      }}
+    >
+      <div
+        style={{
+          fontSize: "13px",
+          color: "#6b7280",
+          marginBottom: "6px",
+        }}
+      >
+        {label}
+      </div>
+
+      <div
+        style={{
+          fontSize: "28px",
+          fontWeight: 800,
+          color,
+        }}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function Badge({
+  label,
+  color,
+}: {
+  label: string;
+  color: string;
+}) {
+  return (
+    <span
+      style={{
+        background: color,
+        color: "white",
+        padding: "5px 10px",
+        borderRadius: "999px",
+        fontSize: "12px",
+        fontWeight: 700,
+      }}
+    >
+      {label}
+    </span>
+  );
+}
+
+function calculateRisk(
+  item: Capa
+) {
+  if (
+    item.severity ===
+    "critical"
+  )
+    return "Critical";
+
+  if (
+    item.severity === "high"
+  )
+    return "High";
+
+  if (
+    (item.recurrence_count ||
+      0) >= 2
+  )
+    return "High";
+
+  if (
+    item.effectiveness_result ===
+    "ineffective"
+  )
+    return "High";
+
+  return "Medium";
+}
+
+function getRiskColor(
+  risk: string
+) {
+  if (risk === "Critical")
+    return "#991b1b";
+
+  if (risk === "High")
+    return "#dc2626";
+
+  return "#d97706";
+}
+
+function getEffectivenessStatus(
+  item: Capa
+) {
+  if (
+    item.effectiveness_result ===
+    "effective"
+  )
+    return "Effective";
+
+  if (
+    item.effectiveness_result ===
+    "ineffective"
+  )
+    return "Ineffective";
+
+  if (
+    item.status ===
+    "effectiveness_check"
+  )
+    return "Pending Review";
+
+  return "Not Completed";
+}
+
+function getPredictiveEscalation(
+  item: Capa
+) {
+  if (
+    item.status === "closed"
+  )
+    return null;
+
+  if (
+    item.due_date &&
+    item.due_date <
+      new Date(
+        Date.now() +
+          1000 *
+            60 *
+            60 *
+            24 *
+            7
+      )
+        .toISOString()
+        .split("T")[0]
+  ) {
+    return "Likely Overdue";
+  }
+
+  if (
+    item.effectiveness_result ===
+    "ineffective"
+  ) {
+    return "Likely Recurrence";
+  }
+
+  return null;
+}
+
+function getCapaHealth({
+  overdue,
+  recurring,
+  ineffective,
+  critical,
+}: {
+  overdue: number;
+  recurring: number;
+  ineffective: number;
+  critical: number;
+}) {
+  const score =
+    overdue +
+    recurring +
+    ineffective +
+    critical;
+
+  if (score <= 3) {
+    return {
+      label: "Controlled",
+      color: "#15803d",
+    };
+  }
+
+  if (score <= 7) {
+    return {
+      label: "Monitor",
+      color: "#d97706",
+    };
+  }
+
+  if (score <= 12) {
+    return {
+      label: "Elevated",
+      color: "#dc2626",
+    };
+  }
+
+  return {
+    label: "Critical",
+    color: "#991b1b",
+  };
+}
+
+function getTrendStatus(
+  overdue: number,
+  recurring: number
+) {
+  const total =
+    overdue + recurring;
+
+  if (total <= 3)
+    return "Improving";
+
+  if (total <= 7)
+    return "Stable";
+
+  return "Worsening";
+}
+
+const headerStyle: React.CSSProperties =
+  {
+    display: "flex",
+    justifyContent:
+      "space-between",
+    gap: "12px",
+    flexWrap: "wrap",
+    alignItems:
+      "flex-start",
+    marginBottom: "20px",
+  };
+
+const eyebrowStyle: React.CSSProperties =
+  {
+    fontSize: "12px",
+    letterSpacing:
+      "0.08em",
+    color: "#6b7280",
+    fontWeight: 800,
+  };
+
+const healthBannerStyle: React.CSSProperties =
+  {
+    background: "white",
+    border:
+      "1px solid #d1d5db",
+    borderRadius: "16px",
+    padding: "22px",
+    display: "flex",
+    justifyContent:
+      "space-between",
+    alignItems: "center",
+    marginBottom: "20px",
+  };
+
+const summaryGridStyle: React.CSSProperties =
+  {
+    display: "grid",
+    gridTemplateColumns:
+      "repeat(auto-fit, minmax(180px, 1fr))",
+    gap: "14px",
+    marginBottom: "20px",
+  };
+
+const sectionStyle: React.CSSProperties =
+  {
+    border:
+      "1px solid #d1d5db",
+    borderRadius: "14px",
+    padding: "18px",
+    marginBottom: "20px",
+    background: "white",
+  };
+
+const formGridStyle: React.CSSProperties =
+  {
+    display: "grid",
+    gridTemplateColumns:
+      "repeat(auto-fit, minmax(220px, 1fr))",
+    gap: "14px",
+    marginBottom: "14px",
+  };
+
+const filterGridStyle: React.CSSProperties =
+  {
+    display: "grid",
+    gridTemplateColumns:
+      "repeat(auto-fit, minmax(220px, 1fr))",
+    gap: "12px",
+  };
+
+const inputStyle: React.CSSProperties =
+  {
+    width: "100%",
+    padding: "10px",
+    borderRadius: "8px",
+    border:
+      "1px solid #d1d5db",
+    marginTop: "6px",
+  };
+
+const primaryButtonStyle: React.CSSProperties =
+  {
+    background: "#2563eb",
+    color: "white",
+    border: "none",
+    borderRadius: "8px",
+    padding: "10px 14px",
+    cursor: "pointer",
+    fontWeight: 700,
+  };
+
+const primaryLinkStyle: React.CSSProperties =
+  {
+    display: "inline-block",
+    background: "#2563eb",
+    color: "white",
+    padding: "8px 12px",
+    borderRadius: "8px",
+    textDecoration: "none",
+  };
+
+const secondaryLinkStyle: React.CSSProperties =
+  {
+    display: "inline-block",
+    background: "#15803d",
+    color: "white",
+    padding: "8px 12px",
+    borderRadius: "8px",
+    textDecoration: "none",
+  };
+
+const backButtonStyle: React.CSSProperties =
+  {
+    background: "#111827",
+    color: "white",
+    padding: "10px 14px",
+    borderRadius: "8px",
+    textDecoration: "none",
+    fontWeight: 700,
+  };
