@@ -240,6 +240,304 @@ export default function GlobalReceivingInspectionsPage() {
     fetchData();
   };
 
+  const printInspectionRecord = (inspection: any) => {
+    const supplier = supplierMap[inspection.supplier_id];
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Receiving Inspection Record</title>
+          <style>
+            body {
+              font-family: Arial, sans-serif;
+              margin: 32px;
+              color: #111827;
+            }
+
+            .header {
+              border-bottom: 3px solid #111827;
+              padding-bottom: 16px;
+              margin-bottom: 24px;
+            }
+
+            .eyebrow {
+              font-size: 12px;
+              letter-spacing: 0.08em;
+              color: #6b7280;
+              font-weight: 700;
+              margin-bottom: 6px;
+            }
+
+            h1 {
+              margin: 0;
+              font-size: 28px;
+            }
+
+            h2 {
+              font-size: 18px;
+              border-bottom: 1px solid #d1d5db;
+              padding-bottom: 6px;
+              margin-top: 26px;
+            }
+
+            .meta {
+              color: #4b5563;
+              margin-top: 6px;
+              font-size: 13px;
+            }
+
+            .grid {
+              display: grid;
+              grid-template-columns: repeat(2, minmax(0, 1fr));
+              gap: 12px;
+              margin-top: 12px;
+            }
+
+            .field {
+              border: 1px solid #d1d5db;
+              border-radius: 8px;
+              padding: 10px;
+              min-height: 48px;
+            }
+
+            .label {
+              font-size: 11px;
+              color: #6b7280;
+              font-weight: 700;
+              text-transform: uppercase;
+              margin-bottom: 4px;
+            }
+
+            .value {
+              font-size: 14px;
+              color: #111827;
+              white-space: pre-wrap;
+              word-break: break-word;
+            }
+
+            .full {
+              grid-column: 1 / -1;
+            }
+
+            .approval {
+              border: 2px solid #111827;
+              border-radius: 10px;
+              padding: 14px;
+              margin-top: 12px;
+            }
+
+            .footer {
+              margin-top: 36px;
+              border-top: 1px solid #d1d5db;
+              padding-top: 10px;
+              color: #6b7280;
+              font-size: 11px;
+            }
+
+            @media print {
+              button {
+                display: none;
+              }
+
+              body {
+                margin: 24px;
+              }
+            }
+          </style>
+        </head>
+
+        <body>
+          <div class="header">
+            <div class="eyebrow">QUALIFLOW QUALITY RECORD</div>
+            <h1>Receiving Inspection Record</h1>
+            <div class="meta">
+              Generated: ${escapeHtml(new Date().toLocaleString())}
+            </div>
+          </div>
+
+          <h2>Supplier Information</h2>
+          <div class="grid">
+            <div class="field">
+              <div class="label">Supplier Name</div>
+              <div class="value">${escapeHtml(supplier?.supplier_name || "N/A")}</div>
+            </div>
+
+            <div class="field">
+              <div class="label">Supplier Number</div>
+              <div class="value">${escapeHtml(supplier?.supplier_number || "N/A")}</div>
+            </div>
+
+            <div class="field">
+              <div class="label">Supplier Status</div>
+              <div class="value">${escapeHtml(supplier?.supplier_status || "N/A")}</div>
+            </div>
+
+            <div class="field">
+              <div class="label">Supplier Risk Level</div>
+              <div class="value">${escapeHtml(supplier?.supplier_risk_level || "N/A")}</div>
+            </div>
+          </div>
+
+          <h2>Inspection Details</h2>
+          <div class="grid">
+            <div class="field">
+              <div class="label">Part Number</div>
+              <div class="value">${escapeHtml(inspection.part_number || "N/A")}</div>
+            </div>
+
+            <div class="field">
+              <div class="label">Lot Number</div>
+              <div class="value">${escapeHtml(inspection.lot_number || "N/A")}</div>
+            </div>
+
+            <div class="field">
+              <div class="label">Receipt Date</div>
+              <div class="value">${escapeHtml(inspection.receipt_date || "N/A")}</div>
+            </div>
+
+            <div class="field">
+              <div class="label">Inspection Result</div>
+              <div class="value">${escapeHtml(inspection.inspection_result || "pending")}</div>
+            </div>
+
+            <div class="field">
+              <div class="label">Quantity Received</div>
+              <div class="value">${escapeHtml(String(inspection.quantity_received ?? "N/A"))}</div>
+            </div>
+
+            <div class="field">
+              <div class="label">Quantity Accepted</div>
+              <div class="value">${escapeHtml(String(inspection.quantity_accepted ?? "N/A"))}</div>
+            </div>
+
+            <div class="field">
+              <div class="label">Quantity Rejected</div>
+              <div class="value">${escapeHtml(String(inspection.quantity_rejected ?? "N/A"))}</div>
+            </div>
+
+            <div class="field">
+              <div class="label">Inspection ID</div>
+              <div class="value">${escapeHtml(inspection.id || "N/A")}</div>
+            </div>
+          </div>
+
+          <h2>Linked Quality Records</h2>
+          <div class="grid">
+            <div class="field">
+              <div class="label">NCMR Required</div>
+              <div class="value">${inspectionRequiresNcmr(inspection) ? "Yes" : "No"}</div>
+            </div>
+
+            <div class="field">
+              <div class="label">Linked NCMR ID</div>
+              <div class="value">${escapeHtml(inspection.linked_ncmr_id || "N/A")}</div>
+            </div>
+
+            <div class="field">
+              <div class="label">NCMR Created</div>
+              <div class="value">${inspection.ncmr_created ? "Yes" : "No"}</div>
+            </div>
+
+            <div class="field">
+              <div class="label">Source Module</div>
+              <div class="value">Receiving Inspection</div>
+            </div>
+          </div>
+
+          <h2>Approval / Electronic Signature</h2>
+          <div class="approval">
+            <div class="grid">
+              <div class="field">
+                <div class="label">Approval Status</div>
+                <div class="value">${escapeHtml(inspection.approval_status || "pending_approval")}</div>
+              </div>
+
+              <div class="field">
+                <div class="label">Record Locked</div>
+                <div class="value">${inspection.is_locked ? "Yes" : "No"}</div>
+              </div>
+
+              <div class="field">
+                <div class="label">Approved By</div>
+                <div class="value">${escapeHtml(inspection.approved_by || "N/A")}</div>
+              </div>
+
+              <div class="field">
+                <div class="label">Approved At</div>
+                <div class="value">${escapeHtml(inspection.approved_at || "N/A")}</div>
+              </div>
+
+              <div class="field">
+                <div class="label">Locked By</div>
+                <div class="value">${escapeHtml(inspection.locked_by || "N/A")}</div>
+              </div>
+
+              <div class="field">
+                <div class="label">Locked At</div>
+                <div class="value">${escapeHtml(inspection.locked_at || "N/A")}</div>
+              </div>
+
+              <div class="field full">
+                <div class="label">Signature Meaning</div>
+                <div class="value">${escapeHtml(inspection.approval_signature_meaning || "N/A")}</div>
+              </div>
+
+              <div class="field full">
+                <div class="label">Approval Notes</div>
+                <div class="value">${escapeHtml(inspection.approval_notes || "N/A")}</div>
+              </div>
+            </div>
+          </div>
+
+          <h2>Record Metadata</h2>
+          <div class="grid">
+            <div class="field">
+              <div class="label">Created By</div>
+              <div class="value">${escapeHtml(inspection.created_by || "N/A")}</div>
+            </div>
+
+            <div class="field">
+              <div class="label">Created At</div>
+              <div class="value">${escapeHtml(inspection.created_at || "N/A")}</div>
+            </div>
+
+            <div class="field">
+              <div class="label">Updated At</div>
+              <div class="value">${escapeHtml(inspection.updated_at || "N/A")}</div>
+            </div>
+
+            <div class="field">
+              <div class="label">Generated From</div>
+              <div class="value">QualiFlow Receiving Inspection Module</div>
+            </div>
+          </div>
+
+          <div class="footer">
+            Confidential quality system record. Printed for audit review, inspection verification, and controlled record evidence.
+          </div>
+
+          <script>
+            window.onload = function() {
+              window.print();
+            };
+          </script>
+        </body>
+      </html>
+    `;
+
+    const printWindow = window.open("", "_blank", "width=1000,height=800");
+
+    if (!printWindow) {
+      alert("Unable to open print window. Please allow pop-ups and try again.");
+      return;
+    }
+
+    printWindow.document.open();
+    printWindow.document.write(html);
+    printWindow.document.close();
+  };
+
   const createLinkedNcmr = async (inspection: any) => {
     if (inspection.is_locked) {
       alert("This inspection is locked and cannot be changed.");
@@ -763,6 +1061,13 @@ export default function GlobalReceivingInspectionsPage() {
                             </button>
                           ) : null}
 
+                          <button
+                            type="button"
+                            onClick={() => printInspectionRecord(inspection)}
+                          >
+                            Print Record
+                          </button>
+
                           {!isApproved ? (
                             <button
                               type="button"
@@ -792,6 +1097,15 @@ export default function GlobalReceivingInspectionsPage() {
       </section>
     </main>
   );
+}
+
+function escapeHtml(value: string) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 }
 
 function KpiCard({
