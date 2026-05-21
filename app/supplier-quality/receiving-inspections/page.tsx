@@ -1019,6 +1019,10 @@ export default function GlobalReceivingInspectionsPage() {
                             Approved by {inspection.approved_by || "N/A"}
                             <br />
                             {inspection.approved_at || "N/A"}
+                            <br />
+                            <span style={{ color: "#15803d", fontWeight: 700 }}>
+                              Editing disabled after lock
+                            </span>
                           </div>
                         ) : (
                           <textarea
@@ -1044,7 +1048,11 @@ export default function GlobalReceivingInspectionsPage() {
 
                       <td style={tdStyle}>
                         <div style={{ display: "grid", gap: "6px" }}>
-                          {inspection.supplier_id ? (
+                          {inspection.is_locked ? (
+                            <span style={{ color: "#15803d", fontWeight: 700 }}>
+                              Locked Record
+                            </span>
+                          ) : inspection.supplier_id ? (
                             <Link
                               href={`/suppliers/${inspection.supplier_id}/receiving-inspections/${inspection.id}`}
                             >
@@ -1065,7 +1073,7 @@ export default function GlobalReceivingInspectionsPage() {
                             type="button"
                             onClick={() => printInspectionRecord(inspection)}
                           >
-                            Print Record
+                            {inspection.is_locked ? "Print Locked Record" : "Print Record"}
                           </button>
 
                           {!isApproved ? (
