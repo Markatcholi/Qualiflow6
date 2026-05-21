@@ -30,7 +30,11 @@ export default function GlobalReceivingInspectionsPage() {
 
   const [supplierId, setSupplierId] = useState("");
   const [partNumber, setPartNumber] = useState("");
+  const [partRevision, setPartRevision] = useState("");
+  const [partDescription, setPartDescription] = useState("");
   const [lotNumber, setLotNumber] = useState("");
+  const [receivingInspectionProcedure, setReceivingInspectionProcedure] = useState("");
+  const [receivingInspectionProcedureRevision, setReceivingInspectionProcedureRevision] = useState("");
   const [receiptDate, setReceiptDate] = useState("");
   const [quantityReceived, setQuantityReceived] = useState("");
 
@@ -52,7 +56,11 @@ export default function GlobalReceivingInspectionsPage() {
       supplier?.supplier_name,
       supplier?.supplier_number,
       inspection.part_number,
+      inspection.part_revision,
+      inspection.part_description,
       inspection.lot_number,
+      inspection.receiving_inspection_procedure,
+      inspection.receiving_inspection_procedure_revision,
       inspection.inspection_result,
       inspection.approval_status,
       inspection.receipt_date,
@@ -114,7 +122,11 @@ export default function GlobalReceivingInspectionsPage() {
   const resetInspectionForm = () => {
     setSupplierId("");
     setPartNumber("");
+    setPartRevision("");
+    setPartDescription("");
     setLotNumber("");
+    setReceivingInspectionProcedure("");
+    setReceivingInspectionProcedureRevision("");
     setReceiptDate("");
     setQuantityReceived("");
   };
@@ -139,7 +151,11 @@ export default function GlobalReceivingInspectionsPage() {
       .insert({
         supplier_id: supplierId,
         part_number: partNumber,
+        part_revision: partRevision || null,
+        part_description: partDescription || null,
         lot_number: lotNumber,
+        receiving_inspection_procedure: receivingInspectionProcedure || null,
+        receiving_inspection_procedure_revision: receivingInspectionProcedureRevision || null,
         receipt_date: receiptDate || null,
         quantity_received: quantityReceived ? Number(quantityReceived) : null,
         inspection_result: "pending",
@@ -387,8 +403,28 @@ export default function GlobalReceivingInspectionsPage() {
             </div>
 
             <div class="field">
+              <div class="label">Part Revision</div>
+              <div class="value">${escapeHtml(inspection.part_revision || "N/A")}</div>
+            </div>
+
+            <div class="field full">
+              <div class="label">Part Description</div>
+              <div class="value">${escapeHtml(inspection.part_description || "N/A")}</div>
+            </div>
+
+            <div class="field">
               <div class="label">Lot Number</div>
               <div class="value">${escapeHtml(inspection.lot_number || "N/A")}</div>
+            </div>
+
+            <div class="field">
+              <div class="label">Receiving Inspection Procedure</div>
+              <div class="value">${escapeHtml(inspection.receiving_inspection_procedure || "N/A")}</div>
+            </div>
+
+            <div class="field">
+              <div class="label">Procedure Revision</div>
+              <div class="value">${escapeHtml(inspection.receiving_inspection_procedure_revision || "N/A")}</div>
             </div>
 
             <div class="field">
@@ -1245,7 +1281,7 @@ const searchSummaryStyle: React.CSSProperties = {
 const tableStyle: React.CSSProperties = {
   width: "100%",
   borderCollapse: "collapse",
-  minWidth: "1350px",
+  minWidth: "1650px",
 };
 
 const thStyle: React.CSSProperties = {
