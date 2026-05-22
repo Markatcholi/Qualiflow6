@@ -1,16 +1,51 @@
-“use client”;
-import Link from “next/link”; import { useEffect, useMemo, useState } from “react”; import { useParams } from “next/navigation”; import { supabase } from “../../../lib/supabaseClient”;
-export default function EnterpriseCapaWorkflow() { const params = useParams<{ id: string }>(); const id = params.id;
-const [record, setRecord] = useState(null); const [loading, setLoading] = useState(true);
-const [userEmail, setUserEmail] = useState(““); const [userRole, setUserRole] = useState(”“);
-const [activeSection, setActiveSection] = useState(“intake”);
-// ========================= // EXECUTIVE WORKFLOW STATE // =========================
-const isLocked = record?.status === “closed” || record?.is_locked === true;
-const investigationApproved = record?.investigation_approval_status === “approved”;
-const closureApproved = record?.closure_approval_status === “approved”;
-const implementationLocked = !investigationApproved || isLocked;
-// ========================= // FETCH USER ROLE // =========================
-const fetchUserRole = async () => { const { data: userData } = await supabase.auth.getUser();
+// app/capa/[id]/page.tsx
+// ENTERPRISE CAPA WORKFLOW — FULL REPLACEMENT ARCHITECTURE V3
+// Guided execution workspace with phase-gate approvals
+
+"use client";
+
+import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
+import { useParams } from "next/navigation";
+import { supabase } from "../../../lib/supabaseClient";
+
+export default function EnterpriseCapaWorkflow() {
+const params = useParams<{ id: string }>();
+const id = params.id;
+
+const [record, setRecord] = useState<any>(null);
+const [loading, setLoading] = useState(true);
+
+const [userEmail, setUserEmail] = useState("");
+const [userRole, setUserRole] = useState("");
+
+const [activeSection, setActiveSection] = useState("intake");
+
+// =========================
+// EXECUTIVE WORKFLOW STATE
+// =========================
+
+const isLocked =
+record?.status === "closed" ||
+record?.is_locked === true;
+
+const investigationApproved =
+record?.investigation_approval_status === "approved";
+
+const closureApproved =
+record?.closure_approval_status === "approved";
+
+const implementationLocked =
+!investigationApproved || isLocked;
+
+// =========================
+// FETCH USER ROLE
+// =========================
+
+const fetchUserRole = async () => {
+const { data: userData } = await supabase.auth.getUser();
+
+```
 const email = userData?.user?.email || "";
 
 setUserEmail(email);
@@ -24,9 +59,18 @@ const { data } = await supabase
   .maybeSingle();
 
 setUserRole(data?.role || "");
+```
+
 };
-// ========================= // FETCH RECORD // =========================
-const fetchRecord = async () => { setLoading(true);
+
+// =========================
+// FETCH RECORD
+// =========================
+
+const fetchRecord = async () => {
+setLoading(true);
+
+```
 const { data, error } = await supabase
   .from("capas")
   .select("*")
@@ -41,10 +85,31 @@ if (error) {
 
 setRecord(data || null);
 setLoading(false);
+```
+
 };
-useEffect(() => { if (id) { fetchUserRole(); fetchRecord(); } }, [id]);
-// ========================= // SAVE FIELD // =========================
-const saveField = async ( field: string, value: any ) => { if (isLocked) { alert(“This CAPA record is locked.”); return; }
+
+useEffect(() => {
+if (id) {
+fetchUserRole();
+fetchRecord();
+}
+}, [id]);
+
+// =========================
+// SAVE FIELD
+// =========================
+
+const saveField = async (
+field: string,
+value: any
+) => {
+if (isLocked) {
+alert("This CAPA record is locked.");
+return;
+}
+
+```
 const { error } = await supabase
   .from("capas")
   .update({
@@ -61,9 +126,18 @@ setRecord((prev: any) => ({
   ...prev,
   [field]: value,
 }));
+```
+
 };
-// ========================= // APPROVALS // =========================
-const submitInvestigationApproval = async () => { if (isLocked) return;
+
+// =========================
+// APPROVALS
+// =========================
+
+const submitInvestigationApproval = async () => {
+if (isLocked) return;
+
+```
 const now = new Date().toISOString();
 
 const { error } = await supabase
@@ -86,8 +160,22 @@ if (error) {
 }
 
 fetchRecord();
+```
+
 };
-const approveInvestigation = async () => { if ( userRole !== “approver” && userRole !== “vp_quality” ) { alert( “Only approvers can approve investigation.” ); return; }
+
+const approveInvestigation = async () => {
+if (
+userRole !== "approver" &&
+userRole !== "vp_quality"
+) {
+alert(
+"Only approvers can approve investigation."
+);
+return;
+}
+
+```
 const now = new Date().toISOString();
 
 const { error } = await supabase
@@ -109,8 +197,14 @@ if (error) {
 }
 
 fetchRecord();
+```
+
 };
-const submitClosureApproval = async () => { if (isLocked) return;
+
+const submitClosureApproval = async () => {
+if (isLocked) return;
+
+```
 const now = new Date().toISOString();
 
 const { error } = await supabase
@@ -133,8 +227,22 @@ if (error) {
 }
 
 fetchRecord();
+```
+
 };
-const approveClosure = async () => { if ( userRole !== “approver” && userRole !== “vp_quality” ) { alert( “Only approvers can approve closure.” ); return; }
+
+const approveClosure = async () => {
+if (
+userRole !== "approver" &&
+userRole !== "vp_quality"
+) {
+alert(
+"Only approvers can approve closure."
+);
+return;
+}
+
+```
 const confirmed = window.confirm(
   "Approve and electronically sign CAPA closure?"
 );
@@ -175,19 +283,110 @@ if (error) {
 }
 
 fetchRecord();
+```
+
 };
-// ========================= // WORKFLOW STAGES // =========================
-const workflowStages = useMemo( () => [ { key: “intake”, label: “Intake”, completed: !!record?.problem_description, }, { key: “investigation”, label: “Investigation”, completed: !!record?.investigation_summary, }, { key: “rootcause”, label: “Root Cause”, completed: !!record?.root_cause, }, { key: “investigationapproval”, label: “Investigation Approval”, completed: investigationApproved, }, { key: “containment”, label: “Containment”, completed: !!record?.containment_correction, locked: implementationLocked, }, { key: “correctiveaction”, label: “Corrective Action”, completed: !!record?.corrective_action_plan, locked: implementationLocked, }, { key: “implementation”, label: “Implementation”, completed: !!record?.implementation_details, locked: implementationLocked, }, { key: “effectiveness”, label: “Effectiveness”, completed: !!record?.effectiveness_rating, locked: implementationLocked, }, { key: “closureapproval”, label: “Closure Approval”, completed: closureApproved, }, ], [ record, investigationApproved, closureApproved, implementationLocked, ] );
-if (loading) { return (
-Loading CAPA workflow…
+
+// =========================
+// WORKFLOW STAGES
+// =========================
+
+const workflowStages = useMemo(
+() => [
+{
+key: "intake",
+label: "Intake",
+completed:
+!!record?.problem_description,
+},
+{
+key: "investigation",
+label: "Investigation",
+completed:
+!!record?.investigation_summary,
+},
+{
+key: "rootcause",
+label: "Root Cause",
+completed:
+!!record?.root_cause,
+},
+{
+key: "investigationapproval",
+label:
+"Investigation Approval",
+completed:
+investigationApproved,
+},
+{
+key: "containment",
+label: "Containment",
+completed:
+!!record?.containment_correction,
+locked:
+implementationLocked,
+},
+{
+key: "correctiveaction",
+label:
+"Corrective Action",
+completed:
+!!record?.corrective_action_plan,
+locked:
+implementationLocked,
+},
+{
+key: "implementation",
+label: "Implementation",
+completed:
+!!record?.implementation_details,
+locked:
+implementationLocked,
+},
+{
+key: "effectiveness",
+label: "Effectiveness",
+completed:
+!!record?.effectiveness_rating,
+locked:
+implementationLocked,
+},
+{
+key: "closureapproval",
+label:
+"Closure Approval",
+completed:
+closureApproved,
+},
+],
+[
+record,
+investigationApproved,
+closureApproved,
+implementationLocked,
+]
+);
+
+if (loading) {
+return ( <main style={loadingStyle}>
+Loading CAPA workflow... </main>
 );
 }
-if (!record) { return (
-CAPA not found.
+
+if (!record) {
+return ( <main style={loadingStyle}>
+CAPA not found. </main>
 );
 }
-return (
-{/* ========================= /} {/ EXECUTIVE HEADER /} {/ ========================= */}
+
+return ( <main style={pageStyle}>
+{/* ========================= */}
+{/* EXECUTIVE HEADER */}
+{/* ========================= */}
+
+```
+  <section style={headerCardStyle}>
+    <div>
       <div style={eyebrowStyle}>
         ENTERPRISE CAPA EXECUTION
         WORKSPACE
@@ -903,10 +1102,35 @@ return (
     </aside>
   </div>
 </main>
-); }
-// ========================= // COMPONENTS // =========================
-function WorkflowCard({ title, subtitle, children, locked, }: any) { return ( <section style={{ …workflowCardStyle, opacity: locked ? 0.75 : 1, borderLeft: 8px solid ${           locked             ? "#9ca3af"             : "#2563eb"         }, }} >
-{title}
+```
+
+);
+}
+
+// =========================
+// COMPONENTS
+// =========================
+
+function WorkflowCard({
+title,
+subtitle,
+children,
+locked,
+}: any) {
+return (
+<section
+style={{
+...workflowCardStyle,
+opacity: locked ? 0.75 : 1,
+borderLeft: `8px solid ${
+          locked
+            ? "#9ca3af"
+            : "#2563eb"
+        }`,
+}}
+> <h2>{title}</h2>
+
+```
   <p style={subtleText}>
     {subtitle}
   </p>
@@ -921,9 +1145,26 @@ function WorkflowCard({ title, subtitle, children, locked, }: any) { return ( <s
 
   {children}
 </section>
-); }
-function ApprovalCard({ title, status, children, }: any) { return ( <section style={{ …workflowCardStyle, borderLeft: “8px solid #15803d”, }} >
-{title}
+```
+
+);
+}
+
+function ApprovalCard({
+title,
+status,
+children,
+}: any) {
+return (
+<section
+style={{
+...workflowCardStyle,
+borderLeft:
+"8px solid #15803d",
+}}
+> <h2>{title}</h2>
+
+```
   <div style={{ marginBottom: 16 }}>
     <strong>Status:</strong>{" "}
     {status || "Not Submitted"}
@@ -931,63 +1172,293 @@ function ApprovalCard({ title, status, children, }: any) { return ( <section sty
 
   {children}
 </section>
-); }
-function SummaryCard({ label, value, }: any) { return (
-  <div style={summaryLabelStyle}>
-    {label}
-  </div>
+```
 
+);
+}
+
+function SummaryCard({
+label,
+value,
+}: any) {
+return ( <div style={summaryCardStyle}> <div style={summaryLabelStyle}>
+{label} </div>
+
+```
   <div style={summaryValueStyle}>
     {value || "N/A"}
   </div>
 </div>
-); }
-function SidebarCard({ title, children, }: any) { return (
-  <h3>{title}</h3>
-  {children}
-</div>
-); }
-function SidebarItem({ label, value, }: any) { return (
-  <strong>{label}</strong>
-  <div>{value}</div>
-</div>
-); }
-function Field({ label, children, }: any) { return ( <div style={{ marginBottom: 18 }}>  {label} 
+```
+
+);
+}
+
+function SidebarCard({
+title,
+children,
+}: any) {
+return ( <div style={sidebarCardStyle}> <h3>{title}</h3>
+{children} </div>
+);
+}
+
+function SidebarItem({
+label,
+value,
+}: any) {
+return ( <div style={sidebarItemStyle}> <strong>{label}</strong> <div>{value}</div> </div>
+);
+}
+
+function Field({
+label,
+children,
+}: any) {
+return (
+<div style={{ marginBottom: 18 }}> <label style={fieldLabelStyle}>
+{label} </label>
+
+```
   <div style={{ marginTop: 6 }}>
     {children}
   </div>
 </div>
-); }
-function FormGrid({ children }: any) { return (
-  {children}
-</div>
-); }
-// ========================= // STYLES // =========================
-const pageStyle: React.CSSProperties = { padding: “24px”, background: “#f8fafc”, minHeight: “100vh”, fontFamily: “Arial, sans-serif”, };
-const workspaceStyle: React.CSSProperties = { display: “grid”, gridTemplateColumns: “260px minmax(0, 1fr) 280px”, gap: “20px”, alignItems: “start”, };
-const railStyle: React.CSSProperties = { position: “sticky”, top: “16px”, };
-const railItemStyle: React.CSSProperties = { width: “100%”, textAlign: “left”, padding: “12px”, marginBottom: “10px”, border: “1px solid #d1d5db”, borderRadius: “12px”, background: “white”, cursor: “pointer”, };
-const sidebarStyle: React.CSSProperties = { position: “sticky”, top: “16px”, };
-const sidebarCardStyle: React.CSSProperties = { border: “1px solid #d1d5db”, borderRadius: “14px”, background: “white”, padding: “16px”, marginBottom: “16px”, };
-const sidebarItemStyle: React.CSSProperties = { marginBottom: “12px”, };
-const headerCardStyle: React.CSSProperties = { border: “1px solid #d1d5db”, borderRadius: “16px”, background: “white”, padding: “22px”, display: “flex”, justifyContent: “space-between”, alignItems: “center”, gap: “12px”, flexWrap: “wrap”, marginBottom: “20px”, };
-const workflowCardStyle: React.CSSProperties = { border: “1px solid #d1d5db”, borderRadius: “16px”, background: “white”, padding: “22px”, marginBottom: “20px”, };
-const summaryGridStyle: React.CSSProperties = { display: “grid”, gridTemplateColumns: “repeat(auto-fit, minmax(180px, 1fr))”, gap: “14px”, marginBottom: “20px”, };
-const summaryCardStyle: React.CSSProperties = { border: “1px solid #d1d5db”, borderRadius: “12px”, background: “white”, padding: “16px”, };
-const summaryLabelStyle: React.CSSProperties = { fontSize: “12px”, fontWeight: 700, color: “#6b7280”, marginBottom: “6px”, };
-const summaryValueStyle: React.CSSProperties = { fontWeight: 700, };
-const formGridStyle: React.CSSProperties = { display: “grid”, gridTemplateColumns: “repeat(auto-fit, minmax(320px, 1fr))”, gap: “18px”, };
-const textareaStyle = ( locked: boolean ): React.CSSProperties => ({ width: “100%”, minHeight: “120px”, padding: “12px”, borderRadius: “10px”, border: “1px solid #d1d5db”, background: locked ? “#f3f4f6” : “white”, });
-const inputStyle = ( locked: boolean ): React.CSSProperties => ({ width: “100%”, padding: “10px”, borderRadius: “10px”, border: “1px solid #d1d5db”, background: locked ? “#f3f4f6” : “white”, });
-const fieldLabelStyle: React.CSSProperties = { fontWeight: 700, };
-const eyebrowStyle: React.CSSProperties = { fontSize: “12px”, letterSpacing: “0.08em”, color: “#6b7280”, fontWeight: 800, };
-const subtleText: React.CSSProperties = { color: “#6b7280”, };
-const loadingStyle: React.CSSProperties = { padding: “24px”, fontFamily: “Arial”, };
-const buttonRowStyle: React.CSSProperties = { display: “flex”, gap: “10px”, flexWrap: “wrap”, };
-const headerButtonRowStyle: React.CSSProperties = { display: “flex”, gap: “10px”, flexWrap: “wrap”, };
-const primaryButtonStyle: React.CSSProperties = { background: “#2563eb”, color: “white”, border: “none”, borderRadius: “8px”, padding: “10px 14px”, cursor: “pointer”, fontWeight: 700, };
-const secondaryButtonStyle: React.CSSProperties = { background: “#15803d”, color: “white”, border: “none”, borderRadius: “8px”, padding: “10px 14px”, cursor: “pointer”, fontWeight: 700, };
-const darkButtonStyle: React.CSSProperties = { background: “#111827”, color: “white”, borderRadius: “8px”, padding: “10px 14px”, textDecoration: “none”, fontWeight: 700, };
-const buttonStyle = ( disabled: boolean ): React.CSSProperties => ({ background: disabled ? “#9ca3af” : “#2563eb”, color: “white”, border: “none”, borderRadius: “8px”, padding: “10px 14px”, cursor: disabled ? “not-allowed” : “pointer”, fontWeight: 700, });
-const lockedBannerStyle: React.CSSProperties = { background: “#111827”, color: “white”, padding: “14px”, borderRadius: “12px”, fontWeight: 700, marginBottom: “20px”, };
-const lockedNoticeStyle: React.CSSProperties = { padding: “10px”, background: “#fefce8”, border: “1px solid #facc15”, borderRadius: “10px”, marginBottom: “14px”, color: “#92400e”, fontWeight: 700, };
+```
+
+);
+}
+
+function FormGrid({ children }: any) {
+return ( <div style={formGridStyle}>
+{children} </div>
+);
+}
+
+// =========================
+// STYLES
+// =========================
+
+const pageStyle: React.CSSProperties = {
+padding: "24px",
+background: "#f8fafc",
+minHeight: "100vh",
+fontFamily:
+"Arial, sans-serif",
+};
+
+const workspaceStyle: React.CSSProperties = {
+display: "grid",
+gridTemplateColumns:
+"260px minmax(0, 1fr) 280px",
+gap: "20px",
+alignItems: "start",
+};
+
+const railStyle: React.CSSProperties = {
+position: "sticky",
+top: "16px",
+};
+
+const railItemStyle: React.CSSProperties = {
+width: "100%",
+textAlign: "left",
+padding: "12px",
+marginBottom: "10px",
+border: "1px solid #d1d5db",
+borderRadius: "12px",
+background: "white",
+cursor: "pointer",
+};
+
+const sidebarStyle: React.CSSProperties = {
+position: "sticky",
+top: "16px",
+};
+
+const sidebarCardStyle: React.CSSProperties = {
+border: "1px solid #d1d5db",
+borderRadius: "14px",
+background: "white",
+padding: "16px",
+marginBottom: "16px",
+};
+
+const sidebarItemStyle: React.CSSProperties = {
+marginBottom: "12px",
+};
+
+const headerCardStyle: React.CSSProperties = {
+border: "1px solid #d1d5db",
+borderRadius: "16px",
+background: "white",
+padding: "22px",
+display: "flex",
+justifyContent: "space-between",
+alignItems: "center",
+gap: "12px",
+flexWrap: "wrap",
+marginBottom: "20px",
+};
+
+const workflowCardStyle: React.CSSProperties = {
+border: "1px solid #d1d5db",
+borderRadius: "16px",
+background: "white",
+padding: "22px",
+marginBottom: "20px",
+};
+
+const summaryGridStyle: React.CSSProperties = {
+display: "grid",
+gridTemplateColumns:
+"repeat(auto-fit, minmax(180px, 1fr))",
+gap: "14px",
+marginBottom: "20px",
+};
+
+const summaryCardStyle: React.CSSProperties = {
+border: "1px solid #d1d5db",
+borderRadius: "12px",
+background: "white",
+padding: "16px",
+};
+
+const summaryLabelStyle: React.CSSProperties = {
+fontSize: "12px",
+fontWeight: 700,
+color: "#6b7280",
+marginBottom: "6px",
+};
+
+const summaryValueStyle: React.CSSProperties = {
+fontWeight: 700,
+};
+
+const formGridStyle: React.CSSProperties = {
+display: "grid",
+gridTemplateColumns:
+"repeat(auto-fit, minmax(320px, 1fr))",
+gap: "18px",
+};
+
+const textareaStyle = (
+locked: boolean
+): React.CSSProperties => ({
+width: "100%",
+minHeight: "120px",
+padding: "12px",
+borderRadius: "10px",
+border: "1px solid #d1d5db",
+background: locked
+? "#f3f4f6"
+: "white",
+});
+
+const inputStyle = (
+locked: boolean
+): React.CSSProperties => ({
+width: "100%",
+padding: "10px",
+borderRadius: "10px",
+border: "1px solid #d1d5db",
+background: locked
+? "#f3f4f6"
+: "white",
+});
+
+const fieldLabelStyle: React.CSSProperties = {
+fontWeight: 700,
+};
+
+const eyebrowStyle: React.CSSProperties = {
+fontSize: "12px",
+letterSpacing: "0.08em",
+color: "#6b7280",
+fontWeight: 800,
+};
+
+const subtleText: React.CSSProperties = {
+color: "#6b7280",
+};
+
+const loadingStyle: React.CSSProperties = {
+padding: "24px",
+fontFamily: "Arial",
+};
+
+const buttonRowStyle: React.CSSProperties = {
+display: "flex",
+gap: "10px",
+flexWrap: "wrap",
+};
+
+const headerButtonRowStyle: React.CSSProperties = {
+display: "flex",
+gap: "10px",
+flexWrap: "wrap",
+};
+
+const primaryButtonStyle: React.CSSProperties = {
+background: "#2563eb",
+color: "white",
+border: "none",
+borderRadius: "8px",
+padding: "10px 14px",
+cursor: "pointer",
+fontWeight: 700,
+};
+
+const secondaryButtonStyle: React.CSSProperties = {
+background: "#15803d",
+color: "white",
+border: "none",
+borderRadius: "8px",
+padding: "10px 14px",
+cursor: "pointer",
+fontWeight: 700,
+};
+
+const darkButtonStyle: React.CSSProperties = {
+background: "#111827",
+color: "white",
+borderRadius: "8px",
+padding: "10px 14px",
+textDecoration: "none",
+fontWeight: 700,
+};
+
+const buttonStyle = (
+disabled: boolean
+): React.CSSProperties => ({
+background: disabled
+? "#9ca3af"
+: "#2563eb",
+color: "white",
+border: "none",
+borderRadius: "8px",
+padding: "10px 14px",
+cursor: disabled
+? "not-allowed"
+: "pointer",
+fontWeight: 700,
+});
+
+const lockedBannerStyle: React.CSSProperties = {
+background: "#111827",
+color: "white",
+padding: "14px",
+borderRadius: "12px",
+fontWeight: 700,
+marginBottom: "20px",
+};
+
+const lockedNoticeStyle: React.CSSProperties = {
+padding: "10px",
+background: "#fefce8",
+border: "1px solid #facc15",
+borderRadius: "10px",
+marginBottom: "14px",
+color: "#92400e",
+fontWeight: 700,
+};
