@@ -22,6 +22,23 @@ export default function EnterpriseCapaWorkflowPage() {
   const [userEmail, setUserEmail] = useState("");
   const [userRole, setUserRole] = useState("");
   const [activeSection, setActiveSection] = useState("intake");
+  const [expandedSections, setExpandedSections] = useState<string[]>(["intake"]);
+
+  const openSection = (key: string) => {
+    setActiveSection(key);
+    setExpandedSections((prev) =>
+      prev.includes(key) ? prev : [...prev, key]
+    );
+  };
+
+  const toggleSection = (key: string) => {
+    setActiveSection(key);
+    setExpandedSections((prev) =>
+      prev.includes(key)
+        ? prev.filter((section) => section !== key)
+        : [...prev, key]
+    );
+  };
 
   const [investigationApprovalComments, setInvestigationApprovalComments] = useState("");
   const [closureApprovalComments, setClosureApprovalComments] = useState("");
@@ -698,10 +715,14 @@ export default function EnterpriseCapaWorkflowPage() {
         <aside style={railStyle} className="no-print">
           <h3 style={{ marginTop: 0 }}>Workflow Progress</h3>
 
+          <div style={progressSummaryStyle}>
+            <strong>{stages.filter((stage) => stage.completed).length} / {stages.length}</strong> phases complete
+          </div>
+
           {stages.map((stage, index) => (
             <button
               key={stage.key}
-              onClick={() => setActiveSection(stage.key)}
+              onClick={() => openSection(stage.key)}
               style={{
                 ...railItemStyle,
                 borderLeft: `6px solid ${
@@ -721,7 +742,7 @@ export default function EnterpriseCapaWorkflowPage() {
         </aside>
 
         <div>
-          <WorkflowCard title="1. Intake" subtitle="Capture the issue and source of detection.">
+          <WorkflowCard sectionKey="intake" expanded={expandedSections.includes("intake")} onToggle={toggleSection} title="1. Intake" subtitle="Capture the issue and source of detection.">
             <Field label="Issue Summary">
               <textarea
                 value={record.problem_description || ""}
@@ -765,7 +786,7 @@ export default function EnterpriseCapaWorkflowPage() {
             </div>
           </WorkflowCard>
 
-          <WorkflowCard title="2. Scope" subtitle="Define affected product, lot, process, supplier, and potential impact.">
+          <WorkflowCard sectionKey="scope" expanded={expandedSections.includes("scope")} onToggle={toggleSection} title="2. Scope" subtitle="Define affected product, lot, process, supplier, and potential impact.">
             <Field label="Scope Summary">
               <textarea
                 value={record.scope_summary || ""}
@@ -787,7 +808,7 @@ export default function EnterpriseCapaWorkflowPage() {
             <TextField label="Potential Impact" value={record.potential_impact} field="potential_impact" locked={isLocked} updateField={updateField} saveField={saveField} rows={3} />
           </WorkflowCard>
 
-          <WorkflowCard title="3. Containment" subtitle="Define immediate correction, containment owner, and residual risk.">
+          <WorkflowCard sectionKey="containment" expanded={expandedSections.includes("containment")} onToggle={toggleSection} title="3. Containment" subtitle="Define immediate correction, containment owner, and residual risk.">
             <div style={formGridStyle}>
               <TextField label="Containment Action" value={record.containment_action} field="containment_action" locked={isLocked} updateField={updateField} saveField={saveField} rows={4} />
               <InputField label="Containment Owner" value={record.containment_owner} field="containment_owner" locked={isLocked} updateField={updateField} saveField={saveField} />
@@ -813,7 +834,7 @@ export default function EnterpriseCapaWorkflowPage() {
             <TextField label="Residual Risk After Containment" value={record.containment_residual_risk} field="containment_residual_risk" locked={isLocked} updateField={updateField} saveField={saveField} rows={3} />
           </WorkflowCard>
 
-          <WorkflowCard title="4. Investigation" subtitle="Document objective, evidence reviewed, findings, and conclusion.">
+          <WorkflowCard sectionKey="investigation" expanded={expandedSections.includes("investigation")} onToggle={toggleSection} title="4. Investigation" subtitle="Document objective, evidence reviewed, findings, and conclusion.">
             <div style={formGridStyle}>
               <TextField label="Investigation Objective" value={record.investigation_objective} field="investigation_objective" locked={isLocked} updateField={updateField} saveField={saveField} rows={3} />
               <TextField label="Evidence Reviewed" value={record.evidence_reviewed} field="evidence_reviewed" locked={isLocked} updateField={updateField} saveField={saveField} rows={3} />
@@ -822,7 +843,7 @@ export default function EnterpriseCapaWorkflowPage() {
             </div>
           </WorkflowCard>
 
-          <WorkflowCard title="5. Root Cause" subtitle="Document root cause method, contributing factors, verification, and systemic impact.">
+          <WorkflowCard sectionKey="rootcause" expanded={expandedSections.includes("rootcause")} onToggle={toggleSection} title="5. Root Cause" subtitle="Document root cause method, contributing factors, verification, and systemic impact.">
             <div style={formGridStyle}>
               <Field label="Root Cause Method">
                 <select
@@ -850,7 +871,7 @@ export default function EnterpriseCapaWorkflowPage() {
             </div>
           </WorkflowCard>
 
-          <WorkflowCard title="6. Risk Assessment / Severity" subtitle="Assess severity, occurrence, detection, risk level, and quality/regulatory impact.">
+          <WorkflowCard sectionKey="risk" expanded={expandedSections.includes("risk")} onToggle={toggleSection} title="6. Risk Assessment / Severity" subtitle="Assess severity, occurrence, detection, risk level, and quality/regulatory impact.">
             <div style={formGridStyle}>
               <SelectField label="Severity" field="severity" value={record.severity} locked={isLocked} updateField={updateField} saveField={saveField} options={["low", "medium", "high", "critical"]} />
               <SelectField label="Occurrence" field="occurrence_rating" value={record.occurrence_rating} locked={isLocked} updateField={updateField} saveField={saveField} options={["low", "medium", "high"]} />
@@ -867,6 +888,9 @@ export default function EnterpriseCapaWorkflowPage() {
           </WorkflowCard>
 
           <ApprovalCard
+            sectionKey="investigationapproval"
+            expanded={expandedSections.includes("investigationapproval")}
+            onToggle={toggleSection}
             title="7. Investigation Approval"
             description="Approver reviews scope, containment, investigation, root cause, risk assessment, and severity before implementation begins."
             status={record.investigation_approval_status || "not_submitted"}
@@ -885,7 +909,7 @@ export default function EnterpriseCapaWorkflowPage() {
             onReject={rejectInvestigation}
           />
 
-          <WorkflowCard title="8. Corrective Action" subtitle="Define corrective action, owner, due date, and verification method." locked={implementationLocked}>
+          <WorkflowCard sectionKey="correctiveaction" expanded={expandedSections.includes("correctiveaction")} onToggle={toggleSection} title="8. Corrective Action" subtitle="Define corrective action, owner, due date, and verification method." locked={implementationLocked}>
             {implementationLocked && !isLocked ? <LockNotice /> : null}
             <div style={formGridStyle}>
               <TextField label="Corrective Action" value={record.corrective_action_plan} field="corrective_action_plan" locked={implementationLocked} updateField={updateField} saveField={saveField} rows={4} />
@@ -906,7 +930,7 @@ export default function EnterpriseCapaWorkflowPage() {
             </div>
           </WorkflowCard>
 
-          <WorkflowCard title="9. Implementation" subtitle="Document implementation evidence and related QMS updates." locked={implementationLocked}>
+          <WorkflowCard sectionKey="implementation" expanded={expandedSections.includes("implementation")} onToggle={toggleSection} title="9. Implementation" subtitle="Document implementation evidence and related QMS updates." locked={implementationLocked}>
             {implementationLocked && !isLocked ? <LockNotice /> : null}
             <div style={formGridStyle}>
               <YesNoField label="Procedure Updated" field="procedure_updated" value={record.procedure_updated} locked={implementationLocked} updateField={updateField} saveField={saveField} />
@@ -927,7 +951,7 @@ export default function EnterpriseCapaWorkflowPage() {
             ) : null}
           </WorkflowCard>
 
-          <WorkflowCard title="10. Effectiveness" subtitle="Document monitoring method, monitoring period, results, recurrence, and final rating." locked={implementationLocked}>
+          <WorkflowCard sectionKey="effectiveness" expanded={expandedSections.includes("effectiveness")} onToggle={toggleSection} title="10. Effectiveness" subtitle="Document monitoring method, monitoring period, results, recurrence, and final rating." locked={implementationLocked}>
             {implementationLocked && !isLocked ? <LockNotice /> : null}
             <div style={formGridStyle}>
               <TextField label="Monitoring Method" value={record.monitoring_method || record.effectiveness_plan} field="monitoring_method" locked={implementationLocked} updateField={updateField} saveField={saveField} rows={3} />
@@ -947,6 +971,9 @@ export default function EnterpriseCapaWorkflowPage() {
           </WorkflowCard>
 
           <ApprovalCard
+            sectionKey="closure"
+            expanded={expandedSections.includes("closure")}
+            onToggle={toggleSection}
             title="11. Closure Approval"
             description="Final approval confirms CAPA completion, effectiveness, and closure readiness. Approval locks the record."
             status={record.closure_approval_status || "not_submitted"}
@@ -966,7 +993,7 @@ export default function EnterpriseCapaWorkflowPage() {
           />
 
           {!isLocked ? (
-            <WorkflowCard title="Cancel CAPA" subtitle="Cancel only when initiated in error, duplicated, superseded, or no longer justified. Cancellation locks the record.">
+            <WorkflowCard sectionKey="cancel" expanded={expandedSections.includes("cancel")} onToggle={toggleSection} title="Cancel CAPA" subtitle="Cancel only when initiated in error, duplicated, superseded, or no longer justified. Cancellation locks the record.">
               <div style={formGridStyle}>
                 <Field label="Cancel Reason">
                   <select
@@ -1059,11 +1086,17 @@ export default function EnterpriseCapaWorkflowPage() {
 }
 
 function WorkflowCard({
+  sectionKey,
+  expanded,
+  onToggle,
   title,
   subtitle,
   children,
   locked = false,
 }: {
+  sectionKey: string;
+  expanded: boolean;
+  onToggle: (key: string) => void;
   title: string;
   subtitle: string;
   children: React.ReactNode;
@@ -1074,17 +1107,34 @@ function WorkflowCard({
       style={{
         ...workflowCardStyle,
         opacity: locked ? 0.82 : 1,
-        borderLeft: `8px solid ${locked ? "#9ca3af" : "#2563eb"}`,
+        borderLeft: `8px solid ${locked ? "#9ca3af" : expanded ? "#2563eb" : "#d1d5db"}`,
       }}
     >
-      <h2 style={{ margin: "0 0 4px 0" }}>{title}</h2>
-      <p style={subtleText}>{subtitle}</p>
-      {children}
+      <button
+        type="button"
+        onClick={() => onToggle(sectionKey)}
+        style={sectionHeaderButtonStyle}
+      >
+        <div>
+          <h2 style={{ margin: "0 0 4px 0" }}>
+            {expanded ? "▼" : "▶"} {title}
+          </h2>
+          <p style={subtleText}>{subtitle}</p>
+        </div>
+        <span style={sectionStatePillStyle}>
+          {locked ? "Locked" : expanded ? "Open" : "Collapsed"}
+        </span>
+      </button>
+
+      {expanded ? <div style={{ marginTop: "16px" }}>{children}</div> : null}
     </section>
   );
 }
 
 function ApprovalCard({
+  sectionKey,
+  expanded,
+  onToggle,
   title,
   description,
   status,
@@ -1102,6 +1152,9 @@ function ApprovalCard({
   onApprove,
   onReject,
 }: {
+  sectionKey: string;
+  expanded: boolean;
+  onToggle: (key: string) => void;
   title: string;
   description: string;
   status: string;
@@ -1132,41 +1185,62 @@ function ApprovalCard({
         }`,
       }}
     >
-      <h2 style={{ marginTop: 0 }}>{title}</h2>
-      <p style={subtleText}>{description}</p>
+      <button
+        type="button"
+        onClick={() => onToggle(sectionKey)}
+        style={sectionHeaderButtonStyle}
+      >
+        <div>
+          <h2 style={{ margin: "0 0 4px 0" }}>
+            {expanded ? "▼" : "▶"} {title}
+          </h2>
+          <p style={subtleText}>{description}</p>
+        </div>
+        <span style={sectionStatePillStyle}>{status || "Not Submitted"}</span>
+      </button>
 
-      <div style={summaryGridStyle}>
-        <SummaryCard label="Status" value={status || "Not Submitted"} />
-        <SummaryCard label="Submitted By" value={submittedBy} />
-        <SummaryCard label="Submitted At" value={submittedAt} />
-        <SummaryCard label="Approved By" value={approvedBy} />
-        <SummaryCard label="Approved At" value={approvedAt} />
-        <SummaryCard label="Rejected By" value={rejectedBy} />
-        <SummaryCard label="Rejected At" value={rejectedAt} />
-      </div>
-
-      {!disabled && !isApproved ? (
-        <>
-          <Field label="Approval / Rejection Comments">
-            <textarea
-              value={comments}
-              onChange={(e) => setComments(e.target.value)}
-              rows={3}
-              style={textareaStyle(false)}
-            />
-          </Field>
-
-          <div style={buttonRowStyle}>
-            <button onClick={onSubmit} style={secondaryButtonStyle}>Submit</button>
-
-            {isPending && canApprove ? (
-              <>
-                <button onClick={onApprove} style={primaryButtonStyle}>Approve</button>
-                <button onClick={onReject} style={dangerButtonStyle}>Reject</button>
-              </>
-            ) : null}
+      {expanded ? (
+        <div style={{ marginTop: "16px" }}>
+          <div style={summaryGridStyle}>
+            <SummaryCard label="Status" value={status || "Not Submitted"} />
+            <SummaryCard label="Submitted By" value={submittedBy} />
+            <SummaryCard label="Submitted At" value={submittedAt} />
+            <SummaryCard label="Approved By" value={approvedBy} />
+            <SummaryCard label="Approved At" value={approvedAt} />
+            <SummaryCard label="Rejected By" value={rejectedBy} />
+            <SummaryCard label="Rejected At" value={rejectedAt} />
           </div>
-        </>
+
+          {!disabled && !isApproved ? (
+            <>
+              <Field label="Approval / Rejection Comments">
+                <textarea
+                  value={comments}
+                  onChange={(e) => setComments(e.target.value)}
+                  rows={3}
+                  style={textareaStyle(false)}
+                />
+              </Field>
+
+              <div style={buttonRowStyle}>
+                <button onClick={onSubmit} style={secondaryButtonStyle}>
+                  Submit
+                </button>
+
+                {isPending && canApprove ? (
+                  <>
+                    <button onClick={onApprove} style={primaryButtonStyle}>
+                      Approve
+                    </button>
+                    <button onClick={onReject} style={dangerButtonStyle}>
+                      Reject
+                    </button>
+                  </>
+                ) : null}
+              </div>
+            </>
+          ) : null}
+        </div>
       ) : null}
     </section>
   );
@@ -1631,6 +1705,39 @@ const lockedNoticeStyle: React.CSSProperties = {
   marginBottom: "14px",
   color: "#92400e",
   fontWeight: 700,
+};
+
+const progressSummaryStyle: React.CSSProperties = {
+  padding: "10px",
+  borderRadius: "10px",
+  background: "#f3f4f6",
+  border: "1px solid #e5e7eb",
+  marginBottom: "12px",
+  color: "#374151",
+  fontSize: "13px",
+};
+
+const sectionHeaderButtonStyle: React.CSSProperties = {
+  width: "100%",
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  gap: "12px",
+  background: "transparent",
+  border: "none",
+  textAlign: "left",
+  padding: 0,
+  cursor: "pointer",
+};
+
+const sectionStatePillStyle: React.CSSProperties = {
+  padding: "5px 10px",
+  borderRadius: "999px",
+  background: "#f3f4f6",
+  color: "#374151",
+  fontSize: "12px",
+  fontWeight: 700,
+  whiteSpace: "nowrap",
 };
 
 const evidenceBoxStyle: React.CSSProperties = {
