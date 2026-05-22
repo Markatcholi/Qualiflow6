@@ -45,7 +45,6 @@ const implementationLocked =
 const fetchUserRole = async () => {
 const { data: userData } = await supabase.auth.getUser();
 
-```
 const email = userData?.user?.email || "";
 
 setUserEmail(email);
@@ -59,7 +58,6 @@ const { data } = await supabase
   .maybeSingle();
 
 setUserRole(data?.role || "");
-```
 
 };
 
@@ -70,7 +68,6 @@ setUserRole(data?.role || "");
 const fetchRecord = async () => {
 setLoading(true);
 
-```
 const { data, error } = await supabase
   .from("capas")
   .select("*")
@@ -85,7 +82,6 @@ if (error) {
 
 setRecord(data || null);
 setLoading(false);
-```
 
 };
 
@@ -109,7 +105,6 @@ alert("This CAPA record is locked.");
 return;
 }
 
-```
 const { error } = await supabase
   .from("capas")
   .update({
@@ -126,7 +121,6 @@ setRecord((prev: any) => ({
   ...prev,
   [field]: value,
 }));
-```
 
 };
 
@@ -137,7 +131,6 @@ setRecord((prev: any) => ({
 const submitInvestigationApproval = async () => {
 if (isLocked) return;
 
-```
 const now = new Date().toISOString();
 
 const { error } = await supabase
@@ -160,7 +153,6 @@ if (error) {
 }
 
 fetchRecord();
-```
 
 };
 
@@ -175,7 +167,6 @@ alert(
 return;
 }
 
-```
 const now = new Date().toISOString();
 
 const { error } = await supabase
@@ -197,14 +188,12 @@ if (error) {
 }
 
 fetchRecord();
-```
 
 };
 
 const submitClosureApproval = async () => {
 if (isLocked) return;
 
-```
 const now = new Date().toISOString();
 
 const { error } = await supabase
@@ -227,7 +216,6 @@ if (error) {
 }
 
 fetchRecord();
-```
 
 };
 
@@ -242,7 +230,6 @@ alert(
 return;
 }
 
-```
 const confirmed = window.confirm(
   "Approve and electronically sign CAPA closure?"
 );
@@ -283,7 +270,6 @@ if (error) {
 }
 
 fetchRecord();
-```
 
 };
 
@@ -384,7 +370,6 @@ return ( <main style={pageStyle}>
 {/* EXECUTIVE HEADER */}
 {/* ========================= */}
 
-```
   <section style={headerCardStyle}>
     <div>
       <div style={eyebrowStyle}>
@@ -1102,7 +1087,6 @@ return ( <main style={pageStyle}>
     </aside>
   </div>
 </main>
-```
 
 );
 }
@@ -1130,7 +1114,6 @@ borderLeft: `8px solid ${
 }}
 > <h2>{title}</h2>
 
-```
   <p style={subtleText}>
     {subtitle}
   </p>
@@ -1145,7 +1128,6 @@ borderLeft: `8px solid ${
 
   {children}
 </section>
-```
 
 );
 }
@@ -1164,7 +1146,6 @@ borderLeft:
 }}
 > <h2>{title}</h2>
 
-```
   <div style={{ marginBottom: 16 }}>
     <strong>Status:</strong>{" "}
     {status || "Not Submitted"}
@@ -1172,7 +1153,6 @@ borderLeft:
 
   {children}
 </section>
-```
 
 );
 }
@@ -1184,12 +1164,10 @@ value,
 return ( <div style={summaryCardStyle}> <div style={summaryLabelStyle}>
 {label} </div>
 
-```
   <div style={summaryValueStyle}>
     {value || "N/A"}
   </div>
 </div>
-```
 
 );
 }
@@ -1219,12 +1197,10 @@ return (
 <div style={{ marginBottom: 18 }}> <label style={fieldLabelStyle}>
 {label} </label>
 
-```
   <div style={{ marginTop: 6 }}>
     {children}
   </div>
 </div>
-```
 
 );
 }
