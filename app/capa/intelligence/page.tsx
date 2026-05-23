@@ -82,6 +82,13 @@ export default function CapaIntelligenceDashboardPage() {
 
     const blockedTasks = tasks.filter((t) => t.status === "blocked");
 
+    const incompleteEffectiveness = capas.filter(
+      (c) =>
+        c.status !== "cancelled" &&
+        c.status !== "closed" &&
+        !c.effectiveness_rating
+    );
+
     return {
       openCapas,
       overdueCapas,
@@ -91,6 +98,7 @@ export default function CapaIntelligenceDashboardPage() {
       ineffectiveCapas,
       overdueTasks,
       blockedTasks,
+      incompleteEffectiveness,
     };
   }, [capas, tasks]);
 
@@ -213,6 +221,101 @@ export default function CapaIntelligenceDashboardPage() {
           value={metrics.blockedTasks.length}
           color="#d97706"
         />
+      </section>
+
+      <section style={escalationPanelStyle}>
+        <div>
+          <div style={eyebrowStyle}>EXECUTIVE ESCALATION ENGINE</div>
+          <h2 style={{ margin: "6px 0" }}>Action Required</h2>
+          <p style={subtleText}>
+            Prioritized CAPA signals requiring leadership attention, follow-up,
+            or governance action.
+          </p>
+        </div>
+
+        <div style={escalationGridStyle}>
+          <EscalationCard
+            title="Overdue CAPAs"
+            count={metrics.overdueCapas.length}
+            severity={metrics.overdueCapas.length > 0 ? "high" : "controlled"}
+            items={metrics.overdueCapas}
+            itemType="capa"
+            description="CAPAs past due and not closed."
+          />
+
+          <EscalationCard
+            title="Overdue Tasks"
+            count={metrics.overdueTasks.length}
+            severity={metrics.overdueTasks.length > 0 ? "high" : "controlled"}
+            items={metrics.overdueTasks}
+            itemType="task"
+            description="Execution tasks past due and not complete."
+          />
+
+          <EscalationCard
+            title="Blocked Tasks"
+            count={metrics.blockedTasks.length}
+            severity={metrics.blockedTasks.length > 0 ? "medium" : "controlled"}
+            items={metrics.blockedTasks}
+            itemType="task"
+            description="Tasks marked blocked and requiring intervention."
+          />
+
+          <EscalationCard
+            title="Pending Investigation Approval"
+            count={metrics.pendingInvestigationApproval.length}
+            severity={
+              metrics.pendingInvestigationApproval.length > 0
+                ? "medium"
+                : "controlled"
+            }
+            items={metrics.pendingInvestigationApproval}
+            itemType="capa"
+            description="CAPAs waiting for investigation/root cause approval."
+          />
+
+          <EscalationCard
+            title="Pending Closure Approval"
+            count={metrics.pendingClosureApproval.length}
+            severity={
+              metrics.pendingClosureApproval.length > 0 ? "medium" : "controlled"
+            }
+            items={metrics.pendingClosureApproval}
+            itemType="capa"
+            description="CAPAs waiting for final closure approval."
+          />
+
+          <EscalationCard
+            title="High / Critical CAPAs"
+            count={metrics.criticalCapas.length}
+            severity={metrics.criticalCapas.length > 0 ? "high" : "controlled"}
+            items={metrics.criticalCapas}
+            itemType="capa"
+            description="High-severity or critical-risk CAPAs."
+          />
+
+          <EscalationCard
+            title="Ineffective CAPAs"
+            count={metrics.ineffectiveCapas.length}
+            severity={metrics.ineffectiveCapas.length > 0 ? "high" : "controlled"}
+            items={metrics.ineffectiveCapas}
+            itemType="capa"
+            description="CAPAs with ineffective effectiveness results."
+          />
+
+          <EscalationCard
+            title="Incomplete Effectiveness"
+            count={metrics.incompleteEffectiveness.length}
+            severity={
+              metrics.incompleteEffectiveness.length > 0
+                ? "medium"
+                : "controlled"
+            }
+            items={metrics.incompleteEffectiveness}
+            itemType="capa"
+            description="Active CAPAs missing effectiveness rating."
+          />
+        </div>
       </section>
 
       <div style={dashboardGridStyle}>
@@ -402,6 +505,96 @@ export default function CapaIntelligenceDashboardPage() {
   );
 }
 
+function EscalationCard({
+  title,
+  count,
+  severity,
+  items,
+  itemType,
+  description,
+}: {
+  title: string;
+  count: number;
+  severity: "controlled" | "medium" | "high";
+  items: any[];
+  itemType: "capa" | "task";
+  description: string;
+}) {
+  const color =
+    severity === "high"
+      ? "#dc2626"
+      : severity === "medium"
+      ? "#d97706"
+      : "#15803d";
+
+  return (
+    <div
+      style={{
+        ...escalationCardStyle,
+        borderLeft: `8px solid ${color}`,
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", gap: "10px" }}>
+        <div>
+          <h3 style={{ margin: "0 0 4px 0" }}>{title}</h3>
+          <p style={{ ...subtleText, margin: 0 }}>{description}</p>
+        </div>
+
+        <div
+          style={{
+            fontSize: "30px",
+            fontWeight: 800,
+            color,
+          }}
+        >
+          {count}
+        </div>
+      </div>
+
+      <div style={{ marginTop: "14px" }}>
+        {items.length === 0 ? (
+          <div style={{ color: "#15803d", fontWeight: 700 }}>
+            No escalation required.
+          </div>
+        ) : (
+          items.slice(0, 5).map((item) => (
+            <div key={item.id} style={escalationItemStyle}>
+              {itemType === "capa" ? (
+                <>
+                  <Link href={`/capa/${item.id}`} style={{ fontWeight: 700 }}>
+                    {item.capa_number || item.title || item.id}
+                  </Link>
+                  <div style={smallMutedStyle}>
+                    {item.title || "Untitled CAPA"} | Owner:{" "}
+                    {item.owner || "N/A"} | Due: {item.due_date || "N/A"}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <strong>{item.task_title || "Untitled Task"}</strong>
+                  <div style={smallMutedStyle}>
+                    Owner: {item.owner || "N/A"} | Due:{" "}
+                    {item.due_date || "N/A"} | Status: {item.status || "open"}
+                  </div>
+                  {item.capa_id ? (
+                    <Link href={`/capa/${item.capa_id}`}>Open CAPA</Link>
+                  ) : null}
+                </>
+              )}
+            </div>
+          ))
+        )}
+
+        {items.length > 5 ? (
+          <div style={{ ...smallMutedStyle, marginTop: "8px" }}>
+            + {items.length - 5} more
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function KpiCard({
   title,
   value,
@@ -514,6 +707,40 @@ function BarRow({
     </div>
   );
 }
+
+const escalationPanelStyle: React.CSSProperties = {
+  background: "white",
+  borderRadius: "16px",
+  padding: "22px",
+  border: "1px solid #d1d5db",
+  marginBottom: "24px",
+};
+
+const escalationGridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+  gap: "16px",
+  marginTop: "18px",
+};
+
+const escalationCardStyle: React.CSSProperties = {
+  border: "1px solid #d1d5db",
+  borderRadius: "14px",
+  padding: "16px",
+  background: "#f9fafb",
+};
+
+const escalationItemStyle: React.CSSProperties = {
+  borderTop: "1px solid #e5e7eb",
+  paddingTop: "10px",
+  marginTop: "10px",
+};
+
+const smallMutedStyle: React.CSSProperties = {
+  fontSize: "12px",
+  color: "#6b7280",
+  marginTop: "4px",
+};
 
 const pageStyle: React.CSSProperties = {
   padding: "24px",
