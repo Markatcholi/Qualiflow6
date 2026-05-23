@@ -1,0 +1,678 @@
+"use client";
+
+import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
+import { supabase } from "../../../lib/supabaseClient";
+
+export default function CapaIntelligenceDashboardPage() {
+  const [capas, setCapas] = useState<any[]>([]);
+  const [tasks, setTasks] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      const capaRes = await supabase
+        .from("capas")
+        .select("*");
+
+      const taskRes = await supabase
+        .from("capa_tasks")
+        .select("*");
+
+      if (!capaRes.error) {
+        setCapas(capaRes.data || []);
+      }
+
+      if (!taskRes.error) {
+        setTasks(taskRes.data || []);
+      }
+
+      setLoading(false);
+    };
+
+    fetchData();
+  }, []);
+
+  const metrics = useMemo(() => {
+    const openCapas = capas.filter(
+      (c) =>
+        c.status !== "closed" &&
+        c.status !== "cancelled"
+    );
+
+    const overdueCapas = capas.filter((c) => {
+      if (!c.due_date) return false;
+
+      return (
+        c.status !== "closed" &&
+        c.status !== "cancelled" &&
+        c.due_date <
+          new Date().toISOString().slice(0, 10)
+      );
+    });
+
+    const criticalCapas = capas.filter(
+      (c) =>
+        String(c.risk_level).toLowerCase() ===
+          "critical" ||
+        String(c.severity).toLowerCase() ===
+          "critical"
+    );
+
+    const pendingInvestigationApproval =
+      capas.filter(
+        (c) =>
+          c.investigation_approval_status ===
+          "pending"
+      );
+
+    const pendingClosureApproval =
+      capas.filter(
+        (c) =>
+          c.closure_approval_status === "pending"
+      );
+
+    const ineffectiveCapas = capas.filter(
+      (c) =>
+        c.effectiveness_rating ===
+        "not_effective"
+    );
+
+    const overdueTasks = tasks.filter((t) => {
+      if (!t.due_date) return false;
+
+      return (
+        t.status !== "complete" &&
+        t.due_date <
+          new Date().toISOString().slice(0, 10)
+      );
+    });
+
+    const blockedTasks = tasks.filter(
+      (t) => t.status === "blocked"
+    );
+
+    return {
+      openCapas,
+      overdueCapas,
+      criticalCapas,
+      pendingInvestigationApproval,
+      pendingClosureApproval,
+      ineffectiveCapas,
+      overdueTasks,
+      blockedTasks,
+    };
+  }, [capas, tasks]);
+
+  const rootCauseCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+
+    capas.forEach((c) => {
+      const key =
+        c.root_cause_method || "Unspecified";
+
+      counts[key] = (counts[key] || 0) + 1;
+    });
+
+    return Object.entries(counts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5);
+  }, [capas]);
+
+  const supplierCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+
+    capas.forEach((c) => {
+      const key =
+        c.affected_supplier ||
+        c.supplier_name ||
+        "Unspecified";
+
+      counts[key] = (counts[key] || 0) + 1;
+    });
+
+    return Object.entries(counts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5);
+  }, [capas]);
+
+  if (loading) {
+    return (
+      <main style={pageStyle}>
+        Loading CAPA Intelligence...
+      </main>
+    );
+  }
+
+  return (
+    <main style={pageStyle}>
+      <header style={headerStyle}>
+        <div>
+          <div style={eyebrowStyle}>
+            ENTERPRISE QUALITY COMMAND CENTER
+          </div>
+
+          <h1 style={{ margin: "6px 0" }}>
+            CAPA Intelligence Dashboard
+          </h1>
+
+          <p style={subtleText}>
+            Executive operational intelligence
+            for CAPA execution, risk,
+            effectiveness, and governance.
+          </p>
+        </div>
+
+        <div>
+          <Link
+            href="/dashboard"
+            style={darkButtonStyle}
+          >
+            Back
+          </Link>
+        </div>
+      </header>
+
+      <section style={kpiGridStyle}>
+        <KpiCard
+          title="Open CAPAs"
+          value={metrics.openCapas.length}
+          color="#2563eb"
+        />
+
+        <KpiCard
+          title="Overdue CAPAs"
+          value={metrics.overdueCapas.length}
+          color="#dc2626"
+        />
+
+        <KpiCard
+          title="Critical CAPAs"
+          value={metrics.criticalCapas.length}
+          color="#991b1b"
+        />
+
+        <KpiCard
+          title="Pending Investigation Approval"
+          value={
+            metrics.pendingInvestigationApproval
+              .length
+          }
+          color="#d97706"
+        />
+
+        <KpiCard
+          title="Pending Closure Approval"
+          value={
+            metrics.pendingClosureApproval
+              .length
+          }
+          color="#d97706"
+        />
+
+        <KpiCard
+          title="Ineffective CAPAs"
+          value={
+            metrics.ineffectiveCapas.length
+          }
+          color="#dc2626"
+        />
+
+        <KpiCard
+          title="Overdue Tasks"
+          value={metrics.overdueTasks.length}
+          color="#dc2626"
+        />
+
+        <KpiCard
+          title="Blocked Tasks"
+          value={metrics.blockedTasks.length}
+          color="#d97706"
+        />
+      </section>
+
+      <div style={dashboardGridStyle}>
+        <section style={cardStyle}>
+          <h2>Executive Attention Panel</h2>
+
+          <AttentionItem
+            label="Overdue CAPAs"
+            count={metrics.overdueCapas.length}
+          />
+
+          <AttentionItem
+            label="Critical CAPAs"
+            count={metrics.criticalCapas.length}
+          />
+
+          <AttentionItem
+            label="Pending Investigation Approvals"
+            count={
+              metrics.pendingInvestigationApproval
+                .length
+            }
+          />
+
+          <AttentionItem
+            label="Pending Closure Approvals"
+            count={
+              metrics.pendingClosureApproval
+                .length
+            }
+          />
+
+          <AttentionItem
+            label="Overdue Tasks"
+            count={metrics.overdueTasks.length}
+          />
+
+          <AttentionItem
+            label="Blocked Tasks"
+            count={metrics.blockedTasks.length}
+          />
+        </section>
+
+        <section style={cardStyle}>
+          <h2>Root Cause Intelligence</h2>
+
+          {rootCauseCounts.map(([key, count]) => (
+            <BarRow
+              key={key}
+              label={key}
+              value={count}
+              max={rootCauseCounts[0]?.[1] || 1}
+            />
+          ))}
+        </section>
+
+        <section style={cardStyle}>
+          <h2>Supplier Recurrence</h2>
+
+          {supplierCounts.map(([key, count]) => (
+            <BarRow
+              key={key}
+              label={key}
+              value={count}
+              max={supplierCounts[0]?.[1] || 1}
+            />
+          ))}
+        </section>
+
+        <section style={cardStyle}>
+          <h2>Effectiveness Intelligence</h2>
+
+          <MetricRow
+            label="Effective"
+            value={
+              capas.filter(
+                (c) =>
+                  c.effectiveness_rating ===
+                  "effective"
+              ).length
+            }
+          />
+
+          <MetricRow
+            label="Partially Effective"
+            value={
+              capas.filter(
+                (c) =>
+                  c.effectiveness_rating ===
+                  "partially_effective"
+              ).length
+            }
+          />
+
+          <MetricRow
+            label="Not Effective"
+            value={
+              capas.filter(
+                (c) =>
+                  c.effectiveness_rating ===
+                  "not_effective"
+              ).length
+            }
+          />
+        </section>
+
+        <section style={cardStyle}>
+          <h2>Task Execution Intelligence</h2>
+
+          <MetricRow
+            label="Total Tasks"
+            value={tasks.length}
+          />
+
+          <MetricRow
+            label="Completed Tasks"
+            value={
+              tasks.filter(
+                (t) =>
+                  t.status === "complete"
+              ).length
+            }
+          />
+
+          <MetricRow
+            label="Blocked Tasks"
+            value={
+              tasks.filter(
+                (t) =>
+                  t.status === "blocked"
+              ).length
+            }
+          />
+
+          <MetricRow
+            label="Pending Review"
+            value={
+              tasks.filter(
+                (t) =>
+                  t.status ===
+                  "pending_review"
+              ).length
+            }
+          />
+        </section>
+
+        <section style={cardStyle}>
+          <h2>Regulatory Readiness</h2>
+
+          <MetricRow
+            label="Unsigned CAPAs"
+            value={
+              capas.filter(
+                (c) =>
+                  !c.signed_by &&
+                  c.status === "closed"
+              ).length
+            }
+          />
+
+          <MetricRow
+            label="Missing Closure Approval"
+            value={
+              capas.filter(
+                (c) =>
+                  c.status === "closed" &&
+                  !c.closure_approved_by
+              ).length
+            }
+          />
+
+          <MetricRow
+            label="Incomplete Effectiveness"
+            value={
+              capas.filter(
+                (c) =>
+                  !c.effectiveness_rating
+              ).length
+            }
+          />
+        </section>
+
+        <section style={cardStyle}>
+          <h2>Recent CAPAs</h2>
+
+          <div style={{ overflowX: "auto" }}>
+            <table style={tableStyle}>
+              <thead>
+                <tr>
+                  <th style={thStyle}>CAPA</th>
+                  <th style={thStyle}>Status</th>
+                  <th style={thStyle}>Risk</th>
+                  <th style={thStyle}>Owner</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {capas
+                  .slice(0, 10)
+                  .map((c) => (
+                    <tr key={c.id}>
+                      <td style={tdStyle}>
+                        <Link
+                          href={`/capa/${c.id}`}
+                        >
+                          {c.capa_number ||
+                            c.id}
+                        </Link>
+                      </td>
+
+                      <td style={tdStyle}>
+                        {c.status}
+                      </td>
+
+                      <td style={tdStyle}>
+                        {c.risk_level ||
+                          c.severity}
+                      </td>
+
+                      <td style={tdStyle}>
+                        {c.owner}
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </main>
+  );
+}
+
+function KpiCard({
+  title,
+  value,
+  color,
+}: {
+  title: string;
+  value: number;
+  color: string;
+}) {
+  return (
+    <div
+      style={{
+        ...kpiCardStyle,
+        borderLeft: `8px solid ${color}`,
+      }}
+    >
+      <div style={kpiTitleStyle}>
+        {title}
+      </div>
+
+      <div
+        style={{
+          fontSize: "34px",
+          fontWeight: 800,
+          color,
+        }}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function AttentionItem({
+  label,
+  count,
+}: {
+  label: string;
+  count: number;
+}) {
+  return (
+    <div style={attentionItemStyle}>
+      <strong>{label}</strong>
+
+      <span
+        style={{
+          color:
+            count > 0
+              ? "#dc2626"
+              : "#15803d",
+          fontWeight: 800,
+        }}
+      >
+        {count}
+      </span>
+    </div>
+  );
+}
+
+function MetricRow({
+  label,
+  value,
+}: {
+  label: string;
+  value: number;
+}) {
+  return (
+    <div style={metricRowStyle}>
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function BarRow({
+  label,
+  value,
+  max,
+}: {
+  label: string;
+  value: number;
+  max: number;
+}) {
+  const width =
+    max === 0 ? 0 : (value / max) * 100;
+
+  return (
+    <div style={{ marginBottom: "14px" }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent:
+            "space-between",
+          marginBottom: "4px",
+        }}
+      >
+        <span>{label}</span>
+        <strong>{value}</strong>
+      </div>
+
+      <div
+        style={{
+          background: "#e5e7eb",
+          height: "10px",
+          borderRadius: "999px",
+        }}
+      >
+        <div
+          style={{
+            width: `${width}%`,
+            background: "#2563eb",
+            height: "10px",
+            borderRadius: "999px",
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
+const pageStyle = {
+  padding: "24px",
+  background: "#f8fafc",
+  minHeight: "100vh",
+  fontFamily: "Arial, sans-serif",
+};
+
+const headerStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  marginBottom: "24px",
+};
+
+const eyebrowStyle = {
+  fontSize: "12px",
+  fontWeight: 800,
+  color: "#6b7280",
+  letterSpacing: "0.08em",
+};
+
+const subtleText = {
+  color: "#6b7280",
+};
+
+const darkButtonStyle = {
+  background: "#111827",
+  color: "white",
+  padding: "10px 14px",
+  borderRadius: "8px",
+  textDecoration: "none",
+};
+
+const kpiGridStyle = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(220px, 1fr))",
+  gap: "18px",
+  marginBottom: "24px",
+};
+
+const kpiCardStyle = {
+  background: "white",
+  borderRadius: "16px",
+  padding: "20px",
+  border: "1px solid #d1d5db",
+};
+
+const kpiTitleStyle = {
+  color: "#6b7280",
+  marginBottom: "10px",
+};
+
+const dashboardGridStyle = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(420px, 1fr))",
+  gap: "20px",
+};
+
+const cardStyle = {
+  background: "white",
+  borderRadius: "16px",
+  padding: "20px",
+  border: "1px solid #d1d5db",
+};
+
+const attentionItemStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  marginBottom: "10px",
+};
+
+const metricRowStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  marginBottom: "10px",
+};
+
+const tableStyle = {
+  width: "100%",
+  borderCollapse: "collapse" as const,
+};
+
+const thStyle = {
+  borderBottom: "1px solid #d1d5db",
+  textAlign: "left" as const,
+  padding: "10px",
+};
+
+const tdStyle = {
+  borderBottom: "1px solid #e5e7eb",
+  padding: "10px",
+};
