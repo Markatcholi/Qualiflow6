@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
+import NotificationBell from "./NotificationBell";
 
 export default function AppHeader() {
   const [email, setEmail] = useState("");
@@ -47,10 +48,7 @@ export default function AppHeader() {
     >
       <nav>
         <a href="/dashboard" style={{ marginRight: "12px" }}>Dashboard</a>
-        
-       <a href="/management-review" style={{ marginRight: "15px" }}>
- Management Review
-</a>
+        <a href="/management-review" style={{ marginRight: "15px" }}>Management Review</a>
         <a href="/ncmrs" style={{ marginRight: "12px" }}>NCMRs</a>
         <a href="/capa" style={{ marginRight: "12px" }}>CAPA</a>
         <a href="/suppliers" style={{ marginRight: "12px" }}>Suppliers</a>
@@ -61,8 +59,17 @@ export default function AppHeader() {
         <a href="/admin/master-data">Admin Master Data</a>
       </nav>
 
-      <div>
-        <span style={{ marginRight: "12px" }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "12px",
+          flexWrap: "wrap",
+        }}
+      >
+        {email ? <NotificationBell /> : null}
+
+        <span>
           {email ? `${email} (${role || "user"})` : "Not logged in"}
         </span>
 
