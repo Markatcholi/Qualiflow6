@@ -357,12 +357,30 @@ export default function CapaPage() {
           </p>
         </div>
 
-        <a
-          href="/dashboard"
-          style={backButtonStyle}
+        <div
+          style={{
+            display: "flex",
+            gap: "10px",
+            flexWrap: "wrap",
+          }}
         >
-          Dashboard
-        </a>
+          <a
+            href="/capa/intelligence"
+            style={{
+              ...backButtonStyle,
+              background: "#2563eb",
+            }}
+          >
+            Intelligence Dashboard
+          </a>
+
+          <a
+            href="/dashboard"
+            style={backButtonStyle}
+          >
+            Dashboard
+          </a>
+        </div>
       </div>
 
       <section style={healthBannerStyle}>
