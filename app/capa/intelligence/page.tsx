@@ -154,30 +154,15 @@ export default function CapaIntelligenceDashboardPage() {
           </p>
         </div>
 
-        <div
+        <Link
+          href="/capa"
           style={{
-            display: "flex",
-            gap: "10px",
-            flexWrap: "wrap",
+            ...darkButtonStyle,
+            background: "#2563eb",
           }}
         >
-          <Link
-            href="/capa"
-            style={{
-              ...darkButtonStyle,
-              background: "#2563eb",
-            }}
-          >
-            CAPA Program
-          </Link>
-
-          <Link
-            href="/dashboard"
-            style={darkButtonStyle}
-          >
-            Dashboard
-          </Link>
-        </div>
+          Back to CAPA Program
+        </Link>
       </header>
 
       <section style={kpiGridStyle}>
