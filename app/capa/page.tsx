@@ -439,53 +439,7 @@ export default function CapaPage() {
           </div>
         </div>
       </section>
-
-      <section style={summaryGridStyle}>
-        <SummaryCard
-          label="Total CAPAs"
-          value={list.length}
-          color="#2563eb"
-        />
-
-        <SummaryCard
-          label="Open / Active"
-          value={
-            list.filter(
-              (x) =>
-                x.status !== "closed"
-            ).length
-          }
-          color="#d97706"
-        />
-
-        <SummaryCard
-          label="Overdue"
-          value={overdueCapas.length}
-          color="#dc2626"
-        />
-
-        <SummaryCard
-          label="Recurring"
-          value={recurringCapas.length}
-          color="#7c3aed"
-        />
-
-        <SummaryCard
-          label="Ineffective"
-          value={
-            ineffectiveCapas.length
-          }
-          color="#991b1b"
-        />
-
-        <SummaryCard
-          label="Critical"
-          value={criticalCapas.length}
-          color="#b91c1c"
-        />
-      </section>
-
-      <section style={sectionStyle}>
+<section style={sectionStyle}>
         <h2>Initiate Direct CAPA</h2>
 
         <div style={formGridStyle}>
