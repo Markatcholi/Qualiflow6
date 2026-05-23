@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "../../../lib/supabaseClient";
+import { createNotification, createRoleNotifications, normalizeEmail } from "../../../lib/notifications";
 
 type WorkflowStage = {
   key: string;
@@ -21,6 +22,7 @@ type CapaTask = {
   task_title: string | null;
   task_description: string | null;
   owner: string | null;
+  owner_email: string | null;
   due_date: string | null;
   status: string | null;
   completion_evidence: string | null;
@@ -158,6 +160,87 @@ export default function EnterpriseCapaWorkflowPage() {
       action,
       details,
       user_email: userEmail || "unknown",
+    });
+  };
+
+
+  const notifyCapaOwner = async ({
+    title,
+    message,
+    notificationType,
+    severity = "info",
+  }: {
+    title: string;
+    message: string;
+    notificationType: string;
+    severity?: "info" | "medium" | "high" | "critical";
+  }) => {
+    const ownerEmail =
+      normalizeEmail(record?.owner_email) ||
+      normalizeEmail(record?.owner) ||
+      normalizeEmail(userEmail);
+
+    await createNotification({
+      userEmail: ownerEmail,
+      title,
+      message,
+      notificationType,
+      severity,
+      relatedRecordId: id,
+      relatedModule: "capa",
+      relatedUrl: `/capa/${id}`,
+      createdBy: userEmail,
+    });
+  };
+
+  const notifyApprovers = async ({
+    title,
+    message,
+    notificationType,
+    severity = "medium",
+  }: {
+    title: string;
+    message: string;
+    notificationType: string;
+    severity?: "info" | "medium" | "high" | "critical";
+  }) => {
+    if (normalizeEmail(record?.investigation_approver_email)) {
+      await createNotification({
+        userEmail: record.investigation_approver_email,
+        assignedRole: "approver",
+        title,
+        message,
+        notificationType,
+        severity,
+        relatedRecordId: id,
+        relatedModule: "capa",
+        relatedUrl: `/capa/${id}`,
+        createdBy: userEmail,
+      });
+    }
+
+    await createRoleNotifications({
+      role: "approver",
+      title,
+      message,
+      notificationType,
+      severity,
+      relatedRecordId: id,
+      relatedModule: "capa",
+      relatedUrl: `/capa/${id}`,
+      createdBy: userEmail,
+    });
+
+    await createRoleNotifications({
+      role: "vp_quality",
+      title,
+      message,
+      notificationType,
+      severity,
+      relatedRecordId: id,
+      relatedModule: "capa",
+      relatedUrl: `/capa/${id}`,
+      createdBy: userEmail,
     });
   };
 
@@ -326,6 +409,7 @@ export default function EnterpriseCapaWorkflowPage() {
       task_title: newTask.task_title,
       task_description: newTask.task_description || null,
       owner: newTask.owner || null,
+      owner_email: normalizeEmail(newTask.owner),
       due_date: newTask.due_date || null,
       status: "open",
       created_by: userEmail || "unknown",
@@ -341,6 +425,18 @@ export default function EnterpriseCapaWorkflowPage() {
       "task_created",
       `CAPA task created: ${newTask.task_title}`
     );
+
+    await createNotification({
+      userEmail: normalizeEmail(newTask.owner),
+      title: "CAPA Task Assigned",
+      message: `You have been assigned a CAPA task: ${newTask.task_title}`,
+      notificationType: "task_assigned",
+      severity: "medium",
+      relatedRecordId: id,
+      relatedModule: "capa",
+      relatedUrl: `/capa/${id}`,
+      createdBy: userEmail,
+    });
 
     setNewTask({
       task_type: "corrective_action",
@@ -373,6 +469,20 @@ export default function EnterpriseCapaWorkflowPage() {
       "task_status_changed",
       `CAPA task status changed to ${status}: ${task.task_title}`
     );
+
+    if (status === "blocked" || status === "pending_review") {
+      await createNotification({
+        userEmail: normalizeEmail(task.owner_email) || normalizeEmail(task.owner),
+        title: status === "blocked" ? "CAPA Task Blocked" : "CAPA Task Pending Review",
+        message: `Task "${task.task_title}" is now ${status}.`,
+        notificationType: status === "blocked" ? "task_blocked" : "task_pending_review",
+        severity: status === "blocked" ? "high" : "medium",
+        relatedRecordId: id,
+        relatedModule: "capa",
+        relatedUrl: `/capa/${id}`,
+        createdBy: userEmail,
+      });
+    }
 
     fetchTasks();
   };
@@ -468,6 +578,13 @@ export default function EnterpriseCapaWorkflowPage() {
       "CAPA investigation, root cause, and risk assessment submitted for approval."
     );
 
+    await notifyApprovers({
+      title: "CAPA Investigation Approval Required",
+      message: `${record?.capa_number || "CAPA"} requires investigation/root cause approval.`,
+      notificationType: "investigation_approval_required",
+      severity: record?.severity === "critical" || record?.risk_level === "critical" ? "critical" : "medium",
+    });
+
     alert("Investigation package submitted for approval.");
     fetchRecord();
   };
@@ -506,6 +623,13 @@ export default function EnterpriseCapaWorkflowPage() {
       "investigation_approved",
       "CAPA investigation package approved. Corrective action and implementation phases unlocked."
     );
+
+    await notifyCapaOwner({
+      title: "CAPA Investigation Approved",
+      message: `${record?.capa_number || "CAPA"} investigation was approved. Corrective action and task execution are now available.`,
+      notificationType: "investigation_approved",
+      severity: "info",
+    });
 
     alert("Investigation package approved.");
     fetchRecord();
@@ -549,6 +673,13 @@ export default function EnterpriseCapaWorkflowPage() {
       "investigation_rejected",
       `CAPA investigation package rejected. Comments: ${investigationApprovalComments}`
     );
+
+    await notifyCapaOwner({
+      title: "CAPA Investigation Rejected",
+      message: `${record?.capa_number || "CAPA"} investigation was rejected. Comments: ${investigationApprovalComments}`,
+      notificationType: "investigation_rejected",
+      severity: "high",
+    });
 
     alert("Investigation package rejected.");
     fetchRecord();
@@ -662,6 +793,13 @@ export default function EnterpriseCapaWorkflowPage() {
       "CAPA submitted for closure approval."
     );
 
+    await notifyApprovers({
+      title: "CAPA Closure Approval Required",
+      message: `${record?.capa_number || "CAPA"} is ready for final closure approval.`,
+      notificationType: "closure_approval_required",
+      severity: "medium",
+    });
+
     alert("CAPA submitted for closure approval.");
     fetchRecord();
   };
@@ -723,6 +861,13 @@ export default function EnterpriseCapaWorkflowPage() {
       `CAPA closure approved and locked. Meaning: ${signatureMeaning}`
     );
 
+    await notifyCapaOwner({
+      title: "CAPA Closed and Locked",
+      message: `${record?.capa_number || "CAPA"} has been approved, closed, electronically signed, and locked.`,
+      notificationType: "capa_closed",
+      severity: "info",
+    });
+
     alert("CAPA approved, closed, and locked.");
     fetchRecord();
   };
@@ -765,6 +910,13 @@ export default function EnterpriseCapaWorkflowPage() {
       "closure_rejected",
       `CAPA closure rejected. Comments: ${closureApprovalComments}`
     );
+
+    await notifyCapaOwner({
+      title: "CAPA Closure Rejected",
+      message: `${record?.capa_number || "CAPA"} closure was rejected. Comments: ${closureApprovalComments}`,
+      notificationType: "closure_rejected",
+      severity: "high",
+    });
 
     alert("Closure rejected.");
     fetchRecord();
