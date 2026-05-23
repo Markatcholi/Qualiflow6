@@ -13,11 +13,13 @@ export default function CapaIntelligenceDashboardPage() {
     const fetchData = async () => {
       const capaRes = await supabase
         .from("capas")
-        .select("*");
+        .select("*")
+        .order("created_at", { ascending: false });
 
       const taskRes = await supabase
         .from("capa_tasks")
-        .select("*");
+        .select("*")
+        .order("created_at", { ascending: false });
 
       if (!capaRes.error) {
         setCapas(capaRes.data || []);
@@ -34,6 +36,8 @@ export default function CapaIntelligenceDashboardPage() {
   }, []);
 
   const metrics = useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10);
+
     const openCapas = capas.filter(
       (c) =>
         c.status !== "closed" &&
@@ -46,51 +50,37 @@ export default function CapaIntelligenceDashboardPage() {
       return (
         c.status !== "closed" &&
         c.status !== "cancelled" &&
-        c.due_date <
-          new Date().toISOString().slice(0, 10)
+        c.due_date < today
       );
     });
 
     const criticalCapas = capas.filter(
       (c) =>
-        String(c.risk_level).toLowerCase() ===
-          "critical" ||
-        String(c.severity).toLowerCase() ===
-          "critical"
+        String(c.risk_level || "").toLowerCase() === "critical" ||
+        String(c.severity || "").toLowerCase() === "critical"
     );
 
-    const pendingInvestigationApproval =
-      capas.filter(
-        (c) =>
-          c.investigation_approval_status ===
-          "pending"
-      );
+    const pendingInvestigationApproval = capas.filter(
+      (c) => c.investigation_approval_status === "pending"
+    );
 
-    const pendingClosureApproval =
-      capas.filter(
-        (c) =>
-          c.closure_approval_status === "pending"
-      );
+    const pendingClosureApproval = capas.filter(
+      (c) => c.closure_approval_status === "pending"
+    );
 
     const ineffectiveCapas = capas.filter(
       (c) =>
-        c.effectiveness_rating ===
-        "not_effective"
+        c.effectiveness_rating === "not_effective" ||
+        c.effectiveness_result === "ineffective"
     );
 
     const overdueTasks = tasks.filter((t) => {
       if (!t.due_date) return false;
 
-      return (
-        t.status !== "complete" &&
-        t.due_date <
-          new Date().toISOString().slice(0, 10)
-      );
+      return t.status !== "complete" && t.due_date < today;
     });
 
-    const blockedTasks = tasks.filter(
-      (t) => t.status === "blocked"
-    );
+    const blockedTasks = tasks.filter((t) => t.status === "blocked");
 
     return {
       openCapas,
@@ -109,7 +99,9 @@ export default function CapaIntelligenceDashboardPage() {
 
     capas.forEach((c) => {
       const key =
-        c.root_cause_method || "Unspecified";
+        c.root_cause_method ||
+        c.root_cause_category ||
+        "Unspecified";
 
       counts[key] = (counts[key] || 0) + 1;
     });
@@ -157,18 +149,33 @@ export default function CapaIntelligenceDashboardPage() {
           </h1>
 
           <p style={subtleText}>
-            Executive operational intelligence
-            for CAPA execution, risk,
-            effectiveness, and governance.
+            Executive operational intelligence for CAPA execution, risk,
+            effectiveness, task ownership, and governance.
           </p>
         </div>
 
-        <div>
+        <div
+          style={{
+            display: "flex",
+            gap: "10px",
+            flexWrap: "wrap",
+          }}
+        >
+          <Link
+            href="/capa"
+            style={{
+              ...darkButtonStyle,
+              background: "#2563eb",
+            }}
+          >
+            CAPA Program
+          </Link>
+
           <Link
             href="/dashboard"
             style={darkButtonStyle}
           >
-            Back
+            Dashboard
           </Link>
         </div>
       </header>
@@ -194,27 +201,19 @@ export default function CapaIntelligenceDashboardPage() {
 
         <KpiCard
           title="Pending Investigation Approval"
-          value={
-            metrics.pendingInvestigationApproval
-              .length
-          }
+          value={metrics.pendingInvestigationApproval.length}
           color="#d97706"
         />
 
         <KpiCard
           title="Pending Closure Approval"
-          value={
-            metrics.pendingClosureApproval
-              .length
-          }
+          value={metrics.pendingClosureApproval.length}
           color="#d97706"
         />
 
         <KpiCard
           title="Ineffective CAPAs"
-          value={
-            metrics.ineffectiveCapas.length
-          }
+          value={metrics.ineffectiveCapas.length}
           color="#dc2626"
         />
 
@@ -247,18 +246,12 @@ export default function CapaIntelligenceDashboardPage() {
 
           <AttentionItem
             label="Pending Investigation Approvals"
-            count={
-              metrics.pendingInvestigationApproval
-                .length
-            }
+            count={metrics.pendingInvestigationApproval.length}
           />
 
           <AttentionItem
             label="Pending Closure Approvals"
-            count={
-              metrics.pendingClosureApproval
-                .length
-            }
+            count={metrics.pendingClosureApproval.length}
           />
 
           <AttentionItem
@@ -275,27 +268,35 @@ export default function CapaIntelligenceDashboardPage() {
         <section style={cardStyle}>
           <h2>Root Cause Intelligence</h2>
 
-          {rootCauseCounts.map(([key, count]) => (
-            <BarRow
-              key={key}
-              label={key}
-              value={count}
-              max={rootCauseCounts[0]?.[1] || 1}
-            />
-          ))}
+          {rootCauseCounts.length === 0 ? (
+            <p style={subtleText}>No root cause data available.</p>
+          ) : (
+            rootCauseCounts.map(([key, count]) => (
+              <BarRow
+                key={key}
+                label={key}
+                value={count}
+                max={rootCauseCounts[0]?.[1] || 1}
+              />
+            ))
+          )}
         </section>
 
         <section style={cardStyle}>
           <h2>Supplier Recurrence</h2>
 
-          {supplierCounts.map(([key, count]) => (
-            <BarRow
-              key={key}
-              label={key}
-              value={count}
-              max={supplierCounts[0]?.[1] || 1}
-            />
-          ))}
+          {supplierCounts.length === 0 ? (
+            <p style={subtleText}>No supplier recurrence data available.</p>
+          ) : (
+            supplierCounts.map(([key, count]) => (
+              <BarRow
+                key={key}
+                label={key}
+                value={count}
+                max={supplierCounts[0]?.[1] || 1}
+              />
+            ))
+          )}
         </section>
 
         <section style={cardStyle}>
@@ -304,11 +305,7 @@ export default function CapaIntelligenceDashboardPage() {
           <MetricRow
             label="Effective"
             value={
-              capas.filter(
-                (c) =>
-                  c.effectiveness_rating ===
-                  "effective"
-              ).length
+              capas.filter((c) => c.effectiveness_rating === "effective").length
             }
           />
 
@@ -316,9 +313,7 @@ export default function CapaIntelligenceDashboardPage() {
             label="Partially Effective"
             value={
               capas.filter(
-                (c) =>
-                  c.effectiveness_rating ===
-                  "partially_effective"
+                (c) => c.effectiveness_rating === "partially_effective"
               ).length
             }
           />
@@ -326,11 +321,8 @@ export default function CapaIntelligenceDashboardPage() {
           <MetricRow
             label="Not Effective"
             value={
-              capas.filter(
-                (c) =>
-                  c.effectiveness_rating ===
-                  "not_effective"
-              ).length
+              capas.filter((c) => c.effectiveness_rating === "not_effective")
+                .length
             }
           />
         </section>
@@ -345,33 +337,17 @@ export default function CapaIntelligenceDashboardPage() {
 
           <MetricRow
             label="Completed Tasks"
-            value={
-              tasks.filter(
-                (t) =>
-                  t.status === "complete"
-              ).length
-            }
+            value={tasks.filter((t) => t.status === "complete").length}
           />
 
           <MetricRow
             label="Blocked Tasks"
-            value={
-              tasks.filter(
-                (t) =>
-                  t.status === "blocked"
-              ).length
-            }
+            value={tasks.filter((t) => t.status === "blocked").length}
           />
 
           <MetricRow
             label="Pending Review"
-            value={
-              tasks.filter(
-                (t) =>
-                  t.status ===
-                  "pending_review"
-              ).length
-            }
+            value={tasks.filter((t) => t.status === "pending_review").length}
           />
         </section>
 
@@ -379,13 +355,9 @@ export default function CapaIntelligenceDashboardPage() {
           <h2>Regulatory Readiness</h2>
 
           <MetricRow
-            label="Unsigned CAPAs"
+            label="Unsigned Closed CAPAs"
             value={
-              capas.filter(
-                (c) =>
-                  !c.signed_by &&
-                  c.status === "closed"
-              ).length
+              capas.filter((c) => !c.signed_by && c.status === "closed").length
             }
           />
 
@@ -393,21 +365,14 @@ export default function CapaIntelligenceDashboardPage() {
             label="Missing Closure Approval"
             value={
               capas.filter(
-                (c) =>
-                  c.status === "closed" &&
-                  !c.closure_approved_by
+                (c) => c.status === "closed" && !c.closure_approved_by
               ).length
             }
           />
 
           <MetricRow
             label="Incomplete Effectiveness"
-            value={
-              capas.filter(
-                (c) =>
-                  !c.effectiveness_rating
-              ).length
-            }
+            value={capas.filter((c) => !c.effectiveness_rating).length}
           />
         </section>
 
@@ -426,33 +391,23 @@ export default function CapaIntelligenceDashboardPage() {
               </thead>
 
               <tbody>
-                {capas
-                  .slice(0, 10)
-                  .map((c) => (
-                    <tr key={c.id}>
-                      <td style={tdStyle}>
-                        <Link
-                          href={`/capa/${c.id}`}
-                        >
-                          {c.capa_number ||
-                            c.id}
-                        </Link>
-                      </td>
+                {capas.slice(0, 10).map((c) => (
+                  <tr key={c.id}>
+                    <td style={tdStyle}>
+                      <Link href={`/capa/${c.id}`}>
+                        {c.capa_number || c.id}
+                      </Link>
+                    </td>
 
-                      <td style={tdStyle}>
-                        {c.status}
-                      </td>
+                    <td style={tdStyle}>{c.status || "N/A"}</td>
 
-                      <td style={tdStyle}>
-                        {c.risk_level ||
-                          c.severity}
-                      </td>
+                    <td style={tdStyle}>
+                      {c.risk_level || c.severity || "N/A"}
+                    </td>
 
-                      <td style={tdStyle}>
-                        {c.owner}
-                      </td>
-                    </tr>
-                  ))}
+                    <td style={tdStyle}>{c.owner || "N/A"}</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
@@ -478,9 +433,7 @@ function KpiCard({
         borderLeft: `8px solid ${color}`,
       }}
     >
-      <div style={kpiTitleStyle}>
-        {title}
-      </div>
+      <div style={kpiTitleStyle}>{title}</div>
 
       <div
         style={{
@@ -508,10 +461,7 @@ function AttentionItem({
 
       <span
         style={{
-          color:
-            count > 0
-              ? "#dc2626"
-              : "#15803d",
+          color: count > 0 ? "#dc2626" : "#15803d",
           fontWeight: 800,
         }}
       >
@@ -545,16 +495,14 @@ function BarRow({
   value: number;
   max: number;
 }) {
-  const width =
-    max === 0 ? 0 : (value / max) * 100;
+  const width = max === 0 ? 0 : (value / max) * 100;
 
   return (
     <div style={{ marginBottom: "14px" }}>
       <div
         style={{
           display: "flex",
-          justifyContent:
-            "space-between",
+          justifyContent: "space-between",
           marginBottom: "4px",
         }}
       >
@@ -582,97 +530,98 @@ function BarRow({
   );
 }
 
-const pageStyle = {
+const pageStyle: React.CSSProperties = {
   padding: "24px",
   background: "#f8fafc",
   minHeight: "100vh",
   fontFamily: "Arial, sans-serif",
 };
 
-const headerStyle = {
+const headerStyle: React.CSSProperties = {
   display: "flex",
   justifyContent: "space-between",
   alignItems: "flex-start",
+  gap: "16px",
+  flexWrap: "wrap",
   marginBottom: "24px",
 };
 
-const eyebrowStyle = {
+const eyebrowStyle: React.CSSProperties = {
   fontSize: "12px",
   fontWeight: 800,
   color: "#6b7280",
   letterSpacing: "0.08em",
 };
 
-const subtleText = {
+const subtleText: React.CSSProperties = {
   color: "#6b7280",
 };
 
-const darkButtonStyle = {
+const darkButtonStyle: React.CSSProperties = {
   background: "#111827",
   color: "white",
   padding: "10px 14px",
   borderRadius: "8px",
   textDecoration: "none",
+  fontWeight: 700,
 };
 
-const kpiGridStyle = {
+const kpiGridStyle: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns:
-    "repeat(auto-fit, minmax(220px, 1fr))",
+  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
   gap: "18px",
   marginBottom: "24px",
 };
 
-const kpiCardStyle = {
+const kpiCardStyle: React.CSSProperties = {
   background: "white",
   borderRadius: "16px",
   padding: "20px",
   border: "1px solid #d1d5db",
 };
 
-const kpiTitleStyle = {
+const kpiTitleStyle: React.CSSProperties = {
   color: "#6b7280",
   marginBottom: "10px",
 };
 
-const dashboardGridStyle = {
+const dashboardGridStyle: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns:
-    "repeat(auto-fit, minmax(420px, 1fr))",
+  gridTemplateColumns: "repeat(auto-fit, minmax(420px, 1fr))",
   gap: "20px",
 };
 
-const cardStyle = {
+const cardStyle: React.CSSProperties = {
   background: "white",
   borderRadius: "16px",
   padding: "20px",
   border: "1px solid #d1d5db",
 };
 
-const attentionItemStyle = {
+const attentionItemStyle: React.CSSProperties = {
   display: "flex",
   justifyContent: "space-between",
   marginBottom: "10px",
 };
 
-const metricRowStyle = {
+const metricRowStyle: React.CSSProperties = {
   display: "flex",
   justifyContent: "space-between",
   marginBottom: "10px",
 };
 
-const tableStyle = {
+const tableStyle: React.CSSProperties = {
   width: "100%",
-  borderCollapse: "collapse" as const,
+  borderCollapse: "collapse",
 };
 
-const thStyle = {
+const thStyle: React.CSSProperties = {
   borderBottom: "1px solid #d1d5db",
-  textAlign: "left" as const,
+  textAlign: "left",
   padding: "10px",
 };
 
-const tdStyle = {
+const tdStyle: React.CSSProperties = {
   borderBottom: "1px solid #e5e7eb",
   padding: "10px",
 };
