@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../../lib/supabaseClient";
 import { runOverdueTaskScan } from "../../../lib/overdueTaskScanner";
+import { CompanySettings, getCompanySettings } from "../../../lib/companySettings";
 
 export default function CapaIntelligenceDashboardPage() {
   const [capas, setCapas] = useState<any[]>([]);
@@ -12,12 +13,16 @@ export default function CapaIntelligenceDashboardPage() {
   const [scanRunning, setScanRunning] = useState(false);
   const [scanResult, setScanResult] = useState<any>(null);
   const [userEmail, setUserEmail] = useState("");
+  const [companySettings, setCompanySettings] = useState<CompanySettings | null>(null);
 
   const fetchData = async () => {
     setLoading(true);
 
     const { data: userData } = await supabase.auth.getUser();
     setUserEmail(userData?.user?.email || "");
+
+    const settings = await getCompanySettings();
+    setCompanySettings(settings);
 
     const capaRes = await supabase
       .from("capas")
@@ -40,6 +45,16 @@ export default function CapaIntelligenceDashboardPage() {
   }, []);
 
   const runScan = async () => {
+    if (!companySettings?.enable_overdue_scan) {
+      alert("Overdue task scanning is disabled in Company Settings.");
+      return;
+    }
+
+    if (companySettings?.overdue_scan_mode === "disabled") {
+      alert("Overdue task scanning mode is set to disabled in Company Settings.");
+      return;
+    }
+
     setScanRunning(true);
     setScanResult(null);
 
@@ -186,9 +201,13 @@ export default function CapaIntelligenceDashboardPage() {
 
       ownerOverdueCounts[owner] = (ownerOverdueCounts[owner] || 0) + 1;
 
-      if (daysOverdue <= 7) agingBuckets.overdue1to7 += 1;
-      else if (daysOverdue <= 14) agingBuckets.overdue8to14 += 1;
-      else if (daysOverdue <= 30) agingBuckets.overdue15to30 += 1;
+      const bucket1 = companySettings?.overdue_bucket_1 ?? 7;
+      const bucket2 = companySettings?.overdue_bucket_2 ?? 14;
+      const bucket3 = companySettings?.overdue_bucket_3 ?? 30;
+
+      if (daysOverdue <= bucket1) agingBuckets.overdue1to7 += 1;
+      else if (daysOverdue <= bucket2) agingBuckets.overdue8to14 += 1;
+      else if (daysOverdue <= bucket3) agingBuckets.overdue15to30 += 1;
       else agingBuckets.overdue31Plus += 1;
     });
 
@@ -223,9 +242,20 @@ export default function CapaIntelligenceDashboardPage() {
       totalOverdue,
       completionRate,
     };
-  }, [tasks]);
+  }, [tasks, companySettings]);
 
-  if (loading) {
+  const settingsReady = companySettings !== null;
+  const enableOverdueScan = companySettings?.enable_overdue_scan ?? true;
+  const enableTaskSlaDashboard =
+    companySettings?.enable_task_sla_dashboard ?? true;
+  const enableEscalationDashboard =
+    companySettings?.enable_escalation_dashboard ?? true;
+
+  const bucket1 = companySettings?.overdue_bucket_1 ?? 7;
+  const bucket2 = companySettings?.overdue_bucket_2 ?? 14;
+  const bucket3 = companySettings?.overdue_bucket_3 ?? 30;
+
+  if (loading || !settingsReady) {
     return <main style={pageStyle}>Loading CAPA Intelligence...</main>;
   }
 
@@ -254,6 +284,21 @@ export default function CapaIntelligenceDashboardPage() {
         </Link>
       </header>
 
+      <section style={settingsBannerStyle}>
+        <div>
+          <strong>Company Settings Active:</strong>{" "}
+          Notifications {companySettings?.enable_notifications ? "ON" : "OFF"} |{" "}
+          Overdue Scan {enableOverdueScan ? "ON" : "OFF"} |{" "}
+          Task SLA {enableTaskSlaDashboard ? "ON" : "OFF"} |{" "}
+          Escalation {enableEscalationDashboard ? "ON" : "OFF"}
+        </div>
+
+        <Link href="/admin/company-settings" style={settingsLinkStyle}>
+          Edit Company Settings
+        </Link>
+      </section>
+
+      {enableOverdueScan ? (
       <section style={governanceScanStyle}>
         <div>
           <div style={eyebrowStyle}>OVERDUE TASK GOVERNANCE</div>
@@ -262,12 +307,15 @@ export default function CapaIntelligenceDashboardPage() {
             Creates high-signal overdue task notifications only for task owners.
             Respects user notification preferences and deduplicates once per day.
           </p>
+          <p style={subtleText}>
+            Current scan mode: <strong>{companySettings?.overdue_scan_mode || "manual"}</strong>
+          </p>
         </div>
 
         <button
           onClick={runScan}
-          disabled={scanRunning}
-          style={scanRunning ? disabledButtonStyle : blueButtonStyle}
+          disabled={scanRunning || companySettings?.overdue_scan_mode === "disabled"}
+          style={scanRunning || companySettings?.overdue_scan_mode === "disabled" ? disabledButtonStyle : blueButtonStyle}
         >
           {scanRunning ? "Scanning..." : "Run Overdue Task Scan"}
         </button>
@@ -292,6 +340,15 @@ export default function CapaIntelligenceDashboardPage() {
         ) : null}
       </section>
 
+      ) : (
+        <section style={disabledFeatureStyle}>
+          <strong>Overdue task scan is disabled.</strong>
+          <p style={{ marginBottom: 0 }}>
+            This feature can be enabled from Company Settings.
+          </p>
+        </section>
+      )}
+
       <section style={kpiGridStyle}>
         <KpiCard title="Open CAPAs" value={metrics.openCapas.length} color="#2563eb" />
         <KpiCard title="Overdue CAPAs" value={metrics.overdueCapas.length} color="#dc2626" />
@@ -303,6 +360,7 @@ export default function CapaIntelligenceDashboardPage() {
         <KpiCard title="Blocked Tasks" value={metrics.blockedTasks.length} color="#d97706" />
       </section>
 
+      {enableTaskSlaDashboard ? (
       <section style={slaPanelStyle}>
         <div>
           <div style={eyebrowStyle}>TASK SLA AGING</div>
@@ -344,10 +402,10 @@ export default function CapaIntelligenceDashboardPage() {
             <h3 style={{ marginTop: 0 }}>Aging Buckets</h3>
 
             <BarRow label="Not Due" value={taskAging.agingBuckets.notDue} max={Math.max(taskAging.activeTasks.length, 1)} />
-            <BarRow label="1–7 Days Overdue" value={taskAging.agingBuckets.overdue1to7} max={Math.max(taskAging.activeTasks.length, 1)} />
-            <BarRow label="8–14 Days Overdue" value={taskAging.agingBuckets.overdue8to14} max={Math.max(taskAging.activeTasks.length, 1)} />
-            <BarRow label="15–30 Days Overdue" value={taskAging.agingBuckets.overdue15to30} max={Math.max(taskAging.activeTasks.length, 1)} />
-            <BarRow label="31+ Days Overdue" value={taskAging.agingBuckets.overdue31Plus} max={Math.max(taskAging.activeTasks.length, 1)} />
+            <BarRow label={`1–${bucket1} Days Overdue`} value={taskAging.agingBuckets.overdue1to7} max={Math.max(taskAging.activeTasks.length, 1)} />
+            <BarRow label={`${bucket1 + 1}–${bucket2} Days Overdue`} value={taskAging.agingBuckets.overdue8to14} max={Math.max(taskAging.activeTasks.length, 1)} />
+            <BarRow label={`${bucket2 + 1}–${bucket3} Days Overdue`} value={taskAging.agingBuckets.overdue15to30} max={Math.max(taskAging.activeTasks.length, 1)} />
+            <BarRow label={`${bucket3 + 1}+ Days Overdue`} value={taskAging.agingBuckets.overdue31Plus} max={Math.max(taskAging.activeTasks.length, 1)} />
             <BarRow label="No Due Date" value={taskAging.agingBuckets.noDueDate} max={Math.max(taskAging.activeTasks.length, 1)} />
           </section>
 
@@ -377,6 +435,16 @@ export default function CapaIntelligenceDashboardPage() {
         </div>
       </section>
 
+      ) : (
+        <section style={disabledFeatureStyle}>
+          <strong>Task SLA Aging dashboard is disabled.</strong>
+          <p style={{ marginBottom: 0 }}>
+            This section can be enabled from Company Settings.
+          </p>
+        </section>
+      )}
+
+      {enableEscalationDashboard ? (
       <section style={escalationPanelStyle}>
         <div>
           <div style={eyebrowStyle}>EXECUTIVE ESCALATION ENGINE</div>
@@ -405,6 +473,15 @@ export default function CapaIntelligenceDashboardPage() {
           <EscalationCard title="Incomplete Effectiveness" count={metrics.incompleteEffectiveness.length} severity={metrics.incompleteEffectiveness.length > 0 ? "medium" : "controlled"} items={metrics.incompleteEffectiveness} itemType="capa" description="Active CAPAs missing effectiveness rating." />
         </div>
       </section>
+
+      ) : (
+        <section style={disabledFeatureStyle}>
+          <strong>Executive Escalation dashboard is disabled.</strong>
+          <p style={{ marginBottom: 0 }}>
+            This section can be enabled from Company Settings.
+          </p>
+        </section>
+      )}
 
       <div style={dashboardGridStyle}>
         <section style={cardStyle}>
@@ -676,6 +753,38 @@ const disabledButtonStyle: React.CSSProperties = {
   borderRadius: "8px",
   fontWeight: 700,
   cursor: "not-allowed",
+};
+
+const settingsBannerStyle: React.CSSProperties = {
+  background: "#eff6ff",
+  border: "1px solid #bfdbfe",
+  borderRadius: "14px",
+  padding: "14px",
+  marginBottom: "20px",
+  color: "#1e3a8a",
+  display: "flex",
+  justifyContent: "space-between",
+  gap: "12px",
+  flexWrap: "wrap",
+  alignItems: "center",
+};
+
+const settingsLinkStyle: React.CSSProperties = {
+  background: "#2563eb",
+  color: "white",
+  padding: "8px 12px",
+  borderRadius: "8px",
+  textDecoration: "none",
+  fontWeight: 700,
+};
+
+const disabledFeatureStyle: React.CSSProperties = {
+  background: "#f9fafb",
+  border: "1px dashed #9ca3af",
+  borderRadius: "14px",
+  padding: "16px",
+  marginBottom: "20px",
+  color: "#4b5563",
 };
 
 const governanceScanStyle: React.CSSProperties = {
