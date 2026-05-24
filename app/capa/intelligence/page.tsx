@@ -149,6 +149,82 @@ export default function CapaIntelligenceDashboardPage() {
       .slice(0, 5);
   }, [capas]);
 
+  const taskAging = useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    const activeTasks = tasks.filter((task) => task.status !== "complete");
+
+    const agingBuckets = {
+      notDue: 0,
+      overdue1to7: 0,
+      overdue8to14: 0,
+      overdue15to30: 0,
+      overdue31Plus: 0,
+      noDueDate: 0,
+    };
+
+    const ownerCounts: Record<string, number> = {};
+    const ownerOverdueCounts: Record<string, number> = {};
+
+    activeTasks.forEach((task) => {
+      const owner = task.owner_email || task.owner || "Unassigned";
+      ownerCounts[owner] = (ownerCounts[owner] || 0) + 1;
+
+      if (!task.due_date) {
+        agingBuckets.noDueDate += 1;
+        return;
+      }
+
+      if (task.due_date >= today) {
+        agingBuckets.notDue += 1;
+        return;
+      }
+
+      const daysOverdue = Math.floor(
+        (new Date(today).getTime() - new Date(task.due_date).getTime()) /
+          (1000 * 60 * 60 * 24)
+      );
+
+      ownerOverdueCounts[owner] = (ownerOverdueCounts[owner] || 0) + 1;
+
+      if (daysOverdue <= 7) agingBuckets.overdue1to7 += 1;
+      else if (daysOverdue <= 14) agingBuckets.overdue8to14 += 1;
+      else if (daysOverdue <= 30) agingBuckets.overdue15to30 += 1;
+      else agingBuckets.overdue31Plus += 1;
+    });
+
+    const topOwners = Object.entries(ownerCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5);
+
+    const topOverdueOwners = Object.entries(ownerOverdueCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5);
+
+    const totalOverdue =
+      agingBuckets.overdue1to7 +
+      agingBuckets.overdue8to14 +
+      agingBuckets.overdue15to30 +
+      agingBuckets.overdue31Plus;
+
+    const completionRate =
+      tasks.length === 0
+        ? 100
+        : Math.round(
+            (tasks.filter((task) => task.status === "complete").length /
+              tasks.length) *
+              100
+          );
+
+    return {
+      activeTasks,
+      agingBuckets,
+      topOwners,
+      topOverdueOwners,
+      totalOverdue,
+      completionRate,
+    };
+  }, [tasks]);
+
   if (loading) {
     return <main style={pageStyle}>Loading CAPA Intelligence...</main>;
   }
@@ -225,6 +301,80 @@ export default function CapaIntelligenceDashboardPage() {
         <KpiCard title="Ineffective CAPAs" value={metrics.ineffectiveCapas.length} color="#dc2626" />
         <KpiCard title="Overdue Tasks" value={metrics.overdueTasks.length} color="#dc2626" />
         <KpiCard title="Blocked Tasks" value={metrics.blockedTasks.length} color="#d97706" />
+      </section>
+
+      <section style={slaPanelStyle}>
+        <div>
+          <div style={eyebrowStyle}>TASK SLA AGING</div>
+          <h2 style={{ margin: "6px 0" }}>Execution Aging & Ownership</h2>
+          <p style={subtleText}>
+            Tracks active CAPA task aging, overdue exposure, owner workload, and execution completion rate.
+          </p>
+        </div>
+
+        <div style={slaSummaryGridStyle}>
+          <KpiCard
+            title="Task Completion Rate"
+            value={taskAging.completionRate}
+            color={taskAging.completionRate >= 90 ? "#15803d" : taskAging.completionRate >= 75 ? "#d97706" : "#dc2626"}
+            suffix="%"
+          />
+
+          <KpiCard
+            title="Active Tasks"
+            value={taskAging.activeTasks.length}
+            color="#2563eb"
+          />
+
+          <KpiCard
+            title="Total Overdue Tasks"
+            value={taskAging.totalOverdue}
+            color={taskAging.totalOverdue > 0 ? "#dc2626" : "#15803d"}
+          />
+
+          <KpiCard
+            title="Tasks Missing Due Date"
+            value={taskAging.agingBuckets.noDueDate}
+            color={taskAging.agingBuckets.noDueDate > 0 ? "#d97706" : "#15803d"}
+          />
+        </div>
+
+        <div style={slaGridStyle}>
+          <section style={cardStyle}>
+            <h3 style={{ marginTop: 0 }}>Aging Buckets</h3>
+
+            <BarRow label="Not Due" value={taskAging.agingBuckets.notDue} max={Math.max(taskAging.activeTasks.length, 1)} />
+            <BarRow label="1–7 Days Overdue" value={taskAging.agingBuckets.overdue1to7} max={Math.max(taskAging.activeTasks.length, 1)} />
+            <BarRow label="8–14 Days Overdue" value={taskAging.agingBuckets.overdue8to14} max={Math.max(taskAging.activeTasks.length, 1)} />
+            <BarRow label="15–30 Days Overdue" value={taskAging.agingBuckets.overdue15to30} max={Math.max(taskAging.activeTasks.length, 1)} />
+            <BarRow label="31+ Days Overdue" value={taskAging.agingBuckets.overdue31Plus} max={Math.max(taskAging.activeTasks.length, 1)} />
+            <BarRow label="No Due Date" value={taskAging.agingBuckets.noDueDate} max={Math.max(taskAging.activeTasks.length, 1)} />
+          </section>
+
+          <section style={cardStyle}>
+            <h3 style={{ marginTop: 0 }}>Owner Workload</h3>
+
+            {taskAging.topOwners.length === 0 ? (
+              <p style={subtleText}>No active task ownership data available.</p>
+            ) : (
+              taskAging.topOwners.map(([owner, count]) => (
+                <BarRow key={owner} label={owner} value={count} max={taskAging.topOwners[0]?.[1] || 1} />
+              ))
+            )}
+          </section>
+
+          <section style={cardStyle}>
+            <h3 style={{ marginTop: 0 }}>Overdue by Owner</h3>
+
+            {taskAging.topOverdueOwners.length === 0 ? (
+              <p style={subtleText}>No overdue owner exposure.</p>
+            ) : (
+              taskAging.topOverdueOwners.map(([owner, count]) => (
+                <BarRow key={owner} label={owner} value={count} max={taskAging.topOverdueOwners[0]?.[1] || 1} />
+              ))
+            )}
+          </section>
+        </div>
       </section>
 
       <section style={escalationPanelStyle}>
@@ -414,11 +564,24 @@ function EscalationCard({
   );
 }
 
-function KpiCard({ title, value, color }: { title: string; value: number; color: string }) {
+function KpiCard({
+  title,
+  value,
+  color,
+  suffix = "",
+}: {
+  title: string;
+  value: number;
+  color: string;
+  suffix?: string;
+}) {
   return (
     <div style={{ ...kpiCardStyle, borderLeft: `8px solid ${color}` }}>
       <div style={kpiTitleStyle}>{title}</div>
-      <div style={{ fontSize: "34px", fontWeight: 800, color }}>{value}</div>
+      <div style={{ fontSize: "34px", fontWeight: 800, color }}>
+        {value}
+        {suffix}
+      </div>
     </div>
   );
 }
@@ -563,6 +726,29 @@ const kpiCardStyle: React.CSSProperties = {
 const kpiTitleStyle: React.CSSProperties = {
   color: "#6b7280",
   marginBottom: "10px",
+};
+
+const slaPanelStyle: React.CSSProperties = {
+  background: "white",
+  borderRadius: "16px",
+  padding: "22px",
+  border: "1px solid #d1d5db",
+  marginBottom: "24px",
+};
+
+const slaSummaryGridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+  gap: "18px",
+  marginTop: "18px",
+  marginBottom: "20px",
+};
+
+const slaGridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+  gap: "16px",
+  marginTop: "18px",
 };
 
 const escalationPanelStyle: React.CSSProperties = {
