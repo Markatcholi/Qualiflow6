@@ -403,13 +403,22 @@ export default function EnterpriseCapaWorkflowPage() {
       return;
     }
 
+    const taskOwnerEmail = normalizeEmail(newTask.owner);
+
+    if (!taskOwnerEmail) {
+      alert(
+        "Task owner email is required. Notifications are sent to this email address."
+      );
+      return;
+    }
+
     const { error } = await supabase.from("capa_tasks").insert({
       capa_id: id,
       task_type: newTask.task_type,
       task_title: newTask.task_title,
       task_description: newTask.task_description || null,
-      owner: newTask.owner || null,
-      owner_email: normalizeEmail(newTask.owner),
+      owner: taskOwnerEmail,
+      owner_email: taskOwnerEmail,
       due_date: newTask.due_date || null,
       status: "open",
       created_by: userEmail || "unknown",
@@ -427,15 +436,16 @@ export default function EnterpriseCapaWorkflowPage() {
     );
 
     await createNotification({
-      userEmail: normalizeEmail(newTask.owner),
+      userEmail: taskOwnerEmail,
       title: "CAPA Task Assigned",
       message: `You have been assigned a CAPA task: ${newTask.task_title}`,
-      notificationType: "task_assigned",
+      notificationType: "capa_task_assigned",
       severity: "medium",
       relatedRecordId: id,
       relatedModule: "capa",
       relatedUrl: `/capa/${id}`,
       createdBy: userEmail,
+      deduplicationKey: `TASK_ASSIGNED_${id}_${newTask.task_title}_${taskOwnerEmail}`,
     });
 
     setNewTask({
@@ -1820,14 +1830,19 @@ export default function EnterpriseCapaWorkflowPage() {
                     />
                   </Field>
 
-                  <Field label="Owner">
+                  <Field label="Task Owner Email">
                     <input
+                      type="email"
                       value={newTask.owner}
                       onChange={(e) =>
                         setNewTask({ ...newTask, owner: e.target.value })
                       }
+                      placeholder="owner@company.com"
                       style={inputStyle(false)}
                     />
+                    <div style={helperTextStyle}>
+                      Notifications are sent to this email address.
+                    </div>
                   </Field>
 
                   <Field label="Due Date">
@@ -2778,6 +2793,12 @@ const inputStyle = (locked: boolean): CSSProperties => ({
 
 const fieldLabelStyle: CSSProperties = {
   fontWeight: 700,
+};
+
+const helperTextStyle: CSSProperties = {
+  marginTop: "6px",
+  fontSize: "12px",
+  color: "#6b7280",
 };
 
 const eyebrowStyle: CSSProperties = {
