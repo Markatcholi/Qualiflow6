@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
-import NotificationBell from "./NotificationBell";
 
 export default function AppHeader() {
   const [email, setEmail] = useState("");
@@ -47,36 +46,67 @@ export default function AppHeader() {
       }}
     >
       <nav>
-        <a href="/dashboard" style={{ marginRight: "12px" }}>Dashboard</a>
-        <a href="/management-review" style={{ marginRight: "15px" }}>Management Review</a>
-        <a href="/ncmrs" style={{ marginRight: "12px" }}>NCMRs</a>
-        <a href="/capa" style={{ marginRight: "12px" }}>CAPA</a>
-        <a href="/suppliers" style={{ marginRight: "12px" }}>Suppliers</a>
-        <a href="/supplier-quality/scars" style={{ marginRight: "12px" }}>SCARs</a>
-        <a href="/audits" style={{ marginRight: "12px" }}>Audits</a>
-        <a href="/oos-oot" style={{ marginRight: "12px" }}>OOS/OOT</a>
-        <a href="/audit" style={{ marginRight: "12px" }}>Audit Trail</a>
-        <a href="/admin/master-data">Admin Master Data</a>
+        <a href="/dashboard" style={{ marginRight: "12px" }}>
+          Dashboard
+        </a>
+
+        <a
+          href="/management-review"
+          style={{ marginRight: "15px" }}
+        >
+          Management Review
+        </a>
+
+        <a href="/ncmrs" style={{ marginRight: "12px" }}>
+          NCMRs
+        </a>
+
+        <a href="/capa" style={{ marginRight: "12px" }}>
+          CAPA
+        </a>
+
+        <a href="/suppliers" style={{ marginRight: "12px" }}>
+          Suppliers
+        </a>
+
+        <a
+          href="/supplier-quality/scars"
+          style={{ marginRight: "12px" }}
+        >
+          SCARs
+        </a>
+
+        <a href="/audits" style={{ marginRight: "12px" }}>
+          Audits
+        </a>
+
+        <a href="/oos-oot" style={{ marginRight: "12px" }}>
+          OOS/OOT
+        </a>
+
+        <a href="/audit" style={{ marginRight: "12px" }}>
+          Audit Trail
+        </a>
+
+        <a
+          href="/admin/company-settings"
+          style={{ marginRight: "12px" }}
+        >
+          Company Settings
+        </a>
+
+        <a href="/admin/master-data">
+          Admin Master Data
+        </a>
       </nav>
 
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "12px",
-          flexWrap: "wrap",
-        }}
-      >
-        {email ? <NotificationBell /> : null}
-
-        <span>
+      <div>
+        <span style={{ marginRight: "12px" }}>
           {email ? `${email} (${role || "user"})` : "Not logged in"}
         </span>
 
         {email ? (
-          <button onClick={handleLogout}>
-            Logout
-          </button>
+          <button onClick={handleLogout}>Logout</button>
         ) : null}
       </div>
     </header>
