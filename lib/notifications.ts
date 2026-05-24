@@ -17,6 +17,18 @@ type CreateNotificationInput = {
   deduplicationKey?: string | null;
 };
 
+type CreateRoleNotificationsInput = {
+  role?: string;
+  title?: string;
+  message?: string;
+  notificationType?: string;
+  severity?: NotificationSeverity;
+  relatedRecordId?: string | null;
+  relatedModule?: string;
+  relatedUrl?: string;
+  createdBy?: string | null;
+};
+
 const ENABLED_V1_TYPES = new Set([
   "capa_task_assigned",
   "capa_task_overdue",
@@ -139,8 +151,11 @@ export async function createNotification(input: CreateNotificationInput) {
   };
 }
 
-// Backward-compatible export for existing workflow imports.
-// Broad role notifications are intentionally disabled in V1 to avoid alert fatigue.
-export async function createRoleNotifications() {
+// Backward-compatible export for existing CAPA workflow imports.
+// Accepts the existing argument shape so TypeScript builds, but intentionally
+// does not send role-wide notifications in V1 to avoid alert fatigue.
+export async function createRoleNotifications(
+  _input?: CreateRoleNotificationsInput
+) {
   return { skipped: true, reason: "role_notifications_disabled_in_v1" };
 }
