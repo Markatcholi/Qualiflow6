@@ -88,13 +88,6 @@ export default function AppHeader() {
           Audit Trail
         </a>
 
-        <a
-          href="/admin/company-settings"
-          style={{ marginRight: "12px" }}
-        >
-          Company Settings
-        </a>
-
         <a href="/admin/master-data">
           Admin Master Data
         </a>
