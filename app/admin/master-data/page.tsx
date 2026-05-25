@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { supabase } from "../../../lib/supabaseClient";
 
@@ -484,6 +485,60 @@ export default function MasterDataPage() {
       <h1>Admin Master Data</h1>
       <p><strong>Logged-in Email:</strong> {userEmail}</p>
       <p><strong>Your Role:</strong> {userRole}</p>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+          gap: "16px",
+          marginTop: "20px",
+          marginBottom: "24px",
+        }}
+      >
+        <div
+          style={{
+            border: "1px solid #d1d5db",
+            borderRadius: "12px",
+            padding: "20px",
+            background: "#f8fafc",
+          }}
+        >
+          <div
+            style={{
+              fontSize: "12px",
+              fontWeight: 800,
+              color: "#6b7280",
+              letterSpacing: "0.08em",
+              marginBottom: "8px",
+            }}
+          >
+            ENTERPRISE GOVERNANCE
+          </div>
+
+          <h2 style={{ marginTop: 0 }}>Company Settings</h2>
+
+          <p style={{ color: "#4b5563" }}>
+            Configure notifications, overdue governance, SLA aging,
+            dashboards, and enterprise workflow defaults.
+          </p>
+
+          <Link
+            href="/admin/company-settings"
+            style={{
+              display: "inline-block",
+              marginTop: "10px",
+              background: "#2563eb",
+              color: "white",
+              padding: "10px 14px",
+              borderRadius: "8px",
+              textDecoration: "none",
+              fontWeight: 700,
+            }}
+          >
+            Open Company Settings
+          </Link>
+        </div>
+      </div>
 
       <div style={sectionStyle}>
         <h2>Product Part Numbers</h2>
