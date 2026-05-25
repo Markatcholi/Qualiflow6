@@ -60,15 +60,15 @@ export default function AppHeader() {
         <a href="/ncmrs" style={{ marginRight: "12px" }}>
           NCMRs
         </a>
-
-        <a href="/documents" style={{ marginRight: "12px" }}>
-  Documents
-</a>
         
         <a href="/capa" style={{ marginRight: "12px" }}>
           CAPA
         </a>
 
+        <a href="/documents" style={{ marginRight: "12px" }}>
+  Documents
+</a>
+        
         <a href="/suppliers" style={{ marginRight: "12px" }}>
           Suppliers
         </a>
