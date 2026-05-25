@@ -61,6 +61,10 @@ export default function AppHeader() {
           NCMRs
         </a>
 
+        <a href="/documents" style={{ marginRight: "12px" }}>
+  Documents
+</a>
+        
         <a href="/capa" style={{ marginRight: "12px" }}>
           CAPA
         </a>
