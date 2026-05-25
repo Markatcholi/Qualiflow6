@@ -284,20 +284,6 @@ export default function CapaIntelligenceDashboardPage() {
         </Link>
       </header>
 
-      <section style={settingsBannerStyle}>
-        <div>
-          <strong>Company Settings Active:</strong>{" "}
-          Notifications {companySettings?.enable_notifications ? "ON" : "OFF"} |{" "}
-          Overdue Scan {enableOverdueScan ? "ON" : "OFF"} |{" "}
-          Task SLA {enableTaskSlaDashboard ? "ON" : "OFF"} |{" "}
-          Escalation {enableEscalationDashboard ? "ON" : "OFF"}
-        </div>
-
-        <Link href="/admin/company-settings" style={settingsLinkStyle}>
-          Edit Company Settings
-        </Link>
-      </section>
-
       {enableOverdueScan ? (
       <section style={governanceScanStyle}>
         <div>
@@ -753,29 +739,6 @@ const disabledButtonStyle: React.CSSProperties = {
   borderRadius: "8px",
   fontWeight: 700,
   cursor: "not-allowed",
-};
-
-const settingsBannerStyle: React.CSSProperties = {
-  background: "#eff6ff",
-  border: "1px solid #bfdbfe",
-  borderRadius: "14px",
-  padding: "14px",
-  marginBottom: "20px",
-  color: "#1e3a8a",
-  display: "flex",
-  justifyContent: "space-between",
-  gap: "12px",
-  flexWrap: "wrap",
-  alignItems: "center",
-};
-
-const settingsLinkStyle: React.CSSProperties = {
-  background: "#2563eb",
-  color: "white",
-  padding: "8px 12px",
-  borderRadius: "8px",
-  textDecoration: "none",
-  fontWeight: 700,
 };
 
 const disabledFeatureStyle: React.CSSProperties = {
