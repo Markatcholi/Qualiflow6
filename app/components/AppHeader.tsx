@@ -7,6 +7,9 @@ export default function AppHeader() {
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("");
 
+  const canAccessAdmin =
+    role === "admin" || role === "approver" || role === "vp_quality";
+
   const fetchUser = async () => {
     const { data: userData } = await supabase.auth.getUser();
     const userEmail = userData?.user?.email || "";
@@ -50,33 +53,35 @@ export default function AppHeader() {
           Dashboard
         </a>
 
-        <a
-          href="/management-review"
-          style={{ marginRight: "15px" }}
-        >
+        <a href="/management-review" style={{ marginRight: "15px" }}>
           Management Review
         </a>
 
         <a href="/ncmrs" style={{ marginRight: "12px" }}>
           NCMRs
         </a>
-        
+
         <a href="/capa" style={{ marginRight: "12px" }}>
           CAPA
         </a>
 
+        <a href="/change-control" style={{ marginRight: "12px" }}>
+          Change Control
+        </a>
+
         <a href="/documents" style={{ marginRight: "12px" }}>
-  Documents
-</a>
-        
+          Documents
+        </a>
+
+        <a href="/training" style={{ marginRight: "12px" }}>
+          Training
+        </a>
+
         <a href="/suppliers" style={{ marginRight: "12px" }}>
           Suppliers
         </a>
 
-        <a
-          href="/supplier-quality/scars"
-          style={{ marginRight: "12px" }}
-        >
+        <a href="/supplier-quality/scars" style={{ marginRight: "12px" }}>
           SCARs
         </a>
 
@@ -92,9 +97,11 @@ export default function AppHeader() {
           Audit Trail
         </a>
 
-        <a href="/admin/master-data">
-          Admin Master Data
-        </a>
+        {canAccessAdmin ? (
+          <a href="/admin/master-data" style={{ marginRight: "12px" }}>
+            Admin Master Data
+          </a>
+        ) : null}
       </nav>
 
       <div>
@@ -102,9 +109,7 @@ export default function AppHeader() {
           {email ? `${email} (${role || "user"})` : "Not logged in"}
         </span>
 
-        {email ? (
-          <button onClick={handleLogout}>Logout</button>
-        ) : null}
+        {email ? <button onClick={handleLogout}>Logout</button> : null}
       </div>
     </header>
   );
