@@ -46,6 +46,17 @@ type ControlledDocument = {
   status: string;
 };
 
+
+type EmployeeProfile = {
+  id: string;
+  user_email: string;
+  full_name: string | null;
+  department: string | null;
+  role_name: string | null;
+  manager_email: string | null;
+  active: boolean | null;
+};
+
 const TRAINING_STATUSES = [
   "assigned",
   "in_progress",
@@ -60,6 +71,17 @@ export default function TrainingManagementPage() {
   const [assignments, setAssignments] = useState<TrainingAssignment[]>([]);
   const [matrixRows, setMatrixRows] = useState<TrainingMatrixRow[]>([]);
   const [documents, setDocuments] = useState<ControlledDocument[]>([]);
+  const [employees, setEmployees] = useState<EmployeeProfile[]>([]);
+  const [autoAssigning, setAutoAssigning] = useState(false);
+  const [autoAssignResult, setAutoAssignResult] = useState<any>(null);
+
+  const [newEmployee, setNewEmployee] = useState({
+    user_email: "",
+    full_name: "",
+    department: "",
+    role_name: "",
+    manager_email: "",
+  });
 
   const [loading, setLoading] = useState(true);
   const [userEmail, setUserEmail] = useState("");
@@ -146,6 +168,15 @@ export default function TrainingManagementPage() {
       setDocuments((docRes.data as ControlledDocument[]) || []);
     }
 
+    const employeeRes = await supabase
+      .from("employee_profiles")
+      .select("*")
+      .order("user_email", { ascending: true });
+
+    if (!employeeRes.error) {
+      setEmployees((employeeRes.data as EmployeeProfile[]) || []);
+    }
+
     setLoading(false);
   };
 
@@ -158,6 +189,49 @@ export default function TrainingManagementPage() {
     if (!text || !text.includes("@")) return "";
     return text;
   };
+
+  const addDays = (days: number) => {
+    const date = new Date();
+    date.setDate(date.getDate() + days);
+    return date.toISOString().slice(0, 10);
+  };
+
+  const createEmployeeProfile = async () => {
+    const email = normalizeEmail(newEmployee.user_email);
+
+    if (!email) {
+      alert("Employee email is required.");
+      return;
+    }
+
+    const { error } = await supabase.from("employee_profiles").upsert(
+      {
+        user_email: email,
+        full_name: newEmployee.full_name || null,
+        department: newEmployee.department || null,
+        role_name: newEmployee.role_name || null,
+        manager_email: normalizeEmail(newEmployee.manager_email) || null,
+        active: true,
+      },
+      { onConflict: "user_email" }
+    );
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    setNewEmployee({
+      user_email: "",
+      full_name: "",
+      department: "",
+      role_name: "",
+      manager_email: "",
+    });
+
+    fetchData();
+  };
+
 
   const today = new Date().toISOString().slice(0, 10);
 
@@ -413,9 +487,92 @@ export default function TrainingManagementPage() {
       return;
     }
 
-    alert(
-      "V1 foundation: Training Matrix is ready. Auto-assignment will be connected to user profile roles/departments in the next upgrade."
+    setAutoAssigning(true);
+    setAutoAssignResult(null);
+
+    const effectiveDocs = documents.filter(
+      (doc) => doc.status === "effective"
     );
+
+    let created = 0;
+    let skipped = 0;
+
+    for (const doc of effectiveDocs) {
+      const matchingMatrixRows = matrixRows.filter(
+        (row) =>
+          String(row.document_number || "").trim().toLowerCase() ===
+          String(doc.document_number || "").trim().toLowerCase()
+      );
+
+      for (const row of matchingMatrixRows) {
+        const matchingEmployees = employees.filter((employee) => {
+          const roleMatch =
+            !row.role_name ||
+            String(employee.role_name || "").trim().toLowerCase() ===
+              String(row.role_name || "").trim().toLowerCase();
+
+          const departmentMatch =
+            !row.department ||
+            String(employee.department || "").trim().toLowerCase() ===
+              String(row.department || "").trim().toLowerCase();
+
+          return roleMatch && departmentMatch;
+        });
+
+        for (const employee of matchingEmployees) {
+          const existing = assignments.find(
+            (assignment) =>
+              assignment.document_id === doc.id &&
+              assignment.assigned_to_email === employee.user_email
+          );
+
+          if (existing) {
+            skipped += 1;
+            continue;
+          }
+
+          const { error } = await supabase
+            .from("training_assignments")
+            .insert({
+              document_id: doc.id,
+              assigned_to_email: employee.user_email,
+              assigned_by_email: userEmail || "system",
+              assignment_source:
+                "training_matrix_document_effective",
+              role_name: employee.role_name || null,
+              department: employee.department || null,
+              training_title: `${doc.document_number} Rev ${doc.revision} Training`,
+              training_description:
+                `Training auto-assigned because ${doc.document_number} Rev ${doc.revision} is effective.`,
+              due_date: addDays(14),
+              status: "assigned",
+              effectiveness_required:
+                row.effectiveness_required || false,
+              effectiveness_status:
+                row.effectiveness_required
+                  ? "effectiveness_pending"
+                  : "not_required",
+              supervisor_verification_required:
+                row.effectiveness_required || false,
+              acknowledgement_required: true,
+            });
+
+          if (!error) {
+            created += 1;
+          }
+        }
+      }
+    }
+
+    setAutoAssignResult({
+      created,
+      skipped,
+      effectiveDocuments: effectiveDocs.length,
+    });
+
+    setAutoAssigning(false);
+
+    fetchData();
   };
 
   if (loading) {
@@ -458,7 +615,127 @@ export default function TrainingManagementPage() {
         <KpiCard title="Matrix Rows" value={metrics.matrixRows} color="#2563eb" />
       </section>
 
+      
       <section style={cardStyle}>
+        <h2 style={{ marginTop: 0 }}>Employee Profiles</h2>
+
+        <p style={subtleText}>
+          Employee profiles are used for automatic training assignment from the training matrix.
+        </p>
+
+        <div style={gridStyle}>
+          <Field label="Employee Email">
+            <input
+              value={newEmployee.user_email}
+              onChange={(e) =>
+                setNewEmployee({
+                  ...newEmployee,
+                  user_email: e.target.value,
+                })
+              }
+              style={inputStyle}
+            />
+          </Field>
+
+          <Field label="Full Name">
+            <input
+              value={newEmployee.full_name}
+              onChange={(e) =>
+                setNewEmployee({
+                  ...newEmployee,
+                  full_name: e.target.value,
+                })
+              }
+              style={inputStyle}
+            />
+          </Field>
+
+          <Field label="Role">
+            <input
+              value={newEmployee.role_name}
+              onChange={(e) =>
+                setNewEmployee({
+                  ...newEmployee,
+                  role_name: e.target.value,
+                })
+              }
+              style={inputStyle}
+            />
+          </Field>
+
+          <Field label="Department">
+            <input
+              value={newEmployee.department}
+              onChange={(e) =>
+                setNewEmployee({
+                  ...newEmployee,
+                  department: e.target.value,
+                })
+              }
+              style={inputStyle}
+            />
+          </Field>
+
+          <Field label="Manager Email">
+            <input
+              value={newEmployee.manager_email}
+              onChange={(e) =>
+                setNewEmployee({
+                  ...newEmployee,
+                  manager_email: e.target.value,
+                })
+              }
+              style={inputStyle}
+            />
+          </Field>
+        </div>
+
+        <button
+          onClick={createEmployeeProfile}
+          style={primaryButtonStyle}
+        >
+          Add / Update Employee
+        </button>
+
+        <ul>
+          {employees.map((employee) => (
+            <li key={employee.id}>
+              {employee.user_email} —{" "}
+              {employee.role_name || "No Role"} —{" "}
+              {employee.department || "No Department"}
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <section style={cardStyle}>
+        <h2 style={{ marginTop: 0 }}>
+          Auto-Assign Training From Effective Documents
+        </h2>
+
+        <p style={subtleText}>
+          This scans effective controlled documents, matches them to the training matrix,
+          finds matching employees, and automatically creates training assignments.
+        </p>
+
+        <button
+          onClick={autoAssignFromMatrix}
+          style={autoAssigning ? secondaryButtonStyle : primaryButtonStyle}
+        >
+          {autoAssigning ? "Auto-Assigning..." : "Run Auto-Assignment"}
+        </button>
+
+        {autoAssignResult ? (
+          <div style={{ marginTop: "12px" }}>
+            <strong>Results:</strong>
+            <div>Effective Documents: {autoAssignResult.effectiveDocuments}</div>
+            <div>Assignments Created: {autoAssignResult.created}</div>
+            <div>Duplicates Skipped: {autoAssignResult.skipped}</div>
+          </div>
+        ) : null}
+      </section>
+
+<section style={cardStyle}>
         <h2 style={{ marginTop: 0 }}>Create Training Assignment</h2>
 
         <div style={gridStyle}>
