@@ -56,6 +56,7 @@ const RISKS = ["Low", "Medium", "High", "Critical"];
 export default function ChangeControlPage() {
   const [changes, setChanges] = useState<ChangeControl[]>([]);
   const [documents, setDocuments] = useState<any[]>([]);
+  const [controlledDocuments, setControlledDocuments] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
   const [tasks, setTasks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -174,6 +175,15 @@ export default function ChangeControlPage() {
     if (!productRes.error) setProducts(productRes.data || []);
     if (!taskRes.error) setTasks(taskRes.data || []);
 
+    const controlledDocRes = await supabase
+      .from("controlled_documents")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (!controlledDocRes.error) {
+      setControlledDocuments(controlledDocRes.data || []);
+    }
+
     setLoading(false);
   };
 
@@ -205,6 +215,87 @@ export default function ChangeControlPage() {
     if (!text || !text.includes("@")) return "";
     return text;
   };
+
+  
+  const selectedDocuments = documents.filter(
+    (d) => d.change_control_id === selectedChangeId
+  );
+
+  const selectedTasks = tasks.filter(
+    (t) => t.change_control_id === selectedChangeId
+  );
+
+  const implementationComplete =
+    selectedTasks.length > 0 &&
+    selectedTasks.every((t) => t.status === "complete");
+
+  const linkedControlledDocuments = selectedDocuments
+    .map((doc) =>
+      controlledDocuments.find(
+        (cd) => cd.id === doc.controlled_document_id
+      )
+    )
+    .filter(Boolean);
+
+  const documentsEffective =
+    linkedControlledDocuments.length > 0 &&
+    linkedControlledDocuments.every(
+      (doc: any) => doc.status === "effective"
+    );
+
+  const trainingComplete =
+    selectedDocuments.length > 0 &&
+    selectedDocuments.every(
+      (doc) =>
+        !doc.training_required ||
+        doc.training_completed
+    );
+
+  const closureEligible =
+    implementationComplete &&
+    documentsEffective &&
+    trainingComplete;
+
+  const createControlledDocumentFromChange = async (
+    linkedDoc: any
+  ) => {
+    if (!selectedChange) {
+      alert("Select a change first.");
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("controlled_documents")
+      .insert({
+        document_number: linkedDoc.document_number,
+        title: linkedDoc.document_title,
+        revision: linkedDoc.proposed_revision || "A",
+        status: "draft",
+        originating_change_control_id: selectedChange.id,
+        owner_email:
+          selectedChange.owner_email || userEmail || null,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    await supabase
+      .from("change_control_documents")
+      .update({
+        controlled_document_id: data.id,
+        document_status: "draft",
+      })
+      .eq("id", linkedDoc.id);
+
+    alert("Controlled document created successfully.");
+
+    fetchData();
+  };
+
 
   const createChange = async () => {
     if (!newChange.change_title.trim()) return alert("Change title is required.");
@@ -598,7 +689,25 @@ export default function ChangeControlPage() {
                       {change.status === "draft" ? <button onClick={() => updateStatus(change, "pending_approval")}>Submit Approval</button> : null}
                       {change.status === "pending_approval" ? <button onClick={() => updateStatus(change, "approved")}>Approve</button> : null}
                       {change.status === "approved" ? <button onClick={() => updateStatus(change, "implementation")}>Start Implementation</button> : null}
-                      {change.status === "implementation" ? <button onClick={() => updateStatus(change, "closed")}>Close</button> : null}
+                      {change.status === "implementation" ? (
+                        <button
+                          onClick={() => {
+                            if (
+                              selectedChangeId === change.id &&
+                              !closureEligible
+                            ) {
+                              alert(
+                                "Cannot close change until implementation, effective documents, and training are complete."
+                              );
+                              return;
+                            }
+
+                            updateStatus(change, "closed");
+                          }}
+                        >
+                          Close
+                        </button>
+                      ) : null}
                     </div>
                   </td>
                 </tr>
@@ -614,7 +723,32 @@ export default function ChangeControlPage() {
           <p><strong>{selectedChange.change_number}</strong> — {selectedChange.change_title}</p>
 
           <div style={gridStyle}>
+            
             <section style={subCardStyle}>
+              <h3>Governance Status</h3>
+
+              <div style={{ marginBottom: "8px" }}>
+                <strong>Implementation Complete:</strong>{" "}
+                {implementationComplete ? "Yes" : "No"}
+              </div>
+
+              <div style={{ marginBottom: "8px" }}>
+                <strong>Documents Effective:</strong>{" "}
+                {documentsEffective ? "Yes" : "No"}
+              </div>
+
+              <div style={{ marginBottom: "8px" }}>
+                <strong>Training Complete:</strong>{" "}
+                {trainingComplete ? "Yes" : "No"}
+              </div>
+
+              <div style={{ marginBottom: "8px" }}>
+                <strong>Closure Eligible:</strong>{" "}
+                {closureEligible ? "Yes" : "No"}
+              </div>
+            </section>
+
+<section style={subCardStyle}>
               <h3>Affected Documents</h3>
               <input placeholder="Document Number" value={newDoc.document_number} onChange={(e) => setNewDoc({ ...newDoc, document_number: e.target.value })} style={inputStyle} />
               <input placeholder="Document Title" value={newDoc.document_title} onChange={(e) => setNewDoc({ ...newDoc, document_title: e.target.value })} style={inputStyle} />
@@ -622,7 +756,46 @@ export default function ChangeControlPage() {
               <input placeholder="Proposed Revision" value={newDoc.proposed_revision} onChange={(e) => setNewDoc({ ...newDoc, proposed_revision: e.target.value })} style={inputStyle} />
               <textarea placeholder="Change Description" value={newDoc.change_description} onChange={(e) => setNewDoc({ ...newDoc, change_description: e.target.value })} rows={3} style={textareaStyle} />
               <button onClick={addDocument}>Add Document</button>
-              <ul>{documents.filter((d) => d.change_control_id === selectedChange.id).map((d) => <li key={d.id}>{d.document_number} Rev {d.current_revision} → {d.proposed_revision}</li>)}</ul>
+              <ul>
+                {documents
+                  .filter((d) => d.change_control_id === selectedChange.id)
+                  .map((d) => {
+                    const linkedControlledDoc = controlledDocuments.find(
+                      (cd) => cd.id === d.controlled_document_id
+                    );
+
+                    return (
+                      <li key={d.id} style={{ marginBottom: "10px" }}>
+                        <div>
+                          <strong>{d.document_number}</strong> Rev {d.current_revision} → {d.proposed_revision}
+                        </div>
+
+                        <div style={smallTextStyle}>
+                          Controlled Document Status:{" "}
+                          {linkedControlledDoc?.status || d.document_status || "Not Created"}
+                        </div>
+
+                        <div style={smallTextStyle}>
+                          Training Required: {d.training_required ? "Yes" : "No"}
+                        </div>
+
+                        <div style={smallTextStyle}>
+                          Training Complete: {d.training_completed ? "Yes" : "No"}
+                        </div>
+
+                        {!d.controlled_document_id ? (
+                          <button
+                            onClick={() =>
+                              createControlledDocumentFromChange(d)
+                            }
+                          >
+                            Create Controlled Document
+                          </button>
+                        ) : null}
+                      </li>
+                    );
+                  })}
+              </ul>
             </section>
 
             <section style={subCardStyle}>
