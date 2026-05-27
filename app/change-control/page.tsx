@@ -128,6 +128,21 @@ export default function ChangeControlPage() {
 
   const selectedChange = changes.find((c) => c.id === selectedChangeId) || null;
 
+  const openChangeDetail = (changeId: string) => {
+    setSelectedChangeId(changeId);
+
+    setTimeout(() => {
+      const detailSection = document.getElementById("selected-change-detail");
+
+      if (detailSection) {
+        detailSection.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      }
+    }, 100);
+  };
+
   const fetchUser = async () => {
     const { data: userData } = await supabase.auth.getUser();
     const email = userData?.user?.email || "";
@@ -673,7 +688,7 @@ export default function ChangeControlPage() {
               {filteredChanges.map((change) => (
                 <tr key={change.id}>
                   <td style={tdStyle}>
-                    <button onClick={() => setSelectedChangeId(change.id)} style={linkButtonStyle}>
+                    <button onClick={() => openChangeDetail(change.id)} style={linkButtonStyle}>
                       {change.change_number || change.id}
                     </button>
                     <div><strong>{change.change_title}</strong></div>
@@ -718,9 +733,13 @@ export default function ChangeControlPage() {
       </section>
 
       {selectedChange ? (
-        <section style={cardStyle}>
+        <section id="selected-change-detail" style={cardStyle}>
           <h2 style={{ marginTop: 0 }}>Selected Change Detail</h2>
           <p><strong>{selectedChange.change_number}</strong> — {selectedChange.change_title}</p>
+
+          <div style={selectedNoticeStyle}>
+            Selected for review / approval workflow. Use the sections below to manage affected documents, products, implementation tasks, and governance closure readiness.
+          </div>
 
           <div style={gridStyle}>
             
@@ -876,3 +895,13 @@ const tdStyle: React.CSSProperties = { borderBottom: "1px solid #e5e7eb", paddin
 const actionStackStyle: React.CSSProperties = { display: "grid", gap: "8px" };
 const smallTextStyle: React.CSSProperties = { fontSize: "12px", color: "#6b7280" };
 const linkButtonStyle: React.CSSProperties = { background: "transparent", border: "none", color: "#2563eb", padding: 0, cursor: "pointer", fontWeight: 700 };
+
+const selectedNoticeStyle: React.CSSProperties = {
+  background: "#eff6ff",
+  border: "1px solid #bfdbfe",
+  color: "#1e3a8a",
+  borderRadius: "12px",
+  padding: "12px",
+  marginBottom: "14px",
+  fontWeight: 700,
+};
