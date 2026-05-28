@@ -107,6 +107,20 @@ export default function DocumentWorkflowPage() {
   const [filterStatus, setFilterStatus] = useState("all");
   const [search, setSearch] = useState("");
 
+  const [approvalTemplates, setApprovalTemplates] = useState<any[]>([]);
+  const [assignedReviewers, setAssignedReviewers] = useState<any[]>([]);
+
+  const [selectedTemplateId, setSelectedTemplateId] = useState("");
+
+  const [newReviewer, setNewReviewer] = useState({
+    reviewer_type: "formal_review",
+    reviewer_email: "",
+    reviewer_role: "",
+    required_reviewer: true,
+  });
+
+  const [reviewComments, setReviewComments] = useState<Record<string, string>>({});
+
   const canApprove =
     userRole === "admin" || userRole === "approver" || userRole === "vp_quality";
 
@@ -172,6 +186,25 @@ export default function DocumentWorkflowPage() {
     if (!trainingRes.error) setTrainingAssignments(trainingRes.data || []);
     if (!collaborationRes.error) setCollaborationReviews(collaborationRes.data || []);
     if (!formalRes.error) setFormalReviews(formalRes.data || []);
+
+    const templateRes = await supabase
+      .from("approval_matrix_templates")
+      .select("*")
+      .eq("active", true);
+
+    if (!templateRes.error) {
+      setApprovalTemplates(templateRes.data || []);
+    }
+
+    const reviewerRes = await supabase
+      .from("document_assigned_reviewers")
+      .select("*")
+      .eq("document_id", documentId)
+      .order("review_sequence", { ascending: true });
+
+    if (!reviewerRes.error) {
+      setAssignedReviewers(reviewerRes.data || []);
+    }
 
     setLoading(false);
   };
@@ -429,6 +462,16 @@ export default function DocumentWorkflowPage() {
       return;
     }
 
+    if (!requiredFormalApproved) {
+      alert("Required formal reviewers must approve.");
+      return;
+    }
+
+    if (!requiredApproversApproved) {
+      alert("Required approvers must approve.");
+      return;
+    }
+
     if (doc.status !== "formal_review") {
       alert("Only documents in formal review can be approved.");
       return;
@@ -657,6 +700,92 @@ export default function DocumentWorkflowPage() {
   const trainingCount = (docId: string) =>
     trainingAssignments.filter((item) => item.document_id === docId).length;
 
+  
+  const requiredFormalApproved =
+    assignedReviewers
+      .filter(
+        (r) =>
+          r.reviewer_type === "formal_review" &&
+          r.required_reviewer
+      )
+      .every(
+        (r) =>
+          r.review_status === "approved"
+      );
+
+  const requiredApproversApproved =
+    assignedReviewers
+      .filter(
+        (r) =>
+          r.reviewer_type === "approver" &&
+          r.required_reviewer
+      )
+      .every(
+        (r) =>
+          r.review_status === "approved"
+      );
+
+  const loadApprovalTemplate = async () => {
+    if (!selectedTemplateId || !doc) return;
+
+    const { data } = await supabase
+      .from("approval_matrix_reviewers")
+      .select("*")
+      .eq("template_id", selectedTemplateId);
+
+    for (const reviewer of data || []) {
+      await supabase
+        .from("document_assigned_reviewers")
+        .insert({
+          document_id: doc.id,
+          reviewer_type: reviewer.reviewer_type,
+          reviewer_email: reviewer.reviewer_email,
+          reviewer_role: reviewer.reviewer_role,
+          required_reviewer: reviewer.required_reviewer,
+          review_sequence: reviewer.sequence_order,
+          assigned_by: userEmail,
+        });
+    }
+
+    fetchData();
+  };
+
+  const addCustomReviewer = async () => {
+    if (!doc) return;
+
+    const { error } = await supabase
+      .from("document_assigned_reviewers")
+      .insert({
+        document_id: doc.id,
+        reviewer_type: newReviewer.reviewer_type,
+        reviewer_email: newReviewer.reviewer_email,
+        reviewer_role: newReviewer.reviewer_role,
+        required_reviewer: newReviewer.required_reviewer,
+        review_sequence: assignedReviewers.length + 1,
+        assigned_by: userEmail,
+      });
+
+    if (!error) fetchData();
+  };
+
+  const reviewerDecision = async (
+    reviewer: any,
+    decision: string
+  ) => {
+    await supabase
+      .from("document_assigned_reviewers")
+      .update({
+        review_status: decision,
+        review_comments:
+          reviewComments[reviewer.id] || "",
+        reviewed_at: new Date().toISOString(),
+      })
+      .eq("id", reviewer.id);
+
+    fetchData();
+  };
+
+
   const openTrainingCount = (docId: string) =>
     trainingAssignments.filter(
       (item) => item.document_id === docId && item.status !== "completed"
@@ -708,7 +837,171 @@ export default function DocumentWorkflowPage() {
         {doc.file_url ? <a href={doc.file_url} target="_blank">Open Document File</a> : null}
       </section>
 
+      
       <section style={cardStyle}>
+        <h2 style={{ marginTop: 0 }}>
+          Approval Matrix & Reviewers
+        </h2>
+
+        <div style={gridStyle}>
+          <select
+            value={selectedTemplateId}
+            onChange={(e) =>
+              setSelectedTemplateId(e.target.value)
+            }
+            style={inputStyle}
+          >
+            <option value="">
+              Select Approval Matrix Template
+            </option>
+
+            {approvalTemplates.map((template) => (
+              <option
+                key={template.id}
+                value={template.id}
+              >
+                {template.template_name}
+              </option>
+            ))}
+          </select>
+
+          <button onClick={loadApprovalTemplate}>
+            Load Template
+          </button>
+        </div>
+
+        <hr style={{ margin: "20px 0" }} />
+
+        <h3>Add Custom Reviewer</h3>
+
+        <div style={gridStyle}>
+          <select
+            value={newReviewer.reviewer_type}
+            onChange={(e) =>
+              setNewReviewer({
+                ...newReviewer,
+                reviewer_type: e.target.value,
+              })
+            }
+            style={inputStyle}
+          >
+            <option value="collaboration">
+              Collaboration
+            </option>
+
+            <option value="formal_review">
+              Formal Review
+            </option>
+
+            <option value="approver">
+              Approver
+            </option>
+          </select>
+
+          <input
+            placeholder="Reviewer Email"
+            value={newReviewer.reviewer_email}
+            onChange={(e) =>
+              setNewReviewer({
+                ...newReviewer,
+                reviewer_email: e.target.value,
+              })
+            }
+            style={inputStyle}
+          />
+
+          <input
+            placeholder="Reviewer Role"
+            value={newReviewer.reviewer_role}
+            onChange={(e) =>
+              setNewReviewer({
+                ...newReviewer,
+                reviewer_role: e.target.value,
+              })
+            }
+            style={inputStyle}
+          />
+        </div>
+
+        <button onClick={addCustomReviewer}>
+          Add Reviewer
+        </button>
+
+        <hr style={{ margin: "20px 0" }} />
+
+        <div style={{ display: "grid", gap: "12px" }}>
+          {assignedReviewers.map((reviewer) => (
+            <div
+              key={reviewer.id}
+              style={trainingCardStyle}
+            >
+              <strong>
+                {reviewer.reviewer_email}
+              </strong>
+
+              <div style={smallTextStyle}>
+                {reviewer.reviewer_type}
+              </div>
+
+              <div style={smallTextStyle}>
+                Status:
+                {reviewer.review_status || "pending"}
+              </div>
+
+              {doc.file_url ? (
+                <a
+                  href={doc.file_url}
+                  target="_blank"
+                >
+                  Open Document
+                </a>
+              ) : null}
+
+              <textarea
+                placeholder="Review comments"
+                value={
+                  reviewComments[reviewer.id] || ""
+                }
+                onChange={(e) =>
+                  setReviewComments({
+                    ...reviewComments,
+                    [reviewer.id]:
+                      e.target.value,
+                  })
+                }
+                rows={3}
+                style={textareaStyle}
+              />
+
+              <div style={buttonRowStyle}>
+                <button
+                  onClick={() =>
+                    reviewerDecision(
+                      reviewer,
+                      "approved"
+                    )
+                  }
+                >
+                  Approve
+                </button>
+
+                <button
+                  onClick={() =>
+                    reviewerDecision(
+                      reviewer,
+                      "rejected"
+                    )
+                  }
+                >
+                  Reject
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+<section style={cardStyle}>
         <h2 style={{ marginTop: 0 }}>Workflow Actions</h2>
         <div style={actionStackStyle}>
           {doc.status === "draft" || doc.status === "rejected" ? (
