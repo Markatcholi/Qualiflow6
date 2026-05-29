@@ -72,6 +72,8 @@ type AssignedReviewer = {
   reviewed_file_name?: string | null;
   reviewed_file_path?: string | null;
   reviewed_file_url?: string | null;
+  due_date?: string | null;
+  sla_days?: number | null;
 };
 
 type WorkflowEvent = {
