@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "../../../lib/supabaseClient";
 
@@ -57,7 +57,9 @@ type AssignedReviewer = {
   review_comments: string | null;
   reviewed_at: string | null;
   assigned_by: string | null;
-  created_at?: string | null;
+  reviewed_file_name?: string | null;
+  reviewed_file_path?: string | null;
+  reviewed_file_url?: string | null;
 };
 
 type WorkflowEvent = {
@@ -69,13 +71,7 @@ type WorkflowEvent = {
   from_status: string | null;
   to_status: string | null;
   comments: string | null;
-  metadata: any;
-};
-
-type ApprovalTemplate = {
-  id: string;
-  template_name: string;
-  active?: boolean | null;
+  metadata?: any;
 };
 
 const REVIEWER_TYPES = ["collaboration", "formal_review", "approver"];
@@ -84,19 +80,28 @@ export default function DocumentWorkflowPage() {
   const params = useParams();
   const documentId = String(params?.id || "");
 
-  const [doc, setDoc] = useState<ControlledDocument | null>(null);
+  const [documents, setDocuments] = useState<ControlledDocument[]>([]);
   const [acknowledgements, setAcknowledgements] = useState<any[]>([]);
   const [trainingAssignments, setTrainingAssignments] = useState<any[]>([]);
   const [collaborationReviews, setCollaborationReviews] = useState<any[]>([]);
   const [formalReviews, setFormalReviews] = useState<any[]>([]);
-  const [approvalTemplates, setApprovalTemplates] = useState<ApprovalTemplate[]>([]);
+  const [approvalTemplates, setApprovalTemplates] = useState<any[]>([]);
   const [assignedReviewers, setAssignedReviewers] = useState<AssignedReviewer[]>([]);
   const [workflowEvents, setWorkflowEvents] = useState<WorkflowEvent[]>([]);
 
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [userEmail, setUserEmail] = useState("");
-  const [userRole, setUserRole] = useState("user");
+  const [userRole, setUserRole] = useState("");
+
+  const [trainingEmails, setTrainingEmails] = useState<Record<string, string>>({});
+  const [obsoleteReason, setObsoleteReason] = useState<Record<string, string>>({});
+  const [rejectComments, setRejectComments] = useState<Record<string, string>>({});
+  const [releaseComments, setReleaseComments] = useState<Record<string, string>>({});
+  const [collaborationReviewerEmails, setCollaborationReviewerEmails] = useState<Record<string, string>>({});
+  const [formalReviewerEmails, setFormalReviewerEmails] = useState<Record<string, string>>({});
+  const [reviewComments, setReviewComments] = useState<Record<string, string>>({});
+  const [reviewedFiles, setReviewedFiles] = useState<Record<string, File | null>>({});
 
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [newReviewer, setNewReviewer] = useState({
@@ -106,13 +111,7 @@ export default function DocumentWorkflowPage() {
     required_reviewer: true,
   });
 
-  const [reviewComments, setReviewComments] = useState<Record<string, string>>({});
-  const [collaborationReviewerEmails, setCollaborationReviewerEmails] = useState("");
-  const [formalReviewerEmails, setFormalReviewerEmails] = useState("");
-  const [rejectComments, setRejectComments] = useState("");
-  const [releaseComments, setReleaseComments] = useState("");
-  const [obsoleteReason, setObsoleteReason] = useState("");
-  const [trainingEmails, setTrainingEmails] = useState("");
+  const doc = documents[0] || null;
 
   const normalizeEmail = (value: string | null | undefined) => {
     const text = String(value || "").trim().toLowerCase();
@@ -120,75 +119,52 @@ export default function DocumentWorkflowPage() {
     return text;
   };
 
-  const canApprove = ["admin", "approver", "vp_quality"].includes(userRole);
-  const canManage = canApprove || ["document_control", "quality"].includes(userRole);
-  const isOwner = normalizeEmail(doc?.owner_email) === normalizeEmail(userEmail);
-  const canManageWorkflow = canManage || isOwner;
+  const canApprove =
+    userRole === "admin" || userRole === "approver" || userRole === "vp_quality";
 
-  const requiredCollaborationReviewers = useMemo(
-    () =>
-      assignedReviewers.filter(
-        (r) => r.reviewer_type === "collaboration" && Boolean(r.required_reviewer)
-      ),
-    [assignedReviewers]
+  const canManage =
+    canApprove || userRole === "document_control" || userRole === "quality";
+
+  const isOwner =
+    doc && normalizeEmail(doc.owner_email) === normalizeEmail(userEmail);
+
+  const canManageWorkflow = Boolean(canManage || isOwner);
+
+  const requiredFormalApproved = assignedReviewers
+    .filter((r) => r.reviewer_type === "formal_review" && r.required_reviewer)
+    .every((r) => r.review_status === "approved");
+
+  const requiredApproversApproved = assignedReviewers
+    .filter((r) => r.reviewer_type === "approver" && r.required_reviewer)
+    .every((r) => r.review_status === "approved");
+
+  const pendingRequiredReviewers = assignedReviewers.filter(
+    (r) => r.required_reviewer && r.review_status !== "approved"
   );
-
-  const requiredFormalReviewers = useMemo(
-    () =>
-      assignedReviewers.filter(
-        (r) => r.reviewer_type === "formal_review" && Boolean(r.required_reviewer)
-      ),
-    [assignedReviewers]
-  );
-
-  const requiredApprovers = useMemo(
-    () =>
-      assignedReviewers.filter(
-        (r) => r.reviewer_type === "approver" && Boolean(r.required_reviewer)
-      ),
-    [assignedReviewers]
-  );
-
-  const rejectedReviewers = useMemo(
-    () => assignedReviewers.filter((r) => r.review_status === "rejected"),
-    [assignedReviewers]
-  );
-
-  const requiredCollaborationApproved =
-    requiredCollaborationReviewers.length === 0 ||
-    requiredCollaborationReviewers.every((r) => r.review_status === "approved");
-
-  const requiredFormalApproved =
-    requiredFormalReviewers.length === 0 ||
-    requiredFormalReviewers.every((r) => r.review_status === "approved");
-
-  const requiredApproversApproved =
-    requiredApprovers.length === 0 ||
-    requiredApprovers.every((r) => r.review_status === "approved");
 
   const nextPendingReviewer = useMemo(() => {
     return [...assignedReviewers]
-      .filter((r) => r.review_status !== "approved" && r.review_status !== "rejected")
-      .sort((a, b) => Number(a.review_sequence || 999) - Number(b.review_sequence || 999))[0];
+      .filter((r) => r.review_status !== "approved")
+      .sort((a, b) => Number(a.review_sequence || 9999) - Number(b.review_sequence || 9999))[0];
   }, [assignedReviewers]);
 
-  const workflowCompletionPercent = useMemo(() => {
-    if (assignedReviewers.length === 0) return doc?.status === "effective" ? 100 : 0;
-    const completed = assignedReviewers.filter(
-      (r) => r.review_status === "approved" || r.review_status === "rejected"
+  const documentAckCount = (docId: string) =>
+    acknowledgements.filter((ack) => ack.document_id === docId).length;
+
+  const trainingCount = (docId: string) =>
+    trainingAssignments.filter((item) => item.document_id === docId).length;
+
+  const openTrainingCount = (docId: string) =>
+    trainingAssignments.filter(
+      (item) => item.document_id === docId && item.status !== "completed"
     ).length;
-    return Math.round((completed / assignedReviewers.length) * 100);
-  }, [assignedReviewers, doc?.status]);
 
   const fetchUser = async () => {
     const { data: userData } = await supabase.auth.getUser();
     const email = userData?.user?.email || "";
     setUserEmail(email);
 
-    if (!email) {
-      setUserRole("user");
-      return;
-    }
+    if (!email) return;
 
     const { data } = await supabase
       .from("user_roles")
@@ -207,45 +183,52 @@ export default function DocumentWorkflowPage() {
       .from("controlled_documents")
       .select("*")
       .eq("id", documentId)
-      .maybeSingle();
+      .order("created_at", { ascending: false });
 
     if (docRes.error) alert(docRes.error.message);
-    setDoc((docRes.data as ControlledDocument) || null);
+    else setDocuments((docRes.data as ControlledDocument[]) || []);
 
-    const [ackRes, trainingRes, collaborationRes, formalRes, templateRes, reviewerRes, eventRes] =
-      await Promise.all([
-        supabase
-          .from("document_acknowledgements")
-          .select("*")
-          .eq("document_id", documentId)
-          .order("acknowledged_at", { ascending: false }),
-        supabase
-          .from("document_training_assignments")
-          .select("*")
-          .eq("document_id", documentId)
-          .order("assigned_at", { ascending: false }),
-        supabase
-          .from("document_collaboration_reviews")
-          .select("*")
-          .eq("document_id", documentId)
-          .order("created_at", { ascending: false }),
-        supabase
-          .from("document_formal_reviews")
-          .select("*")
-          .eq("document_id", documentId)
-          .order("created_at", { ascending: false }),
-        supabase.from("approval_matrix_templates").select("*").eq("active", true),
-        supabase
-          .from("document_assigned_reviewers")
-          .select("*")
-          .eq("document_id", documentId)
-          .order("review_sequence", { ascending: true }),
-        supabase
-          .from("document_workflow_events")
-          .select("*")
-          .eq("document_id", documentId)
-          .order("performed_at", { ascending: false }),
-      ]);
+    const [
+      ackRes,
+      trainingRes,
+      collaborationRes,
+      formalRes,
+      templateRes,
+      reviewerRes,
+      eventRes,
+    ] = await Promise.all([
+      supabase
+        .from("document_acknowledgements")
+        .select("*")
+        .eq("document_id", documentId)
+        .order("acknowledged_at", { ascending: false }),
+      supabase
+        .from("document_training_assignments")
+        .select("*")
+        .eq("document_id", documentId)
+        .order("assigned_at", { ascending: false }),
+      supabase
+        .from("document_collaboration_reviews")
+        .select("*")
+        .eq("document_id", documentId)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("document_formal_reviews")
+        .select("*")
+        .eq("document_id", documentId)
+        .order("created_at", { ascending: false }),
+      supabase.from("approval_matrix_templates").select("*").eq("active", true),
+      supabase
+        .from("document_assigned_reviewers")
+        .select("*")
+        .eq("document_id", documentId)
+        .order("review_sequence", { ascending: true }),
+      supabase
+        .from("document_workflow_events")
+        .select("*")
+        .eq("document_id", documentId)
+        .order("performed_at", { ascending: false }),
+    ]);
 
     if (!ackRes.error) setAcknowledgements(ackRes.data || []);
     if (!trainingRes.error) setTrainingAssignments(trainingRes.data || []);
@@ -254,14 +237,12 @@ export default function DocumentWorkflowPage() {
     if (!templateRes.error) setApprovalTemplates(templateRes.data || []);
     if (!reviewerRes.error) setAssignedReviewers((reviewerRes.data as AssignedReviewer[]) || []);
     if (!eventRes.error) setWorkflowEvents((eventRes.data as WorkflowEvent[]) || []);
-    if (eventRes.error) setWorkflowEvents([]);
 
     setLoading(false);
   };
 
   useEffect(() => {
     if (documentId) fetchData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [documentId]);
 
   const logWorkflowEvent = async ({
@@ -277,134 +258,234 @@ export default function DocumentWorkflowPage() {
     comments?: string | null;
     metadata?: any;
   }) => {
-    if (!documentId) return;
+    if (!doc) return;
 
     await supabase.from("document_workflow_events").insert({
-      document_id: documentId,
+      document_id: doc.id,
       event_type: eventType,
       performed_by: userEmail || "unknown",
       from_status: fromStatus || null,
       to_status: toStatus || null,
       comments: comments || null,
-      metadata: metadata || {},
+      metadata: metadata || null,
     });
   };
 
-  const transitionDocument = async ({
-    toStatus,
-    updates,
-    eventType,
-    comments,
-    metadata,
-  }: {
-    toStatus: string;
-    updates?: Record<string, any>;
-    eventType: string;
-    comments?: string | null;
-    metadata?: any;
-  }) => {
-    if (!doc) return false;
+  const uploadReviewedFile = async (reviewer: AssignedReviewer) => {
+    const file = reviewedFiles[reviewer.id];
 
-    setSaving(true);
-
-    const { error } = await supabase
-      .from("controlled_documents")
-      .update({
-        ...(updates || {}),
-        status: toStatus,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", doc.id);
-
-    if (error) {
-      alert(error.message);
-      setSaving(false);
-      return false;
+    if (!file || !doc) {
+      return {
+        reviewed_file_name: reviewer.reviewed_file_name || null,
+        reviewed_file_path: reviewer.reviewed_file_path || null,
+        reviewed_file_url: reviewer.reviewed_file_url || null,
+      };
     }
 
-    await logWorkflowEvent({
-      eventType,
-      fromStatus: doc.status,
-      toStatus,
-      comments,
-      metadata,
-    });
+    const safeDocNumber = doc.document_number.replace(/[^a-zA-Z0-9-_]/g, "_");
+    const safeRev = doc.revision.replace(/[^a-zA-Z0-9-_]/g, "_");
+    const safeReviewer = normalizeEmail(reviewer.reviewer_email).replace(/[^a-zA-Z0-9-_]/g, "_");
+    const filePath = `${safeDocNumber}/${safeRev}/reviewed/${reviewer.id}_${safeReviewer}_${Date.now()}_${file.name}`;
 
-    setSaving(false);
-    await fetchData();
-    return true;
+    const { error } = await supabase.storage
+      .from("controlled-documents")
+      .upload(filePath, file, { upsert: true });
+
+    if (error) throw new Error(error.message);
+
+    const { data } = supabase.storage
+      .from("controlled-documents")
+      .getPublicUrl(filePath);
+
+    return {
+      reviewed_file_name: file.name,
+      reviewed_file_path: filePath,
+      reviewed_file_url: data?.publicUrl || null,
+    };
   };
 
-  const parseEmails = (value: string) =>
-    value
-      .split(/[;,\n]/)
-      .map((email) => normalizeEmail(email))
-      .filter(Boolean);
+  const syncLegacyReviewRecord = async (
+    reviewer: AssignedReviewer,
+    decision: "approved" | "rejected",
+    comments: string,
+    reviewedUpload: any
+  ) => {
+    const base = {
+      document_id: reviewer.document_id,
+      reviewer_email: normalizeEmail(reviewer.reviewer_email),
+      review_status: decision,
+      review_comments: comments || null,
+      reviewed_file_name: reviewedUpload.reviewed_file_name,
+      reviewed_file_path: reviewedUpload.reviewed_file_path,
+      reviewed_file_url: reviewedUpload.reviewed_file_url,
+    };
 
-  const documentAckCount = () => acknowledgements.length;
-  const trainingCount = () => trainingAssignments.length;
-  const openTrainingCount = () => trainingAssignments.filter((item) => item.status !== "completed").length;
+    if (reviewer.reviewer_type === "collaboration") {
+      await supabase.from("document_collaboration_reviews").upsert(
+        {
+          ...base,
+        },
+        { onConflict: "document_id,reviewer_email" }
+      );
+    }
+
+    if (reviewer.reviewer_type === "formal_review" || reviewer.reviewer_type === "approver") {
+      await supabase.from("document_formal_reviews").upsert(
+        {
+          ...base,
+          review_role: reviewer.reviewer_role || reviewer.reviewer_type,
+          approved_at: new Date().toISOString(),
+        },
+        { onConflict: "document_id,reviewer_email" }
+      );
+    }
+  };
+
+  const reviewerDecision = async (
+    reviewer: AssignedReviewer,
+    decision: "approved" | "rejected"
+  ) => {
+    if (!doc) return;
+
+    const currentUser = normalizeEmail(userEmail);
+    const assignedUser = normalizeEmail(reviewer.reviewer_email);
+
+    if (currentUser !== assignedUser) {
+      alert("Only the assigned reviewer can complete this review.");
+      return;
+    }
+
+    const previousRequiredReviewers = assignedReviewers.filter(
+      (r) =>
+        Number(r.review_sequence || 0) < Number(reviewer.review_sequence || 0) &&
+        r.required_reviewer
+    );
+
+    const blockedReviewer = previousRequiredReviewers.find(
+      (r) => r.review_status !== "approved"
+    );
+
+    if (blockedReviewer) {
+      alert(`Waiting for ${blockedReviewer.reviewer_email} to complete review first.`);
+      return;
+    }
+
+    const comments = reviewComments[reviewer.id] || "";
+
+    if (decision === "rejected" && !comments.trim()) {
+      alert("Rejection comments are required.");
+      return;
+    }
+
+    setBusy(true);
+
+    try {
+      const reviewedUpload = await uploadReviewedFile(reviewer);
+
+      const { error } = await supabase
+        .from("document_assigned_reviewers")
+        .update({
+          review_status: decision,
+          review_comments: comments || null,
+          reviewed_at: new Date().toISOString(),
+          reviewed_file_name: reviewedUpload.reviewed_file_name,
+          reviewed_file_path: reviewedUpload.reviewed_file_path,
+          reviewed_file_url: reviewedUpload.reviewed_file_url,
+        })
+        .eq("id", reviewer.id);
+
+      if (error) throw new Error(error.message);
+
+      await syncLegacyReviewRecord(reviewer, decision, comments, reviewedUpload);
+
+      if (decision === "rejected") {
+        const { error: docError } = await supabase
+          .from("controlled_documents")
+          .update({
+            status: "rejected",
+            approval_comments: comments,
+            collaboration_completed: false,
+            formal_review_completed: false,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", doc.id);
+
+        if (docError) throw new Error(docError.message);
+      }
+
+      await logWorkflowEvent({
+        eventType: decision === "approved" ? "review_approved" : "review_rejected_returned_to_owner",
+        fromStatus: doc.status,
+        toStatus: decision === "rejected" ? "rejected" : doc.status,
+        comments,
+        metadata: {
+          reviewer_id: reviewer.id,
+          reviewer_type: reviewer.reviewer_type,
+          reviewer_role: reviewer.reviewer_role,
+          reviewer_email: reviewer.reviewer_email,
+          reviewed_file_url: reviewedUpload.reviewed_file_url,
+        },
+      });
+
+      setReviewComments({ ...reviewComments, [reviewer.id]: "" });
+      setReviewedFiles({ ...reviewedFiles, [reviewer.id]: null });
+      await fetchData();
+    } catch (error: any) {
+      alert(error.message);
+    }
+
+    setBusy(false);
+  };
 
   const loadApprovalTemplate = async () => {
-    if (!selectedTemplateId || !doc) {
-      alert("Select an approval matrix template first.");
+    if (!selectedTemplateId || !doc) return;
+
+    if (!canManageWorkflow) {
+      alert("Only the document owner, document control, quality, or approvers can load templates.");
       return;
     }
 
-    if (!canManageWorkflow) {
-      alert("Only the document owner, Document Control, Quality, approvers, admins, or VP Quality can load reviewers.");
-      return;
-    }
+    setBusy(true);
 
     const { data, error } = await supabase
       .from("approval_matrix_reviewers")
       .select("*")
-      .eq("template_id", selectedTemplateId)
-      .order("sequence_order", { ascending: true });
+      .eq("template_id", selectedTemplateId);
 
     if (error) {
       alert(error.message);
+      setBusy(false);
       return;
     }
 
-    const rows = (data || []).map((reviewer: any, index: number) => ({
-      document_id: doc.id,
-      reviewer_type: reviewer.reviewer_type,
-      reviewer_email: normalizeEmail(reviewer.reviewer_email),
-      reviewer_role: reviewer.reviewer_role || null,
-      required_reviewer: reviewer.required_reviewer ?? true,
-      review_sequence: reviewer.sequence_order || assignedReviewers.length + index + 1,
-      review_status: "pending",
-      assigned_by: userEmail || "unknown",
-    }));
-
-    if (rows.length === 0) {
-      alert("This template does not have reviewers configured.");
-      return;
-    }
-
-    const insertRes = await supabase.from("document_assigned_reviewers").insert(rows);
-
-    if (insertRes.error) {
-      alert(insertRes.error.message);
-      return;
+    for (const reviewer of data || []) {
+      await supabase.from("document_assigned_reviewers").insert({
+        document_id: doc.id,
+        reviewer_type: reviewer.reviewer_type,
+        reviewer_email: normalizeEmail(reviewer.reviewer_email),
+        reviewer_role: reviewer.reviewer_role,
+        required_reviewer: reviewer.required_reviewer,
+        review_sequence: reviewer.sequence_order,
+        review_status: "pending",
+        assigned_by: userEmail,
+      });
     }
 
     await logWorkflowEvent({
       eventType: "approval_matrix_loaded",
-      comments: "Approval matrix reviewers loaded.",
-      metadata: { template_id: selectedTemplateId, reviewer_count: rows.length },
+      comments: "Approval matrix template loaded.",
+      metadata: { template_id: selectedTemplateId },
     });
 
-    setSelectedTemplateId("");
-    await fetchData();
+    setBusy(false);
+    fetchData();
   };
 
   const addCustomReviewer = async () => {
     if (!doc) return;
 
     if (!canManageWorkflow) {
-      alert("Only the document owner, Document Control, Quality, approvers, admins, or VP Quality can add reviewers.");
+      alert("Only the document owner, document control, quality, or approvers can add reviewers.");
       return;
     }
 
@@ -423,7 +504,7 @@ export default function DocumentWorkflowPage() {
       required_reviewer: newReviewer.required_reviewer,
       review_sequence: assignedReviewers.length + 1,
       review_status: "pending",
-      assigned_by: userEmail || "unknown",
+      assigned_by: userEmail,
     });
 
     if (error) {
@@ -432,12 +513,9 @@ export default function DocumentWorkflowPage() {
     }
 
     await logWorkflowEvent({
-      eventType: "reviewer_added",
+      eventType: "custom_reviewer_added",
       comments: `Reviewer added: ${reviewerEmail}`,
-      metadata: {
-        reviewer_type: newReviewer.reviewer_type,
-        reviewer_role: newReviewer.reviewer_role,
-      },
+      metadata: newReviewer,
     });
 
     setNewReviewer({
@@ -447,111 +525,105 @@ export default function DocumentWorkflowPage() {
       required_reviewer: true,
     });
 
-    await fetchData();
+    fetchData();
   };
 
-  const removeReviewer = async (reviewer: AssignedReviewer) => {
+  const sendToCollaboration = async (doc: ControlledDocument) => {
     if (!canManageWorkflow) {
-      alert("Only workflow managers can remove reviewers.");
+      alert("Only the document owner, document control, quality, or approvers can send to collaboration.");
       return;
     }
 
-    if (reviewer.review_status === "approved" || reviewer.review_status === "rejected") {
-      alert("Completed reviewer records should not be removed. Add a new reviewer or restart the workflow instead.");
-      return;
-    }
-
-    const { error } = await supabase.from("document_assigned_reviewers").delete().eq("id", reviewer.id);
-
-    if (error) {
-      alert(error.message);
-      return;
-    }
-
-    await logWorkflowEvent({
-      eventType: "reviewer_removed",
-      comments: `Reviewer removed: ${reviewer.reviewer_email}`,
-      metadata: { reviewer_type: reviewer.reviewer_type, reviewer_role: reviewer.reviewer_role },
-    });
-
-    await fetchData();
-  };
-
-  const sendToCollaboration = async () => {
-    if (!doc) return;
-    if (!canManageWorkflow) {
-      alert("Only the document owner or workflow managers can send to collaboration.");
-      return;
-    }
-    if (!["draft", "rejected"].includes(doc.status)) {
+    if (doc.status !== "draft" && doc.status !== "rejected") {
       alert("Only draft or rejected documents can be sent to collaboration.");
       return;
     }
 
-    const reviewers = parseEmails(collaborationReviewerEmails);
+    const reviewerText = collaborationReviewerEmails[doc.id] || "";
+    const reviewers = reviewerText
+      .split(/[,\n;]/)
+      .map((email) => normalizeEmail(email))
+      .filter(Boolean);
+
+    setBusy(true);
+
+    const { error } = await supabase
+      .from("controlled_documents")
+      .update({
+        status: "collaboration",
+        collaboration_completed: false,
+        formal_review_completed: false,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", doc.id);
+
+    if (error) {
+      alert(error.message);
+      setBusy(false);
+      return;
+    }
 
     if (reviewers.length > 0) {
-      const startSequence = assignedReviewers.length + 1;
-      const assignedRows = reviewers.map((email, index) => ({
+      const startSeq = assignedReviewers.length + 1;
+      const rows = reviewers.map((email, index) => ({
         document_id: doc.id,
         reviewer_type: "collaboration",
         reviewer_email: email,
         reviewer_role: "collaboration_reviewer",
         required_reviewer: true,
-        review_sequence: startSequence + index,
+        review_sequence: startSeq + index,
         review_status: "pending",
-        assigned_by: userEmail || "unknown",
+        assigned_by: userEmail,
       }));
 
-      await supabase.from("document_assigned_reviewers").insert(assignedRows);
+      const reviewRes = await supabase
+        .from("document_assigned_reviewers")
+        .insert(rows);
 
-      const legacyRows = reviewers.map((email) => ({
-        document_id: doc.id,
-        reviewer_email: email,
-        review_status: "pending",
-      }));
-
-      await supabase
-        .from("document_collaboration_reviews")
-        .upsert(legacyRows, { onConflict: "document_id,reviewer_email" });
+      if (reviewRes.error) alert(reviewRes.error.message);
     }
 
-    await transitionDocument({
-      toStatus: "collaboration",
+    await logWorkflowEvent({
       eventType: "sent_to_collaboration",
+      fromStatus: doc.status,
+      toStatus: "collaboration",
       comments: "Document sent to collaboration review.",
-      updates: {
-        collaboration_completed: false,
-        formal_review_completed: false,
-      },
-      metadata: { reviewer_count_added: reviewers.length },
+      metadata: { reviewers },
     });
 
-    setCollaborationReviewerEmails("");
+    setBusy(false);
+    fetchData();
   };
 
-  const completeCollaboration = async () => {
-    if (!doc) return;
+  const completeCollaboration = async (doc: ControlledDocument) => {
     if (!canManageWorkflow) {
-      alert("Only the document owner or workflow managers can complete collaboration.");
+      alert("Only the document owner, document control, quality, or approvers can complete collaboration.");
       return;
     }
+
     if (doc.status !== "collaboration") {
       alert("Only documents in collaboration can complete collaboration.");
       return;
     }
-    if (!requiredCollaborationApproved) {
-      alert("Required collaboration reviewers must approve before collaboration can be completed.");
-      return;
-    }
-    if (rejectedReviewers.length > 0) {
-      alert("One or more reviewers rejected the document. Resolve comments before continuing.");
+
+    const requiredCollaborationOpen = assignedReviewers.some(
+      (r) =>
+        r.reviewer_type === "collaboration" &&
+        r.required_reviewer &&
+        r.review_status !== "approved"
+    );
+
+    if (requiredCollaborationOpen) {
+      alert("All required collaboration reviewers must approve before completing collaboration.");
       return;
     }
 
     const { error } = await supabase
       .from("controlled_documents")
-      .update({ collaboration_completed: true, updated_at: new Date().toISOString() })
+      .update({
+        collaboration_completed: true,
+        updated_at: new Date().toISOString(),
+      })
       .eq("id", doc.id);
 
     if (error) {
@@ -566,283 +638,259 @@ export default function DocumentWorkflowPage() {
       comments: "Collaboration review completed.",
     });
 
-    await fetchData();
+    fetchData();
   };
 
-  const sendToFormalReview = async () => {
-    if (!doc) return;
+  const sendToFormalReview = async (doc: ControlledDocument) => {
     if (!canManageWorkflow) {
-      alert("Only the document owner or workflow managers can send to formal review.");
+      alert("Only the document owner, document control, quality, or approvers can send to formal review.");
       return;
     }
-    if (!["draft", "collaboration", "rejected"].includes(doc.status)) {
+
+    if (doc.status !== "collaboration" && doc.status !== "draft" && doc.status !== "rejected") {
       alert("Document must be in draft, collaboration, or rejected status before formal review.");
       return;
     }
+
     if (doc.collaboration_required && !doc.collaboration_completed && doc.status !== "draft") {
       alert("Collaboration must be completed before formal review.");
       return;
     }
-    if (rejectedReviewers.length > 0) {
-      alert("One or more reviewers rejected the document. Resolve comments before sending to formal review.");
-      return;
-    }
 
-    const reviewers = parseEmails(formalReviewerEmails);
-
-    if (reviewers.length > 0) {
-      const startSequence = assignedReviewers.length + 1;
-      const assignedRows = reviewers.map((email, index) => ({
-        document_id: doc.id,
-        reviewer_type: "formal_review",
-        reviewer_email: email,
-        reviewer_role: "formal_reviewer",
-        required_reviewer: true,
-        review_sequence: startSequence + index,
-        review_status: "pending",
-        assigned_by: userEmail || "unknown",
-      }));
-
-      await supabase.from("document_assigned_reviewers").insert(assignedRows);
-
-      const legacyRows = reviewers.map((email) => ({
-        document_id: doc.id,
-        reviewer_email: email,
-        review_role: "formal_reviewer",
-        review_status: "pending",
-      }));
-
-      await supabase
-        .from("document_formal_reviews")
-        .upsert(legacyRows, { onConflict: "document_id,reviewer_email" });
-    }
-
-    await transitionDocument({
-      toStatus: "formal_review",
-      eventType: "sent_to_formal_review",
-      comments: "Document sent to formal review.",
-      updates: {
-        formal_review_completed: false,
-        submitted_for_approval_at: new Date().toISOString(),
-        submitted_for_approval_by: userEmail || "unknown",
-      },
-      metadata: { reviewer_count_added: reviewers.length },
-    });
-
-    setFormalReviewerEmails("");
-  };
-
-  const reviewerDecision = async (reviewer: AssignedReviewer, decision: "approved" | "rejected") => {
-    if (!doc) return;
-
-    const currentUser = normalizeEmail(userEmail);
-    const assignedUser = normalizeEmail(reviewer.reviewer_email);
-
-    if (currentUser !== assignedUser) {
-      alert("Only the assigned reviewer can complete this review.");
-      return;
-    }
-
-    if (reviewer.review_status === "approved" || reviewer.review_status === "rejected") {
-      alert("This reviewer decision has already been completed.");
-      return;
-    }
-
-    const previousRequiredReviewers = assignedReviewers.filter(
-      (r) =>
-        Number(r.review_sequence || 999) < Number(reviewer.review_sequence || 999) &&
-        Boolean(r.required_reviewer)
-    );
-
-    const blockedReviewer = previousRequiredReviewers.find((r) => r.review_status !== "approved");
-
-    if (blockedReviewer) {
-      alert(`Waiting for ${blockedReviewer.reviewer_email} to complete review first.`);
-      return;
-    }
-
-    const comments = reviewComments[reviewer.id] || "";
+    const reviewerText = formalReviewerEmails[doc.id] || "";
+    const reviewers = reviewerText
+      .split(/[,\n;]/)
+      .map((email) => normalizeEmail(email))
+      .filter(Boolean);
 
     const { error } = await supabase
-      .from("document_assigned_reviewers")
+      .from("controlled_documents")
       .update({
-        review_status: decision,
-        review_comments: comments,
-        reviewed_at: new Date().toISOString(),
+        status: "formal_review",
+        formal_review_completed: false,
+        submitted_for_approval_at: new Date().toISOString(),
+        submitted_for_approval_by: userEmail,
+        updated_at: new Date().toISOString(),
       })
-      .eq("id", reviewer.id);
+      .eq("id", doc.id);
 
     if (error) {
       alert(error.message);
       return;
     }
 
-    if (reviewer.reviewer_type === "collaboration") {
-      await supabase.from("document_collaboration_reviews").upsert(
-        {
-          document_id: doc.id,
-          reviewer_email: reviewer.reviewer_email,
-          review_status: decision,
-          review_comments: comments,
-          completed_at: new Date().toISOString(),
-        },
-        { onConflict: "document_id,reviewer_email" }
-      );
-    }
+    if (reviewers.length > 0) {
+      const startSeq = assignedReviewers.length + 1;
+      const rows = reviewers.map((email, index) => ({
+        document_id: doc.id,
+        reviewer_type: "formal_review",
+        reviewer_email: email,
+        reviewer_role: "formal_reviewer",
+        required_reviewer: true,
+        review_sequence: startSeq + index,
+        review_status: "pending",
+        assigned_by: userEmail,
+      }));
 
-    if (reviewer.reviewer_type === "formal_review" || reviewer.reviewer_type === "approver") {
-      await supabase.from("document_formal_reviews").upsert(
-        {
-          document_id: doc.id,
-          reviewer_email: reviewer.reviewer_email,
-          review_role: reviewer.reviewer_role || reviewer.reviewer_type,
-          review_status: decision,
-          review_comments: comments,
-          approved_at: new Date().toISOString(),
-        },
-        { onConflict: "document_id,reviewer_email" }
-      );
+      const reviewRes = await supabase
+        .from("document_assigned_reviewers")
+        .insert(rows);
+
+      if (reviewRes.error) alert(reviewRes.error.message);
     }
 
     await logWorkflowEvent({
-      eventType: decision === "approved" ? "review_approved" : "review_rejected",
+      eventType: "sent_to_formal_review",
       fromStatus: doc.status,
-      toStatus: doc.status,
-      comments,
-      metadata: {
-        reviewer_id: reviewer.id,
-        reviewer_email: reviewer.reviewer_email,
-        reviewer_type: reviewer.reviewer_type,
-        reviewer_role: reviewer.reviewer_role,
-        review_sequence: reviewer.review_sequence,
-      },
+      toStatus: "formal_review",
+      comments: "Document sent to formal review.",
+      metadata: { reviewers },
     });
 
-    setReviewComments({ ...reviewComments, [reviewer.id]: "" });
-    await fetchData();
+    fetchData();
   };
 
-  const approveDocument = async () => {
-    if (!doc) return;
+  const approveDocument = async (doc: ControlledDocument) => {
     if (!canApprove) {
       alert("Only approvers, admins, or VP Quality can approve documents.");
       return;
     }
+
     if (doc.status !== "formal_review") {
       alert("Only documents in formal review can be approved.");
       return;
     }
-    if (rejectedReviewers.length > 0) {
-      alert("One or more reviewers rejected the document. Resolve comments before approval.");
-      return;
-    }
+
     if (!requiredFormalApproved) {
-      alert("Required formal reviewers must approve before document approval.");
-      return;
-    }
-    if (!requiredApproversApproved) {
-      alert("Required approvers must approve before document approval.");
+      alert("Required formal reviewers must approve.");
       return;
     }
 
-    await transitionDocument({
-      toStatus: "approved",
-      eventType: "document_approved",
-      comments: "Controlled document approved.",
-      updates: {
+    if (!requiredApproversApproved) {
+      alert("Required approvers must approve.");
+      return;
+    }
+
+    const { error } = await supabase
+      .from("controlled_documents")
+      .update({
+        status: "approved",
         formal_review_completed: true,
         approved_at: new Date().toISOString(),
-        approved_by: userEmail || "unknown",
+        approved_by: userEmail,
         approval_comments: "Approved controlled document.",
-      },
-    });
-  };
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", doc.id);
 
-  const rejectDocument = async () => {
-    if (!doc) return;
-    if (!canApprove) {
-      alert("Only approvers, admins, or VP Quality can reject documents.");
+    if (error) {
+      alert(error.message);
       return;
     }
-    if (!["formal_review", "collaboration"].includes(doc.status)) {
+
+    await logWorkflowEvent({
+      eventType: "document_approved",
+      fromStatus: doc.status,
+      toStatus: "approved",
+      comments: "Document approved.",
+    });
+
+    fetchData();
+  };
+
+  const rejectDocument = async (doc: ControlledDocument) => {
+    if (!canApprove && !canManageWorkflow) {
+      alert("Only authorized users can reject documents.");
+      return;
+    }
+
+    if (doc.status !== "formal_review" && doc.status !== "collaboration") {
       alert("Only documents in collaboration or formal review can be rejected.");
       return;
     }
 
-    const comments = rejectComments.trim() || "Rejected during document review.";
+    const comments = rejectComments[doc.id] || "";
 
-    await transitionDocument({
+    if (!comments.trim()) {
+      alert("Rejection comments are required.");
+      return;
+    }
+
+    const { error } = await supabase
+      .from("controlled_documents")
+      .update({
+        status: "rejected",
+        approval_comments: comments,
+        collaboration_completed: false,
+        formal_review_completed: false,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", doc.id);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    await logWorkflowEvent({
+      eventType: "document_rejected_returned_to_owner",
+      fromStatus: doc.status,
       toStatus: "rejected",
-      eventType: "document_rejected",
       comments,
-      updates: { approval_comments: comments },
     });
 
-    setRejectComments("");
+    setRejectComments({ ...rejectComments, [doc.id]: "" });
+    fetchData();
   };
 
-  const makeEffective = async () => {
-    if (!doc) return;
+  const makeEffective = async (doc: ControlledDocument) => {
     if (!canApprove) {
       alert("Only approvers, admins, or VP Quality can make documents effective.");
       return;
     }
+
     if (doc.status !== "approved") {
       alert("Only approved documents can be made effective.");
       return;
     }
-    if (doc.formal_review_required && !doc.formal_review_completed) {
-      alert("Formal review must be completed before release.");
+
+    const today = new Date().toISOString().slice(0, 10);
+
+    const { error } = await supabase
+      .from("controlled_documents")
+      .update({
+        status: "effective",
+        effective_date: doc.effective_date || today,
+        release_comments: releaseComments[doc.id] || "Document released effective.",
+        release_approved_by: userEmail,
+        release_approved_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", doc.id);
+
+    if (error) {
+      alert(error.message);
       return;
     }
 
-    const today = new Date().toISOString().slice(0, 10);
-    const comments = releaseComments.trim() || "Document released effective.";
-
-    await transitionDocument({
+    await logWorkflowEvent({
+      eventType: "document_effective",
+      fromStatus: doc.status,
       toStatus: "effective",
-      eventType: "document_made_effective",
-      comments,
-      updates: {
-        effective_date: doc.effective_date || today,
-        release_comments: comments,
-        release_approved_by: userEmail || "unknown",
-        release_approved_at: new Date().toISOString(),
-      },
+      comments: releaseComments[doc.id] || "Document released effective.",
     });
 
-    setReleaseComments("");
+    fetchData();
   };
 
-  const obsoleteDocument = async () => {
-    if (!doc) return;
+  const obsoleteDocument = async (doc: ControlledDocument) => {
     if (!canApprove) {
       alert("Only approvers, admins, or VP Quality can obsolete documents.");
       return;
     }
-    if (!obsoleteReason.trim()) {
+
+    const reason = obsoleteReason[doc.id] || "";
+
+    if (!reason.trim()) {
       alert("Obsolete reason is required.");
       return;
     }
 
-    await transitionDocument({
-      toStatus: "obsolete",
-      eventType: "document_obsoleted",
-      comments: obsoleteReason.trim(),
-      updates: {
+    const { error } = await supabase
+      .from("controlled_documents")
+      .update({
+        status: "obsolete",
         obsolete_at: new Date().toISOString(),
-        obsolete_by: userEmail || "unknown",
-        obsolete_reason: obsoleteReason.trim(),
-      },
+        obsolete_by: userEmail,
+        obsolete_reason: reason.trim(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", doc.id);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    await logWorkflowEvent({
+      eventType: "document_obsoleted",
+      fromStatus: doc.status,
+      toStatus: "obsolete",
+      comments: reason,
     });
 
-    setObsoleteReason("");
+    setObsoleteReason({ ...obsoleteReason, [doc.id]: "" });
+    fetchData();
   };
 
-  const acknowledgeDocument = async () => {
-    if (!doc) return;
+  const acknowledgeDocument = async (doc: ControlledDocument) => {
     if (!userEmail) {
       alert("You must be logged in to acknowledge a document.");
+      return;
+    }
+
+    if (!doc.file_url) {
+      alert("No effective document file is attached for acknowledgement.");
       return;
     }
 
@@ -863,22 +911,27 @@ export default function DocumentWorkflowPage() {
 
     await logWorkflowEvent({
       eventType: "document_acknowledged",
-      fromStatus: doc.status,
-      toStatus: doc.status,
-      comments: "User acknowledged document.",
+      comments: "Document read and acknowledged.",
     });
 
-    await fetchData();
+    fetchData();
   };
 
-  const assignTraining = async () => {
-    if (!doc) return;
-    if (!canManageWorkflow) {
-      alert("Only document control, quality, approvers, admins, VP Quality, or the owner can assign training.");
+  const assignTraining = async (doc: ControlledDocument) => {
+    if (!canManage) {
+      alert("Only document control, quality, approvers, admins, or VP Quality can assign training.");
       return;
     }
 
-    const emails = parseEmails(trainingEmails);
+    if (!doc.file_url) {
+      alert("Cannot assign training because no document file is attached.");
+      return;
+    }
+
+    const emails = (trainingEmails[doc.id] || "")
+      .split(/[,\n;]/)
+      .map((email) => normalizeEmail(email))
+      .filter(Boolean);
 
     if (emails.length === 0) {
       alert("Enter at least one valid training assignee email.");
@@ -890,6 +943,8 @@ export default function DocumentWorkflowPage() {
       user_email: email,
       status: "assigned",
       assigned_by: userEmail || "unknown",
+      document_file_name: doc.file_name,
+      document_file_url: doc.file_url,
     }));
 
     const { error } = await supabase
@@ -903,42 +958,50 @@ export default function DocumentWorkflowPage() {
 
     await logWorkflowEvent({
       eventType: "training_assigned",
-      fromStatus: doc.status,
-      toStatus: doc.status,
       comments: `Training assigned to ${emails.length} user(s).`,
-      metadata: { assignees: emails },
+      metadata: { users: emails, document_file_url: doc.file_url },
     });
 
-    setTrainingEmails("");
-    await fetchData();
+    setTrainingEmails({ ...trainingEmails, [doc.id]: "" });
+    fetchData();
   };
 
-  const completeTraining = async (assignmentId: string) => {
+  const completeTraining = async (assignment: any) => {
+    const trainingDocUrl = assignment.document_file_url || doc?.file_url;
+
+    if (!trainingDocUrl) {
+      alert("Training cannot be completed because no document is attached to the training record.");
+      return;
+    }
+
+    if (normalizeEmail(assignment.user_email) !== normalizeEmail(userEmail) && !canManage) {
+      alert("Only the assigned trainee or training administrator can complete this training.");
+      return;
+    }
+
     const { error } = await supabase
       .from("document_training_assignments")
       .update({
         status: "completed",
         completed_at: new Date().toISOString(),
-        completed_by: userEmail || "unknown",
+        completed_by: userEmail,
+        document_file_name: assignment.document_file_name || doc?.file_name || null,
+        document_file_url: trainingDocUrl,
       })
-      .eq("id", assignmentId);
+      .eq("id", assignment.id);
 
     if (error) {
       alert(error.message);
       return;
     }
 
-    if (doc) {
-      await logWorkflowEvent({
-        eventType: "training_completed",
-        fromStatus: doc.status,
-        toStatus: doc.status,
-        comments: "Training assignment completed.",
-        metadata: { assignment_id: assignmentId },
-      });
-    }
+    await logWorkflowEvent({
+      eventType: "training_completed",
+      comments: `Training completed by ${userEmail}.`,
+      metadata: { assignment_id: assignment.id, document_file_url: trainingDocUrl },
+    });
 
-    await fetchData();
+    fetchData();
   };
 
   if (loading) return <main style={pageStyle}>Loading Document Workflow...</main>;
@@ -947,9 +1010,7 @@ export default function DocumentWorkflowPage() {
     return (
       <main style={pageStyle}>
         <h1>Document not found</h1>
-        <a href="/documents" style={darkButtonStyle}>
-          Back to Document Control
-        </a>
+        <a href="/documents">Back to Document Control</a>
       </main>
     );
   }
@@ -963,356 +1024,391 @@ export default function DocumentWorkflowPage() {
             {doc.document_number} Rev {doc.revision}
           </h1>
           <p style={subtleText}>{doc.title}</p>
-          <div style={buttonRowStyle}>
-            <StatusBadge status={doc.status} />
-            <span style={smallTextStyle}>User: {userEmail || "Not signed in"}</span>
-            <span style={smallTextStyle}>Role: {userRole}</span>
-          </div>
         </div>
         <div style={buttonRowStyle}>
-          <a href="/documents" style={darkButtonStyle}>
-            Back to Document Register
-          </a>
-          <a href="/dashboard" style={darkButtonStyle}>
-            Dashboard
-          </a>
+          <a href="/documents" style={darkButtonStyle}>Back to Document Register</a>
+          <a href="/dashboard" style={darkButtonStyle}>Dashboard</a>
         </div>
       </header>
 
       <section style={kpiGridStyle}>
-        <KpiCard title="Workflow Complete" value={`${workflowCompletionPercent}%`} color="#2563eb" />
-        <KpiCard title="Assigned Reviewers" value={assignedReviewers.length} color="#7c3aed" />
-        <KpiCard title="Acknowledgements" value={documentAckCount()} color="#15803d" />
-        <KpiCard title="Open Training" value={openTrainingCount()} color="#dc2626" />
+        <div style={kpiCardStyle}>
+          <div style={kpiTitleStyle}>Status</div>
+          <StatusBadge status={doc.status} />
+        </div>
+        <KpiCard title="Pending Reviewers" value={pendingRequiredReviewers.length} color="#d97706" />
+        <KpiCard title="Acknowledgements" value={documentAckCount(doc.id)} color="#15803d" />
+        <KpiCard title="Open Training" value={openTrainingCount(doc.id)} color="#dc2626" />
       </section>
 
       <section style={cardStyle}>
-        <h2 style={{ marginTop: 0 }}>Workflow Status</h2>
+        <h2 style={{ marginTop: 0 }}>Current Workflow State</h2>
         <div style={gridStyle}>
-          <Field label="Current Status">
-            <StatusBadge status={doc.status} />
-          </Field>
+          <Field label="Current Step"><StatusBadge status={doc.status} /></Field>
           <Field label="Next Pending Reviewer">
             <div>{nextPendingReviewer?.reviewer_email || "None"}</div>
           </Field>
-          <Field label="Collaboration Gate">
-            <div>{requiredCollaborationApproved ? "Complete / Not Required" : "Pending Required Reviewers"}</div>
-          </Field>
-          <Field label="Formal Review Gate">
-            <div>{requiredFormalApproved ? "Complete / Not Required" : "Pending Required Reviewers"}</div>
-          </Field>
-          <Field label="Approval Gate">
-            <div>{requiredApproversApproved ? "Complete / Not Required" : "Pending Required Approvers"}</div>
-          </Field>
-          <Field label="Rejected Reviewer Tasks">
-            <div>{rejectedReviewers.length}</div>
-          </Field>
+          <Field label="Owner"><div>{doc.owner_email || "N/A"}</div></Field>
+          <Field label="Your Role"><div>{userRole || "user"}</div></Field>
         </div>
       </section>
 
       <section style={cardStyle}>
-        <h2 style={{ marginTop: 0 }}>Document Metadata</h2>
+        <h2 style={{ marginTop: 0 }}>Document Package</h2>
         <div style={gridStyle}>
           <Field label="Document Type"><div>{doc.document_type || "N/A"}</div></Field>
           <Field label="Department"><div>{doc.department || "N/A"}</div></Field>
           <Field label="Process Area"><div>{doc.process_area || "N/A"}</div></Field>
-          <Field label="Owner"><div>{doc.owner_email || "N/A"}</div></Field>
           <Field label="Approver"><div>{doc.approver_email || "N/A"}</div></Field>
           <Field label="Effective Date"><div>{doc.effective_date || "N/A"}</div></Field>
           <Field label="Originating Change Control"><div>{doc.originating_change_control_id || "None"}</div></Field>
-          <Field label="File"><div>{doc.file_name || "No file attached"}</div></Field>
         </div>
-        {doc.file_url ? (
-          <div style={buttonRowStyle}>
+
+        <div style={buttonRowStyle}>
+          {doc.file_url ? (
             <a href={doc.file_url} target="_blank" rel="noreferrer" style={primaryLinkStyle}>
-              Open / Download Document File
+              Open / Download Current Document
             </a>
+          ) : (
+            <span style={warningStyle}>No document file attached.</span>
+          )}
+        </div>
+
+        {doc.approval_comments ? (
+          <div style={noticeStyle}>
+            <strong>Latest Approval / Rejection Comments:</strong>
+            <p>{doc.approval_comments}</p>
           </div>
         ) : null}
       </section>
 
       <section style={cardStyle}>
-        <h2 style={{ marginTop: 0 }}>Approval Matrix & Reviewer Assignment</h2>
+        <h2 style={{ marginTop: 0 }}>Approval Matrix & Assigned Reviewers</h2>
 
-        <div style={gridStyle}>
-          <select
-            value={selectedTemplateId}
-            onChange={(e) => setSelectedTemplateId(e.target.value)}
-            style={inputStyle}
-            disabled={!canManageWorkflow || saving}
-          >
-            <option value="">Select Approval Matrix Template</option>
-            {approvalTemplates.map((template) => (
-              <option key={template.id} value={template.id}>
-                {template.template_name}
-              </option>
-            ))}
-          </select>
+        {canManageWorkflow ? (
+          <>
+            <div style={gridStyle}>
+              <select
+                value={selectedTemplateId}
+                onChange={(e) => setSelectedTemplateId(e.target.value)}
+                style={inputStyle}
+              >
+                <option value="">Select Approval Matrix Template</option>
+                {approvalTemplates.map((template) => (
+                  <option key={template.id} value={template.id}>
+                    {template.template_name}
+                  </option>
+                ))}
+              </select>
 
-          <button onClick={loadApprovalTemplate} disabled={!canManageWorkflow || saving} style={canManageWorkflow ? primaryButtonStyle : disabledButtonStyle}>
-            Load Template
-          </button>
-        </div>
+              <button disabled={busy || !selectedTemplateId} onClick={loadApprovalTemplate} style={primaryButtonStyle}>
+                Load Template
+              </button>
+            </div>
+
+            <hr style={{ margin: "20px 0" }} />
+
+            <h3>Add Custom Reviewer</h3>
+            <div style={gridStyle}>
+              <select
+                value={newReviewer.reviewer_type}
+                onChange={(e) =>
+                  setNewReviewer({ ...newReviewer, reviewer_type: e.target.value })
+                }
+                style={inputStyle}
+              >
+                {REVIEWER_TYPES.map((type) => (
+                  <option key={type} value={type}>{type}</option>
+                ))}
+              </select>
+
+              <input
+                placeholder="Reviewer Email"
+                value={newReviewer.reviewer_email}
+                onChange={(e) =>
+                  setNewReviewer({ ...newReviewer, reviewer_email: e.target.value })
+                }
+                style={inputStyle}
+              />
+
+              <input
+                placeholder="Reviewer Role"
+                value={newReviewer.reviewer_role}
+                onChange={(e) =>
+                  setNewReviewer({ ...newReviewer, reviewer_role: e.target.value })
+                }
+                style={inputStyle}
+              />
+            </div>
+
+            <label style={{ display: "block", marginTop: "10px" }}>
+              <input
+                type="checkbox"
+                checked={newReviewer.required_reviewer}
+                onChange={(e) =>
+                  setNewReviewer({ ...newReviewer, required_reviewer: e.target.checked })
+                }
+              />{" "}
+              Required reviewer
+            </label>
+
+            <button disabled={busy} onClick={addCustomReviewer} style={primaryButtonStyle}>
+              Add Reviewer
+            </button>
+          </>
+        ) : (
+          <p style={subtleText}>Only the document owner or authorized quality/document control users can assign reviewers.</p>
+        )}
 
         <hr style={{ margin: "20px 0" }} />
 
-        <h3>Add Custom Reviewer</h3>
-        <div style={gridStyle}>
-          <select
-            value={newReviewer.reviewer_type}
-            onChange={(e) => setNewReviewer({ ...newReviewer, reviewer_type: e.target.value })}
-            style={inputStyle}
-            disabled={!canManageWorkflow || saving}
-          >
-            {REVIEWER_TYPES.map((type) => (
-              <option key={type} value={type}>
-                {type}
-              </option>
-            ))}
-          </select>
+        <div style={{ display: "grid", gap: "12px" }}>
+          {assignedReviewers.length === 0 ? (
+            <p style={subtleText}>No reviewers assigned yet.</p>
+          ) : (
+            assignedReviewers.map((reviewer) => {
+              const canCurrentUserReview =
+                normalizeEmail(reviewer.reviewer_email) === normalizeEmail(userEmail);
 
-          <input
-            placeholder="Reviewer Email"
-            value={newReviewer.reviewer_email}
-            onChange={(e) => setNewReviewer({ ...newReviewer, reviewer_email: e.target.value })}
-            style={inputStyle}
-            disabled={!canManageWorkflow || saving}
-          />
-
-          <input
-            placeholder="Reviewer Role"
-            value={newReviewer.reviewer_role}
-            onChange={(e) => setNewReviewer({ ...newReviewer, reviewer_role: e.target.value })}
-            style={inputStyle}
-            disabled={!canManageWorkflow || saving}
-          />
-        </div>
-
-        <label style={{ ...smallTextStyle, display: "block", marginTop: "10px" }}>
-          <input
-            type="checkbox"
-            checked={newReviewer.required_reviewer}
-            onChange={(e) => setNewReviewer({ ...newReviewer, required_reviewer: e.target.checked })}
-            disabled={!canManageWorkflow || saving}
-          />{" "}
-          Required reviewer
-        </label>
-
-        <button onClick={addCustomReviewer} disabled={!canManageWorkflow || saving} style={canManageWorkflow ? primaryButtonStyle : disabledButtonStyle}>
-          Add Reviewer
-        </button>
-      </section>
-
-      <section style={cardStyle}>
-        <h2 style={{ marginTop: 0 }}>Reviewer Tasks</h2>
-        {assignedReviewers.length === 0 ? (
-          <p style={subtleText}>No reviewers assigned.</p>
-        ) : (
-          <div style={{ display: "grid", gap: "12px" }}>
-            {assignedReviewers.map((reviewer) => {
-              const canCurrentUserReview = normalizeEmail(reviewer.reviewer_email) === normalizeEmail(userEmail);
-              const completed = reviewer.review_status === "approved" || reviewer.review_status === "rejected";
-              const previousRequiredReviewers = assignedReviewers.filter(
+              const priorRequiredOpen = assignedReviewers.some(
                 (r) =>
-                  Number(r.review_sequence || 999) < Number(reviewer.review_sequence || 999) &&
-                  Boolean(r.required_reviewer)
+                  Number(r.review_sequence || 0) < Number(reviewer.review_sequence || 0) &&
+                  r.required_reviewer &&
+                  r.review_status !== "approved"
               );
-              const blockedReviewer = previousRequiredReviewers.find((r) => r.review_status !== "approved");
 
               return (
                 <div key={reviewer.id} style={trainingCardStyle}>
-                  <div style={reviewerHeaderStyle}>
+                  <div style={rowBetweenStyle}>
                     <div>
                       <strong>{reviewer.reviewer_email}</strong>
                       <div style={smallTextStyle}>
-                        Sequence {reviewer.review_sequence || "N/A"} • {reviewer.reviewer_type} • {reviewer.reviewer_role || "No role"} • {reviewer.required_reviewer ? "Required" : "Optional"}
+                        Sequence {reviewer.review_sequence || "-"} • {reviewer.reviewer_type} • {reviewer.reviewer_role || "No role"} •{" "}
+                        {reviewer.required_reviewer ? "Required" : "Optional"}
                       </div>
                     </div>
                     <StatusBadge status={reviewer.review_status || "pending"} />
                   </div>
 
-                  {blockedReviewer ? (
-                    <div style={warningBoxStyle}>Blocked until {blockedReviewer.reviewer_email} approves.</div>
-                  ) : null}
-
                   {doc.file_url ? (
-                    <a href={doc.file_url} target="_blank" rel="noreferrer" style={primaryLinkStyle}>
-                      Open Document for Review
-                    </a>
-                  ) : (
-                    <p style={smallTextStyle}>No document file is attached.</p>
-                  )}
-
-                  <textarea
-                    placeholder="Review comments"
-                    value={reviewComments[reviewer.id] || ""}
-                    onChange={(e) => setReviewComments({ ...reviewComments, [reviewer.id]: e.target.value })}
-                    rows={3}
-                    style={textareaStyle}
-                    disabled={!canCurrentUserReview || completed || Boolean(blockedReviewer)}
-                  />
-
-                  <div style={buttonRowStyle}>
-                    {canCurrentUserReview && !completed ? (
-                      <>
-                        <button
-                          onClick={() => reviewerDecision(reviewer, "approved")}
-                          disabled={saving || Boolean(blockedReviewer)}
-                          style={blockedReviewer ? disabledButtonStyle : primaryButtonStyle}
-                        >
-                          Approve
-                        </button>
-                        <button
-                          onClick={() => reviewerDecision(reviewer, "rejected")}
-                          disabled={saving || Boolean(blockedReviewer)}
-                          style={dangerButtonStyle}
-                        >
-                          Reject
-                        </button>
-                      </>
-                    ) : (
-                      <span style={smallTextStyle}>
-                        {completed ? "Decision completed" : "Waiting for assigned reviewer"}
-                      </span>
-                    )}
-
-                    {canManageWorkflow && !completed ? (
-                      <button onClick={() => removeReviewer(reviewer)} disabled={saving} style={secondaryButtonStyle}>
-                        Remove
-                      </button>
-                    ) : null}
-                  </div>
-
-                  {reviewer.review_comments ? (
-                    <div style={commentBoxStyle}>
-                      <strong>Comment:</strong> {reviewer.review_comments}
+                    <div style={buttonRowStyle}>
+                      <a href={doc.file_url} target="_blank" rel="noreferrer" style={primaryLinkStyle}>
+                        Download Original for Review
+                      </a>
                     </div>
                   ) : null}
+
+                  {reviewer.reviewed_file_url ? (
+                    <div style={noticeStyle}>
+                      <strong>Reviewed / Redlined File:</strong>{" "}
+                      <a href={reviewer.reviewed_file_url} target="_blank" rel="noreferrer">
+                        {reviewer.reviewed_file_name || "Open reviewed file"}
+                      </a>
+                    </div>
+                  ) : null}
+
+                  {canCurrentUserReview && reviewer.review_status !== "approved" && reviewer.review_status !== "rejected" ? (
+                    <>
+                      {priorRequiredOpen ? (
+                        <div style={warningStyle}>
+                          Waiting for prior required reviewer before this review can be completed.
+                        </div>
+                      ) : (
+                        <>
+                          <Field label="Upload Reviewed / Redlined Document">
+                            <input
+                              type="file"
+                              onChange={(e) =>
+                                setReviewedFiles({
+                                  ...reviewedFiles,
+                                  [reviewer.id]: e.target.files?.[0] || null,
+                                })
+                              }
+                            />
+                          </Field>
+
+                          <textarea
+                            placeholder="Review comments. Rejection comments are required if rejecting."
+                            value={reviewComments[reviewer.id] || ""}
+                            onChange={(e) =>
+                              setReviewComments({
+                                ...reviewComments,
+                                [reviewer.id]: e.target.value,
+                              })
+                            }
+                            rows={3}
+                            style={textareaStyle}
+                          />
+
+                          <div style={buttonRowStyle}>
+                            <button
+                              disabled={busy}
+                              onClick={() => reviewerDecision(reviewer, "approved")}
+                              style={primaryButtonStyle}
+                            >
+                              Approve Review
+                            </button>
+
+                            <button
+                              disabled={busy}
+                              onClick={() => reviewerDecision(reviewer, "rejected")}
+                              style={dangerButtonStyle}
+                            >
+                              Reject & Return to Owner
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </>
+                  ) : (
+                    <div style={smallTextStyle}>
+                      {canCurrentUserReview
+                        ? "Your review has been completed."
+                        : "Waiting for assigned reviewer."}
+                    </div>
+                  )}
                 </div>
               );
-            })}
-          </div>
-        )}
+            })
+          )}
+        </div>
       </section>
 
       <section style={cardStyle}>
         <h2 style={{ marginTop: 0 }}>Workflow Actions</h2>
         <div style={actionStackStyle}>
-          {doc.status === "draft" || doc.status === "rejected" ? (
+          {(doc.status === "draft" || doc.status === "rejected") && canManageWorkflow ? (
             <details>
               <summary>Send to Collaboration</summary>
               <textarea
-                value={collaborationReviewerEmails}
-                onChange={(e) => setCollaborationReviewerEmails(e.target.value)}
-                placeholder="Optional: reviewer emails separated by comma, semicolon, or new line"
+                value={collaborationReviewerEmails[doc.id] || ""}
+                onChange={(e) =>
+                  setCollaborationReviewerEmails({
+                    ...collaborationReviewerEmails,
+                    [doc.id]: e.target.value,
+                  })
+                }
+                placeholder="Reviewer emails separated by comma, semicolon, or new line"
                 rows={3}
                 style={textareaStyle}
-                disabled={!canManageWorkflow || saving}
               />
-              <button onClick={sendToCollaboration} disabled={!canManageWorkflow || saving} style={canManageWorkflow ? primaryButtonStyle : disabledButtonStyle}>
+              <button disabled={busy} onClick={() => sendToCollaboration(doc)} style={primaryButtonStyle}>
                 Send Collaboration
               </button>
             </details>
           ) : null}
 
-          {doc.status === "collaboration" ? (
-            <button onClick={completeCollaboration} disabled={!canManageWorkflow || saving} style={canManageWorkflow ? primaryButtonStyle : disabledButtonStyle}>
+          {doc.status === "collaboration" && canManageWorkflow ? (
+            <button disabled={busy} onClick={() => completeCollaboration(doc)} style={primaryButtonStyle}>
               Complete Collaboration
             </button>
           ) : null}
 
-          {doc.status === "draft" || doc.status === "collaboration" || doc.status === "rejected" ? (
+          {(doc.status === "draft" || doc.status === "collaboration" || doc.status === "rejected") && canManageWorkflow ? (
             <details>
               <summary>Send to Formal Review</summary>
               <textarea
-                value={formalReviewerEmails}
-                onChange={(e) => setFormalReviewerEmails(e.target.value)}
-                placeholder="Optional: formal reviewer / approver emails"
+                value={formalReviewerEmails[doc.id] || ""}
+                onChange={(e) =>
+                  setFormalReviewerEmails({
+                    ...formalReviewerEmails,
+                    [doc.id]: e.target.value,
+                  })
+                }
+                placeholder="Formal reviewer / approver emails"
                 rows={3}
                 style={textareaStyle}
-                disabled={!canManageWorkflow || saving}
               />
-              <button onClick={sendToFormalReview} disabled={!canManageWorkflow || saving} style={canManageWorkflow ? primaryButtonStyle : disabledButtonStyle}>
+              <button disabled={busy} onClick={() => sendToFormalReview(doc)} style={primaryButtonStyle}>
                 Send Formal Review
               </button>
             </details>
           ) : null}
 
-          {doc.status === "formal_review" ? (
-            <button onClick={approveDocument} disabled={!canApprove || saving} style={canApprove ? primaryButtonStyle : disabledButtonStyle}>
+          {doc.status === "formal_review" && canApprove ? (
+            <button disabled={busy || !requiredFormalApproved || !requiredApproversApproved} onClick={() => approveDocument(doc)} style={primaryButtonStyle}>
               Final Approve Document
             </button>
           ) : null}
 
-          {doc.status === "formal_review" || doc.status === "collaboration" ? (
+          {(doc.status === "formal_review" || doc.status === "collaboration") && canManageWorkflow ? (
             <details>
-              <summary>Reject Document</summary>
+              <summary>Administrative Reject / Return to Owner</summary>
               <textarea
-                value={rejectComments}
-                onChange={(e) => setRejectComments(e.target.value)}
+                value={rejectComments[doc.id] || ""}
+                onChange={(e) =>
+                  setRejectComments({ ...rejectComments, [doc.id]: e.target.value })
+                }
                 placeholder="Rejection comments"
                 rows={3}
                 style={textareaStyle}
-                disabled={!canApprove || saving}
               />
-              <button onClick={rejectDocument} disabled={!canApprove || saving} style={canApprove ? dangerButtonStyle : disabledButtonStyle}>
+              <button disabled={busy} onClick={() => rejectDocument(doc)} style={dangerButtonStyle}>
                 Reject Document
               </button>
             </details>
           ) : null}
 
-          {doc.status === "approved" ? (
+          {doc.status === "approved" && canApprove ? (
             <details>
               <summary>Make Effective / Release</summary>
               <textarea
-                value={releaseComments}
-                onChange={(e) => setReleaseComments(e.target.value)}
+                value={releaseComments[doc.id] || ""}
+                onChange={(e) =>
+                  setReleaseComments({ ...releaseComments, [doc.id]: e.target.value })
+                }
                 placeholder="Release comments"
                 rows={3}
                 style={textareaStyle}
-                disabled={!canApprove || saving}
               />
-              <button onClick={makeEffective} disabled={!canApprove || saving} style={canApprove ? primaryButtonStyle : disabledButtonStyle}>
+              <button disabled={busy} onClick={() => makeEffective(doc)} style={primaryButtonStyle}>
                 Make Effective
               </button>
             </details>
           ) : null}
 
           {doc.status === "effective" && doc.read_ack_required ? (
-            <button onClick={acknowledgeDocument} disabled={saving} style={primaryButtonStyle}>
-              Read & Acknowledge
+            <button disabled={busy || !doc.file_url} onClick={() => acknowledgeDocument(doc)} style={primaryButtonStyle}>
+              Opened, Read & Acknowledge
             </button>
           ) : null}
 
           {doc.training_required ? (
             <details>
               <summary>Assign Training</summary>
+              {!doc.file_url ? (
+                <p style={warningStyle}>Training cannot be assigned until a document file is attached.</p>
+              ) : (
+                <p style={smallTextStyle}>Training will include the current document attachment link.</p>
+              )}
               <textarea
-                value={trainingEmails}
-                onChange={(e) => setTrainingEmails(e.target.value)}
+                value={trainingEmails[doc.id] || ""}
+                onChange={(e) =>
+                  setTrainingEmails({ ...trainingEmails, [doc.id]: e.target.value })
+                }
                 placeholder="Emails separated by comma, semicolon, or new line"
                 rows={3}
                 style={textareaStyle}
-                disabled={!canManageWorkflow || saving}
               />
-              <button onClick={assignTraining} disabled={!canManageWorkflow || saving} style={canManageWorkflow ? primaryButtonStyle : disabledButtonStyle}>
+              <button disabled={busy || !doc.file_url} onClick={() => assignTraining(doc)} style={primaryButtonStyle}>
                 Assign Training
               </button>
             </details>
           ) : null}
 
-          {doc.status !== "obsolete" ? (
+          {doc.status !== "obsolete" && canApprove ? (
             <details>
               <summary>Obsolete</summary>
               <textarea
-                value={obsoleteReason}
-                onChange={(e) => setObsoleteReason(e.target.value)}
+                value={obsoleteReason[doc.id] || ""}
+                onChange={(e) =>
+                  setObsoleteReason({ ...obsoleteReason, [doc.id]: e.target.value })
+                }
                 placeholder="Obsolete reason"
                 rows={3}
                 style={textareaStyle}
-                disabled={!canApprove || saving}
               />
-              <button onClick={obsoleteDocument} disabled={!canApprove || saving} style={canApprove ? dangerButtonStyle : disabledButtonStyle}>
+              <button disabled={busy} onClick={() => obsoleteDocument(doc)} style={dangerButtonStyle}>
                 Obsolete
               </button>
             </details>
@@ -1323,26 +1419,38 @@ export default function DocumentWorkflowPage() {
       <section style={cardStyle}>
         <h2 style={{ marginTop: 0 }}>Review Records</h2>
         <h3>Collaboration Reviews</h3>
-        {collaborationReviews.length === 0 ? (
-          <p style={subtleText}>No collaboration review records.</p>
-        ) : (
+        {collaborationReviews.length === 0 ? <p style={subtleText}>No collaboration reviews.</p> : (
           <ul>
             {collaborationReviews.map((review) => (
               <li key={review.id}>
-                {review.reviewer_email} — {review.review_status || "pending"}
+                {review.reviewer_email} — {review.review_status}
+                {review.reviewed_file_url ? (
+                  <>
+                    {" — "}
+                    <a href={review.reviewed_file_url} target="_blank" rel="noreferrer">
+                      Reviewed file
+                    </a>
+                  </>
+                ) : null}
               </li>
             ))}
           </ul>
         )}
 
         <h3>Formal Reviews</h3>
-        {formalReviews.length === 0 ? (
-          <p style={subtleText}>No formal review records.</p>
-        ) : (
+        {formalReviews.length === 0 ? <p style={subtleText}>No formal reviews.</p> : (
           <ul>
             {formalReviews.map((review) => (
               <li key={review.id}>
-                {review.reviewer_email} — {review.review_status || "pending"}
+                {review.reviewer_email} — {review.review_status}
+                {review.reviewed_file_url ? (
+                  <>
+                    {" — "}
+                    <a href={review.reviewed_file_url} target="_blank" rel="noreferrer">
+                      Reviewed file
+                    </a>
+                  </>
+                ) : null}
               </li>
             ))}
           </ul>
@@ -1351,19 +1459,36 @@ export default function DocumentWorkflowPage() {
 
       <section style={cardStyle}>
         <h2 style={{ marginTop: 0 }}>Training Assignments</h2>
-        <div style={smallTextStyle}>Total Assigned: {trainingCount()}</div>
         {trainingAssignments.length === 0 ? (
           <p style={subtleText}>No training assigned for this document.</p>
         ) : (
-          <div style={{ display: "grid", gap: "10px", marginTop: "12px" }}>
+          <div style={{ display: "grid", gap: "10px" }}>
             {trainingAssignments.map((item) => {
-              const canCompleteTraining = normalizeEmail(item.user_email) === normalizeEmail(userEmail) || canManageWorkflow;
+              const trainingDocUrl = item.document_file_url || doc.file_url;
+              const canComplete =
+                normalizeEmail(item.user_email) === normalizeEmail(userEmail) || canManage;
+
               return (
                 <div key={item.id} style={trainingCardStyle}>
                   <strong>{item.user_email}</strong>
                   <div style={smallTextStyle}>Status: {item.status}</div>
-                  {item.status !== "completed" ? (
-                    <button onClick={() => completeTraining(item.id)} disabled={!canCompleteTraining || saving} style={canCompleteTraining ? primaryButtonStyle : disabledButtonStyle}>
+
+                  {trainingDocUrl ? (
+                    <div style={buttonRowStyle}>
+                      <a href={trainingDocUrl} target="_blank" rel="noreferrer" style={primaryLinkStyle}>
+                        Open Training Document
+                      </a>
+                    </div>
+                  ) : (
+                    <p style={warningStyle}>No document attached to this training assignment.</p>
+                  )}
+
+                  {item.status !== "completed" && canComplete ? (
+                    <button
+                      disabled={busy || !trainingDocUrl}
+                      onClick={() => completeTraining(item)}
+                      style={primaryButtonStyle}
+                    >
                       Complete Training
                     </button>
                   ) : null}
@@ -1377,21 +1502,26 @@ export default function DocumentWorkflowPage() {
       <section style={cardStyle}>
         <h2 style={{ marginTop: 0 }}>Workflow Timeline / Audit Trail</h2>
         {workflowEvents.length === 0 ? (
-          <p style={subtleText}>
-            No workflow event records found. If this section stays empty, create the document_workflow_events table.
-          </p>
+          <p style={subtleText}>No workflow events logged yet.</p>
         ) : (
           <div style={{ display: "grid", gap: "10px" }}>
             {workflowEvents.map((event) => (
               <div key={event.id} style={timelineItemStyle}>
                 <strong>{event.event_type}</strong>
                 <div style={smallTextStyle}>
-                  {formatDateTime(event.performed_at)} • By {event.performed_by || "unknown"}
+                  {event.performed_by || "unknown"} • {formatDateTime(event.performed_at)}
                 </div>
-                <div style={smallTextStyle}>
-                  {event.from_status || "N/A"} → {event.to_status || "N/A"}
-                </div>
-                {event.comments ? <div style={commentBoxStyle}>{event.comments}</div> : null}
+                {event.from_status || event.to_status ? (
+                  <div style={smallTextStyle}>
+                    {event.from_status || "-"} → {event.to_status || "-"}
+                  </div>
+                ) : null}
+                {event.comments ? <p style={{ margin: "6px 0 0" }}>{event.comments}</p> : null}
+                {event.metadata?.reviewed_file_url ? (
+                  <a href={event.metadata.reviewed_file_url} target="_blank" rel="noreferrer">
+                    Open reviewed file
+                  </a>
+                ) : null}
               </div>
             ))}
           </div>
@@ -1401,7 +1531,7 @@ export default function DocumentWorkflowPage() {
   );
 }
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div style={{ marginBottom: "12px" }}>
       <label style={labelStyle}>{label}</label>
@@ -1410,7 +1540,7 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-function KpiCard({ title, value, color }: { title: string; value: number | string; color: string }) {
+function KpiCard({ title, value, color }: { title: string; value: number; color: string }) {
   return (
     <div style={{ ...kpiCardStyle, borderLeft: `8px solid ${color}` }}>
       <div style={kpiTitleStyle}>{title}</div>
@@ -1421,9 +1551,11 @@ function KpiCard({ title, value, color }: { title: string; value: number | strin
 
 function StatusBadge({ status }: { status: string }) {
   const color =
-    status === "effective" || status === "approved"
+    status === "effective"
       ? "#15803d"
-      : status === "formal_review" || status === "pending"
+      : status === "approved"
+      ? "#2563eb"
+      : status === "formal_review"
       ? "#d97706"
       : status === "collaboration"
       ? "#7c3aed"
@@ -1431,10 +1563,21 @@ function StatusBadge({ status }: { status: string }) {
       ? "#dc2626"
       : status === "obsolete" || status === "superseded"
       ? "#991b1b"
+      : status === "pending"
+      ? "#6b7280"
       : "#6b7280";
 
   return (
-    <span style={{ background: color, color: "white", borderRadius: "999px", padding: "4px 10px", fontSize: "12px", fontWeight: 700 }}>
+    <span
+      style={{
+        background: color,
+        color: "white",
+        borderRadius: "999px",
+        padding: "3px 8px",
+        fontSize: "12px",
+        fontWeight: 700,
+      }}
+    >
       {status}
     </span>
   );
@@ -1449,29 +1592,27 @@ function formatDateTime(value: string | null | undefined) {
   }
 }
 
-const pageStyle: CSSProperties = { padding: "24px", background: "#f8fafc", minHeight: "100vh", fontFamily: "Arial, sans-serif" };
-const headerStyle: CSSProperties = { display: "flex", justifyContent: "space-between", gap: "16px", alignItems: "flex-start", flexWrap: "wrap", marginBottom: "20px" };
-const eyebrowStyle: CSSProperties = { fontSize: "12px", letterSpacing: "0.08em", color: "#6b7280", fontWeight: 800 };
-const subtleText: CSSProperties = { color: "#6b7280" };
-const cardStyle: CSSProperties = { background: "white", border: "1px solid #d1d5db", borderRadius: "16px", padding: "20px", marginBottom: "20px" };
-const gridStyle: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "14px" };
-const kpiGridStyle: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "14px", marginBottom: "20px" };
-const kpiCardStyle: CSSProperties = { background: "white", border: "1px solid #d1d5db", borderRadius: "14px", padding: "16px" };
-const kpiTitleStyle: CSSProperties = { color: "#6b7280", marginBottom: "8px" };
-const labelStyle: CSSProperties = { fontWeight: 700 };
-const inputStyle: CSSProperties = { width: "100%", padding: "9px", borderRadius: "8px", border: "1px solid #d1d5db" };
-const textareaStyle: CSSProperties = { width: "100%", padding: "9px", borderRadius: "8px", border: "1px solid #d1d5db", marginTop: "6px" };
-const primaryButtonStyle: CSSProperties = { background: "#2563eb", color: "white", border: "none", padding: "10px 14px", borderRadius: "8px", fontWeight: 700, cursor: "pointer", marginTop: "10px" };
-const secondaryButtonStyle: CSSProperties = { background: "#4b5563", color: "white", border: "none", padding: "10px 14px", borderRadius: "8px", fontWeight: 700, cursor: "pointer" };
-const dangerButtonStyle: CSSProperties = { background: "#dc2626", color: "white", border: "none", padding: "10px 14px", borderRadius: "8px", fontWeight: 700, cursor: "pointer", marginTop: "10px" };
-const disabledButtonStyle: CSSProperties = { background: "#9ca3af", color: "white", border: "none", padding: "10px 14px", borderRadius: "8px", fontWeight: 700, cursor: "not-allowed", marginTop: "10px" };
-const darkButtonStyle: CSSProperties = { background: "#111827", color: "white", padding: "10px 14px", borderRadius: "8px", textDecoration: "none", fontWeight: 700 };
-const primaryLinkStyle: CSSProperties = { color: "#2563eb", fontWeight: 700, textDecoration: "underline", display: "inline-block", marginTop: "10px" };
-const buttonRowStyle: CSSProperties = { display: "flex", gap: "12px", flexWrap: "wrap", alignItems: "center", marginTop: "12px" };
-const actionStackStyle: CSSProperties = { display: "grid", gap: "12px" };
-const smallTextStyle: CSSProperties = { fontSize: "12px", color: "#6b7280" };
-const trainingCardStyle: CSSProperties = { border: "1px solid #d1d5db", borderRadius: "12px", padding: "14px", background: "#f9fafb" };
-const reviewerHeaderStyle: CSSProperties = { display: "flex", justifyContent: "space-between", gap: "12px", alignItems: "flex-start", flexWrap: "wrap" };
-const warningBoxStyle: CSSProperties = { background: "#fffbeb", border: "1px solid #f59e0b", borderRadius: "10px", padding: "10px", marginTop: "10px", color: "#92400e" };
-const commentBoxStyle: CSSProperties = { background: "#f3f4f6", borderRadius: "10px", padding: "10px", marginTop: "10px", color: "#374151" };
-const timelineItemStyle: CSSProperties = { borderLeft: "4px solid #2563eb", padding: "10px 12px", background: "#f9fafb", borderRadius: "10px" };
+const pageStyle: React.CSSProperties = { padding: "24px", background: "#f8fafc", minHeight: "100vh", fontFamily: "Arial, sans-serif" };
+const headerStyle: React.CSSProperties = { display: "flex", justifyContent: "space-between", gap: "16px", alignItems: "flex-start", flexWrap: "wrap", marginBottom: "20px" };
+const eyebrowStyle: React.CSSProperties = { fontSize: "12px", letterSpacing: "0.08em", color: "#6b7280", fontWeight: 800 };
+const subtleText: React.CSSProperties = { color: "#6b7280" };
+const cardStyle: React.CSSProperties = { background: "white", border: "1px solid #d1d5db", borderRadius: "16px", padding: "20px", marginBottom: "20px" };
+const gridStyle: React.CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "14px" };
+const kpiGridStyle: React.CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "14px", marginBottom: "20px" };
+const kpiCardStyle: React.CSSProperties = { background: "white", border: "1px solid #d1d5db", borderRadius: "14px", padding: "16px" };
+const kpiTitleStyle: React.CSSProperties = { color: "#6b7280", marginBottom: "8px" };
+const labelStyle: React.CSSProperties = { fontWeight: 700 };
+const inputStyle: React.CSSProperties = { width: "100%", padding: "9px", borderRadius: "8px", border: "1px solid #d1d5db" };
+const textareaStyle: React.CSSProperties = { width: "100%", padding: "9px", borderRadius: "8px", border: "1px solid #d1d5db", marginTop: "6px" };
+const primaryButtonStyle: React.CSSProperties = { background: "#2563eb", color: "white", border: "none", padding: "10px 14px", borderRadius: "8px", fontWeight: 700, cursor: "pointer", marginTop: "10px" };
+const dangerButtonStyle: React.CSSProperties = { background: "#dc2626", color: "white", border: "none", padding: "10px 14px", borderRadius: "8px", fontWeight: 700, cursor: "pointer", marginTop: "10px" };
+const darkButtonStyle: React.CSSProperties = { background: "#111827", color: "white", padding: "10px 14px", borderRadius: "8px", textDecoration: "none", fontWeight: 700 };
+const primaryLinkStyle: React.CSSProperties = { background: "#2563eb", color: "white", padding: "9px 12px", borderRadius: "8px", textDecoration: "none", fontWeight: 700, display: "inline-block" };
+const buttonRowStyle: React.CSSProperties = { display: "flex", gap: "12px", flexWrap: "wrap", alignItems: "center", marginTop: "12px" };
+const actionStackStyle: React.CSSProperties = { display: "grid", gap: "10px" };
+const smallTextStyle: React.CSSProperties = { fontSize: "12px", color: "#6b7280" };
+const trainingCardStyle: React.CSSProperties = { border: "1px solid #d1d5db", borderRadius: "12px", padding: "14px", background: "#f9fafb" };
+const rowBetweenStyle: React.CSSProperties = { display: "flex", justifyContent: "space-between", gap: "12px", alignItems: "flex-start", flexWrap: "wrap" };
+const noticeStyle: React.CSSProperties = { background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: "10px", padding: "10px", marginTop: "12px" };
+const warningStyle: React.CSSProperties = { color: "#b45309", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: "8px", padding: "8px", display: "inline-block" };
+const timelineItemStyle: React.CSSProperties = { borderLeft: "4px solid #2563eb", padding: "10px 12px", background: "#f9fafb", borderRadius: "8px" };
