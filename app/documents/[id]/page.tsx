@@ -3,6 +3,18 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "../../../lib/supabaseClient";
+import {
+  canManageWorkflow as canUserManageWorkflow,
+  canTransition,
+  canUserActOnReviewer,
+  getSlaLabel,
+  getWorkflowState,
+  hasPriorRequiredReviewerOpen,
+  isApproverRole,
+  isManagementRole,
+  isOverdue,
+  normalizeEmail,
+} from "../../../lib/documentWorkflowEngine";
 
 type ControlledDocument = {
   id: string;
@@ -113,58 +125,56 @@ export default function DocumentWorkflowPage() {
 
   const doc = documents[0] || null;
 
-  const normalizeEmail = (value: string | null | undefined) => {
-    const text = String(value || "").trim().toLowerCase();
-    if (!text || !text.includes("@")) return "";
-    return text;
-  };
-
-  const canApprove =
-    userRole === "admin" || userRole === "approver" || userRole === "vp_quality";
-
-  const canManage =
-    canApprove || userRole === "document_control" || userRole === "quality";
-
-  const isOwner =
-    doc && normalizeEmail(doc.owner_email) === normalizeEmail(userEmail);
-
-  const canManageWorkflow = Boolean(canManage || isOwner);
-
-  const normalizeReviewStatus = (status: string | null | undefined) =>
-    String(status || "pending").trim().toLowerCase();
-
-  const isReviewerApproved = (reviewer: AssignedReviewer) =>
-    normalizeReviewStatus(reviewer.review_status) === "approved";
-
-  const isReviewerSuperseded = (reviewer: AssignedReviewer) =>
-    ["superseded", "cancelled", "canceled"].includes(normalizeReviewStatus(reviewer.review_status));
-
-  const isReviewerActionable = (reviewer: AssignedReviewer) =>
-    ["pending", "open", "in_review"].includes(normalizeReviewStatus(reviewer.review_status));
-
-  const isRequiredReviewerBlocking = (reviewer: AssignedReviewer) =>
-    Boolean(reviewer.required_reviewer) && !isReviewerApproved(reviewer) && !isReviewerSuperseded(reviewer);
-
-  const activeAssignedReviewers = useMemo(
-    () => assignedReviewers.filter((reviewer) => !isReviewerSuperseded(reviewer)),
-    [assignedReviewers]
+  const canApprove = isApproverRole(userRole);
+  const canManage = isManagementRole(userRole);
+  const canManageWorkflow = Boolean(
+    doc ? canUserManageWorkflow(doc, userEmail, userRole) : canManage
   );
 
-  const requiredFormalApproved = activeAssignedReviewers
-    .filter((r) => r.reviewer_type === "formal_review" && r.required_reviewer)
-    .every((r) => r.review_status === "approved");
+  const workflowState = useMemo(() => {
+    if (!doc) return null;
+    return getWorkflowState(doc, assignedReviewers);
+  }, [doc, assignedReviewers]);
 
-  const requiredApproversApproved = activeAssignedReviewers
-    .filter((r) => r.reviewer_type === "approver" && r.required_reviewer)
-    .every((r) => r.review_status === "approved");
+  const transitionPermissions = useMemo(() => {
+    if (!doc) {
+      return {
+        sendToCollaboration: { allowed: false, reason: null as string | null },
+        completeCollaboration: { allowed: false, reason: null as string | null },
+        sendToFormalReview: { allowed: false, reason: null as string | null },
+        finalApprove: { allowed: false, reason: null as string | null },
+        makeEffective: { allowed: false, reason: null as string | null },
+        reject: { allowed: false, reason: null as string | null },
+        obsolete: { allowed: false, reason: null as string | null },
+        acknowledge: { allowed: false, reason: null as string | null },
+        assignTraining: { allowed: false, reason: null as string | null },
+      };
+    }
 
-  const pendingRequiredReviewers = activeAssignedReviewers.filter(isRequiredReviewerBlocking);
+    const base = {
+      doc,
+      reviewers: assignedReviewers,
+      userEmail,
+      userRole,
+    };
 
-  const nextPendingReviewer = useMemo(() => {
-    return [...activeAssignedReviewers]
-      .filter(isRequiredReviewerBlocking)
-      .sort((a, b) => Number(a.review_sequence || 9999) - Number(b.review_sequence || 9999))[0];
-  }, [activeAssignedReviewers]);
+    return {
+      sendToCollaboration: canTransition({ ...base, transition: "send_to_collaboration" }),
+      completeCollaboration: canTransition({ ...base, transition: "complete_collaboration" }),
+      sendToFormalReview: canTransition({ ...base, transition: "send_to_formal_review" }),
+      finalApprove: canTransition({ ...base, transition: "final_approve" }),
+      makeEffective: canTransition({ ...base, transition: "make_effective" }),
+      reject: canTransition({ ...base, transition: "reject" }),
+      obsolete: canTransition({ ...base, transition: "obsolete" }),
+      acknowledge: canTransition({ ...base, transition: "acknowledge" }),
+      assignTraining: canTransition({ ...base, transition: "assign_training" }),
+    };
+  }, [doc, assignedReviewers, userEmail, userRole]);
+
+  const requiredFormalApproved = !workflowState?.formalReviewPending;
+  const requiredApproversApproved = !workflowState?.approvalPending;
+  const pendingRequiredReviewers = workflowState?.pendingRequiredReviewers || [];
+  const nextPendingReviewer = workflowState?.nextPendingReviewer || null;
 
   const documentAckCount = (docId: string) =>
     acknowledgements.filter((ack) => ack.document_id === docId).length;
@@ -373,13 +383,15 @@ export default function DocumentWorkflowPage() {
       return;
     }
 
-    const previousRequiredReviewers = activeAssignedReviewers.filter(
+    const previousRequiredReviewers = assignedReviewers.filter(
       (r) =>
         Number(r.review_sequence || 0) < Number(reviewer.review_sequence || 0) &&
-        isRequiredReviewerBlocking(r)
+        r.required_reviewer
     );
 
-    const blockedReviewer = previousRequiredReviewers.find(isRequiredReviewerBlocking);
+    const blockedReviewer = previousRequiredReviewers.find(
+      (r) => r.review_status !== "approved"
+    );
 
     if (blockedReviewer) {
       alert(`Waiting for ${blockedReviewer.reviewer_email} to complete review first.`);
@@ -563,43 +575,13 @@ export default function DocumentWorkflowPage() {
 
     setBusy(true);
 
-    const now = new Date().toISOString();
-
-    const archiveAssignedRes = await supabase
-      .from("document_assigned_reviewers")
-      .update({
-        review_status: "superseded",
-        required_reviewer: false,
-        review_comments: "Superseded by a new collaboration cycle.",
-        reviewed_at: now,
-      })
-      .eq("document_id", doc.id)
-      .eq("reviewer_type", "collaboration")
-      .in("review_status", ["pending", "rejected", "open", "in_review"]);
-
-    if (archiveAssignedRes.error) {
-      alert(archiveAssignedRes.error.message);
-      setBusy(false);
-      return;
-    }
-
-    await supabase
-      .from("document_collaboration_reviews")
-      .update({
-        review_status: "superseded",
-        review_comments: "Superseded by a new collaboration cycle.",
-      })
-      .eq("document_id", doc.id)
-      .in("review_status", ["pending", "rejected", "open", "in_review"]);
-
     const { error } = await supabase
       .from("controlled_documents")
       .update({
         status: "collaboration",
         collaboration_completed: false,
         formal_review_completed: false,
-        approval_comments: null,
-        updated_at: now,
+        updated_at: new Date().toISOString(),
       })
       .eq("id", doc.id);
 
@@ -626,31 +608,7 @@ export default function DocumentWorkflowPage() {
         .from("document_assigned_reviewers")
         .insert(rows);
 
-      if (reviewRes.error) {
-        alert(reviewRes.error.message);
-        setBusy(false);
-        return;
-      }
-
-      const legacyRows = reviewers.map((email) => ({
-        document_id: doc.id,
-        reviewer_email: email,
-        review_status: "pending",
-        review_comments: null,
-        reviewed_file_name: null,
-        reviewed_file_path: null,
-        reviewed_file_url: null,
-      }));
-
-      const legacyRes = await supabase
-        .from("document_collaboration_reviews")
-        .upsert(legacyRows, { onConflict: "document_id,reviewer_email" });
-
-      if (legacyRes.error) {
-        alert(legacyRes.error.message);
-        setBusy(false);
-        return;
-      }
+      if (reviewRes.error) alert(reviewRes.error.message);
     }
 
     await logWorkflowEvent({
@@ -676,8 +634,11 @@ export default function DocumentWorkflowPage() {
       return;
     }
 
-    const requiredCollaborationOpen = activeAssignedReviewers.some(
-      (r) => r.reviewer_type === "collaboration" && isRequiredReviewerBlocking(r)
+    const requiredCollaborationOpen = assignedReviewers.some(
+      (r) =>
+        r.reviewer_type === "collaboration" &&
+        r.required_reviewer &&
+        r.review_status !== "approved"
     );
 
     if (requiredCollaborationOpen) {
@@ -730,43 +691,14 @@ export default function DocumentWorkflowPage() {
       .map((email) => normalizeEmail(email))
       .filter(Boolean);
 
-    const now = new Date().toISOString();
-
-    const archiveAssignedRes = await supabase
-      .from("document_assigned_reviewers")
-      .update({
-        review_status: "superseded",
-        required_reviewer: false,
-        review_comments: "Superseded by a new formal review cycle.",
-        reviewed_at: now,
-      })
-      .eq("document_id", doc.id)
-      .in("reviewer_type", ["formal_review", "approver"])
-      .in("review_status", ["pending", "rejected", "open", "in_review"]);
-
-    if (archiveAssignedRes.error) {
-      alert(archiveAssignedRes.error.message);
-      return;
-    }
-
-    await supabase
-      .from("document_formal_reviews")
-      .update({
-        review_status: "superseded",
-        review_comments: "Superseded by a new formal review cycle.",
-      })
-      .eq("document_id", doc.id)
-      .in("review_status", ["pending", "rejected", "open", "in_review"]);
-
     const { error } = await supabase
       .from("controlled_documents")
       .update({
         status: "formal_review",
         formal_review_completed: false,
-        approval_comments: null,
-        submitted_for_approval_at: now,
+        submitted_for_approval_at: new Date().toISOString(),
         submitted_for_approval_by: userEmail,
-        updated_at: now,
+        updated_at: new Date().toISOString(),
       })
       .eq("id", doc.id);
 
@@ -792,30 +724,7 @@ export default function DocumentWorkflowPage() {
         .from("document_assigned_reviewers")
         .insert(rows);
 
-      if (reviewRes.error) {
-        alert(reviewRes.error.message);
-        return;
-      }
-
-      const legacyRows = reviewers.map((email) => ({
-        document_id: doc.id,
-        reviewer_email: email,
-        review_role: "formal_reviewer",
-        review_status: "pending",
-        review_comments: null,
-        reviewed_file_name: null,
-        reviewed_file_path: null,
-        reviewed_file_url: null,
-      }));
-
-      const legacyRes = await supabase
-        .from("document_formal_reviews")
-        .upsert(legacyRows, { onConflict: "document_id,reviewer_email" });
-
-      if (legacyRes.error) {
-        alert(legacyRes.error.message);
-        return;
-      }
+      if (reviewRes.error) alert(reviewRes.error.message);
     }
 
     await logWorkflowEvent({
@@ -1163,9 +1072,12 @@ export default function DocumentWorkflowPage() {
       <section style={cardStyle}>
         <h2 style={{ marginTop: 0 }}>Current Workflow State</h2>
         <div style={gridStyle}>
-          <Field label="Current Step"><StatusBadge status={doc.status} /></Field>
+          <Field label="Current Step"><div>{workflowState?.currentStepLabel || doc.status}</div></Field>
           <Field label="Next Pending Reviewer">
             <div>{nextPendingReviewer?.reviewer_email || "None"}</div>
+          </Field>
+          <Field label="Workflow Completion">
+            <div>{workflowState?.workflowPercentComplete ?? 0}%</div>
           </Field>
           <Field label="Owner"><div>{doc.owner_email || "N/A"}</div></Field>
           <Field label="Your Role"><div>{userRole || "user"}</div></Field>
@@ -1286,14 +1198,15 @@ export default function DocumentWorkflowPage() {
             <p style={subtleText}>No reviewers assigned yet.</p>
           ) : (
             assignedReviewers.map((reviewer) => {
-              const canCurrentUserReview =
-                normalizeEmail(reviewer.reviewer_email) === normalizeEmail(userEmail);
+              const canCurrentUserReview = canUserActOnReviewer(reviewer, userEmail);
 
-              const priorRequiredOpen = activeAssignedReviewers.some(
-                (r) =>
-                  Number(r.review_sequence || 0) < Number(reviewer.review_sequence || 0) &&
-                  isRequiredReviewerBlocking(r)
+              const priorRequiredOpen = hasPriorRequiredReviewerOpen(
+                reviewer,
+                assignedReviewers
               );
+
+              const slaLabel = getSlaLabel(reviewer);
+              const overdue = isOverdue(reviewer.due_date);
 
               return (
                 <div key={reviewer.id} style={trainingCardStyle}>
@@ -1305,7 +1218,12 @@ export default function DocumentWorkflowPage() {
                         {reviewer.required_reviewer ? "Required" : "Optional"}
                       </div>
                     </div>
-                    <StatusBadge status={reviewer.review_status || "pending"} />
+                    <div style={{ textAlign: "right" }}>
+                      <StatusBadge status={reviewer.review_status || "pending"} />
+                      <div style={overdue ? overdueTextStyle : smallTextStyle}>
+                        SLA: {slaLabel}
+                      </div>
+                    </div>
                   </div>
 
                   {doc.file_url ? (
@@ -1325,7 +1243,7 @@ export default function DocumentWorkflowPage() {
                     </div>
                   ) : null}
 
-                  {canCurrentUserReview && isReviewerActionable(reviewer) ? (
+                  {canCurrentUserReview && reviewer.review_status !== "approved" && reviewer.review_status !== "rejected" ? (
                     <>
                       {priorRequiredOpen ? (
                         <div style={warningStyle}>
@@ -1380,9 +1298,7 @@ export default function DocumentWorkflowPage() {
                     </>
                   ) : (
                     <div style={smallTextStyle}>
-                      {isReviewerSuperseded(reviewer)
-                        ? "This reviewer task was superseded by a newer workflow cycle."
-                        : canCurrentUserReview
+                      {canCurrentUserReview
                         ? "Your review has been completed."
                         : "Waiting for assigned reviewer."}
                     </div>
@@ -1397,7 +1313,7 @@ export default function DocumentWorkflowPage() {
       <section style={cardStyle}>
         <h2 style={{ marginTop: 0 }}>Workflow Actions</h2>
         <div style={actionStackStyle}>
-          {(doc.status === "draft" || doc.status === "rejected") && canManageWorkflow ? (
+          {transitionPermissions.sendToCollaboration.allowed ? (
             <details>
               <summary>Send to Collaboration</summary>
               <textarea
@@ -1418,13 +1334,13 @@ export default function DocumentWorkflowPage() {
             </details>
           ) : null}
 
-          {doc.status === "collaboration" && canManageWorkflow ? (
+          {transitionPermissions.completeCollaboration.allowed ? (
             <button disabled={busy} onClick={() => completeCollaboration(doc)} style={primaryButtonStyle}>
               Complete Collaboration
             </button>
           ) : null}
 
-          {(doc.status === "draft" || doc.status === "collaboration" || doc.status === "rejected") && canManageWorkflow ? (
+          {transitionPermissions.sendToFormalReview.allowed ? (
             <details>
               <summary>Send to Formal Review</summary>
               <textarea
@@ -1445,13 +1361,13 @@ export default function DocumentWorkflowPage() {
             </details>
           ) : null}
 
-          {doc.status === "formal_review" && canApprove ? (
+          {transitionPermissions.finalApprove.allowed ? (
             <button disabled={busy || !requiredFormalApproved || !requiredApproversApproved} onClick={() => approveDocument(doc)} style={primaryButtonStyle}>
               Final Approve Document
             </button>
           ) : null}
 
-          {(doc.status === "formal_review" || doc.status === "collaboration") && canManageWorkflow ? (
+          {transitionPermissions.reject.allowed ? (
             <details>
               <summary>Administrative Reject / Return to Owner</summary>
               <textarea
@@ -1469,7 +1385,7 @@ export default function DocumentWorkflowPage() {
             </details>
           ) : null}
 
-          {doc.status === "approved" && canApprove ? (
+          {transitionPermissions.makeEffective.allowed ? (
             <details>
               <summary>Make Effective / Release</summary>
               <textarea
@@ -1487,7 +1403,7 @@ export default function DocumentWorkflowPage() {
             </details>
           ) : null}
 
-          {doc.status === "effective" && doc.read_ack_required ? (
+          {transitionPermissions.acknowledge.allowed ? (
             <button disabled={busy || !doc.file_url} onClick={() => acknowledgeDocument(doc)} style={primaryButtonStyle}>
               Opened, Read & Acknowledge
             </button>
@@ -1510,13 +1426,13 @@ export default function DocumentWorkflowPage() {
                 rows={3}
                 style={textareaStyle}
               />
-              <button disabled={busy || !doc.file_url} onClick={() => assignTraining(doc)} style={primaryButtonStyle}>
+              <button disabled={busy || !transitionPermissions.assignTraining.allowed} onClick={() => assignTraining(doc)} style={primaryButtonStyle}>
                 Assign Training
               </button>
             </details>
           ) : null}
 
-          {doc.status !== "obsolete" && canApprove ? (
+          {transitionPermissions.obsolete.allowed ? (
             <details>
               <summary>Obsolete</summary>
               <textarea
@@ -1736,3 +1652,4 @@ const rowBetweenStyle: React.CSSProperties = { display: "flex", justifyContent: 
 const noticeStyle: React.CSSProperties = { background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: "10px", padding: "10px", marginTop: "12px" };
 const warningStyle: React.CSSProperties = { color: "#b45309", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: "8px", padding: "8px", display: "inline-block" };
 const timelineItemStyle: React.CSSProperties = { borderLeft: "4px solid #2563eb", padding: "10px 12px", background: "#f9fafb", borderRadius: "8px" };
+const overdueTextStyle: React.CSSProperties = { fontSize: "12px", color: "#dc2626", fontWeight: 700 };
