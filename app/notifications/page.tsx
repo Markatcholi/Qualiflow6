@@ -4,11 +4,28 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
 
+type NotificationRecord = {
+  id: string;
+  user_email: string;
+  assigned_role?: string | null;
+  notification_type: string | null;
+  title: string | null;
+  message: string | null;
+  related_module: string | null;
+  related_record_id: string | null;
+  severity: string | null;
+  read_status: boolean | null;
+  created_at: string | null;
+  read_at: string | null;
+};
+
+type NotificationFilter = "unread" | "all" | "critical" | "workflow" | "training";
+
 export default function NotificationsPage() {
-  const [notifications, setNotifications] = useState<any[]>([]);
+  const [notifications, setNotifications] = useState<NotificationRecord[]>([]);
   const [userEmail, setUserEmail] = useState("");
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState("unread");
+  const [filter, setFilter] = useState<NotificationFilter>("unread");
 
   const fetchNotifications = async () => {
     setLoading(true);
@@ -18,6 +35,7 @@ export default function NotificationsPage() {
     setUserEmail(email);
 
     if (!email) {
+      setNotifications([]);
       setLoading(false);
       return;
     }
@@ -26,11 +44,22 @@ export default function NotificationsPage() {
       .from("notifications")
       .select("*")
       .eq("user_email", email)
-      .eq("delivery_status", "in_app")
       .order("created_at", { ascending: false });
 
     if (filter === "unread") {
-      query = query.eq("is_read", false);
+      query = query.eq("read_status", false);
+    }
+
+    if (filter === "critical") {
+      query = query.eq("severity", "critical");
+    }
+
+    if (filter === "workflow") {
+      query = query.eq("related_module", "documents");
+    }
+
+    if (filter === "training") {
+      query = query.eq("related_module", "training");
     }
 
     const { data, error } = await query;
@@ -41,7 +70,7 @@ export default function NotificationsPage() {
       return;
     }
 
-    setNotifications(data || []);
+    setNotifications((data as NotificationRecord[]) || []);
     setLoading(false);
   };
 
@@ -50,15 +79,34 @@ export default function NotificationsPage() {
   }, [filter]);
 
   const unreadCount = useMemo(
-    () => notifications.filter((n) => !n.is_read).length,
+    () => notifications.filter((n) => !n.read_status).length,
+    [notifications]
+  );
+
+  const criticalCount = useMemo(
+    () => notifications.filter((n) => n.severity === "critical" && !n.read_status).length,
+    [notifications]
+  );
+
+  const workflowCount = useMemo(
+    () => notifications.filter((n) => n.related_module === "documents" && !n.read_status).length,
+    [notifications]
+  );
+
+  const trainingCount = useMemo(
+    () => notifications.filter((n) => n.related_module === "training" && !n.read_status).length,
     [notifications]
   );
 
   const markRead = async (id: string) => {
     const { error } = await supabase
       .from("notifications")
-      .update({ is_read: true })
-      .eq("id", id);
+      .update({
+        read_status: true,
+        read_at: new Date().toISOString(),
+      })
+      .eq("id", id)
+      .eq("user_email", userEmail);
 
     if (error) {
       alert(error.message);
@@ -73,9 +121,12 @@ export default function NotificationsPage() {
 
     const { error } = await supabase
       .from("notifications")
-      .update({ is_read: true })
+      .update({
+        read_status: true,
+        read_at: new Date().toISOString(),
+      })
       .eq("user_email", userEmail)
-      .eq("is_read", false);
+      .eq("read_status", false);
 
     if (error) {
       alert(error.message);
@@ -96,7 +147,7 @@ export default function NotificationsPage() {
           <div style={eyebrowStyle}>QUALIFLOW NOTIFICATION CENTER</div>
           <h1 style={{ margin: "6px 0" }}>My Notifications</h1>
           <p style={subtleText}>
-            High-signal alerts for task assignments and overdue CAPA tasks.
+            Workflow, training, review, escalation, and document release alerts.
           </p>
         </div>
 
@@ -104,21 +155,25 @@ export default function NotificationsPage() {
           <Link href="/settings/notifications" style={blueButtonStyle}>
             Preferences
           </Link>
+          <Link href="/dashboard/workflow" style={blueButtonStyle}>
+            Workflow Dashboard
+          </Link>
           <Link href="/dashboard" style={darkButtonStyle}>
             Dashboard
-          </Link>
-          <Link href="/capa/intelligence" style={blueButtonStyle}>
-            CAPA Intelligence
           </Link>
         </div>
       </header>
 
+      <section style={kpiGridStyle}>
+        <KpiCard title="Unread" value={unreadCount} color="#2563eb" />
+        <KpiCard title="Critical" value={criticalCount} color="#991b1b" />
+        <KpiCard title="Workflow" value={workflowCount} color="#7c3aed" />
+        <KpiCard title="Training" value={trainingCount} color="#15803d" />
+      </section>
+
       <section style={summaryStyle}>
         <div>
           <strong>User:</strong> {userEmail || "N/A"}
-        </div>
-        <div>
-          <strong>Unread:</strong> {unreadCount}
         </div>
 
         <div style={buttonRowStyle}>
@@ -127,6 +182,24 @@ export default function NotificationsPage() {
             style={filter === "unread" ? blueButtonStyle : secondaryButtonStyle}
           >
             Unread
+          </button>
+          <button
+            onClick={() => setFilter("critical")}
+            style={filter === "critical" ? blueButtonStyle : secondaryButtonStyle}
+          >
+            Critical
+          </button>
+          <button
+            onClick={() => setFilter("workflow")}
+            style={filter === "workflow" ? blueButtonStyle : secondaryButtonStyle}
+          >
+            Workflow
+          </button>
+          <button
+            onClick={() => setFilter("training")}
+            style={filter === "training" ? blueButtonStyle : secondaryButtonStyle}
+          >
+            Training
           </button>
           <button
             onClick={() => setFilter("all")}
@@ -147,60 +220,111 @@ export default function NotificationsPage() {
             <p style={subtleText}>You are all caught up.</p>
           </section>
         ) : (
-          notifications.map((item) => (
-            <article
-              key={item.id}
-              style={{
-                ...cardStyle,
-                borderLeft: `8px solid ${getSeverityColor(item.severity)}`,
-                opacity: item.is_read ? 0.72 : 1,
-              }}
-            >
-              <div style={notificationHeaderStyle}>
-                <div>
-                  <div style={eyebrowStyle}>
-                    {item.notification_type || "notification"}
+          notifications.map((item) => {
+            const relatedUrl = getRelatedUrl(item);
+
+            return (
+              <article
+                key={item.id}
+                style={{
+                  ...cardStyle,
+                  borderLeft: `8px solid ${getSeverityColor(item.severity || "info")}`,
+                  opacity: item.read_status ? 0.72 : 1,
+                }}
+              >
+                <div style={notificationHeaderStyle}>
+                  <div>
+                    <div style={eyebrowStyle}>
+                      {item.notification_type || "notification"}
+                    </div>
+                    <h3 style={{ margin: "4px 0" }}>{item.title || "Notification"}</h3>
+                    <p style={{ margin: 0 }}>{item.message || "No details provided."}</p>
+                    <div style={smallMutedStyle}>
+                      {formatDateTime(item.created_at)} | Severity: {item.severity || "info"}
+                      {item.related_module ? ` | Module: ${item.related_module}` : ""}
+                      {item.assigned_role ? ` | Role: ${item.assigned_role}` : ""}
+                    </div>
                   </div>
-                  <h3 style={{ margin: "4px 0" }}>{item.title}</h3>
-                  <p style={{ margin: 0 }}>
-                    {item.message || "No details provided."}
-                  </p>
-                  <div style={smallMutedStyle}>
-                    {item.created_at || "N/A"} | Severity:{" "}
-                    {item.severity || "info"}
+
+                  <div style={buttonRowStyle}>
+                    {relatedUrl ? (
+                      <Link href={relatedUrl} style={blueButtonStyle}>
+                        Open Related Record
+                      </Link>
+                    ) : null}
+
+                    {!item.read_status ? (
+                      <button onClick={() => markRead(item.id)} style={secondaryButtonStyle}>
+                        Mark Read
+                      </button>
+                    ) : (
+                      <span style={readBadgeStyle}>Read</span>
+                    )}
                   </div>
                 </div>
-
-                <div style={buttonRowStyle}>
-                  {item.related_url ? (
-                    <Link href={item.related_url} style={blueButtonStyle}>
-                      Open
-                    </Link>
-                  ) : null}
-
-                  {!item.is_read ? (
-                    <button
-                      onClick={() => markRead(item.id)}
-                      style={secondaryButtonStyle}
-                    >
-                      Mark Read
-                    </button>
-                  ) : null}
-                </div>
-              </div>
-            </article>
-          ))
+              </article>
+            );
+          })
         )}
       </section>
     </main>
   );
 }
 
+function getRelatedUrl(item: NotificationRecord) {
+  if (!item.related_record_id) return null;
+
+  if (item.related_module === "documents") {
+    return `/documents/${item.related_record_id}`;
+  }
+
+  if (item.related_module === "training") {
+    return `/documents/${item.related_record_id}`;
+  }
+
+  if (item.related_module === "capa") {
+    return `/capa/${item.related_record_id}`;
+  }
+
+  if (item.related_module === "ncmr") {
+    return `/ncmr/${item.related_record_id}`;
+  }
+
+  if (item.related_module === "audit") {
+    return `/audits/${item.related_record_id}`;
+  }
+
+  if (item.related_module === "change_control") {
+    return `/change-control/${item.related_record_id}`;
+  }
+
+  return null;
+}
+
 function getSeverityColor(value: string) {
   if (value === "critical") return "#991b1b";
   if (value === "high") return "#dc2626";
-  if (value === "medium") return "#d97706";
+  if (value === "warning" || value === "medium") return "#d97706";
+  if (value === "success") return "#15803d";
   return "#2563eb";
+}
+
+function formatDateTime(value: string | null | undefined) {
+  if (!value) return "N/A";
+  try {
+    return new Date(value).toLocaleString();
+  } catch {
+    return value;
+  }
+}
+
+function KpiCard({ title, value, color }: { title: string; value: number | string; color: string }) {
+  return (
+    <div style={{ ...kpiCardStyle, borderLeft: `8px solid ${color}` }}>
+      <div style={kpiTitleStyle}>{title}</div>
+      <div style={{ fontSize: "30px", fontWeight: 800, color }}>{value}</div>
+    </div>
+  );
 }
 
 const pageStyle: React.CSSProperties = {
@@ -228,6 +352,25 @@ const eyebrowStyle: React.CSSProperties = {
 
 const subtleText: React.CSSProperties = {
   color: "#6b7280",
+};
+
+const kpiGridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+  gap: "14px",
+  marginBottom: "20px",
+};
+
+const kpiCardStyle: React.CSSProperties = {
+  background: "white",
+  border: "1px solid #d1d5db",
+  borderRadius: "14px",
+  padding: "16px",
+};
+
+const kpiTitleStyle: React.CSSProperties = {
+  color: "#6b7280",
+  marginBottom: "8px",
 };
 
 const summaryStyle: React.CSSProperties = {
@@ -300,4 +443,12 @@ const secondaryButtonStyle: React.CSSProperties = {
   border: "none",
   fontWeight: 700,
   cursor: "pointer",
+};
+
+const readBadgeStyle: React.CSSProperties = {
+  background: "#e5e7eb",
+  color: "#374151",
+  padding: "9px 12px",
+  borderRadius: "8px",
+  fontWeight: 700,
 };
