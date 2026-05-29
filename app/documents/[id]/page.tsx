@@ -700,7 +700,6 @@ export default function DocumentWorkflowPage() {
   const trainingCount = (docId: string) =>
     trainingAssignments.filter((item) => item.document_id === docId).length;
 
-  
   const requiredFormalApproved =
     assignedReviewers
       .filter(
@@ -785,7 +784,6 @@ export default function DocumentWorkflowPage() {
     fetchData();
   };
 
-
   const openTrainingCount = (docId: string) =>
     trainingAssignments.filter(
       (item) => item.document_id === docId && item.status !== "completed"
@@ -837,7 +835,6 @@ export default function DocumentWorkflowPage() {
         {doc.file_url ? <a href={doc.file_url} target="_blank">Open Document File</a> : null}
       </section>
 
-      
       <section style={cardStyle}>
         <h2 style={{ marginTop: 0 }}>
           Approval Matrix & Reviewers
