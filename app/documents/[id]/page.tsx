@@ -130,23 +130,41 @@ export default function DocumentWorkflowPage() {
 
   const canManageWorkflow = Boolean(canManage || isOwner);
 
-  const requiredFormalApproved = assignedReviewers
+  const normalizeReviewStatus = (status: string | null | undefined) =>
+    String(status || "pending").trim().toLowerCase();
+
+  const isReviewerApproved = (reviewer: AssignedReviewer) =>
+    normalizeReviewStatus(reviewer.review_status) === "approved";
+
+  const isReviewerSuperseded = (reviewer: AssignedReviewer) =>
+    ["superseded", "cancelled", "canceled"].includes(normalizeReviewStatus(reviewer.review_status));
+
+  const isReviewerActionable = (reviewer: AssignedReviewer) =>
+    ["pending", "open", "in_review"].includes(normalizeReviewStatus(reviewer.review_status));
+
+  const isRequiredReviewerBlocking = (reviewer: AssignedReviewer) =>
+    Boolean(reviewer.required_reviewer) && !isReviewerApproved(reviewer) && !isReviewerSuperseded(reviewer);
+
+  const activeAssignedReviewers = useMemo(
+    () => assignedReviewers.filter((reviewer) => !isReviewerSuperseded(reviewer)),
+    [assignedReviewers]
+  );
+
+  const requiredFormalApproved = activeAssignedReviewers
     .filter((r) => r.reviewer_type === "formal_review" && r.required_reviewer)
     .every((r) => r.review_status === "approved");
 
-  const requiredApproversApproved = assignedReviewers
+  const requiredApproversApproved = activeAssignedReviewers
     .filter((r) => r.reviewer_type === "approver" && r.required_reviewer)
     .every((r) => r.review_status === "approved");
 
-  const pendingRequiredReviewers = assignedReviewers.filter(
-    (r) => r.required_reviewer && r.review_status !== "approved"
-  );
+  const pendingRequiredReviewers = activeAssignedReviewers.filter(isRequiredReviewerBlocking);
 
   const nextPendingReviewer = useMemo(() => {
-    return [...assignedReviewers]
-      .filter((r) => r.review_status !== "approved")
+    return [...activeAssignedReviewers]
+      .filter(isRequiredReviewerBlocking)
       .sort((a, b) => Number(a.review_sequence || 9999) - Number(b.review_sequence || 9999))[0];
-  }, [assignedReviewers]);
+  }, [activeAssignedReviewers]);
 
   const documentAckCount = (docId: string) =>
     acknowledgements.filter((ack) => ack.document_id === docId).length;
@@ -355,15 +373,13 @@ export default function DocumentWorkflowPage() {
       return;
     }
 
-    const previousRequiredReviewers = assignedReviewers.filter(
+    const previousRequiredReviewers = activeAssignedReviewers.filter(
       (r) =>
         Number(r.review_sequence || 0) < Number(reviewer.review_sequence || 0) &&
-        r.required_reviewer
+        isRequiredReviewerBlocking(r)
     );
 
-    const blockedReviewer = previousRequiredReviewers.find(
-      (r) => r.review_status !== "approved"
-    );
+    const blockedReviewer = previousRequiredReviewers.find(isRequiredReviewerBlocking);
 
     if (blockedReviewer) {
       alert(`Waiting for ${blockedReviewer.reviewer_email} to complete review first.`);
@@ -547,13 +563,43 @@ export default function DocumentWorkflowPage() {
 
     setBusy(true);
 
+    const now = new Date().toISOString();
+
+    const archiveAssignedRes = await supabase
+      .from("document_assigned_reviewers")
+      .update({
+        review_status: "superseded",
+        required_reviewer: false,
+        review_comments: "Superseded by a new collaboration cycle.",
+        reviewed_at: now,
+      })
+      .eq("document_id", doc.id)
+      .eq("reviewer_type", "collaboration")
+      .in("review_status", ["pending", "rejected", "open", "in_review"]);
+
+    if (archiveAssignedRes.error) {
+      alert(archiveAssignedRes.error.message);
+      setBusy(false);
+      return;
+    }
+
+    await supabase
+      .from("document_collaboration_reviews")
+      .update({
+        review_status: "superseded",
+        review_comments: "Superseded by a new collaboration cycle.",
+      })
+      .eq("document_id", doc.id)
+      .in("review_status", ["pending", "rejected", "open", "in_review"]);
+
     const { error } = await supabase
       .from("controlled_documents")
       .update({
         status: "collaboration",
         collaboration_completed: false,
         formal_review_completed: false,
-        updated_at: new Date().toISOString(),
+        approval_comments: null,
+        updated_at: now,
       })
       .eq("id", doc.id);
 
@@ -580,7 +626,31 @@ export default function DocumentWorkflowPage() {
         .from("document_assigned_reviewers")
         .insert(rows);
 
-      if (reviewRes.error) alert(reviewRes.error.message);
+      if (reviewRes.error) {
+        alert(reviewRes.error.message);
+        setBusy(false);
+        return;
+      }
+
+      const legacyRows = reviewers.map((email) => ({
+        document_id: doc.id,
+        reviewer_email: email,
+        review_status: "pending",
+        review_comments: null,
+        reviewed_file_name: null,
+        reviewed_file_path: null,
+        reviewed_file_url: null,
+      }));
+
+      const legacyRes = await supabase
+        .from("document_collaboration_reviews")
+        .upsert(legacyRows, { onConflict: "document_id,reviewer_email" });
+
+      if (legacyRes.error) {
+        alert(legacyRes.error.message);
+        setBusy(false);
+        return;
+      }
     }
 
     await logWorkflowEvent({
@@ -606,11 +676,8 @@ export default function DocumentWorkflowPage() {
       return;
     }
 
-    const requiredCollaborationOpen = assignedReviewers.some(
-      (r) =>
-        r.reviewer_type === "collaboration" &&
-        r.required_reviewer &&
-        r.review_status !== "approved"
+    const requiredCollaborationOpen = activeAssignedReviewers.some(
+      (r) => r.reviewer_type === "collaboration" && isRequiredReviewerBlocking(r)
     );
 
     if (requiredCollaborationOpen) {
@@ -663,14 +730,43 @@ export default function DocumentWorkflowPage() {
       .map((email) => normalizeEmail(email))
       .filter(Boolean);
 
+    const now = new Date().toISOString();
+
+    const archiveAssignedRes = await supabase
+      .from("document_assigned_reviewers")
+      .update({
+        review_status: "superseded",
+        required_reviewer: false,
+        review_comments: "Superseded by a new formal review cycle.",
+        reviewed_at: now,
+      })
+      .eq("document_id", doc.id)
+      .in("reviewer_type", ["formal_review", "approver"])
+      .in("review_status", ["pending", "rejected", "open", "in_review"]);
+
+    if (archiveAssignedRes.error) {
+      alert(archiveAssignedRes.error.message);
+      return;
+    }
+
+    await supabase
+      .from("document_formal_reviews")
+      .update({
+        review_status: "superseded",
+        review_comments: "Superseded by a new formal review cycle.",
+      })
+      .eq("document_id", doc.id)
+      .in("review_status", ["pending", "rejected", "open", "in_review"]);
+
     const { error } = await supabase
       .from("controlled_documents")
       .update({
         status: "formal_review",
         formal_review_completed: false,
-        submitted_for_approval_at: new Date().toISOString(),
+        approval_comments: null,
+        submitted_for_approval_at: now,
         submitted_for_approval_by: userEmail,
-        updated_at: new Date().toISOString(),
+        updated_at: now,
       })
       .eq("id", doc.id);
 
@@ -696,7 +792,30 @@ export default function DocumentWorkflowPage() {
         .from("document_assigned_reviewers")
         .insert(rows);
 
-      if (reviewRes.error) alert(reviewRes.error.message);
+      if (reviewRes.error) {
+        alert(reviewRes.error.message);
+        return;
+      }
+
+      const legacyRows = reviewers.map((email) => ({
+        document_id: doc.id,
+        reviewer_email: email,
+        review_role: "formal_reviewer",
+        review_status: "pending",
+        review_comments: null,
+        reviewed_file_name: null,
+        reviewed_file_path: null,
+        reviewed_file_url: null,
+      }));
+
+      const legacyRes = await supabase
+        .from("document_formal_reviews")
+        .upsert(legacyRows, { onConflict: "document_id,reviewer_email" });
+
+      if (legacyRes.error) {
+        alert(legacyRes.error.message);
+        return;
+      }
     }
 
     await logWorkflowEvent({
@@ -1170,11 +1289,10 @@ export default function DocumentWorkflowPage() {
               const canCurrentUserReview =
                 normalizeEmail(reviewer.reviewer_email) === normalizeEmail(userEmail);
 
-              const priorRequiredOpen = assignedReviewers.some(
+              const priorRequiredOpen = activeAssignedReviewers.some(
                 (r) =>
                   Number(r.review_sequence || 0) < Number(reviewer.review_sequence || 0) &&
-                  r.required_reviewer &&
-                  r.review_status !== "approved"
+                  isRequiredReviewerBlocking(r)
               );
 
               return (
@@ -1207,7 +1325,7 @@ export default function DocumentWorkflowPage() {
                     </div>
                   ) : null}
 
-                  {canCurrentUserReview && reviewer.review_status !== "approved" && reviewer.review_status !== "rejected" ? (
+                  {canCurrentUserReview && isReviewerActionable(reviewer) ? (
                     <>
                       {priorRequiredOpen ? (
                         <div style={warningStyle}>
@@ -1262,7 +1380,9 @@ export default function DocumentWorkflowPage() {
                     </>
                   ) : (
                     <div style={smallTextStyle}>
-                      {canCurrentUserReview
+                      {isReviewerSuperseded(reviewer)
+                        ? "This reviewer task was superseded by a newer workflow cycle."
+                        : canCurrentUserReview
                         ? "Your review has been completed."
                         : "Waiting for assigned reviewer."}
                     </div>
