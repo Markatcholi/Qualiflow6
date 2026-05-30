@@ -1,10 +1,11 @@
 "use client";
 
-import ESignatureModal from "../../../components/ESignatureModal";
-import { createESignature } from "../../../lib/eSignatureEngine";
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "../../../lib/supabaseClient";
+import ESignatureModal from "../../../components/ESignatureModal";
+import DocumentSignatures from "../../../components/DocumentSignatures";
+import { createESignature } from "../../../lib/eSignatureEngine";
 import {
   canManageWorkflow as canUserManageWorkflow,
   canTransition,
@@ -135,10 +136,6 @@ export default function DocumentWorkflowPage() {
   const [userEmail, setUserEmail] = useState("");
   const [userRole, setUserRole] = useState("");
 
-  const [showESignature, setShowESignature] = useState(false);
-const [pendingApprovalDoc, setPendingApprovalDoc] =
-  useState<ControlledDocument | null>(null);
-  
   const [trainingEmails, setTrainingEmails] = useState<Record<string, string>>({});
   const [obsoleteReason, setObsoleteReason] = useState<Record<string, string>>({});
   const [rejectComments, setRejectComments] = useState<Record<string, string>>({});
@@ -161,6 +158,9 @@ const [pendingApprovalDoc, setPendingApprovalDoc] =
     relationship_type: "related",
     relationship_reason: "",
   });
+
+  const [showApprovalSignatureModal, setShowApprovalSignatureModal] = useState(false);
+  const [pendingApprovalDoc, setPendingApprovalDoc] = useState<ControlledDocument | null>(null);
 
   const doc = documents[0] || null;
 
@@ -815,10 +815,11 @@ const [pendingApprovalDoc, setPendingApprovalDoc] =
     fetchData();
   };
 
- const completeApprovalAfterSignature = async (
-  doc: ControlledDocument,
-  signatureId: string
-) => {
+  const approveDocumentAfterSignature = async (
+    doc: ControlledDocument,
+    signatureMeaning: string,
+    signatureReason: string
+  ) => {
     if (!canApprove) {
       alert("Only approvers, admins, or VP Quality can approve documents.");
       return;
@@ -839,62 +840,71 @@ const [pendingApprovalDoc, setPendingApprovalDoc] =
       return;
     }
 
-   const handleApprovalSignature = async (
-  password: string,
-  meaning: string,
-  reason: string
-) => {
-  if (!pendingApprovalDoc) return;
+    setBusy(true);
 
-  try {
-    const signature = await createESignature({
-      moduleName: "documents",
-      recordId: pendingApprovalDoc.id,
-      signerEmail: userEmail,
-      meaning,
-      reason,
-      password,
-    });
+    try {
+      await createESignature({
+        moduleName: "documents",
+        recordId: doc.id,
+        actionType: "approve_document",
+        signedBy: userEmail || "unknown",
+        signerRole: userRole || null,
+        signatureMeaning,
+        signatureReason: signatureReason || "Approved controlled document.",
+      });
 
-    await completeApprovalAfterSignature(
-      pendingApprovalDoc,
-      signature.id
-    );
+      const { error } = await supabase
+        .from("controlled_documents")
+        .update({
+          status: "approved",
+          formal_review_completed: true,
+          approved_at: new Date().toISOString(),
+          approved_by: userEmail,
+          approval_comments: signatureReason || "Approved controlled document.",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", doc.id);
 
-    setShowESignature(false);
-    setPendingApprovalDoc(null);
+      if (error) throw new Error(error.message);
 
-    alert("Document approved and electronically signed.");
-  } catch (error: any) {
-    alert(error.message);
-  }
-};
-   
-    const { error } = await supabase
-      .from("controlled_documents")
-      .update({
-        status: "approved",
-        formal_review_completed: true,
-        approved_at: new Date().toISOString(),
-        approved_by: userEmail,
-        approval_comments: "Approved controlled document.",
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", doc.id);
+      await logWorkflowEvent({
+        eventType: "document_approved_esignature",
+        fromStatus: doc.status,
+        toStatus: "approved",
+        comments: signatureReason || "Document approved with electronic signature.",
+        metadata: {
+          module_name: "documents",
+          action_type: "approve_document",
+          signature_meaning: signatureMeaning,
+          signed_by: userEmail || "unknown",
+          signer_role: userRole || null,
+        },
+      });
 
-    if (error) {
+      setShowApprovalSignatureModal(false);
+      setPendingApprovalDoc(null);
+      await fetchData();
+    } catch (error: any) {
       alert(error.message);
-      return;
     }
 
-    await logWorkflowEvent({
-      eventType: "document_approved",
-      fromStatus: doc.status,
-      toStatus: "approved",
-      comments: "Document approved.",
-    });
+    setBusy(false);
+  };
 
-    fetchData();
+  const submitApprovalSignature = async ({
+    meaning,
+    reason,
+  }: {
+    meaning: string;
+    reason: string;
+  }) => {
+    if (!pendingApprovalDoc) return;
+
+    await approveDocumentAfterSignature(
+      pendingApprovalDoc,
+      meaning || "Approve Document",
+      reason || "Approved controlled document."
+    );
   };
 
   const rejectDocument = async (doc: ControlledDocument) => {
@@ -1098,9 +1108,7 @@ const [pendingApprovalDoc, setPendingApprovalDoc] =
     await logWorkflowEvent({
       eventType: "training_assigned",
       comments: `Training assigned to ${emails.length} user(s).`,
-      metadata: {
-  signature_id: signatureId,
-}
+      metadata: { users: emails, document_file_url: doc.file_url },
     });
 
     setTrainingEmails({ ...trainingEmails, [doc.id]: "" });
@@ -1730,16 +1738,16 @@ const [pendingApprovalDoc, setPendingApprovalDoc] =
           ) : null}
 
           {transitionPermissions.finalApprove.allowed ? (
-           <button
-  disabled={busy || !requiredFormalApproved || !requiredApproversApproved}
-  onClick={() => {
-    setPendingApprovalDoc(doc);
-    setShowESignature(true);
-  }}
-  style={primaryButtonStyle}
->
-  Electronic Signature Required
-</button> 
+            <button
+              disabled={busy || !requiredFormalApproved || !requiredApproversApproved}
+              onClick={() => {
+                setPendingApprovalDoc(doc);
+                setShowApprovalSignatureModal(true);
+              }}
+              style={primaryButtonStyle}
+            >
+              Electronic Signature Required
+            </button>
           ) : null}
 
           {transitionPermissions.reject.allowed ? (
@@ -1911,13 +1919,11 @@ const [pendingApprovalDoc, setPendingApprovalDoc] =
       </section>
 
       <section style={cardStyle}>
-        <section style={cardStyle}>
-  <h2 style={{ marginTop: 0 }}>
-    Electronic Signatures
-  </h2>
+        <h2 style={{ marginTop: 0 }}>Electronic Signatures</h2>
+        <DocumentSignatures documentId={doc.id} />
+      </section>
 
-  <DocumentSignatures documentId={doc.id} />
-</section>
+      <section style={cardStyle}>
         <h2 style={{ marginTop: 0 }}>Workflow Timeline / Audit Trail</h2>
         {workflowEvents.length === 0 ? (
           <p style={subtleText}>No workflow events logged yet.</p>
@@ -1945,20 +1951,17 @@ const [pendingApprovalDoc, setPendingApprovalDoc] =
           </div>
         )}
       </section>
+
       <ESignatureModal
-  open={showESignature}
-  title="Document Approval Signature"
-  meaningOptions={[
-    "Approve Document",
-    "Authorize Release",
-    "Quality Approval"
-  ]}
-  onClose={() => {
-    setShowESignature(false);
-    setPendingApprovalDoc(null);
-  }}
-  onSign={handleApprovalSignature}
-/>
+        open={showApprovalSignatureModal}
+        title="Document Approval Electronic Signature"
+        actionLabel="Sign and Approve"
+        onSubmit={submitApprovalSignature}
+        onClose={() => {
+          setShowApprovalSignatureModal(false);
+          setPendingApprovalDoc(null);
+        }}
+      />
     </main>
   );
 }
