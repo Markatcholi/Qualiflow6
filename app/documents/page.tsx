@@ -64,7 +64,6 @@ const STATUSES = [
 
 export default function DocumentControlLandingPage() {
   const [documents, setDocuments] = useState<ControlledDocument[]>([]);
-  const [trainingAssignments, setTrainingAssignments] = useState<any[]>([]);
   const [assignedReviewers, setAssignedReviewers] = useState<AssignedReviewer[]>([]);
   const [loading, setLoading] = useState(true);
   const [userEmail, setUserEmail] = useState("");
@@ -97,15 +96,11 @@ export default function DocumentControlLandingPage() {
     setLoading(true);
     await fetchUser();
 
-    const [docRes, trainingRes, reviewerRes] = await Promise.all([
+    const [docRes, reviewerRes] = await Promise.all([
       supabase
         .from("controlled_documents")
         .select("*")
         .order("created_at", { ascending: false }),
-      supabase
-        .from("document_training_assignments")
-        .select("*")
-        .order("assigned_at", { ascending: false }),
       supabase
         .from("document_assigned_reviewers")
         .select("id, document_id, reviewer_type, reviewer_email, reviewer_role, required_reviewer, review_sequence, review_status, due_date, sla_days")
@@ -115,7 +110,6 @@ export default function DocumentControlLandingPage() {
     if (docRes.error) alert(docRes.error.message);
     else setDocuments((docRes.data as ControlledDocument[]) || []);
 
-    if (!trainingRes.error) setTrainingAssignments(trainingRes.data || []);
     if (!reviewerRes.error) setAssignedReviewers((reviewerRes.data as AssignedReviewer[]) || []);
 
     setLoading(false);
@@ -138,20 +132,6 @@ export default function DocumentControlLandingPage() {
       return matchesStatus && text.includes(search.toLowerCase());
     });
   }, [documents, filterStatus, search]);
-
-  const metrics = useMemo(() => {
-    return {
-      total: documents.length,
-      draft: documents.filter((doc) => doc.status === "draft").length,
-      collaboration: documents.filter((doc) => doc.status === "collaboration").length,
-      formalReview: documents.filter((doc) => doc.status === "formal_review").length,
-      approved: documents.filter((doc) => doc.status === "approved").length,
-      effective: documents.filter((doc) => doc.status === "effective").length,
-      rejected: documents.filter((doc) => doc.status === "rejected").length,
-      obsolete: documents.filter((doc) => doc.status === "obsolete").length,
-      trainingOpen: trainingAssignments.filter((t) => t.status !== "completed").length,
-    };
-  }, [documents, trainingAssignments]);
 
   const workflowSnapshot = useMemo(() => {
     const openReviews = assignedReviewers.filter(
@@ -389,17 +369,6 @@ export default function DocumentControlLandingPage() {
             </div>
           </div>
         ) : null}
-      </section>
-
-      <section style={kpiGridStyle}>
-        <KpiCard title="Total" value={metrics.total} color="#2563eb" />
-        <KpiCard title="Draft" value={metrics.draft} color="#6b7280" />
-        <KpiCard title="Collaboration" value={metrics.collaboration} color="#7c3aed" />
-        <KpiCard title="Formal Review" value={metrics.formalReview} color="#d97706" />
-        <KpiCard title="Approved" value={metrics.approved} color="#2563eb" />
-        <KpiCard title="Effective" value={metrics.effective} color="#15803d" />
-        <KpiCard title="Rejected" value={metrics.rejected} color="#dc2626" />
-        <KpiCard title="Open Training" value={metrics.trainingOpen} color="#dc2626" />
       </section>
 
       <section style={cardStyle}>
