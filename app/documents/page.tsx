@@ -90,6 +90,8 @@ export default function DocumentControlLandingPage() {
   const [sortBy, setSortBy] = useState<SortOption>("newest");
   const [search, setSearch] = useState("");
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [autoGeneratingNumber, setAutoGeneratingNumber] = useState(false);
+  const [manualDocumentNumber, setManualDocumentNumber] = useState(false);
 
   const [newDoc, setNewDoc] = useState({
     document_number: "",
@@ -134,9 +136,43 @@ export default function DocumentControlLandingPage() {
     setLoading(false);
   };
 
+  const generateDocumentNumber = async (
+    documentType: string,
+    force = false
+  ) => {
+    if (manualDocumentNumber && !force) return;
+
+    setAutoGeneratingNumber(true);
+
+    const { data, error } = await supabase.rpc("generate_document_number", {
+      p_document_type: documentType,
+    });
+
+    if (error) {
+      alert(error.message);
+      setAutoGeneratingNumber(false);
+      return;
+    }
+
+    if (data) {
+      setNewDoc((prev) => ({
+        ...prev,
+        document_number: data,
+      }));
+    }
+
+    setAutoGeneratingNumber(false);
+  };
+
   useEffect(() => {
     fetchData();
   }, []);
+
+  useEffect(() => {
+    if (showCreateForm) {
+      generateDocumentNumber(newDoc.document_type);
+    }
+  }, [newDoc.document_type, showCreateForm]);
 
   const normalizeEmail = (value: string | null | undefined) => {
     const text = String(value || "").trim().toLowerCase();
@@ -359,6 +395,7 @@ export default function DocumentControlLandingPage() {
   };
 
   const resetCreateForm = () => {
+    setManualDocumentNumber(false);
     setNewDoc({
       document_number: "",
       title: "",
@@ -374,10 +411,34 @@ export default function DocumentControlLandingPage() {
       training_required: false,
     });
     setSelectedFile(null);
+
+    if (showCreateForm) {
+      generateDocumentNumber("SOP", true);
+    }
   };
 
   const createDocument = async () => {
-    if (!newDoc.document_number.trim() || !newDoc.title.trim()) {
+    let documentNumber = newDoc.document_number.trim();
+
+    if (!documentNumber && !manualDocumentNumber) {
+      const { data, error } = await supabase.rpc("generate_document_number", {
+        p_document_type: newDoc.document_type,
+      });
+
+      if (error) {
+        alert(error.message);
+        return;
+      }
+
+      documentNumber = String(data || "").trim();
+
+      setNewDoc((prev) => ({
+        ...prev,
+        document_number: documentNumber,
+      }));
+    }
+
+    if (!documentNumber || !newDoc.title.trim()) {
       alert("Document number and title are required.");
       return;
     }
@@ -400,7 +461,7 @@ export default function DocumentControlLandingPage() {
       const { data, error } = await supabase
         .from("controlled_documents")
         .insert({
-          document_number: newDoc.document_number.trim(),
+          document_number: documentNumber,
           title: newDoc.title.trim(),
           document_type: newDoc.document_type,
           revision: newDoc.revision.trim(),
@@ -743,9 +804,59 @@ export default function DocumentControlLandingPage() {
         {showCreateForm ? (
           <>
             <div style={gridStyle}>
-              <Field label="Document Number"><input value={newDoc.document_number} onChange={(e) => setNewDoc({ ...newDoc, document_number: e.target.value })} style={inputStyle} /></Field>
+              <Field label="Document Type">
+                <select
+                  value={newDoc.document_type}
+                  onChange={(e) => {
+                    setManualDocumentNumber(false);
+                    setNewDoc({
+                      ...newDoc,
+                      document_type: e.target.value,
+                      document_number: "",
+                    });
+                  }}
+                  style={inputStyle}
+                >
+                  {DOCUMENT_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}
+                </select>
+              </Field>
+
+              <Field label="Document Number">
+                <div style={inlineFieldRowStyle}>
+                  <input
+                    value={newDoc.document_number}
+                    onChange={(e) => {
+                      setManualDocumentNumber(true);
+                      setNewDoc({
+                        ...newDoc,
+                        document_number: e.target.value,
+                      });
+                    }}
+                    placeholder="Auto-generated"
+                    style={inputStyle}
+                  />
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setManualDocumentNumber(false);
+                      generateDocumentNumber(newDoc.document_type, true);
+                    }}
+                    disabled={autoGeneratingNumber}
+                    style={autoGeneratingNumber ? disabledButtonStyle : secondaryButtonStyle}
+                  >
+                    {autoGeneratingNumber ? "Generating..." : "Regenerate"}
+                  </button>
+                </div>
+
+                <div style={smallTextStyle}>
+                  {manualDocumentNumber
+                    ? "Manual override enabled."
+                    : "Auto-generated sequentially by document type."}
+                </div>
+              </Field>
+
               <Field label="Title"><input value={newDoc.title} onChange={(e) => setNewDoc({ ...newDoc, title: e.target.value })} style={inputStyle} /></Field>
-              <Field label="Document Type"><select value={newDoc.document_type} onChange={(e) => setNewDoc({ ...newDoc, document_type: e.target.value })} style={inputStyle}>{DOCUMENT_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}</select></Field>
               <Field label="Revision"><input value={newDoc.revision} onChange={(e) => setNewDoc({ ...newDoc, revision: e.target.value })} style={inputStyle} /></Field>
               <Field label="Department"><input value={newDoc.department} onChange={(e) => setNewDoc({ ...newDoc, department: e.target.value })} style={inputStyle} /></Field>
               <Field label="Process Area"><input value={newDoc.process_area} onChange={(e) => setNewDoc({ ...newDoc, process_area: e.target.value })} style={inputStyle} /></Field>
@@ -821,3 +932,4 @@ const myReviewBadgeStyle: React.CSSProperties = { display: "inline-block", margi
 const inlineOverdueStyle: React.CSSProperties = { color: "#dc2626", fontWeight: 700 };
 const disabledActionStyle: React.CSSProperties = { background: "#f3f4f6", color: "#6b7280", padding: "8px 12px", borderRadius: "8px", fontWeight: 700, display: "inline-block" };
 const actionButtonGroupStyle: React.CSSProperties = { display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" };
+const inlineFieldRowStyle: React.CSSProperties = { display: "grid", gridTemplateColumns: "1fr auto", gap: "8px", alignItems: "center" };
