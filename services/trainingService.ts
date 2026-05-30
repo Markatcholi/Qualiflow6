@@ -34,6 +34,12 @@ export async function acknowledgeTraining({
     signatureReason: reason || "Training completed and acknowledged.",
   });
 
+  const { data: assignment } = await supabase
+    .from("training_assignments")
+    .select("effectiveness_required,effectiveness_status")
+    .eq("id", assignmentId)
+    .maybeSingle();
+
   const { error } = await supabase
     .from("training_assignments")
     .update({
@@ -43,6 +49,9 @@ export async function acknowledgeTraining({
       acknowledged_at: new Date().toISOString(),
       acknowledged_by: userEmail,
       signature_id: signature.id,
+      effectiveness_status: assignment?.effectiveness_required
+        ? "effectiveness_pending"
+        : assignment?.effectiveness_status || "not_required",
     })
     .eq("id", assignmentId);
 
