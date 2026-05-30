@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
+import { isOverdue } from "../../lib/documentWorkflowEngine";
 
 type ControlledDocument = {
   id: string;
@@ -23,6 +24,19 @@ type ControlledDocument = {
   training_required: boolean | null;
   created_at: string | null;
   created_by: string | null;
+};
+
+type AssignedReviewer = {
+  id: string;
+  document_id: string;
+  reviewer_type: string;
+  reviewer_email: string;
+  reviewer_role: string | null;
+  required_reviewer: boolean | null;
+  review_sequence: number | null;
+  review_status: string | null;
+  due_date?: string | null;
+  sla_days?: number | null;
 };
 
 const DOCUMENT_TYPES = [
@@ -51,6 +65,7 @@ const STATUSES = [
 export default function DocumentControlLandingPage() {
   const [documents, setDocuments] = useState<ControlledDocument[]>([]);
   const [trainingAssignments, setTrainingAssignments] = useState<any[]>([]);
+  const [assignedReviewers, setAssignedReviewers] = useState<AssignedReviewer[]>([]);
   const [loading, setLoading] = useState(true);
   const [userEmail, setUserEmail] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -82,20 +97,26 @@ export default function DocumentControlLandingPage() {
     setLoading(true);
     await fetchUser();
 
-    const docRes = await supabase
-      .from("controlled_documents")
-      .select("*")
-      .order("created_at", { ascending: false });
-
-    const trainingRes = await supabase
-      .from("document_training_assignments")
-      .select("*")
-      .order("assigned_at", { ascending: false });
+    const [docRes, trainingRes, reviewerRes] = await Promise.all([
+      supabase
+        .from("controlled_documents")
+        .select("*")
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("document_training_assignments")
+        .select("*")
+        .order("assigned_at", { ascending: false }),
+      supabase
+        .from("document_assigned_reviewers")
+        .select("id, document_id, reviewer_type, reviewer_email, reviewer_role, required_reviewer, review_sequence, review_status, due_date, sla_days")
+        .order("due_date", { ascending: true }),
+    ]);
 
     if (docRes.error) alert(docRes.error.message);
     else setDocuments((docRes.data as ControlledDocument[]) || []);
 
     if (!trainingRes.error) setTrainingAssignments(trainingRes.data || []);
+    if (!reviewerRes.error) setAssignedReviewers((reviewerRes.data as AssignedReviewer[]) || []);
 
     setLoading(false);
   };
@@ -131,6 +152,37 @@ export default function DocumentControlLandingPage() {
       trainingOpen: trainingAssignments.filter((t) => t.status !== "completed").length,
     };
   }, [documents, trainingAssignments]);
+
+  const workflowSnapshot = useMemo(() => {
+    const openReviews = assignedReviewers.filter(
+      (reviewer) => reviewer.review_status !== "approved" && reviewer.review_status !== "rejected"
+    );
+
+    const overdueReviews = openReviews.filter((reviewer) => isOverdue(reviewer.due_date || null));
+
+    const reviewerCount = assignedReviewers.length;
+    const workflowSla =
+      reviewerCount === 0
+        ? "100.0"
+        : (((reviewerCount - overdueReviews.length) / reviewerCount) * 100).toFixed(1);
+
+    return {
+      documentsInCollaboration: documents.filter((doc) => doc.status === "collaboration").length,
+      documentsInFormalReview: documents.filter((doc) => doc.status === "formal_review").length,
+      documentsAwaitingRelease: documents.filter((doc) => doc.status === "approved").length,
+      effectiveDocuments: documents.filter((doc) => doc.status === "effective").length,
+      openReviews: openReviews.length,
+      overdueReviews: overdueReviews.length,
+      workflowSla,
+      overdueQueue: overdueReviews.slice(0, 5),
+    };
+  }, [documents, assignedReviewers]);
+
+  const documentMap = useMemo(() => {
+    const map = new Map<string, ControlledDocument>();
+    documents.forEach((doc) => map.set(doc.id, doc));
+    return map;
+  }, [documents]);
 
   const uploadDocumentFile = async () => {
     if (!selectedFile) return { fileName: null, filePath: null, fileUrl: null };
@@ -277,9 +329,67 @@ export default function DocumentControlLandingPage() {
             Create, revise, search, and open controlled document workflows.
           </p>
         </div>
-
-        <a href="/dashboard" style={darkButtonStyle}>Dashboard</a>
       </header>
+
+      <section style={workflowSnapshotStyle}>
+        <div style={snapshotHeaderStyle}>
+          <div>
+            <div style={eyebrowStyle}>QUALIFLOW ENTERPRISE</div>
+            <h2 style={{ margin: "6px 0" }}>Document Workflow Dashboard</h2>
+            <p style={subtleText}>
+              Real-time snapshot of controlled document workflow, review aging, release status, and SLA performance.
+            </p>
+          </div>
+          <a href="/dashboard/workflow" style={primaryLinkStyle}>Open Full Workflow Dashboard</a>
+        </div>
+
+        <div style={kpiGridStyle}>
+          <KpiCard title="Collaboration" value={workflowSnapshot.documentsInCollaboration} color="#7c3aed" />
+          <KpiCard title="Formal Review" value={workflowSnapshot.documentsInFormalReview} color="#d97706" />
+          <KpiCard title="Awaiting Release" value={workflowSnapshot.documentsAwaitingRelease} color="#2563eb" />
+          <KpiCard title="Effective" value={workflowSnapshot.effectiveDocuments} color="#15803d" />
+          <KpiCard title="Open Reviews" value={workflowSnapshot.openReviews} color="#d97706" />
+          <KpiCard title="Overdue Reviews" value={workflowSnapshot.overdueReviews} color="#dc2626" />
+          <KpiCard title="Workflow SLA" value={`${workflowSnapshot.workflowSla}%`} color="#2563eb" />
+        </div>
+
+        {workflowSnapshot.overdueQueue.length > 0 ? (
+          <div style={miniQueueStyle}>
+            <h3 style={{ marginTop: 0 }}>Overdue Review Queue</h3>
+            <div style={{ overflowX: "auto" }}>
+              <table style={tableStyle}>
+                <thead>
+                  <tr>
+                    <th style={thStyle}>Document</th>
+                    <th style={thStyle}>Reviewer</th>
+                    <th style={thStyle}>Role</th>
+                    <th style={thStyle}>Due Date</th>
+                    <th style={thStyle}>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {workflowSnapshot.overdueQueue.map((reviewer) => {
+                    const relatedDoc = documentMap.get(reviewer.document_id);
+                    return (
+                      <tr key={reviewer.id}>
+                        <td style={tdStyle}>
+                          {relatedDoc ? `${relatedDoc.document_number} Rev ${relatedDoc.revision}` : reviewer.document_id}
+                        </td>
+                        <td style={tdStyle}>{reviewer.reviewer_email}</td>
+                        <td style={tdStyle}>{reviewer.reviewer_role || reviewer.reviewer_type}</td>
+                        <td style={overdueCellStyle}>{formatDate(reviewer.due_date)}</td>
+                        <td style={tdStyle}>
+                          <a href={`/documents/${reviewer.document_id}`} style={smallLinkStyle}>Open Workflow</a>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ) : null}
+      </section>
 
       <section style={kpiGridStyle}>
         <KpiCard title="Total" value={metrics.total} color="#2563eb" />
@@ -349,14 +459,17 @@ export default function DocumentControlLandingPage() {
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) { return <div style={{ marginBottom: "12px" }}><label style={labelStyle}>{label}</label><div style={{ marginTop: "5px" }}>{children}</div></div>; }
-function KpiCard({ title, value, color }: { title: string; value: number; color: string }) { return <div style={{ ...kpiCardStyle, borderLeft: `8px solid ${color}` }}><div style={kpiTitleStyle}>{title}</div><div style={{ fontSize: "30px", fontWeight: 800, color }}>{value}</div></div>; }
+function KpiCard({ title, value, color }: { title: string; value: number | string; color: string }) { return <div style={{ ...kpiCardStyle, borderLeft: `8px solid ${color}` }}><div style={kpiTitleStyle}>{title}</div><div style={{ fontSize: "30px", fontWeight: 800, color }}>{value}</div></div>; }
 function StatusBadge({ status }: { status: string }) { const color = status === "effective" ? "#15803d" : status === "approved" ? "#2563eb" : status === "formal_review" ? "#d97706" : status === "collaboration" ? "#7c3aed" : status === "rejected" ? "#dc2626" : status === "obsolete" || status === "superseded" ? "#991b1b" : "#6b7280"; return <span style={{ background: color, color: "white", borderRadius: "999px", padding: "3px 8px", fontSize: "12px", fontWeight: 700 }}>{status}</span>; }
+function formatDate(value: string | null | undefined) { if (!value) return "N/A"; try { return new Date(value).toLocaleDateString(); } catch { return value; } }
 
 const pageStyle: React.CSSProperties = { padding: "24px", background: "#f8fafc", minHeight: "100vh", fontFamily: "Arial, sans-serif" };
 const headerStyle: React.CSSProperties = { display: "flex", justifyContent: "space-between", gap: "16px", alignItems: "flex-start", flexWrap: "wrap", marginBottom: "20px" };
 const eyebrowStyle: React.CSSProperties = { fontSize: "12px", letterSpacing: "0.08em", color: "#6b7280", fontWeight: 800 };
 const subtleText: React.CSSProperties = { color: "#6b7280" };
 const cardStyle: React.CSSProperties = { background: "white", border: "1px solid #d1d5db", borderRadius: "16px", padding: "20px", marginBottom: "20px" };
+const workflowSnapshotStyle: React.CSSProperties = { background: "white", border: "1px solid #d1d5db", borderRadius: "16px", padding: "20px", marginBottom: "20px" };
+const snapshotHeaderStyle: React.CSSProperties = { display: "flex", justifyContent: "space-between", gap: "14px", alignItems: "flex-start", flexWrap: "wrap", marginBottom: "16px" };
 const gridStyle: React.CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "14px" };
 const kpiGridStyle: React.CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "14px", marginBottom: "20px" };
 const kpiCardStyle: React.CSSProperties = { background: "white", border: "1px solid #d1d5db", borderRadius: "14px", padding: "16px" };
@@ -366,10 +479,12 @@ const inputStyle: React.CSSProperties = { width: "100%", padding: "9px", borderR
 const textareaStyle: React.CSSProperties = { width: "100%", padding: "9px", borderRadius: "8px", border: "1px solid #d1d5db", marginTop: "6px" };
 const primaryButtonStyle: React.CSSProperties = { background: "#2563eb", color: "white", border: "none", padding: "10px 14px", borderRadius: "8px", fontWeight: 700, cursor: "pointer" };
 const disabledButtonStyle: React.CSSProperties = { background: "#9ca3af", color: "white", border: "none", padding: "10px 14px", borderRadius: "8px", fontWeight: 700, cursor: "not-allowed" };
-const darkButtonStyle: React.CSSProperties = { background: "#111827", color: "white", padding: "10px 14px", borderRadius: "8px", textDecoration: "none", fontWeight: 700 };
 const primaryLinkStyle: React.CSSProperties = { background: "#2563eb", color: "white", padding: "8px 12px", borderRadius: "8px", textDecoration: "none", fontWeight: 700, display: "inline-block" };
+const smallLinkStyle: React.CSSProperties = { color: "#2563eb", fontWeight: 700, textDecoration: "none" };
 const buttonRowStyle: React.CSSProperties = { display: "flex", gap: "12px", flexWrap: "wrap", alignItems: "center", marginTop: "12px" };
 const filterRowStyle: React.CSSProperties = { display: "grid", gridTemplateColumns: "2fr 1fr", gap: "12px", marginBottom: "14px" };
 const tableStyle: React.CSSProperties = { width: "100%", borderCollapse: "collapse" };
 const thStyle: React.CSSProperties = { textAlign: "left", borderBottom: "1px solid #d1d5db", padding: "10px" };
 const tdStyle: React.CSSProperties = { borderBottom: "1px solid #e5e7eb", padding: "10px", verticalAlign: "top" };
+const overdueCellStyle: React.CSSProperties = { ...tdStyle, color: "#dc2626", fontWeight: 700 };
+const miniQueueStyle: React.CSSProperties = { background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: "12px", padding: "14px", marginTop: "4px" };
