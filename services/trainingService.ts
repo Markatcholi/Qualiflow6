@@ -17,13 +17,14 @@ export async function acknowledgeTraining({
   password: string;
 }) {
   const signature = await createESignature({
-    moduleName: "training",
-    recordId: assignmentId,
-    signerEmail: userEmail,
-    meaning,
-    reason,
-    password,
-  });
+  moduleName: "training",
+  recordId: assignmentId,
+  actionType: "training_acknowledgement",
+  signedBy: userEmail,
+  signerRole: null,
+  signatureMeaning: meaning,
+  signatureReason: reason,
+});
 
   const { error } = await supabase
     .from("training_assignments")
