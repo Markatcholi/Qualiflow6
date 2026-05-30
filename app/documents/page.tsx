@@ -46,7 +46,8 @@ type QuickFilter =
   | "awaiting_my_review"
   | "in_workflow"
   | "effective"
-  | "rejected";
+  | "rejected"
+  | "my_rejected_documents";
 
 type SortOption =
   | "newest"
@@ -306,6 +307,15 @@ export default function DocumentControlLandingPage() {
         matchesQuickFilter = doc.status === "rejected";
       }
 
+      if (quickFilter === "my_rejected_documents") {
+        matchesQuickFilter =
+          doc.status === "rejected" &&
+          (
+            normalizeEmail(doc.owner_email) === currentUser ||
+            normalizeEmail(doc.created_by) === currentUser
+          );
+      }
+
       return matchesStatus && matchesSearch && matchesQuickFilter;
     });
 
@@ -341,6 +351,21 @@ export default function DocumentControlLandingPage() {
     userEmail,
     myReviewDocumentIds,
   ]);
+
+  const myRejectedDocuments = useMemo(() => {
+    const currentUser = normalizeEmail(userEmail);
+
+    if (!currentUser) return [];
+
+    return documents.filter(
+      (doc) =>
+        doc.status === "rejected" &&
+        (
+          normalizeEmail(doc.owner_email) === currentUser ||
+          normalizeEmail(doc.created_by) === currentUser
+        )
+    );
+  }, [documents, userEmail]);
 
   const workflowSnapshot = useMemo(() => {
     const openReviews = assignedReviewers.filter(
@@ -661,6 +686,50 @@ export default function DocumentControlLandingPage() {
         </section>
       ) : null}
 
+      {myRejectedDocuments.length > 0 ? (
+        <section style={cardStyle}>
+          <div style={sectionHeaderStyle}>
+            <div>
+              <h2 style={{ margin: 0 }}>My Rejected Documents</h2>
+              <p style={subtleText}>Documents returned to you for update and resubmission.</p>
+            </div>
+            <button onClick={() => setQuickFilter("my_rejected_documents")} style={secondaryButtonStyle}>
+              Show in Register
+            </button>
+          </div>
+
+          <div style={{ overflowX: "auto" }}>
+            <table style={tableStyle}>
+              <thead>
+                <tr>
+                  <th style={thStyle}>Document</th>
+                  <th style={thStyle}>Owner</th>
+                  <th style={thStyle}>Status</th>
+                  <th style={thStyle}>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {myRejectedDocuments.map((doc) => (
+                  <tr key={doc.id}>
+                    <td style={tdStyle}>
+                      <strong>{doc.document_number}</strong>
+                      <div>Rev {doc.revision} — {doc.title}</div>
+                    </td>
+                    <td style={tdStyle}>{doc.owner_email || "N/A"}</td>
+                    <td style={tdStyle}><StatusBadge status={doc.status} /></td>
+                    <td style={tdStyle}>
+                      <a href={`/documents/${doc.id}`} style={primaryLinkStyle}>
+                        Address & Resubmit
+                      </a>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ) : null}
+
       <section style={cardStyle}>
         <div style={sectionHeaderStyle}>
           <div>
@@ -687,6 +756,7 @@ export default function DocumentControlLandingPage() {
           <button onClick={() => setQuickFilter("in_workflow")} style={quickFilter === "in_workflow" ? activeFilterButtonStyle : filterButtonStyle}>In Workflow</button>
           <button onClick={() => setQuickFilter("effective")} style={quickFilter === "effective" ? activeFilterButtonStyle : filterButtonStyle}>Effective Only</button>
           <button onClick={() => setQuickFilter("rejected")} style={quickFilter === "rejected" ? activeFilterButtonStyle : filterButtonStyle}>Rejected</button>
+          <button onClick={() => setQuickFilter("my_rejected_documents")} style={quickFilter === "my_rejected_documents" ? activeFilterButtonStyle : filterButtonStyle}>My Rejected Documents</button>
         </div>
 
         <div style={filterRowStyle}>
