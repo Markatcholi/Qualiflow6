@@ -372,31 +372,6 @@ export default function DocumentControlLandingPage() {
       </section>
 
       <section style={cardStyle}>
-        <h2 style={{ marginTop: 0 }}>Create / Add Document</h2>
-
-        <div style={gridStyle}>
-          <Field label="Document Number"><input value={newDoc.document_number} onChange={(e) => setNewDoc({ ...newDoc, document_number: e.target.value })} style={inputStyle} /></Field>
-          <Field label="Title"><input value={newDoc.title} onChange={(e) => setNewDoc({ ...newDoc, title: e.target.value })} style={inputStyle} /></Field>
-          <Field label="Document Type"><select value={newDoc.document_type} onChange={(e) => setNewDoc({ ...newDoc, document_type: e.target.value })} style={inputStyle}>{DOCUMENT_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}</select></Field>
-          <Field label="Revision"><input value={newDoc.revision} onChange={(e) => setNewDoc({ ...newDoc, revision: e.target.value })} style={inputStyle} /></Field>
-          <Field label="Department"><input value={newDoc.department} onChange={(e) => setNewDoc({ ...newDoc, department: e.target.value })} style={inputStyle} /></Field>
-          <Field label="Process Area"><input value={newDoc.process_area} onChange={(e) => setNewDoc({ ...newDoc, process_area: e.target.value })} style={inputStyle} /></Field>
-          <Field label="Owner Email"><input type="email" value={newDoc.owner_email} onChange={(e) => setNewDoc({ ...newDoc, owner_email: e.target.value })} style={inputStyle} /></Field>
-          <Field label="Approver Email"><input type="email" value={newDoc.approver_email} onChange={(e) => setNewDoc({ ...newDoc, approver_email: e.target.value })} style={inputStyle} /></Field>
-          <Field label="Document File"><input type="file" onChange={(e) => setSelectedFile(e.target.files?.[0] || null)} style={inputStyle} /></Field>
-        </div>
-
-        <Field label="Change Summary"><textarea value={newDoc.change_summary} onChange={(e) => setNewDoc({ ...newDoc, change_summary: e.target.value })} rows={3} style={textareaStyle} /></Field>
-
-        <div style={buttonRowStyle}>
-          <label><input type="checkbox" checked={newDoc.read_ack_required} onChange={(e) => setNewDoc({ ...newDoc, read_ack_required: e.target.checked })} /> Read & Acknowledge Required</label>
-          <label><input type="checkbox" checked={newDoc.training_required} onChange={(e) => setNewDoc({ ...newDoc, training_required: e.target.checked })} /> Training Required</label>
-        </div>
-
-        <button onClick={createDocument} disabled={uploading} style={uploading ? disabledButtonStyle : primaryButtonStyle}>{uploading ? "Uploading..." : "Create Document"}</button>
-      </section>
-
-      <section style={cardStyle}>
         <h2 style={{ marginTop: 0 }}>Document Register</h2>
         <div style={filterRowStyle}>
           <input placeholder="Search document number, title, type, department..." value={search} onChange={(e) => setSearch(e.target.value)} style={inputStyle} />
@@ -422,6 +397,32 @@ export default function DocumentControlLandingPage() {
             </tbody>
           </table>
         </div>
+      </section>
+
+
+      <section style={cardStyle}>
+        <h2 style={{ marginTop: 0 }}>Create / Revise Document</h2>
+
+        <div style={gridStyle}>
+          <Field label="Document Number"><input value={newDoc.document_number} onChange={(e) => setNewDoc({ ...newDoc, document_number: e.target.value })} style={inputStyle} /></Field>
+          <Field label="Title"><input value={newDoc.title} onChange={(e) => setNewDoc({ ...newDoc, title: e.target.value })} style={inputStyle} /></Field>
+          <Field label="Document Type"><select value={newDoc.document_type} onChange={(e) => setNewDoc({ ...newDoc, document_type: e.target.value })} style={inputStyle}>{DOCUMENT_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}</select></Field>
+          <Field label="Revision"><input value={newDoc.revision} onChange={(e) => setNewDoc({ ...newDoc, revision: e.target.value })} style={inputStyle} /></Field>
+          <Field label="Department"><input value={newDoc.department} onChange={(e) => setNewDoc({ ...newDoc, department: e.target.value })} style={inputStyle} /></Field>
+          <Field label="Process Area"><input value={newDoc.process_area} onChange={(e) => setNewDoc({ ...newDoc, process_area: e.target.value })} style={inputStyle} /></Field>
+          <Field label="Owner Email"><input type="email" value={newDoc.owner_email} onChange={(e) => setNewDoc({ ...newDoc, owner_email: e.target.value })} style={inputStyle} /></Field>
+          <Field label="Approver Email"><input type="email" value={newDoc.approver_email} onChange={(e) => setNewDoc({ ...newDoc, approver_email: e.target.value })} style={inputStyle} /></Field>
+          <Field label="Document File"><input type="file" onChange={(e) => setSelectedFile(e.target.files?.[0] || null)} style={inputStyle} /></Field>
+        </div>
+
+        <Field label="Change Summary"><textarea value={newDoc.change_summary} onChange={(e) => setNewDoc({ ...newDoc, change_summary: e.target.value })} rows={3} style={textareaStyle} /></Field>
+
+        <div style={buttonRowStyle}>
+          <label><input type="checkbox" checked={newDoc.read_ack_required} onChange={(e) => setNewDoc({ ...newDoc, read_ack_required: e.target.checked })} /> Read & Acknowledge Required</label>
+          <label><input type="checkbox" checked={newDoc.training_required} onChange={(e) => setNewDoc({ ...newDoc, training_required: e.target.checked })} /> Training Required</label>
+        </div>
+
+        <button onClick={createDocument} disabled={uploading} style={uploading ? disabledButtonStyle : primaryButtonStyle}>{uploading ? "Uploading..." : "Create Document"}</button>
       </section>
     </main>
   );
