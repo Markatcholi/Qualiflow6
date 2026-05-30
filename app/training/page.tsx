@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
 import ESignatureModal from "../../components/ESignatureModal";
+import { acknowledgeTraining } from "../../services/trainingService";
 
 type TrainingAssignment = {
   id: string;
@@ -433,48 +434,23 @@ export default function TrainingManagementPage() {
       return;
     }
 
-    const { data: signature, error: signatureError } = await supabase
-      .from("electronic_signatures")
-      .insert({
-        module_name: "training",
-        record_id: assignment.id,
-        action_type: "training_acknowledgement",
-        signed_by: userEmail,
-        signer_role: userRole || "user",
-        signature_meaning: meaning || "Acknowledge Training",
-        signature_reason: reason || "Training completed and understood.",
-      })
-      .select()
-      .single();
+    try {
+      await acknowledgeTraining({
+        assignmentId: assignment.id,
+        documentId: assignment.document_id,
+        userEmail,
+        userRole,
+        meaning: meaning || "Acknowledge Training",
+        reason: reason || "Training completed and understood.",
+      });
 
-    if (signatureError) {
-      alert(signatureError.message);
-      return;
-    }
-
-    const { error } = await supabase
-      .from("training_assignments")
-      .update({
-        status: "completed",
-        completed_at: new Date().toISOString(),
-        completed_by: userEmail,
-        acknowledged_at: new Date().toISOString(),
-        acknowledged_by: userEmail,
-        signature_id: signature.id,
-        effectiveness_status: assignment.effectiveness_required
-          ? "effectiveness_pending"
-          : assignment.effectiveness_status,
-      })
-      .eq("id", assignment.id);
-
-    if (error) {
+      setShowTrainingSignature(false);
+      setPendingSignatureAssignment(null);
+      await fetchData();
+      alert("Training completed and electronically signed.");
+    } catch (error: any) {
       alert(error.message);
-      return;
     }
-
-    setShowTrainingSignature(false);
-    setPendingSignatureAssignment(null);
-    fetchData();
   };
 
   const handleTrainingSignatureSubmit = async (data: {
@@ -1276,6 +1252,10 @@ export default function TrainingManagementPage() {
 
                   <td style={tdStyle}>
                     <div style={actionStackStyle}>
+                      <a href={`/training/${assignment.id}`} style={darkButtonStyle}>
+                        Open Training Record
+                      </a>
+
                       {assignment.status === "assigned" ? (
                         <button
                           onClick={() =>
@@ -1288,7 +1268,7 @@ export default function TrainingManagementPage() {
 
                       {assignment.status !== "completed" &&
                       assignment.status !== "waived" &&
-                      assignment.assigned_to_email === userEmail ? (
+                      (assignment.assigned_to_email === userEmail || canManage) ? (
                         <button
                           onClick={() => {
                             if (assignment.acknowledgement_required) {
