@@ -48,6 +48,13 @@ type QuickFilter =
   | "effective"
   | "rejected";
 
+type SortOption =
+  | "newest"
+  | "document_number"
+  | "title"
+  | "status"
+  | "effective_date";
+
 const DOCUMENT_TYPES = [
   "SOP",
   "Work Instruction",
@@ -80,6 +87,7 @@ export default function DocumentControlLandingPage() {
   const [uploading, setUploading] = useState(false);
   const [filterStatus, setFilterStatus] = useState("all");
   const [quickFilter, setQuickFilter] = useState<QuickFilter>("all");
+  const [sortBy, setSortBy] = useState<SortOption>("newest");
   const [search, setSearch] = useState("");
   const [showCreateForm, setShowCreateForm] = useState(false);
 
@@ -173,10 +181,64 @@ export default function DocumentControlLandingPage() {
     };
   }, [documents]);
 
+  const documentReviewStats = useMemo(() => {
+    const stats = new Map<
+      string,
+      {
+        openReviews: number;
+        overdueReviews: number;
+        needsMyReview: boolean;
+      }
+    >();
+
+    const currentUser = normalizeEmail(userEmail);
+
+    documents.forEach((doc) => {
+      stats.set(doc.id, {
+        openReviews: 0,
+        overdueReviews: 0,
+        needsMyReview: false,
+      });
+    });
+
+    assignedReviewers.forEach((reviewer) => {
+      const existing =
+        stats.get(reviewer.document_id) ||
+        {
+          openReviews: 0,
+          overdueReviews: 0,
+          needsMyReview: false,
+        };
+
+      const isOpen =
+        reviewer.review_status !== "approved" &&
+        reviewer.review_status !== "rejected";
+
+      if (isOpen) {
+        existing.openReviews += 1;
+
+        if (isOverdue(reviewer.due_date || null)) {
+          existing.overdueReviews += 1;
+        }
+
+        if (
+          currentUser &&
+          normalizeEmail(reviewer.reviewer_email) === currentUser
+        ) {
+          existing.needsMyReview = true;
+        }
+      }
+
+      stats.set(reviewer.document_id, existing);
+    });
+
+    return stats;
+  }, [documents, assignedReviewers, userEmail]);
+
   const filteredDocuments = useMemo(() => {
     const currentUser = normalizeEmail(userEmail);
 
-    return documents.filter((doc) => {
+    const filtered = documents.filter((doc) => {
       const matchesStatus = filterStatus === "all" || doc.status === filterStatus;
       const text = `${doc.document_number} ${doc.title} ${doc.document_type} ${doc.revision} ${doc.department} ${doc.process_area}`.toLowerCase();
       const matchesSearch = text.includes(search.toLowerCase());
@@ -210,7 +272,39 @@ export default function DocumentControlLandingPage() {
 
       return matchesStatus && matchesSearch && matchesQuickFilter;
     });
-  }, [documents, filterStatus, search, quickFilter, userEmail, myReviewDocumentIds]);
+
+    return [...filtered].sort((a, b) => {
+      if (sortBy === "document_number") {
+        return String(a.document_number || "").localeCompare(
+          String(b.document_number || "")
+        );
+      }
+
+      if (sortBy === "title") {
+        return String(a.title || "").localeCompare(String(b.title || ""));
+      }
+
+      if (sortBy === "status") {
+        return String(a.status || "").localeCompare(String(b.status || ""));
+      }
+
+      if (sortBy === "effective_date") {
+        return String(b.effective_date || "").localeCompare(
+          String(a.effective_date || "")
+        );
+      }
+
+      return String(b.created_at || "").localeCompare(String(a.created_at || ""));
+    });
+  }, [
+    documents,
+    filterStatus,
+    search,
+    quickFilter,
+    sortBy,
+    userEmail,
+    myReviewDocumentIds,
+  ]);
 
   const workflowSnapshot = useMemo(() => {
     const openReviews = assignedReviewers.filter(
@@ -510,7 +604,7 @@ export default function DocumentControlLandingPage() {
         <div style={sectionHeaderStyle}>
           <div>
             <h2 style={{ margin: 0 }}>Document Register</h2>
-            <p style={subtleText}>Search, filter, open files, launch workflows, and revise documents.</p>
+            <p style={subtleText}>Search, sort, filter, open files, launch workflows, and revise documents.</p>
           </div>
           <button onClick={() => setShowCreateForm(true)} style={primaryButtonStyle}>
             Create New Document
@@ -545,6 +639,19 @@ export default function DocumentControlLandingPage() {
             <option value="all">All Statuses</option>
             {STATUSES.map((status) => <option key={status} value={status}>{status}</option>)}
           </select>
+          <select value={sortBy} onChange={(e) => setSortBy(e.target.value as SortOption)} style={inputStyle}>
+            <option value="newest">Sort: Newest First</option>
+            <option value="document_number">Sort: Document Number</option>
+            <option value="title">Sort: Title</option>
+            <option value="status">Sort: Status</option>
+            <option value="effective_date">Sort: Effective Date</option>
+          </select>
+        </div>
+
+        <div style={resultSummaryStyle}>
+          Showing <strong>{filteredDocuments.length}</strong> of <strong>{documents.length}</strong> documents
+          {quickFilter !== "all" ? <> • Quick filter: <strong>{quickFilter.split("_").join(" ")}</strong></> : null}
+          {filterStatus !== "all" ? <> • Status: <strong>{filterStatus}</strong></> : null}
         </div>
 
         <div style={{ overflowX: "auto" }}>
@@ -554,7 +661,7 @@ export default function DocumentControlLandingPage() {
                 <th style={thStyle}>Document</th>
                 <th style={thStyle}>Type / Area</th>
                 <th style={thStyle}>Revision</th>
-                <th style={thStyle}>Status</th>
+                <th style={thStyle}>Workflow Status</th>
                 <th style={thStyle}>Owner</th>
                 <th style={thStyle}>Effective Date</th>
                 <th style={thStyle}>Actions</th>
@@ -566,32 +673,53 @@ export default function DocumentControlLandingPage() {
                   <td colSpan={7} style={tdStyle}>No documents match the current filter.</td>
                 </tr>
               ) : (
-                filteredDocuments.map((doc) => (
-                  <tr key={doc.id}>
-                    <td style={tdStyle}>
-                      <strong>{doc.document_number}</strong>
-                      <div>{doc.title}</div>
-                      <div style={smallTextStyle}>{doc.file_name || "No file attached"}</div>
-                    </td>
-                    <td style={tdStyle}>
-                      <div>{doc.document_type || "N/A"}</div>
-                      <div style={smallTextStyle}>{doc.department || "No department"} {doc.process_area ? `• ${doc.process_area}` : ""}</div>
-                    </td>
-                    <td style={tdStyle}>{doc.revision}</td>
-                    <td style={tdStyle}><StatusBadge status={doc.status} /></td>
-                    <td style={tdStyle}>{doc.owner_email || "N/A"}</td>
-                    <td style={tdStyle}>{doc.effective_date || "N/A"}</td>
-                    <td style={tdStyle}>
-                      <div style={actionButtonGroupStyle}>
-                        {doc.file_url ? (
-                          <a href={doc.file_url} target="_blank" rel="noreferrer" style={smallLinkButtonStyle}>Open File</a>
+                filteredDocuments.map((doc) => {
+                  const stats = documentReviewStats.get(doc.id) || {
+                    openReviews: 0,
+                    overdueReviews: 0,
+                    needsMyReview: false,
+                  };
+
+                  return (
+                    <tr key={doc.id}>
+                      <td style={tdStyle}>
+                        <strong>{doc.document_number}</strong>
+                        <div>{doc.title}</div>
+                        <div style={smallTextStyle}>{doc.file_name || "No file attached"}</div>
+                        {stats.needsMyReview ? (
+                          <div style={myReviewBadgeStyle}>Awaiting my review</div>
                         ) : null}
-                        <a href={`/documents/${doc.id}`} style={primaryLinkStyle}>Workflow</a>
-                        <button onClick={() => reviseDocument(doc)} style={secondaryButtonStyle}>Revise</button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                      </td>
+                      <td style={tdStyle}>
+                        <div>{doc.document_type || "N/A"}</div>
+                        <div style={smallTextStyle}>{doc.department || "No department"} {doc.process_area ? `• ${doc.process_area}` : ""}</div>
+                      </td>
+                      <td style={tdStyle}>{doc.revision}</td>
+                      <td style={tdStyle}>
+                        <StatusBadge status={doc.status} />
+                        <div style={smallTextStyle}>
+                          {stats.openReviews} open review(s)
+                          {stats.overdueReviews > 0 ? (
+                            <span style={inlineOverdueStyle}> • {stats.overdueReviews} overdue</span>
+                          ) : null}
+                        </div>
+                      </td>
+                      <td style={tdStyle}>{doc.owner_email || "N/A"}</td>
+                      <td style={tdStyle}>{doc.effective_date || "N/A"}</td>
+                      <td style={tdStyle}>
+                        <div style={actionButtonGroupStyle}>
+                          {doc.file_url ? (
+                            <a href={doc.file_url} target="_blank" rel="noreferrer" style={smallLinkButtonStyle}>Open File</a>
+                          ) : (
+                            <span style={disabledActionStyle}>No File</span>
+                          )}
+                          <a href={`/documents/${doc.id}`} style={primaryLinkStyle}>Workflow</a>
+                          <button onClick={() => reviseDocument(doc)} style={secondaryButtonStyle}>Revise</button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -679,7 +807,8 @@ const buttonRowStyle: React.CSSProperties = { display: "flex", gap: "12px", flex
 const quickFilterRowStyle: React.CSSProperties = { display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "14px" };
 const filterButtonStyle: React.CSSProperties = { background: "#f3f4f6", color: "#111827", border: "1px solid #d1d5db", padding: "8px 10px", borderRadius: "999px", fontWeight: 700, cursor: "pointer" };
 const activeFilterButtonStyle: React.CSSProperties = { ...filterButtonStyle, background: "#2563eb", color: "white", border: "1px solid #2563eb" };
-const filterRowStyle: React.CSSProperties = { display: "grid", gridTemplateColumns: "2fr 1fr", gap: "12px", marginBottom: "14px" };
+const filterRowStyle: React.CSSProperties = { display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: "12px", marginBottom: "14px" };
+const resultSummaryStyle: React.CSSProperties = { color: "#4b5563", fontSize: "13px", marginBottom: "12px" };
 const summaryBarStyle: React.CSSProperties = { display: "flex", gap: "10px", flexWrap: "wrap", marginBottom: "14px" };
 const summaryPillStyle: React.CSSProperties = { display: "flex", gap: "8px", alignItems: "center", border: "1px solid #d1d5db", borderRadius: "999px", padding: "7px 10px", background: "#f9fafb" };
 const tableStyle: React.CSSProperties = { width: "100%", borderCollapse: "collapse" };
@@ -688,4 +817,7 @@ const tdStyle: React.CSSProperties = { borderBottom: "1px solid #e5e7eb", paddin
 const overdueCellStyle: React.CSSProperties = { ...tdStyle, color: "#dc2626", fontWeight: 700 };
 const miniQueueStyle: React.CSSProperties = { background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: "12px", padding: "14px", marginTop: "4px" };
 const smallTextStyle: React.CSSProperties = { fontSize: "12px", color: "#6b7280" };
+const myReviewBadgeStyle: React.CSSProperties = { display: "inline-block", marginTop: "6px", background: "#fef3c7", color: "#92400e", border: "1px solid #fde68a", borderRadius: "999px", padding: "3px 8px", fontSize: "12px", fontWeight: 700 };
+const inlineOverdueStyle: React.CSSProperties = { color: "#dc2626", fontWeight: 700 };
+const disabledActionStyle: React.CSSProperties = { background: "#f3f4f6", color: "#6b7280", padding: "8px 12px", borderRadius: "8px", fontWeight: 700, display: "inline-block" };
 const actionButtonGroupStyle: React.CSSProperties = { display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" };
