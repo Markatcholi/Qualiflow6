@@ -1,5 +1,19 @@
 import { supabase } from "./supabaseClient";
 
+export type ESignatureRecord = {
+  id: string;
+  module_name: string;
+  record_id: string;
+  action_type: string;
+  signed_by: string;
+  signer_role: string | null;
+  signature_meaning: string;
+  signature_reason: string | null;
+  signed_at: string | null;
+  ip_address?: string | null;
+  created_at?: string | null;
+};
+
 export async function createESignature({
   moduleName,
   recordId,
@@ -16,8 +30,12 @@ export async function createESignature({
   signerRole?: string | null;
   signatureMeaning: string;
   signatureReason?: string | null;
-}) {
-  const { error } = await supabase
+}): Promise<ESignatureRecord> {
+  if (!moduleName || !recordId || !actionType || !signedBy || !signatureMeaning) {
+    throw new Error("Missing required electronic signature information.");
+  }
+
+  const { data, error } = await supabase
     .from("electronic_signatures")
     .insert({
       module_name: moduleName,
@@ -27,11 +45,13 @@ export async function createESignature({
       signer_role: signerRole || null,
       signature_meaning: signatureMeaning,
       signature_reason: signatureReason || null,
-    });
+    })
+    .select()
+    .single();
 
   if (error) {
     throw new Error(error.message);
   }
 
-  return true;
+  return data as ESignatureRecord;
 }
