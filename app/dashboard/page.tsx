@@ -198,8 +198,8 @@ export default function DashboardPage() {
         .from("document_assigned_reviewers")
         .select("id, document_id, reviewer_email, reviewer_type, reviewer_role, due_date, review_status"),
       supabase
-        .from("document_training_assignments")
-        .select("id, document_id, user_email, status, due_date"),
+        .from("training_assignments")
+        .select("id, document_id, assigned_to_email, status, due_date, retraining_assignment, signature_id, acknowledged_at"),
       supabase
         .from("notifications")
         .select("id, severity, read_status, related_module"),
@@ -249,11 +249,17 @@ export default function DashboardPage() {
     setWorkflowSlaCompliance(workflowSla);
 
     const completedTraining = allTraining.filter(
-      (item: any) => item.status === "completed"
+      (item: any) =>
+        item.status === "completed" ||
+        item.status === "effectiveness_complete"
     );
 
     const overdueTrainingRecords = allTraining.filter(
-      (item: any) => item.status !== "completed" && isOverdue(item.due_date)
+      (item: any) =>
+        item.status !== "completed" &&
+        item.status !== "effectiveness_complete" &&
+        item.status !== "waived" &&
+        isOverdue(item.due_date)
     );
 
     setTrainingAssigned(allTraining.length);
