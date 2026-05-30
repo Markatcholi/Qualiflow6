@@ -423,7 +423,7 @@ export default function TrainingAssignmentDetailPage() {
             <div style={gridStyle}>
               <Field label="Document"><div>{documentRecord.document_number} Rev {documentRecord.revision}</div></Field>
               <Field label="Title"><div>{documentRecord.title}</div></Field>
-              <Field label="Status"><StatusBadge status={documentRecord.status}</StatusBadge></Field>
+              <Field label="Status"><StatusBadge status={documentRecord.status} /></Field>
               <Field label="Type"><div>{documentRecord.document_type || "N/A"}</div></Field>
               <Field label="Department"><div>{documentRecord.department || "N/A"}</div></Field>
               <Field label="Effective Date"><div>{documentRecord.effective_date || "N/A"}</div></Field>
