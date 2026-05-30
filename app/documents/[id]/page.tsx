@@ -3,8 +3,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "../../../lib/supabaseClient";
-import ESignatureModal from "../../../components/ESignatureModal";
-import DocumentSignatures from "../../../components/DocumentSignatures";
+import ESignatureModal from "../../components/ESignatureModal";
+import DocumentSignatures from "../../components/DocumentSignatures";
 import { createESignature } from "../../../lib/eSignatureEngine";
 import {
   canManageWorkflow as canUserManageWorkflow,
