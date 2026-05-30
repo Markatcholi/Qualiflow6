@@ -6,6 +6,7 @@ import { supabase } from "../../../lib/supabaseClient";
 import ESignatureModal from "../../../components/ESignatureModal";
 import DocumentSignatures from "../../../components/DocumentSignatures";
 import { createESignature } from "../../../lib/eSignatureEngine";
+import { processRetrainingForDocument } from "../../../services/retrainingService";
 import {
   canManageWorkflow as canUserManageWorkflow,
   canTransition,
@@ -988,6 +989,34 @@ export default function DocumentWorkflowPage() {
       toStatus: "effective",
       comments: releaseComments[doc.id] || "Document released effective.",
     });
+
+    if (doc.training_required) {
+      try {
+        const retrainingResult = await processRetrainingForDocument(
+          doc.id,
+          doc.document_number,
+          doc.revision,
+          userEmail || "system"
+        );
+
+        await logWorkflowEvent({
+          eventType: "automatic_retraining_generated",
+          fromStatus: "effective",
+          toStatus: "effective",
+          comments: `Retraining assignments created: ${retrainingResult.created}. Skipped duplicates: ${retrainingResult.skipped}.`,
+          metadata: retrainingResult,
+        });
+      } catch (error: any) {
+        console.error("Retraining Engine Error:", error);
+
+        await logWorkflowEvent({
+          eventType: "automatic_retraining_error",
+          fromStatus: "effective",
+          toStatus: "effective",
+          comments: error?.message || "Retraining engine failed after document became effective.",
+        });
+      }
+    }
 
     fetchData();
   };
