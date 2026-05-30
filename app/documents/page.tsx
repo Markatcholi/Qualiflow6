@@ -17,6 +17,7 @@ type ControlledDocument = {
   file_path: string | null;
   file_url: string | null;
   change_summary: string | null;
+  change_rationale?: string | null;
   owner_email: string | null;
   approver_email: string | null;
   effective_date: string | null;
@@ -79,9 +80,9 @@ export default function DocumentControlLandingPage() {
     revision: "A",
     department: "",
     process_area: "",
-    change_summary: "",
+    change_description: "",
+    change_rationale: "",
     owner_email: "",
-    approver_email: "",
     effective_date: "",
     read_ack_required: true,
     training_required: false,
@@ -207,10 +208,6 @@ export default function DocumentControlLandingPage() {
       return;
     }
 
-    if (newDoc.approver_email && !normalizeEmail(newDoc.approver_email)) {
-      alert("Approver email must be valid.");
-      return;
-    }
 
     setUploading(true);
 
@@ -230,9 +227,10 @@ export default function DocumentControlLandingPage() {
           file_name: uploaded.fileName,
           file_path: uploaded.filePath,
           file_url: uploaded.fileUrl,
-          change_summary: newDoc.change_summary || null,
+          change_summary: newDoc.change_description || null,
+          change_rationale: newDoc.change_rationale || null,
           owner_email: normalizeEmail(newDoc.owner_email) || userEmail || null,
-          approver_email: normalizeEmail(newDoc.approver_email) || null,
+          approver_email: null,
           effective_date: newDoc.effective_date || null,
           read_ack_required: newDoc.read_ack_required,
           training_required: newDoc.training_required,
@@ -274,7 +272,7 @@ export default function DocumentControlLandingPage() {
         department: doc.department,
         process_area: doc.process_area,
         owner_email: doc.owner_email || userEmail || null,
-        approver_email: doc.approver_email || null,
+        approver_email: null,
         read_ack_required: doc.read_ack_required,
         training_required: doc.training_required,
         superseded_document_id: doc.id,
@@ -411,16 +409,18 @@ export default function DocumentControlLandingPage() {
           <Field label="Department"><input value={newDoc.department} onChange={(e) => setNewDoc({ ...newDoc, department: e.target.value })} style={inputStyle} /></Field>
           <Field label="Process Area"><input value={newDoc.process_area} onChange={(e) => setNewDoc({ ...newDoc, process_area: e.target.value })} style={inputStyle} /></Field>
           <Field label="Owner Email"><input type="email" value={newDoc.owner_email} onChange={(e) => setNewDoc({ ...newDoc, owner_email: e.target.value })} style={inputStyle} /></Field>
-          <Field label="Approver Email"><input type="email" value={newDoc.approver_email} onChange={(e) => setNewDoc({ ...newDoc, approver_email: e.target.value })} style={inputStyle} /></Field>
-          <Field label="Document File"><input type="file" onChange={(e) => setSelectedFile(e.target.files?.[0] || null)} style={inputStyle} /></Field>
         </div>
 
-        <Field label="Change Summary"><textarea value={newDoc.change_summary} onChange={(e) => setNewDoc({ ...newDoc, change_summary: e.target.value })} rows={3} style={textareaStyle} /></Field>
+        <Field label="Change Description"><textarea value={newDoc.change_description} onChange={(e) => setNewDoc({ ...newDoc, change_description: e.target.value })} rows={3} style={textareaStyle} /></Field>
+
+        <Field label="Change Rationale / Justification"><textarea value={newDoc.change_rationale} onChange={(e) => setNewDoc({ ...newDoc, change_rationale: e.target.value })} rows={3} style={textareaStyle} /></Field>
 
         <div style={buttonRowStyle}>
           <label><input type="checkbox" checked={newDoc.read_ack_required} onChange={(e) => setNewDoc({ ...newDoc, read_ack_required: e.target.checked })} /> Read & Acknowledge Required</label>
           <label><input type="checkbox" checked={newDoc.training_required} onChange={(e) => setNewDoc({ ...newDoc, training_required: e.target.checked })} /> Training Required</label>
         </div>
+
+        <Field label="Document File"><input type="file" onChange={(e) => setSelectedFile(e.target.files?.[0] || null)} style={inputStyle} /></Field>
 
         <button onClick={createDocument} disabled={uploading} style={uploading ? disabledButtonStyle : primaryButtonStyle}>{uploading ? "Uploading..." : "Create Document"}</button>
       </section>
