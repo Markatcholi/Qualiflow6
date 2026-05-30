@@ -33,6 +33,7 @@ type ControlledDocument = {
   file_path: string | null;
   file_url: string | null;
   change_summary: string | null;
+  change_rationale?: string | null;
   approval_comments: string | null;
   owner_email: string | null;
   approver_email: string | null;
@@ -163,12 +164,39 @@ export default function DocumentWorkflowPage() {
   const [showApprovalSignatureModal, setShowApprovalSignatureModal] = useState(false);
   const [pendingApprovalDoc, setPendingApprovalDoc] = useState<ControlledDocument | null>(null);
 
+  const [initiationForm, setInitiationForm] = useState({
+    title: "",
+    document_type: "",
+    department: "",
+    process_area: "",
+    owner_email: "",
+    change_summary: "",
+    change_rationale: "",
+    read_ack_required: true,
+    training_required: false,
+  });
+  const [initiationFile, setInitiationFile] = useState<File | null>(null);
+
   const doc = documents[0] || null;
 
   const canApprove = isApproverRole(userRole);
   const canManage = isManagementRole(userRole);
   const canManageWorkflow = Boolean(
     doc ? canUserManageWorkflow(doc, userEmail, userRole) : canManage
+  );
+
+  const canEditInitiation = Boolean(
+    doc &&
+      (
+        canManageWorkflow ||
+        normalizeEmail(doc.owner_email) === normalizeEmail(userEmail) ||
+        normalizeEmail(doc.created_by) === normalizeEmail(userEmail)
+      ) &&
+      (
+        doc.status === "draft" ||
+        doc.status === "rejected" ||
+        (doc.status === "collaboration" && !doc.collaboration_completed)
+      )
   );
 
   const workflowState = useMemo(() => {
@@ -351,6 +379,23 @@ export default function DocumentWorkflowPage() {
     if (documentId) fetchData();
   }, [documentId]);
 
+  useEffect(() => {
+    if (!doc) return;
+
+    setInitiationForm({
+      title: doc.title || "",
+      document_type: doc.document_type || "",
+      department: doc.department || "",
+      process_area: doc.process_area || "",
+      owner_email: doc.owner_email || "",
+      change_summary: doc.change_summary || "",
+      change_rationale: doc.change_rationale || "",
+      read_ack_required: Boolean(doc.read_ack_required),
+      training_required: Boolean(doc.training_required),
+    });
+    setInitiationFile(null);
+  }, [doc?.id]);
+
   const logWorkflowEvent = async ({
     eventType,
     fromStatus,
@@ -375,6 +420,175 @@ export default function DocumentWorkflowPage() {
       comments: comments || null,
       metadata: metadata || null,
     });
+  };
+
+  const resetReviewerAssignmentsForResubmission = async (docId: string) => {
+    await supabase
+      .from("document_assigned_reviewers")
+      .update({
+        review_status: "pending",
+        review_comments: null,
+        reviewed_at: null,
+        reviewed_file_name: null,
+        reviewed_file_path: null,
+        reviewed_file_url: null,
+      })
+      .eq("document_id", docId);
+  };
+
+  const uploadInitiationDocumentFile = async (doc: ControlledDocument) => {
+    if (!initiationFile) {
+      return {
+        file_name: doc.file_name || null,
+        file_path: doc.file_path || null,
+        file_url: doc.file_url || null,
+      };
+    }
+
+    const safeDocNumber = doc.document_number.replace(/[^a-zA-Z0-9-_]/g, "_");
+    const safeRev = doc.revision.replace(/[^a-zA-Z0-9-_]/g, "_");
+    const filePath = `${safeDocNumber}/${safeRev}/initiation/${Date.now()}_${initiationFile.name}`;
+
+    const { error } = await supabase.storage
+      .from("controlled-documents")
+      .upload(filePath, initiationFile, { upsert: true });
+
+    if (error) throw new Error(error.message);
+
+    const { data } = supabase.storage
+      .from("controlled-documents")
+      .getPublicUrl(filePath);
+
+    return {
+      file_name: initiationFile.name,
+      file_path: filePath,
+      file_url: data?.publicUrl || null,
+    };
+  };
+
+  const saveInitiationUpdates = async () => {
+    if (!doc) return;
+
+    if (!canEditInitiation) {
+      alert("Initiation details are locked after collaboration is completed or formal review has started.");
+      return;
+    }
+
+    if (!initiationForm.title.trim()) {
+      alert("Document title is required.");
+      return;
+    }
+
+    const ownerEmail = normalizeEmail(initiationForm.owner_email);
+
+    if (initiationForm.owner_email && !ownerEmail) {
+      alert("Owner email must be a valid email address.");
+      return;
+    }
+
+    setBusy(true);
+
+    try {
+      const uploaded = await uploadInitiationDocumentFile(doc);
+
+      const { error } = await supabase
+        .from("controlled_documents")
+        .update({
+          title: initiationForm.title.trim(),
+          document_type: initiationForm.document_type || null,
+          department: initiationForm.department || null,
+          process_area: initiationForm.process_area || null,
+          owner_email: ownerEmail || null,
+          change_summary: initiationForm.change_summary || null,
+          change_rationale: initiationForm.change_rationale || null,
+          read_ack_required: initiationForm.read_ack_required,
+          training_required: initiationForm.training_required,
+          file_name: uploaded.file_name,
+          file_path: uploaded.file_path,
+          file_url: uploaded.file_url,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", doc.id);
+
+      if (error) throw new Error(error.message);
+
+      await logWorkflowEvent({
+        eventType: "initiation_details_updated",
+        fromStatus: doc.status,
+        toStatus: doc.status,
+        comments: "Document initiation package updated.",
+        metadata: {
+          file_name: uploaded.file_name,
+          updated_by: userEmail || "unknown",
+        },
+      });
+
+      setInitiationFile(null);
+      await fetchData();
+    } catch (error: any) {
+      alert(error.message);
+    }
+
+    setBusy(false);
+  };
+
+  const resubmitWorkflow = async (doc: ControlledDocument) => {
+    if (doc.status !== "rejected") {
+      alert("Only rejected documents can be resubmitted.");
+      return;
+    }
+
+    if (!canEditInitiation) {
+      alert("Only the document owner, document control, quality, or approvers can resubmit this document.");
+      return;
+    }
+
+    const targetStatus = doc.collaboration_required ? "collaboration" : "formal_review";
+
+    setBusy(true);
+
+    try {
+      await resetReviewerAssignmentsForResubmission(doc.id);
+
+      const updatePayload: any = {
+        status: targetStatus,
+        collaboration_completed: false,
+        formal_review_completed: false,
+        updated_at: new Date().toISOString(),
+      };
+
+      if (targetStatus === "formal_review") {
+        updatePayload.submitted_for_approval_at = new Date().toISOString();
+        updatePayload.submitted_for_approval_by = userEmail || "unknown";
+      }
+
+      const { error } = await supabase
+        .from("controlled_documents")
+        .update(updatePayload)
+        .eq("id", doc.id);
+
+      if (error) throw new Error(error.message);
+
+      await logWorkflowEvent({
+        eventType: "document_resubmitted_by_owner",
+        fromStatus: "rejected",
+        toStatus: targetStatus,
+        comments:
+          targetStatus === "collaboration"
+            ? "Rejected document revised and resubmitted to collaboration."
+            : "Rejected document revised and resubmitted to formal review.",
+        metadata: {
+          resubmitted_by: userEmail || "unknown",
+          target_status: targetStatus,
+        },
+      });
+
+      await fetchData();
+    } catch (error: any) {
+      alert(error.message);
+    }
+
+    setBusy(false);
   };
 
   const uploadReviewedFile = async (reviewer: AssignedReviewer) => {
@@ -517,6 +731,8 @@ export default function DocumentWorkflowPage() {
           .eq("id", doc.id);
 
         if (docError) throw new Error(docError.message);
+
+        await resetReviewerAssignmentsForResubmission(doc.id);
       }
 
       await logWorkflowEvent({
@@ -942,11 +1158,17 @@ export default function DocumentWorkflowPage() {
       return;
     }
 
+    await resetReviewerAssignmentsForResubmission(doc.id);
+
     await logWorkflowEvent({
       eventType: "document_rejected_returned_to_owner",
       fromStatus: doc.status,
       toStatus: "rejected",
       comments,
+      metadata: {
+        returned_to_owner: doc.owner_email || doc.created_by || null,
+        reviewer_assignments_reset: true,
+      },
     });
 
     setRejectComments({ ...rejectComments, [doc.id]: "" });
@@ -1321,32 +1543,214 @@ export default function DocumentWorkflowPage() {
       </section>
 
       <section style={cardStyle}>
-        <h2 style={{ marginTop: 0 }}>Document Package</h2>
-        <div style={gridStyle}>
-          <Field label="Document Type"><div>{doc.document_type || "N/A"}</div></Field>
-          <Field label="Department"><div>{doc.department || "N/A"}</div></Field>
-          <Field label="Process Area"><div>{doc.process_area || "N/A"}</div></Field>
-          <Field label="Approver"><div>{doc.approver_email || "N/A"}</div></Field>
-          <Field label="Effective Date"><div>{doc.effective_date || "N/A"}</div></Field>
-          <Field label="Originating Change Control"><div>{doc.originating_change_control_id || "None"}</div></Field>
+        <div style={rowBetweenStyle}>
+          <div>
+            <h2 style={{ marginTop: 0 }}>Initiation / Change Details</h2>
+            <p style={subtleText}>
+              The initiation package is editable while the document is draft, rejected, or in active collaboration.
+              It locks after collaboration is completed or formal review begins.
+            </p>
+          </div>
+          <StatusBadge status={canEditInitiation ? "editable" : "locked"} />
         </div>
 
-        <div style={buttonRowStyle}>
-          {doc.file_url ? (
-            <a href={doc.file_url} target="_blank" rel="noreferrer" style={primaryLinkStyle}>
-              Open / Download Current Document
-            </a>
-          ) : (
-            <span style={warningStyle}>No document file attached.</span>
-          )}
-        </div>
-
-        {doc.approval_comments ? (
-          <div style={noticeStyle}>
-            <strong>Latest Approval / Rejection Comments:</strong>
-            <p>{doc.approval_comments}</p>
+        {doc.status === "rejected" && doc.approval_comments ? (
+          <div style={warningStyle}>
+            <strong>Returned to Owner:</strong>
+            <p style={{ margin: "6px 0 0" }}>{doc.approval_comments}</p>
           </div>
         ) : null}
+
+        {canEditInitiation ? (
+          <>
+            <div style={gridStyle}>
+              <Field label="Document Number">
+                <div>{doc.document_number}</div>
+              </Field>
+
+              <Field label="Revision">
+                <div>{doc.revision}</div>
+              </Field>
+
+              <Field label="Title">
+                <input
+                  value={initiationForm.title}
+                  onChange={(e) =>
+                    setInitiationForm({ ...initiationForm, title: e.target.value })
+                  }
+                  style={inputStyle}
+                />
+              </Field>
+
+              <Field label="Document Type">
+                <input
+                  value={initiationForm.document_type}
+                  onChange={(e) =>
+                    setInitiationForm({ ...initiationForm, document_type: e.target.value })
+                  }
+                  style={inputStyle}
+                />
+              </Field>
+
+              <Field label="Department">
+                <input
+                  value={initiationForm.department}
+                  onChange={(e) =>
+                    setInitiationForm({ ...initiationForm, department: e.target.value })
+                  }
+                  style={inputStyle}
+                />
+              </Field>
+
+              <Field label="Process Area">
+                <input
+                  value={initiationForm.process_area}
+                  onChange={(e) =>
+                    setInitiationForm({ ...initiationForm, process_area: e.target.value })
+                  }
+                  style={inputStyle}
+                />
+              </Field>
+
+              <Field label="Owner Email">
+                <input
+                  value={initiationForm.owner_email}
+                  onChange={(e) =>
+                    setInitiationForm({ ...initiationForm, owner_email: e.target.value })
+                  }
+                  style={inputStyle}
+                />
+              </Field>
+
+              <Field label="Effective Date">
+                <div>{doc.effective_date || "N/A"}</div>
+              </Field>
+            </div>
+
+            <Field label="Change Description">
+              <textarea
+                value={initiationForm.change_summary}
+                onChange={(e) =>
+                  setInitiationForm({ ...initiationForm, change_summary: e.target.value })
+                }
+                rows={3}
+                style={textareaStyle}
+              />
+            </Field>
+
+            <Field label="Change Rationale / Justification">
+              <textarea
+                value={initiationForm.change_rationale}
+                onChange={(e) =>
+                  setInitiationForm({ ...initiationForm, change_rationale: e.target.value })
+                }
+                rows={3}
+                style={textareaStyle}
+              />
+            </Field>
+
+            <div style={buttonRowStyle}>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={initiationForm.read_ack_required}
+                  onChange={(e) =>
+                    setInitiationForm({
+                      ...initiationForm,
+                      read_ack_required: e.target.checked,
+                    })
+                  }
+                />{" "}
+                Read acknowledgement required
+              </label>
+
+              <label>
+                <input
+                  type="checkbox"
+                  checked={initiationForm.training_required}
+                  onChange={(e) =>
+                    setInitiationForm({
+                      ...initiationForm,
+                      training_required: e.target.checked,
+                    })
+                  }
+                />{" "}
+                Training required
+              </label>
+            </div>
+
+            <Field label="Document File">
+              <div style={buttonRowStyle}>
+                {doc.file_url ? (
+                  <a href={doc.file_url} target="_blank" rel="noreferrer" style={primaryLinkStyle}>
+                    Open Current File
+                  </a>
+                ) : (
+                  <span style={warningStyle}>No document file attached.</span>
+                )}
+
+                <input
+                  type="file"
+                  onChange={(e) => setInitiationFile(e.target.files?.[0] || null)}
+                />
+              </div>
+              {initiationFile ? (
+                <div style={smallTextStyle}>Selected replacement file: {initiationFile.name}</div>
+              ) : null}
+            </Field>
+
+            <div style={buttonRowStyle}>
+              <button disabled={busy} onClick={saveInitiationUpdates} style={primaryButtonStyle}>
+                Save Initiation Updates
+              </button>
+
+              {doc.status === "rejected" ? (
+                <button disabled={busy} onClick={() => resubmitWorkflow(doc)} style={secondaryButtonStyle}>
+                  Resubmit Workflow
+                </button>
+              ) : null}
+            </div>
+          </>
+        ) : (
+          <>
+            <div style={gridStyle}>
+              <Field label="Document Type"><div>{doc.document_type || "N/A"}</div></Field>
+              <Field label="Department"><div>{doc.department || "N/A"}</div></Field>
+              <Field label="Process Area"><div>{doc.process_area || "N/A"}</div></Field>
+              <Field label="Owner"><div>{doc.owner_email || "N/A"}</div></Field>
+              <Field label="Approver"><div>{doc.approver_email || "N/A"}</div></Field>
+              <Field label="Effective Date"><div>{doc.effective_date || "N/A"}</div></Field>
+              <Field label="Read Acknowledgement Required"><div>{doc.read_ack_required ? "Yes" : "No"}</div></Field>
+              <Field label="Training Required"><div>{doc.training_required ? "Yes" : "No"}</div></Field>
+              <Field label="Originating Change Control"><div>{doc.originating_change_control_id || "None"}</div></Field>
+            </div>
+
+            <Field label="Change Description">
+              <div>{doc.change_summary || "N/A"}</div>
+            </Field>
+
+            <Field label="Change Rationale / Justification">
+              <div>{doc.change_rationale || "N/A"}</div>
+            </Field>
+
+            <div style={buttonRowStyle}>
+              {doc.file_url ? (
+                <a href={doc.file_url} target="_blank" rel="noreferrer" style={primaryLinkStyle}>
+                  Open / Download Current Document
+                </a>
+              ) : (
+                <span style={warningStyle}>No document file attached.</span>
+              )}
+            </div>
+
+            {doc.approval_comments ? (
+              <div style={noticeStyle}>
+                <strong>Latest Approval / Rejection Comments:</strong>
+                <p>{doc.approval_comments}</p>
+              </div>
+            ) : null}
+          </>
+        )}
       </section>
 
       <section style={cardStyle}>
@@ -1749,6 +2153,12 @@ export default function DocumentWorkflowPage() {
             </button>
           ) : null}
 
+          {doc.status === "rejected" && canEditInitiation ? (
+            <button disabled={busy} onClick={() => resubmitWorkflow(doc)} style={secondaryButtonStyle}>
+              Resubmit Workflow
+            </button>
+          ) : null}
+
           {transitionPermissions.reject.allowed ? (
             <details>
               <summary>Administrative Reject / Return to Owner</summary>
@@ -2050,6 +2460,7 @@ const labelStyle: React.CSSProperties = { fontWeight: 700 };
 const inputStyle: React.CSSProperties = { width: "100%", padding: "9px", borderRadius: "8px", border: "1px solid #d1d5db" };
 const textareaStyle: React.CSSProperties = { width: "100%", padding: "9px", borderRadius: "8px", border: "1px solid #d1d5db", marginTop: "6px" };
 const primaryButtonStyle: React.CSSProperties = { background: "#2563eb", color: "white", border: "none", padding: "10px 14px", borderRadius: "8px", fontWeight: 700, cursor: "pointer", marginTop: "10px" };
+const secondaryButtonStyle: React.CSSProperties = { background: "#15803d", color: "white", border: "none", padding: "10px 14px", borderRadius: "8px", fontWeight: 700, cursor: "pointer", marginTop: "10px" };
 const dangerButtonStyle: React.CSSProperties = { background: "#dc2626", color: "white", border: "none", padding: "10px 14px", borderRadius: "8px", fontWeight: 700, cursor: "pointer", marginTop: "10px" };
 const darkButtonStyle: React.CSSProperties = { background: "#111827", color: "white", padding: "10px 14px", borderRadius: "8px", textDecoration: "none", fontWeight: 700 };
 const primaryLinkStyle: React.CSSProperties = { background: "#2563eb", color: "white", padding: "9px 12px", borderRadius: "8px", textDecoration: "none", fontWeight: 700, display: "inline-block" };
