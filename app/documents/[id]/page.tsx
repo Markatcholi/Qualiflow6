@@ -88,7 +88,30 @@ type WorkflowEvent = {
   metadata?: any;
 };
 
+type DocumentRelationship = {
+  id: string;
+  parent_document_id: string;
+  related_document_id: string;
+  relationship_type: string;
+  relationship_reason: string | null;
+  created_by: string | null;
+  created_at: string | null;
+};
+
 const REVIEWER_TYPES = ["collaboration", "formal_review", "approver"];
+
+const RELATIONSHIP_TYPES = [
+  { value: "parent_sop", label: "Parent SOP" },
+  { value: "work_instruction", label: "Work Instruction" },
+  { value: "form", label: "Form" },
+  { value: "template", label: "Template" },
+  { value: "specification", label: "Specification" },
+  { value: "protocol", label: "Protocol" },
+  { value: "report", label: "Report" },
+  { value: "supersedes", label: "Supersedes" },
+  { value: "impacted_by_change", label: "Impacted By Change" },
+  { value: "related", label: "Related" },
+];
 
 export default function DocumentWorkflowPage() {
   const params = useParams();
@@ -102,6 +125,8 @@ export default function DocumentWorkflowPage() {
   const [approvalTemplates, setApprovalTemplates] = useState<any[]>([]);
   const [assignedReviewers, setAssignedReviewers] = useState<AssignedReviewer[]>([]);
   const [workflowEvents, setWorkflowEvents] = useState<WorkflowEvent[]>([]);
+  const [allDocuments, setAllDocuments] = useState<ControlledDocument[]>([]);
+  const [documentRelationships, setDocumentRelationships] = useState<DocumentRelationship[]>([]);
 
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -123,6 +148,12 @@ export default function DocumentWorkflowPage() {
     reviewer_email: "",
     reviewer_role: "",
     required_reviewer: true,
+  });
+
+  const [newRelationship, setNewRelationship] = useState({
+    related_document_id: "",
+    relationship_type: "related",
+    relationship_reason: "",
   });
 
   const doc = documents[0] || null;
@@ -189,6 +220,30 @@ export default function DocumentWorkflowPage() {
       (item) => item.document_id === docId && item.status !== "completed"
     ).length;
 
+  const allDocumentMap = useMemo(() => {
+    const map = new Map<string, ControlledDocument>();
+    [...documents, ...allDocuments].forEach((item) => map.set(item.id, item));
+    return map;
+  }, [documents, allDocuments]);
+
+  const relationshipOptions = useMemo(() => {
+    return allDocuments.filter((item) => item.id !== documentId);
+  }, [allDocuments, documentId]);
+
+  const relationshipGroups = useMemo(() => {
+    const groups: Record<string, DocumentRelationship[]> = {};
+
+    documentRelationships.forEach((relationship) => {
+      const type = relationship.relationship_type || "related";
+      if (!groups[type]) groups[type] = [];
+      groups[type].push(relationship);
+    });
+
+    return groups;
+  }, [documentRelationships]);
+
+  const relatedDocumentCount = documentRelationships.length;
+
   const fetchUser = async () => {
     const { data: userData } = await supabase.auth.getUser();
     const email = userData?.user?.email || "";
@@ -226,6 +281,8 @@ export default function DocumentWorkflowPage() {
       templateRes,
       reviewerRes,
       eventRes,
+      allDocsRes,
+      relationshipRes,
     ] = await Promise.all([
       supabase
         .from("document_acknowledgements")
@@ -258,6 +315,16 @@ export default function DocumentWorkflowPage() {
         .select("*")
         .eq("document_id", documentId)
         .order("performed_at", { ascending: false }),
+      supabase
+        .from("controlled_documents")
+        .select("id, document_number, title, document_type, revision, status, department, process_area, file_name, file_path, file_url, change_summary, approval_comments, owner_email, approver_email, submitted_for_approval_at, submitted_for_approval_by, approved_at, approved_by, effective_date, obsolete_at, obsolete_by, obsolete_reason, read_ack_required, training_required, originating_change_control_id, change_required, superseded_by_document_id, superseded_document_id, collaboration_required, formal_review_required, collaboration_completed, formal_review_completed, release_comments, release_approved_by, release_approved_at, created_at, created_by")
+        .neq("id", documentId)
+        .order("document_number", { ascending: true }),
+      supabase
+        .from("document_relationships")
+        .select("*")
+        .or(`parent_document_id.eq.${documentId},related_document_id.eq.${documentId}`)
+        .order("created_at", { ascending: false }),
     ]);
 
     if (!ackRes.error) setAcknowledgements(ackRes.data || []);
@@ -267,6 +334,8 @@ export default function DocumentWorkflowPage() {
     if (!templateRes.error) setApprovalTemplates(templateRes.data || []);
     if (!reviewerRes.error) setAssignedReviewers((reviewerRes.data as AssignedReviewer[]) || []);
     if (!eventRes.error) setWorkflowEvents((eventRes.data as WorkflowEvent[]) || []);
+    if (!allDocsRes.error) setAllDocuments((allDocsRes.data as ControlledDocument[]) || []);
+    if (!relationshipRes.error) setDocumentRelationships((relationshipRes.data as DocumentRelationship[]) || []);
 
     setLoading(false);
   };
@@ -1034,6 +1103,121 @@ export default function DocumentWorkflowPage() {
     fetchData();
   };
 
+  const getRelatedDocumentForRelationship = (relationship: DocumentRelationship) => {
+    const relatedId =
+      relationship.parent_document_id === documentId
+        ? relationship.related_document_id
+        : relationship.parent_document_id;
+
+    return allDocumentMap.get(relatedId) || null;
+  };
+
+  const getRelationshipDirectionLabel = (relationship: DocumentRelationship) => {
+    if (relationship.parent_document_id === documentId) return "Linked from this document";
+    return "Linked to this document";
+  };
+
+  const addDocumentRelationship = async () => {
+    if (!doc) return;
+
+    if (!canManageWorkflow) {
+      alert("Only the document owner, document control, quality, or approvers can add related documents.");
+      return;
+    }
+
+    if (!newRelationship.related_document_id) {
+      alert("Select a related document.");
+      return;
+    }
+
+    if (newRelationship.related_document_id === doc.id) {
+      alert("A document cannot be related to itself.");
+      return;
+    }
+
+    setBusy(true);
+
+    const relatedDoc = allDocumentMap.get(newRelationship.related_document_id);
+
+    const { error } = await supabase.from("document_relationships").insert({
+      parent_document_id: doc.id,
+      related_document_id: newRelationship.related_document_id,
+      relationship_type: newRelationship.relationship_type,
+      relationship_reason: newRelationship.relationship_reason || null,
+      created_by: userEmail || "unknown",
+    });
+
+    if (error) {
+      alert(error.message);
+      setBusy(false);
+      return;
+    }
+
+    await logWorkflowEvent({
+      eventType: "document_relationship_added",
+      comments: `Related document added: ${relatedDoc?.document_number || newRelationship.related_document_id}`,
+      metadata: {
+        related_document_id: newRelationship.related_document_id,
+        related_document_number: relatedDoc?.document_number || null,
+        relationship_type: newRelationship.relationship_type,
+        relationship_reason: newRelationship.relationship_reason || null,
+      },
+    });
+
+    setNewRelationship({
+      related_document_id: "",
+      relationship_type: "related",
+      relationship_reason: "",
+    });
+
+    setBusy(false);
+    fetchData();
+  };
+
+  const removeDocumentRelationship = async (relationship: DocumentRelationship) => {
+    if (!doc) return;
+
+    if (!canManageWorkflow) {
+      alert("Only the document owner, document control, quality, or approvers can remove related documents.");
+      return;
+    }
+
+    const relatedDoc = getRelatedDocumentForRelationship(relationship);
+    const confirmed = window.confirm(
+      `Remove relationship to ${relatedDoc?.document_number || "this document"}?`
+    );
+
+    if (!confirmed) return;
+
+    setBusy(true);
+
+    const { error } = await supabase
+      .from("document_relationships")
+      .delete()
+      .eq("id", relationship.id);
+
+    if (error) {
+      alert(error.message);
+      setBusy(false);
+      return;
+    }
+
+    await logWorkflowEvent({
+      eventType: "document_relationship_removed",
+      comments: `Related document removed: ${relatedDoc?.document_number || relationship.related_document_id}`,
+      metadata: {
+        relationship_id: relationship.id,
+        related_document_id: relatedDoc?.id || null,
+        related_document_number: relatedDoc?.document_number || null,
+        relationship_type: relationship.relationship_type,
+      },
+    });
+
+    setBusy(false);
+    fetchData();
+  };
+
+
   if (loading) return <main style={pageStyle}>Loading Document Workflow...</main>;
 
   if (!doc) {
@@ -1069,6 +1253,7 @@ export default function DocumentWorkflowPage() {
         <KpiCard title="Pending Reviewers" value={pendingRequiredReviewers.length} color="#d97706" />
         <KpiCard title="Acknowledgements" value={documentAckCount(doc.id)} color="#15803d" />
         <KpiCard title="Open Training" value={openTrainingCount(doc.id)} color="#dc2626" />
+        <KpiCard title="Related Documents" value={relatedDocumentCount} color="#7c3aed" />
       </section>
 
       <section style={cardStyle}>
@@ -1114,6 +1299,145 @@ export default function DocumentWorkflowPage() {
           </div>
         ) : null}
       </section>
+
+      <section style={cardStyle}>
+        <div style={rowBetweenStyle}>
+          <div>
+            <h2 style={{ marginTop: 0 }}>Related Documents</h2>
+            <p style={subtleText}>
+              Link parent SOPs, work instructions, forms, specifications, templates, protocols, reports, and impacted documents.
+            </p>
+          </div>
+          <div style={relationshipCountStyle}>{relatedDocumentCount} linked</div>
+        </div>
+
+        {documentRelationships.length === 0 ? (
+          <p style={subtleText}>No related documents linked yet.</p>
+        ) : (
+          <div style={{ display: "grid", gap: "14px" }}>
+            {RELATIONSHIP_TYPES.filter((type) => relationshipGroups[type.value]?.length).map((type) => (
+              <div key={type.value} style={relationshipGroupStyle}>
+                <h3 style={{ marginTop: 0 }}>{type.label}</h3>
+                <div style={{ display: "grid", gap: "10px" }}>
+                  {relationshipGroups[type.value].map((relationship) => {
+                    const relatedDoc = getRelatedDocumentForRelationship(relationship);
+
+                    return (
+                      <div key={relationship.id} style={relationshipItemStyle}>
+                        <div>
+                          <strong>
+                            {relatedDoc
+                              ? `${relatedDoc.document_number} Rev ${relatedDoc.revision}`
+                              : "Related document unavailable"}
+                          </strong>
+                          <div>{relatedDoc?.title || relationship.related_document_id}</div>
+                          <div style={smallTextStyle}>
+                            {getRelationshipDirectionLabel(relationship)}
+                            {relatedDoc?.document_type ? ` • ${relatedDoc.document_type}` : ""}
+                            {relatedDoc?.department ? ` • ${relatedDoc.department}` : ""}
+                          </div>
+                          {relationship.relationship_reason ? (
+                            <div style={smallTextStyle}>Reason: {relationship.relationship_reason}</div>
+                          ) : null}
+                        </div>
+
+                        <div style={buttonRowStyle}>
+                          {relatedDoc?.file_url ? (
+                            <a href={relatedDoc.file_url} target="_blank" rel="noreferrer" style={primaryLinkStyle}>
+                              Open File
+                            </a>
+                          ) : null}
+                          {relatedDoc ? (
+                            <a href={`/documents/${relatedDoc.id}`} style={darkButtonStyle}>
+                              Open Workflow
+                            </a>
+                          ) : null}
+                          {canManageWorkflow ? (
+                            <button
+                              disabled={busy}
+                              onClick={() => removeDocumentRelationship(relationship)}
+                              style={dangerButtonStyle}
+                            >
+                              Remove
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {canManageWorkflow ? (
+          <>
+            <hr style={{ margin: "20px 0" }} />
+            <h3>Add Related Document</h3>
+            <div style={gridStyle}>
+              <Field label="Relationship Type">
+                <select
+                  value={newRelationship.relationship_type}
+                  onChange={(e) =>
+                    setNewRelationship({
+                      ...newRelationship,
+                      relationship_type: e.target.value,
+                    })
+                  }
+                  style={inputStyle}
+                >
+                  {RELATIONSHIP_TYPES.map((type) => (
+                    <option key={type.value} value={type.value}>{type.label}</option>
+                  ))}
+                </select>
+              </Field>
+
+              <Field label="Related Document">
+                <select
+                  value={newRelationship.related_document_id}
+                  onChange={(e) =>
+                    setNewRelationship({
+                      ...newRelationship,
+                      related_document_id: e.target.value,
+                    })
+                  }
+                  style={inputStyle}
+                >
+                  <option value="">Select related document</option>
+                  {relationshipOptions.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.document_number} Rev {item.revision} — {item.title}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+
+            <Field label="Relationship Reason / Impact Rationale">
+              <textarea
+                value={newRelationship.relationship_reason}
+                onChange={(e) =>
+                  setNewRelationship({
+                    ...newRelationship,
+                    relationship_reason: e.target.value,
+                  })
+                }
+                rows={3}
+                style={textareaStyle}
+                placeholder="Example: This form is required by the parent SOP, or this specification is impacted by the procedure."
+              />
+            </Field>
+
+            <button disabled={busy || !newRelationship.related_document_id} onClick={addDocumentRelationship} style={primaryButtonStyle}>
+              Add Relationship
+            </button>
+          </>
+        ) : (
+          <p style={smallTextStyle}>Only authorized document control, quality, owner, or approver roles can manage related documents.</p>
+        )}
+      </section>
+
 
       <section style={cardStyle}>
         <h2 style={{ marginTop: 0 }}>Approval Matrix & Assigned Reviewers</h2>
@@ -1655,3 +1979,6 @@ const noticeStyle: React.CSSProperties = { background: "#eff6ff", border: "1px s
 const warningStyle: React.CSSProperties = { color: "#b45309", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: "8px", padding: "8px", display: "inline-block" };
 const timelineItemStyle: React.CSSProperties = { borderLeft: "4px solid #2563eb", padding: "10px 12px", background: "#f9fafb", borderRadius: "8px" };
 const overdueTextStyle: React.CSSProperties = { fontSize: "12px", color: "#dc2626", fontWeight: 700 };
+const relationshipCountStyle: React.CSSProperties = { background: "#ede9fe", color: "#5b21b6", border: "1px solid #ddd6fe", borderRadius: "999px", padding: "6px 10px", fontWeight: 800, fontSize: "13px" };
+const relationshipGroupStyle: React.CSSProperties = { border: "1px solid #e5e7eb", background: "#f9fafb", borderRadius: "12px", padding: "14px" };
+const relationshipItemStyle: React.CSSProperties = { display: "flex", justifyContent: "space-between", gap: "12px", alignItems: "flex-start", flexWrap: "wrap", border: "1px solid #d1d5db", background: "white", borderRadius: "10px", padding: "12px" };
