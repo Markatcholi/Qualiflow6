@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
+import ESignatureModal from "../../components/ESignatureModal";
 
 type TrainingAssignment = {
   id: string;
@@ -24,6 +25,8 @@ type TrainingAssignment = {
   supervisor_verified_at: string | null;
   acknowledgement_required: boolean | null;
   acknowledged_at: string | null;
+  acknowledged_by?: string | null;
+  signature_id?: string | null;
   training_comments: string | null;
   created_at: string | null;
 };
@@ -44,8 +47,22 @@ type ControlledDocument = {
   title: string;
   revision: string;
   status: string;
+  file_name?: string | null;
+  file_url?: string | null;
 };
 
+
+type ElectronicSignature = {
+  id: string;
+  module_name: string;
+  record_id: string;
+  action_type: string;
+  signed_by: string;
+  signer_role: string | null;
+  signature_meaning: string;
+  signature_reason: string | null;
+  signed_at: string | null;
+};
 
 type EmployeeProfile = {
   id: string;
@@ -72,6 +89,7 @@ export default function TrainingManagementPage() {
   const [matrixRows, setMatrixRows] = useState<TrainingMatrixRow[]>([]);
   const [documents, setDocuments] = useState<ControlledDocument[]>([]);
   const [employees, setEmployees] = useState<EmployeeProfile[]>([]);
+  const [signatures, setSignatures] = useState<ElectronicSignature[]>([]);
   const [autoAssigning, setAutoAssigning] = useState(false);
   const [autoAssignResult, setAutoAssignResult] = useState<any>(null);
 
@@ -89,6 +107,9 @@ export default function TrainingManagementPage() {
 
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterMine, setFilterMine] = useState(false);
+  const [showTrainingSignature, setShowTrainingSignature] = useState(false);
+  const [pendingSignatureAssignment, setPendingSignatureAssignment] =
+    useState<TrainingAssignment | null>(null);
 
   const [newAssignment, setNewAssignment] = useState({
     document_id: "",
@@ -154,7 +175,7 @@ export default function TrainingManagementPage() {
 
     const docRes = await supabase
       .from("controlled_documents")
-      .select("id,document_number,title,revision,status")
+      .select("id,document_number,title,revision,status,file_name,file_url")
       .order("document_number", { ascending: true });
 
     if (assignmentRes.error) alert(assignmentRes.error.message);
@@ -175,6 +196,16 @@ export default function TrainingManagementPage() {
 
     if (!employeeRes.error) {
       setEmployees((employeeRes.data as EmployeeProfile[]) || []);
+    }
+
+    const signatureRes = await supabase
+      .from("electronic_signatures")
+      .select("*")
+      .eq("module_name", "training")
+      .order("signed_at", { ascending: false });
+
+    if (!signatureRes.error) {
+      setSignatures((signatureRes.data as ElectronicSignature[]) || []);
     }
 
     setLoading(false);
@@ -254,6 +285,16 @@ export default function TrainingManagementPage() {
 
     const overdue = open.filter((a) => a.due_date && a.due_date < today);
     const completed = assignments.filter((a) => a.status === "completed");
+    const trainingSignatures = signatures.filter(
+      (signature) => signature.module_name === "training"
+    );
+    const awaitingSignature = assignments.filter(
+      (a) =>
+        a.acknowledgement_required &&
+        a.status !== "completed" &&
+        a.status !== "waived" &&
+        !a.signature_id
+    );
 
     const effectivenessPending = assignments.filter(
       (a) =>
@@ -266,6 +307,8 @@ export default function TrainingManagementPage() {
       open: open.length,
       overdue: overdue.length,
       completed: completed.length,
+      trainingSignatures: trainingSignatures.length,
+      awaitingSignature: awaitingSignature.length,
       effectivenessPending: effectivenessPending.length,
       matrixRows: matrixRows.length,
       completionRate:
@@ -273,7 +316,7 @@ export default function TrainingManagementPage() {
           ? 100
           : Math.round((completed.length / assignments.length) * 100),
     };
-  }, [assignments, matrixRows, today]);
+  }, [assignments, matrixRows, signatures, today]);
 
   const createAssignment = async () => {
     if (!normalizeEmail(newAssignment.assigned_to_email)) {
@@ -362,6 +405,91 @@ export default function TrainingManagementPage() {
     fetchData();
   };
 
+  const getDocumentForAssignment = (assignment: TrainingAssignment) => {
+    if (!assignment.document_id) return null;
+    return documents.find((doc) => doc.id === assignment.document_id) || null;
+  };
+
+  const getSignatureForAssignment = (assignment: TrainingAssignment) => {
+    return (
+      signatures.find((signature) => signature.id === assignment.signature_id) ||
+      signatures.find((signature) => signature.record_id === assignment.id) ||
+      null
+    );
+  };
+
+  const completeTrainingWithSignature = async (
+    assignment: TrainingAssignment,
+    meaning: string,
+    reason: string
+  ) => {
+    if (!userEmail) {
+      alert("You must be logged in to sign training.");
+      return;
+    }
+
+    if (normalizeEmail(assignment.assigned_to_email) !== normalizeEmail(userEmail) && !canManage) {
+      alert("Only the assigned trainee or training administrator can complete this training.");
+      return;
+    }
+
+    const { data: signature, error: signatureError } = await supabase
+      .from("electronic_signatures")
+      .insert({
+        module_name: "training",
+        record_id: assignment.id,
+        action_type: "training_acknowledgement",
+        signed_by: userEmail,
+        signer_role: userRole || "user",
+        signature_meaning: meaning || "Acknowledge Training",
+        signature_reason: reason || "Training completed and understood.",
+      })
+      .select()
+      .single();
+
+    if (signatureError) {
+      alert(signatureError.message);
+      return;
+    }
+
+    const { error } = await supabase
+      .from("training_assignments")
+      .update({
+        status: "completed",
+        completed_at: new Date().toISOString(),
+        completed_by: userEmail,
+        acknowledged_at: new Date().toISOString(),
+        acknowledged_by: userEmail,
+        signature_id: signature.id,
+        effectiveness_status: assignment.effectiveness_required
+          ? "effectiveness_pending"
+          : assignment.effectiveness_status,
+      })
+      .eq("id", assignment.id);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    setShowTrainingSignature(false);
+    setPendingSignatureAssignment(null);
+    fetchData();
+  };
+
+  const handleTrainingSignatureSubmit = async (data: {
+    meaning: string;
+    reason: string;
+  }) => {
+    if (!pendingSignatureAssignment) return;
+
+    await completeTrainingWithSignature(
+      pendingSignatureAssignment,
+      data.meaning,
+      data.reason
+    );
+  };
+
   const updateAssignmentStatus = async (
     assignment: TrainingAssignment,
     status: string
@@ -374,11 +502,18 @@ export default function TrainingManagementPage() {
     }
 
     if (status === "completed") {
+      if (assignment.acknowledgement_required && !assignment.signature_id) {
+        setPendingSignatureAssignment(assignment);
+        setShowTrainingSignature(true);
+        return;
+      }
+
       payload.completed_at = new Date().toISOString();
       payload.completed_by = userEmail;
 
       if (assignment.acknowledgement_required) {
         payload.acknowledged_at = new Date().toISOString();
+        payload.acknowledged_by = userEmail;
       }
 
       if (assignment.effectiveness_required) {
@@ -601,6 +736,8 @@ export default function TrainingManagementPage() {
         <KpiCard title="Open Training" value={metrics.open} color="#d97706" />
         <KpiCard title="Overdue" value={metrics.overdue} color="#dc2626" />
         <KpiCard title="Completed" value={metrics.completed} color="#15803d" />
+        <KpiCard title="Training Signatures" value={metrics.trainingSignatures} color="#7c3aed" />
+        <KpiCard title="Awaiting Signature" value={metrics.awaitingSignature} color="#d97706" />
         <KpiCard
           title="Completion Rate"
           value={metrics.completionRate}
@@ -982,6 +1119,38 @@ export default function TrainingManagementPage() {
       </section>
 
       <section style={cardStyle}>
+        <h2 style={{ marginTop: 0 }}>Electronic Training Signatures</h2>
+        {signatures.length === 0 ? (
+          <p style={subtleText}>No electronic training signatures recorded yet.</p>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table style={tableStyle}>
+              <thead>
+                <tr>
+                  <th style={thStyle}>Signed By</th>
+                  <th style={thStyle}>Role</th>
+                  <th style={thStyle}>Meaning</th>
+                  <th style={thStyle}>Reason</th>
+                  <th style={thStyle}>Signed At</th>
+                </tr>
+              </thead>
+              <tbody>
+                {signatures.slice(0, 20).map((signature) => (
+                  <tr key={signature.id}>
+                    <td style={tdStyle}>{signature.signed_by}</td>
+                    <td style={tdStyle}>{signature.signer_role || "N/A"}</td>
+                    <td style={tdStyle}>{signature.signature_meaning}</td>
+                    <td style={tdStyle}>{signature.signature_reason || "N/A"}</td>
+                    <td style={tdStyle}>{formatDateTime(signature.signed_at)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      <section style={cardStyle}>
         <h2 style={{ marginTop: 0 }}>Training Assignments</h2>
 
         <div style={filterRowStyle}>
@@ -1013,17 +1182,23 @@ export default function TrainingManagementPage() {
             <thead>
               <tr>
                 <th style={thStyle}>Training</th>
+                <th style={thStyle}>Document</th>
                 <th style={thStyle}>Assigned To</th>
                 <th style={thStyle}>Due Date</th>
                 <th style={thStyle}>Status</th>
                 <th style={thStyle}>Effectiveness</th>
                 <th style={thStyle}>Supervisor</th>
+                <th style={thStyle}>Signature</th>
                 <th style={thStyle}>Actions</th>
               </tr>
             </thead>
 
             <tbody>
-              {filteredAssignments.map((assignment) => (
+              {filteredAssignments.map((assignment) => {
+                const linkedDocument = getDocumentForAssignment(assignment);
+                const signature = getSignatureForAssignment(assignment);
+
+                return (
                 <tr key={assignment.id}>
                   <td style={tdStyle}>
                     <strong>
@@ -1035,6 +1210,24 @@ export default function TrainingManagementPage() {
                     <div style={smallTextStyle}>
                       Source: {assignment.assignment_source || "N/A"}
                     </div>
+                  </td>
+
+                  <td style={tdStyle}>
+                    {linkedDocument ? (
+                      <>
+                        <strong>{linkedDocument.document_number} Rev {linkedDocument.revision}</strong>
+                        <div style={smallTextStyle}>{linkedDocument.title}</div>
+                        {linkedDocument.file_url ? (
+                          <a href={linkedDocument.file_url} target="_blank" rel="noreferrer">
+                            Open Training Document
+                          </a>
+                        ) : (
+                          <div style={smallTextStyle}>No document file attached</div>
+                        )}
+                      </>
+                    ) : (
+                      "No linked document"
+                    )}
                   </td>
 
                   <td style={tdStyle}>{assignment.assigned_to_email}</td>
@@ -1064,6 +1257,24 @@ export default function TrainingManagementPage() {
                   </td>
 
                   <td style={tdStyle}>
+                    {signature ? (
+                      <>
+                        <StatusBadge status="completed" />
+                        <div style={smallTextStyle}>
+                          {signature.signed_by}
+                        </div>
+                        <div style={smallTextStyle}>
+                          {formatDateTime(signature.signed_at)}
+                        </div>
+                      </>
+                    ) : assignment.acknowledgement_required ? (
+                      <span style={warningTextStyle}>Signature required</span>
+                    ) : (
+                      "Not required"
+                    )}
+                  </td>
+
+                  <td style={tdStyle}>
                     <div style={actionStackStyle}>
                       {assignment.status === "assigned" ? (
                         <button
@@ -1079,11 +1290,18 @@ export default function TrainingManagementPage() {
                       assignment.status !== "waived" &&
                       assignment.assigned_to_email === userEmail ? (
                         <button
-                          onClick={() =>
-                            updateAssignmentStatus(assignment, "completed")
-                          }
+                          onClick={() => {
+                            if (assignment.acknowledgement_required) {
+                              setPendingSignatureAssignment(assignment);
+                              setShowTrainingSignature(true);
+                            } else {
+                              updateAssignmentStatus(assignment, "completed");
+                            }
+                          }}
                         >
-                          Complete / Acknowledge
+                          {assignment.acknowledgement_required
+                            ? "Electronic Signature Required"
+                            : "Complete Training"}
                         </button>
                       ) : null}
 
@@ -1142,11 +1360,23 @@ export default function TrainingManagementPage() {
                     </div>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
       </section>
+
+      <ESignatureModal
+        open={showTrainingSignature}
+        title="Training Acknowledgement Signature"
+        actionLabel="Sign & Complete Training"
+        onSubmit={handleTrainingSignatureSubmit}
+        onClose={() => {
+          setShowTrainingSignature(false);
+          setPendingSignatureAssignment(null);
+        }}
+      />
     </main>
   );
 }
@@ -1186,6 +1416,16 @@ function KpiCard({
       </div>
     </div>
   );
+}
+
+function formatDateTime(value: string | null | undefined) {
+  if (!value) return "N/A";
+
+  try {
+    return new Date(value).toLocaleString();
+  } catch {
+    return value;
+  }
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -1370,3 +1610,4 @@ const smallTextStyle: React.CSSProperties = {
   fontSize: "12px",
   color: "#6b7280",
 };
+const warningTextStyle: React.CSSProperties = { color: "#b45309", fontWeight: 700 };
