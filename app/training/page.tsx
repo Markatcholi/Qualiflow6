@@ -319,6 +319,78 @@ export default function TrainingManagementPage() {
     };
   }, [assignments, matrixRows, signatures, today]);
 
+
+  const myTrainingMetrics = useMemo(() => {
+    const mine = assignments.filter(
+      (a) => normalizeEmail(a.assigned_to_email) === normalizeEmail(userEmail)
+    );
+
+    return {
+      open: mine.filter(
+        (a) => a.status !== "completed" && a.status !== "waived"
+      ).length,
+      overdue: mine.filter(
+        (a) =>
+          a.status !== "completed" &&
+          a.status !== "waived" &&
+          a.due_date &&
+          a.due_date < today
+      ).length,
+      awaitingSignature: mine.filter(
+        (a) =>
+          a.acknowledgement_required &&
+          !a.signature_id &&
+          a.status !== "completed" &&
+          a.status !== "waived"
+      ).length,
+    };
+  }, [assignments, userEmail, today]);
+
+  const documentCompliance = useMemo(() => {
+    return documents
+      .map((doc) => {
+        const docAssignments = assignments.filter(
+          (assignment) => assignment.document_id === doc.id
+        );
+
+        const assigned = docAssignments.length;
+        const completed = docAssignments.filter(
+          (assignment) => assignment.status === "completed"
+        ).length;
+        const overdue = docAssignments.filter(
+          (assignment) =>
+            assignment.status !== "completed" &&
+            assignment.status !== "waived" &&
+            assignment.due_date &&
+            assignment.due_date < today
+        ).length;
+        const awaitingSignature = docAssignments.filter(
+          (assignment) =>
+            assignment.acknowledgement_required &&
+            !assignment.signature_id &&
+            assignment.status !== "completed" &&
+            assignment.status !== "waived"
+        ).length;
+
+        return {
+          id: doc.id,
+          documentNumber: doc.document_number,
+          title: doc.title,
+          revision: doc.revision,
+          assigned,
+          completed,
+          open: docAssignments.filter(
+            (assignment) =>
+              assignment.status !== "completed" && assignment.status !== "waived"
+          ).length,
+          overdue,
+          awaitingSignature,
+          compliance: assigned === 0 ? 100 : Math.round((completed / assigned) * 100),
+        };
+      })
+      .filter((row) => row.assigned > 0);
+  }, [documents, assignments, today]);
+
   const createAssignment = async () => {
     if (!normalizeEmail(newAssignment.assigned_to_email)) {
       alert("Assigned-to email is required.");
@@ -730,122 +802,306 @@ export default function TrainingManagementPage() {
 
       
       <section style={cardStyle}>
-        <h2 style={{ marginTop: 0 }}>Employee Profiles</h2>
-
+        <h2 style={{ marginTop: 0 }}>My Training Queue</h2>
         <p style={subtleText}>
-          Employee profiles are used for automatic training assignment from the training matrix.
+          Your open training, overdue training, and training assignments awaiting electronic signature.
         </p>
 
-        <div style={gridStyle}>
-          <Field label="Employee Email">
-            <input
-              value={newEmployee.user_email}
-              onChange={(e) =>
-                setNewEmployee({
-                  ...newEmployee,
-                  user_email: e.target.value,
-                })
-              }
-              style={inputStyle}
-            />
-          </Field>
-
-          <Field label="Full Name">
-            <input
-              value={newEmployee.full_name}
-              onChange={(e) =>
-                setNewEmployee({
-                  ...newEmployee,
-                  full_name: e.target.value,
-                })
-              }
-              style={inputStyle}
-            />
-          </Field>
-
-          <Field label="Role">
-            <input
-              value={newEmployee.role_name}
-              onChange={(e) =>
-                setNewEmployee({
-                  ...newEmployee,
-                  role_name: e.target.value,
-                })
-              }
-              style={inputStyle}
-            />
-          </Field>
-
-          <Field label="Department">
-            <input
-              value={newEmployee.department}
-              onChange={(e) =>
-                setNewEmployee({
-                  ...newEmployee,
-                  department: e.target.value,
-                })
-              }
-              style={inputStyle}
-            />
-          </Field>
-
-          <Field label="Manager Email">
-            <input
-              value={newEmployee.manager_email}
-              onChange={(e) =>
-                setNewEmployee({
-                  ...newEmployee,
-                  manager_email: e.target.value,
-                })
-              }
-              style={inputStyle}
-            />
-          </Field>
+        <div style={kpiGridStyle}>
+          <KpiCard
+            title="Awaiting My Signature"
+            value={myTrainingMetrics.awaitingSignature}
+            color="#d97706"
+          />
+          <KpiCard
+            title="My Open Training"
+            value={myTrainingMetrics.open}
+            color="#2563eb"
+          />
+          <KpiCard
+            title="My Overdue"
+            value={myTrainingMetrics.overdue}
+            color="#dc2626"
+          />
         </div>
 
         <button
-          onClick={createEmployeeProfile}
           style={primaryButtonStyle}
+          onClick={() => {
+            setFilterMine(true);
+            setFilterStatus("all");
+          }}
         >
-          Add / Update Employee
+          Open My Training
         </button>
-
-        <ul>
-          {employees.map((employee) => (
-            <li key={employee.id}>
-              {employee.user_email} —{" "}
-              {employee.role_name || "No Role"} —{" "}
-              {employee.department || "No Department"}
-            </li>
-          ))}
-        </ul>
       </section>
 
       <section style={cardStyle}>
-        <h2 style={{ marginTop: 0 }}>
-          Auto-Assign Training From Effective Documents
-        </h2>
-
+        <h2 style={{ marginTop: 0 }}>Document Training Compliance</h2>
         <p style={subtleText}>
-          This scans effective controlled documents, matches them to the training matrix,
-          finds matching employees, and automatically creates training assignments.
+          Training completion by controlled document. This view supports management review, audit readiness, and retraining follow-up.
         </p>
 
-        <button
-          onClick={autoAssignFromMatrix}
-          style={autoAssigning ? secondaryButtonStyle : primaryButtonStyle}
-        >
-          {autoAssigning ? "Auto-Assigning..." : "Run Auto-Assignment"}
-        </button>
-
-        {autoAssignResult ? (
-          <div style={{ marginTop: "12px" }}>
-            <strong>Results:</strong>
-            <div>Effective Documents: {autoAssignResult.effectiveDocuments}</div>
-            <div>Assignments Created: {autoAssignResult.created}</div>
-            <div>Duplicates Skipped: {autoAssignResult.skipped}</div>
+        {documentCompliance.length === 0 ? (
+          <p style={subtleText}>No document-linked training assignments available yet.</p>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table style={tableStyle}>
+              <thead>
+                <tr>
+                  <th style={thStyle}>Document</th>
+                  <th style={thStyle}>Assigned</th>
+                  <th style={thStyle}>Completed</th>
+                  <th style={thStyle}>Open</th>
+                  <th style={thStyle}>Overdue</th>
+                  <th style={thStyle}>Awaiting Signature</th>
+                  <th style={thStyle}>Compliance</th>
+                </tr>
+              </thead>
+              <tbody>
+                {documentCompliance.map((row) => (
+                  <tr key={row.id}>
+                    <td style={tdStyle}>
+                      <strong>
+                        {row.documentNumber} Rev {row.revision}
+                      </strong>
+                      <div style={smallTextStyle}>{row.title}</div>
+                    </td>
+                    <td style={tdStyle}>{row.assigned}</td>
+                    <td style={tdStyle}>{row.completed}</td>
+                    <td style={tdStyle}>{row.open}</td>
+                    <td style={tdStyle}>{row.overdue}</td>
+                    <td style={tdStyle}>{row.awaitingSignature}</td>
+                    <td style={tdStyle}>
+                      <ComplianceBadge value={row.compliance} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-        ) : null}
+        )}
+      </section>
+
+      <section style={cardStyle}>
+        <h2 style={{ marginTop: 0 }}>Training Assignments</h2>
+
+        <div style={filterRowStyle}>
+          <select
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value)}
+            style={inputStyle}
+          >
+            <option value="all">All Statuses</option>
+            {TRAINING_STATUSES.map((status) => (
+              <option key={status} value={status}>
+                {status}
+              </option>
+            ))}
+          </select>
+
+          <label>
+            <input
+              type="checkbox"
+              checked={filterMine}
+              onChange={(e) => setFilterMine(e.target.checked)}
+            />{" "}
+            My Training Only
+          </label>
+        </div>
+
+        <div style={{ overflowX: "auto" }}>
+          <table style={tableStyle}>
+            <thead>
+              <tr>
+                <th style={thStyle}>Training</th>
+                <th style={thStyle}>Document</th>
+                <th style={thStyle}>Assigned To</th>
+                <th style={thStyle}>Due Date</th>
+                <th style={thStyle}>Status</th>
+                <th style={thStyle}>Effectiveness</th>
+                <th style={thStyle}>Supervisor</th>
+                <th style={thStyle}>Signature</th>
+                <th style={thStyle}>Actions</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {filteredAssignments.map((assignment) => {
+                const linkedDocument = getDocumentForAssignment(assignment);
+                const signature = getSignatureForAssignment(assignment);
+
+                return (
+                <tr key={assignment.id}>
+                  <td style={tdStyle}>
+                    <strong>
+                      {assignment.training_title || "Untitled Training"}
+                    </strong>
+                    <div style={smallTextStyle}>
+                      {assignment.training_description || "No description"}
+                    </div>
+                    <div style={smallTextStyle}>
+                      Source: {assignment.assignment_source || "N/A"}
+                    </div>
+                  </td>
+
+                  <td style={tdStyle}>
+                    {linkedDocument ? (
+                      <>
+                        <strong>{linkedDocument.document_number} Rev {linkedDocument.revision}</strong>
+                        <div style={smallTextStyle}>{linkedDocument.title}</div>
+                        {linkedDocument.file_url ? (
+                          <a href={linkedDocument.file_url} target="_blank" rel="noreferrer">
+                            Open Training Document
+                          </a>
+                        ) : (
+                          <div style={smallTextStyle}>No document file attached</div>
+                        )}
+                      </>
+                    ) : (
+                      "No linked document"
+                    )}
+                  </td>
+
+                  <td style={tdStyle}>{assignment.assigned_to_email}</td>
+                  <td style={tdStyle}>{assignment.due_date || "N/A"}</td>
+                  <td style={tdStyle}>
+                    <StatusBadge
+                      status={
+                        assignment.status !== "completed" &&
+                        assignment.due_date &&
+                        assignment.due_date < today
+                          ? "overdue"
+                          : assignment.status || "assigned"
+                      }
+                    />
+                  </td>
+                  <td style={tdStyle}>
+                    {assignment.effectiveness_required
+                      ? assignment.effectiveness_status || "pending"
+                      : "Not required"}
+                  </td>
+                  <td style={tdStyle}>
+                    {assignment.supervisor_verification_required
+                      ? assignment.supervisor_verified_at
+                        ? "Verified"
+                        : "Required"
+                      : "Not required"}
+                  </td>
+
+                  <td style={tdStyle}>
+                    {signature ? (
+                      <>
+                        <StatusBadge status="completed" />
+                        <div style={smallTextStyle}>
+                          {signature.signed_by}
+                        </div>
+                        <div style={smallTextStyle}>
+                          {formatDateTime(signature.signed_at)}
+                        </div>
+                      </>
+                    ) : assignment.acknowledgement_required ? (
+                      <span style={warningTextStyle}>Signature required</span>
+                    ) : (
+                      "Not required"
+                    )}
+                  </td>
+
+                  <td style={tdStyle}>
+                    <div style={actionStackStyle}>
+                      <a href={`/training/${assignment.id}`} style={darkButtonStyle}>
+                        Open Training Record
+                      </a>
+
+                      {assignment.status === "assigned" ? (
+                        <button
+                          onClick={() =>
+                            updateAssignmentStatus(assignment, "in_progress")
+                          }
+                        >
+                          Start
+                        </button>
+                      ) : null}
+
+                      {assignment.status !== "completed" &&
+                      assignment.status !== "waived" &&
+                      (assignment.assigned_to_email === userEmail || canManage) ? (
+                        <button
+                          onClick={() => {
+                            if (assignment.acknowledgement_required) {
+                              setPendingSignatureAssignment(assignment);
+                              setShowTrainingSignature(true);
+                            } else {
+                              updateAssignmentStatus(assignment, "completed");
+                            }
+                          }}
+                        >
+                          {assignment.acknowledgement_required
+                            ? "Electronic Signature Required"
+                            : "Complete Training"}
+                        </button>
+                      ) : null}
+
+                      {canManage &&
+                      assignment.supervisor_verification_required ? (
+                        <button onClick={() => verifySupervisor(assignment)}>
+                          Supervisor Verify
+                        </button>
+                      ) : null}
+
+                      {canManage && assignment.effectiveness_required ? (
+                        <details>
+                          <summary>Effectiveness Check</summary>
+                          <input
+                            placeholder="Method"
+                            value={effectivenessMethod}
+                            onChange={(e) =>
+                              setEffectivenessMethod(e.target.value)
+                            }
+                            style={inputStyle}
+                          />
+                          <input
+                            placeholder="Result"
+                            value={effectivenessResult}
+                            onChange={(e) =>
+                              setEffectivenessResult(e.target.value)
+                            }
+                            style={inputStyle}
+                          />
+                          <textarea
+                            placeholder="Comments"
+                            value={effectivenessComments}
+                            onChange={(e) =>
+                              setEffectivenessComments(e.target.value)
+                            }
+                            rows={3}
+                            style={textareaStyle}
+                          />
+                          <button
+                            onClick={() => completeEffectiveness(assignment)}
+                          >
+                            Complete Effectiveness
+                          </button>
+                        </details>
+                      ) : null}
+
+                      {canManage && assignment.status !== "completed" ? (
+                        <button
+                          onClick={() =>
+                            updateAssignmentStatus(assignment, "waived")
+                          }
+                        >
+                          Waive
+                        </button>
+                      ) : null}
+                    </div>
+                  </td>
+                </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </section>
 
 <section style={cardStyle}>
@@ -1095,9 +1351,128 @@ export default function TrainingManagementPage() {
       </section>
 
       <section style={cardStyle}>
-        <h2 style={{ marginTop: 0 }}>Electronic Training Signatures</h2>
+        <h2 style={{ marginTop: 0 }}>Employee Profiles</h2>
+
+        <p style={subtleText}>
+          Employee profiles are used for automatic training assignment from the training matrix.
+        </p>
+
+        <div style={gridStyle}>
+          <Field label="Employee Email">
+            <input
+              value={newEmployee.user_email}
+              onChange={(e) =>
+                setNewEmployee({
+                  ...newEmployee,
+                  user_email: e.target.value,
+                })
+              }
+              style={inputStyle}
+            />
+          </Field>
+
+          <Field label="Full Name">
+            <input
+              value={newEmployee.full_name}
+              onChange={(e) =>
+                setNewEmployee({
+                  ...newEmployee,
+                  full_name: e.target.value,
+                })
+              }
+              style={inputStyle}
+            />
+          </Field>
+
+          <Field label="Role">
+            <input
+              value={newEmployee.role_name}
+              onChange={(e) =>
+                setNewEmployee({
+                  ...newEmployee,
+                  role_name: e.target.value,
+                })
+              }
+              style={inputStyle}
+            />
+          </Field>
+
+          <Field label="Department">
+            <input
+              value={newEmployee.department}
+              onChange={(e) =>
+                setNewEmployee({
+                  ...newEmployee,
+                  department: e.target.value,
+                })
+              }
+              style={inputStyle}
+            />
+          </Field>
+
+          <Field label="Manager Email">
+            <input
+              value={newEmployee.manager_email}
+              onChange={(e) =>
+                setNewEmployee({
+                  ...newEmployee,
+                  manager_email: e.target.value,
+                })
+              }
+              style={inputStyle}
+            />
+          </Field>
+        </div>
+
+        <button
+          onClick={createEmployeeProfile}
+          style={primaryButtonStyle}
+        >
+          Add / Update Employee
+        </button>
+
+        <ul>
+          {employees.map((employee) => (
+            <li key={employee.id}>
+              {employee.user_email} —{" "}
+              {employee.role_name || "No Role"} —{" "}
+              {employee.department || "No Department"}
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <section style={cardStyle}>
+        <h2 style={{ marginTop: 0 }}>
+          Auto-Assign Training From Effective Documents
+        </h2>
+
+        <p style={subtleText}>
+          This scans effective controlled documents, matches them to the training matrix,
+          finds matching employees, and automatically creates training assignments.
+        </p>
+
+        <button
+          onClick={autoAssignFromMatrix}
+          style={autoAssigning ? secondaryButtonStyle : primaryButtonStyle}
+        >
+          {autoAssigning ? "Auto-Assigning..." : "Run Auto-Assignment"}
+        </button>
+
+        {autoAssignResult ? (
+          <div style={{ marginTop: "12px" }}>
+            <strong>Results:</strong>
+            <div>Effective Documents: {autoAssignResult.effectiveDocuments}</div>
+            <div>Assignments Created: {autoAssignResult.created}</div>
+            <div>Duplicates Skipped: {autoAssignResult.skipped}</div>
+          </div>
+        ) : null}
+      </section>
+
+      <section style={cardStyle}>
+        <h2 style={{ marginTop: 0 }}>Electronic Signature Records</h2>
         {signatures.length === 0 ? (
-          <p style={subtleText}>No electronic training signatures recorded yet.</p>
+          <p style={subtleText}>No electronic signature records found yet.</p>
         ) : (
           <div style={{ overflowX: "auto" }}>
             <table style={tableStyle}>
@@ -1124,227 +1499,6 @@ export default function TrainingManagementPage() {
             </table>
           </div>
         )}
-      </section>
-
-      <section style={cardStyle}>
-        <h2 style={{ marginTop: 0 }}>Training Assignments</h2>
-
-        <div style={filterRowStyle}>
-          <select
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-            style={inputStyle}
-          >
-            <option value="all">All Statuses</option>
-            {TRAINING_STATUSES.map((status) => (
-              <option key={status} value={status}>
-                {status}
-              </option>
-            ))}
-          </select>
-
-          <label>
-            <input
-              type="checkbox"
-              checked={filterMine}
-              onChange={(e) => setFilterMine(e.target.checked)}
-            />{" "}
-            My Training Only
-          </label>
-        </div>
-
-        <div style={{ overflowX: "auto" }}>
-          <table style={tableStyle}>
-            <thead>
-              <tr>
-                <th style={thStyle}>Training</th>
-                <th style={thStyle}>Document</th>
-                <th style={thStyle}>Assigned To</th>
-                <th style={thStyle}>Due Date</th>
-                <th style={thStyle}>Status</th>
-                <th style={thStyle}>Effectiveness</th>
-                <th style={thStyle}>Supervisor</th>
-                <th style={thStyle}>Signature</th>
-                <th style={thStyle}>Actions</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {filteredAssignments.map((assignment) => {
-                const linkedDocument = getDocumentForAssignment(assignment);
-                const signature = getSignatureForAssignment(assignment);
-
-                return (
-                <tr key={assignment.id}>
-                  <td style={tdStyle}>
-                    <strong>
-                      {assignment.training_title || "Untitled Training"}
-                    </strong>
-                    <div style={smallTextStyle}>
-                      {assignment.training_description || "No description"}
-                    </div>
-                    <div style={smallTextStyle}>
-                      Source: {assignment.assignment_source || "N/A"}
-                    </div>
-                  </td>
-
-                  <td style={tdStyle}>
-                    {linkedDocument ? (
-                      <>
-                        <strong>{linkedDocument.document_number} Rev {linkedDocument.revision}</strong>
-                        <div style={smallTextStyle}>{linkedDocument.title}</div>
-                        {linkedDocument.file_url ? (
-                          <a href={linkedDocument.file_url} target="_blank" rel="noreferrer">
-                            Open Training Document
-                          </a>
-                        ) : (
-                          <div style={smallTextStyle}>No document file attached</div>
-                        )}
-                      </>
-                    ) : (
-                      "No linked document"
-                    )}
-                  </td>
-
-                  <td style={tdStyle}>{assignment.assigned_to_email}</td>
-                  <td style={tdStyle}>{assignment.due_date || "N/A"}</td>
-                  <td style={tdStyle}>
-                    <StatusBadge
-                      status={
-                        assignment.status !== "completed" &&
-                        assignment.due_date &&
-                        assignment.due_date < today
-                          ? "overdue"
-                          : assignment.status || "assigned"
-                      }
-                    />
-                  </td>
-                  <td style={tdStyle}>
-                    {assignment.effectiveness_required
-                      ? assignment.effectiveness_status || "pending"
-                      : "Not required"}
-                  </td>
-                  <td style={tdStyle}>
-                    {assignment.supervisor_verification_required
-                      ? assignment.supervisor_verified_at
-                        ? "Verified"
-                        : "Required"
-                      : "Not required"}
-                  </td>
-
-                  <td style={tdStyle}>
-                    {signature ? (
-                      <>
-                        <StatusBadge status="completed" />
-                        <div style={smallTextStyle}>
-                          {signature.signed_by}
-                        </div>
-                        <div style={smallTextStyle}>
-                          {formatDateTime(signature.signed_at)}
-                        </div>
-                      </>
-                    ) : assignment.acknowledgement_required ? (
-                      <span style={warningTextStyle}>Signature required</span>
-                    ) : (
-                      "Not required"
-                    )}
-                  </td>
-
-                  <td style={tdStyle}>
-                    <div style={actionStackStyle}>
-                      <a href={`/training/${assignment.id}`} style={darkButtonStyle}>
-                        Open Training Record
-                      </a>
-
-                      {assignment.status === "assigned" ? (
-                        <button
-                          onClick={() =>
-                            updateAssignmentStatus(assignment, "in_progress")
-                          }
-                        >
-                          Start
-                        </button>
-                      ) : null}
-
-                      {assignment.status !== "completed" &&
-                      assignment.status !== "waived" &&
-                      (assignment.assigned_to_email === userEmail || canManage) ? (
-                        <button
-                          onClick={() => {
-                            if (assignment.acknowledgement_required) {
-                              setPendingSignatureAssignment(assignment);
-                              setShowTrainingSignature(true);
-                            } else {
-                              updateAssignmentStatus(assignment, "completed");
-                            }
-                          }}
-                        >
-                          {assignment.acknowledgement_required
-                            ? "Electronic Signature Required"
-                            : "Complete Training"}
-                        </button>
-                      ) : null}
-
-                      {canManage &&
-                      assignment.supervisor_verification_required ? (
-                        <button onClick={() => verifySupervisor(assignment)}>
-                          Supervisor Verify
-                        </button>
-                      ) : null}
-
-                      {canManage && assignment.effectiveness_required ? (
-                        <details>
-                          <summary>Effectiveness Check</summary>
-                          <input
-                            placeholder="Method"
-                            value={effectivenessMethod}
-                            onChange={(e) =>
-                              setEffectivenessMethod(e.target.value)
-                            }
-                            style={inputStyle}
-                          />
-                          <input
-                            placeholder="Result"
-                            value={effectivenessResult}
-                            onChange={(e) =>
-                              setEffectivenessResult(e.target.value)
-                            }
-                            style={inputStyle}
-                          />
-                          <textarea
-                            placeholder="Comments"
-                            value={effectivenessComments}
-                            onChange={(e) =>
-                              setEffectivenessComments(e.target.value)
-                            }
-                            rows={3}
-                            style={textareaStyle}
-                          />
-                          <button
-                            onClick={() => completeEffectiveness(assignment)}
-                          >
-                            Complete Effectiveness
-                          </button>
-                        </details>
-                      ) : null}
-
-                      {canManage && assignment.status !== "completed" ? (
-                        <button
-                          onClick={() =>
-                            updateAssignmentStatus(assignment, "waived")
-                          }
-                        >
-                          Waive
-                        </button>
-                      ) : null}
-                    </div>
-                  </td>
-                </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
       </section>
 
       <ESignatureModal
@@ -1406,6 +1560,25 @@ function formatDateTime(value: string | null | undefined) {
   } catch {
     return value;
   }
+}
+
+function ComplianceBadge({ value }: { value: number }) {
+  const color = value >= 95 ? "#15803d" : value >= 80 ? "#d97706" : "#dc2626";
+
+  return (
+    <span
+      style={{
+        background: color,
+        color: "white",
+        borderRadius: "999px",
+        padding: "3px 8px",
+        fontSize: "12px",
+        fontWeight: 700,
+      }}
+    >
+      {value}%
+    </span>
+  );
 }
 
 function StatusBadge({ status }: { status: string }) {
