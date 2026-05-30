@@ -296,10 +296,10 @@ export default function DocumentWorkflowPage() {
         .eq("document_id", documentId)
         .order("acknowledged_at", { ascending: false }),
       supabase
-        .from("document_training_assignments")
+        .from("training_assignments")
         .select("*")
         .eq("document_id", documentId)
-        .order("assigned_at", { ascending: false }),
+        .order("created_at", { ascending: false }),
       supabase
         .from("document_collaboration_reviews")
         .select("*")
@@ -1089,16 +1089,24 @@ export default function DocumentWorkflowPage() {
 
     const rows = emails.map((email) => ({
       document_id: doc.id,
-      user_email: email,
+      assigned_to_email: email,
+      assigned_by_email: userEmail || "unknown",
+      assignment_source: "document_workflow",
+      role_name: null,
+      department: null,
+      training_title: `${doc.document_number} Rev ${doc.revision} Training`,
+      training_description: `Training assigned from Document Control for ${doc.document_number} Rev ${doc.revision}.`,
+      due_date: null,
       status: "assigned",
-      assigned_by: userEmail || "unknown",
-      document_file_name: doc.file_name,
-      document_file_url: doc.file_url,
+      effectiveness_required: false,
+      effectiveness_status: "not_required",
+      supervisor_verification_required: false,
+      acknowledgement_required: true,
     }));
 
     const { error } = await supabase
-      .from("document_training_assignments")
-      .upsert(rows, { onConflict: "document_id,user_email" });
+      .from("training_assignments")
+      .insert(rows);
 
     if (error) {
       alert(error.message);
@@ -1112,44 +1120,6 @@ export default function DocumentWorkflowPage() {
     });
 
     setTrainingEmails({ ...trainingEmails, [doc.id]: "" });
-    fetchData();
-  };
-
-  const completeTraining = async (assignment: any) => {
-    const trainingDocUrl = assignment.document_file_url || doc?.file_url;
-
-    if (!trainingDocUrl) {
-      alert("Training cannot be completed because no document is attached to the training record.");
-      return;
-    }
-
-    if (normalizeEmail(assignment.user_email) !== normalizeEmail(userEmail) && !canManage) {
-      alert("Only the assigned trainee or training administrator can complete this training.");
-      return;
-    }
-
-    const { error } = await supabase
-      .from("document_training_assignments")
-      .update({
-        status: "completed",
-        completed_at: new Date().toISOString(),
-        completed_by: userEmail,
-        document_file_name: assignment.document_file_name || doc?.file_name || null,
-        document_file_url: trainingDocUrl,
-      })
-      .eq("id", assignment.id);
-
-    if (error) {
-      alert(error.message);
-      return;
-    }
-
-    await logWorkflowEvent({
-      eventType: "training_completed",
-      comments: `Training completed by ${userEmail}.`,
-      metadata: { assignment_id: assignment.id, document_file_url: trainingDocUrl },
-    });
-
     fetchData();
   };
 
@@ -1883,33 +1853,44 @@ export default function DocumentWorkflowPage() {
         ) : (
           <div style={{ display: "grid", gap: "10px" }}>
             {trainingAssignments.map((item) => {
-              const trainingDocUrl = item.document_file_url || doc.file_url;
-              const canComplete =
-                normalizeEmail(item.user_email) === normalizeEmail(userEmail) || canManage;
+              const assignedEmail = item.assigned_to_email || item.user_email || "Unknown trainee";
+              const status = item.status || "assigned";
+              const signatureCollected = Boolean(item.signature_id || item.acknowledged_at);
+              const isComplete = status === "completed" || status === "effectiveness_complete";
 
               return (
                 <div key={item.id} style={trainingCardStyle}>
-                  <strong>{item.user_email}</strong>
-                  <div style={smallTextStyle}>Status: {item.status}</div>
+                  <div style={rowBetweenStyle}>
+                    <div>
+                      <strong>{assignedEmail}</strong>
+                      <div style={smallTextStyle}>Status: {status}</div>
+                      <div style={smallTextStyle}>
+                        Signature: {signatureCollected ? "Collected" : item.acknowledgement_required === false ? "Not required" : "Required"}
+                      </div>
+                      {item.completed_at ? (
+                        <div style={smallTextStyle}>Completed: {formatDateTime(item.completed_at)}</div>
+                      ) : null}
+                    </div>
 
-                  {trainingDocUrl ? (
                     <div style={buttonRowStyle}>
-                      <a href={trainingDocUrl} target="_blank" rel="noreferrer" style={primaryLinkStyle}>
-                        Open Training Document
+                      {doc.file_url ? (
+                        <a href={doc.file_url} target="_blank" rel="noreferrer" style={primaryLinkStyle}>
+                          Open Training Document
+                        </a>
+                      ) : (
+                        <span style={warningStyle}>No document attached.</span>
+                      )}
+
+                      <a href={`/training/${item.id}`} style={darkButtonStyle}>
+                        Open Training Record
                       </a>
                     </div>
-                  ) : (
-                    <p style={warningStyle}>No document attached to this training assignment.</p>
-                  )}
+                  </div>
 
-                  {item.status !== "completed" && canComplete ? (
-                    <button
-                      disabled={busy || !trainingDocUrl}
-                      onClick={() => completeTraining(item)}
-                      style={primaryButtonStyle}
-                    >
-                      Complete Training
-                    </button>
+                  {!isComplete && item.acknowledgement_required !== false ? (
+                    <div style={noticeStyle}>
+                      Training completion requires electronic acknowledgement on the Training Record page.
+                    </div>
                   ) : null}
                 </div>
               );
