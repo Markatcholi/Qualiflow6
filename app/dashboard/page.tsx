@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
+import { isOverdue } from "../../lib/documentWorkflowEngine";
 
 import ExecutiveSummarySection from "./components/ExecutiveSummarySection";
 import NotificationPanelSection from "./components/NotificationPanelSection";
@@ -16,6 +17,9 @@ import QuickActionsSection from "./components/QuickActionsSection";
 import CapaGovernanceQueueSection from "./components/CapaGovernanceQueueSection";
 import ScarGovernanceQueueSection from "./components/ScarGovernanceQueueSection";
 import AuditEscalationQueueSection from "./components/AuditEscalationQueueSection";
+import DocumentWorkflowSection from "./components/DocumentWorkflowSection";
+import TrainingComplianceSection from "./components/TrainingComplianceSection";
+import WorkflowEscalationSection from "./components/WorkflowEscalationSection";
 
 import {
   TrendItem,
@@ -92,6 +96,24 @@ export default function DashboardPage() {
   const [scarGovernanceQueue, setScarGovernanceQueue] = useState<any[]>([]);
   const [auditEscalationQueue, setAuditEscalationQueue] = useState<any[]>([]);
 
+  const [documentsInCollaboration, setDocumentsInCollaboration] = useState(0);
+  const [documentsInFormalReview, setDocumentsInFormalReview] = useState(0);
+  const [documentsAwaitingRelease, setDocumentsAwaitingRelease] = useState(0);
+  const [effectiveDocuments, setEffectiveDocuments] = useState(0);
+  const [overdueDocumentReviews, setOverdueDocumentReviews] = useState(0);
+  const [workflowSlaCompliance, setWorkflowSlaCompliance] = useState("100.0");
+
+  const [trainingAssigned, setTrainingAssigned] = useState(0);
+  const [trainingCompleted, setTrainingCompleted] = useState(0);
+  const [trainingOverdue, setTrainingOverdue] = useState(0);
+  const [trainingComplianceRate, setTrainingComplianceRate] = useState("100.0");
+
+  const [openWorkflowReviews, setOpenWorkflowReviews] = useState(0);
+  const [overdueWorkflowReviews, setOverdueWorkflowReviews] = useState(0);
+  const [criticalWorkflowNotifications, setCriticalWorkflowNotifications] = useState(0);
+  const [workflowEventCount, setWorkflowEventCount] = useState(0);
+  const [workflowEscalationQueue, setWorkflowEscalationQueue] = useState<any[]>([]);
+
   const getLast6Months = () => {
     const months: { key: string; label: string }[] = [];
     const now = new Date();
@@ -158,6 +180,122 @@ export default function DashboardPage() {
       .slice(0, 5);
 
     setTopSuppliers(sorted);
+  };
+
+
+  const fetchDocumentWorkflowMetrics = async () => {
+    const [
+      documentRes,
+      reviewerRes,
+      trainingRes,
+      notificationRes,
+      workflowEventRes,
+    ] = await Promise.all([
+      supabase
+        .from("controlled_documents")
+        .select("id, document_number, revision, status"),
+      supabase
+        .from("document_assigned_reviewers")
+        .select("id, document_id, reviewer_email, reviewer_type, reviewer_role, due_date, review_status"),
+      supabase
+        .from("document_training_assignments")
+        .select("id, document_id, user_email, status, due_date"),
+      supabase
+        .from("notifications")
+        .select("id, severity, read_status, related_module"),
+      supabase
+        .from("document_workflow_events")
+        .select("id"),
+    ]);
+
+    const allDocuments = documentRes.error ? [] : documentRes.data || [];
+    const allReviewers = reviewerRes.error ? [] : reviewerRes.data || [];
+    const allTraining = trainingRes.error ? [] : trainingRes.data || [];
+    const allNotifications = notificationRes.error ? [] : notificationRes.data || [];
+    const allWorkflowEvents = workflowEventRes.error ? [] : workflowEventRes.data || [];
+
+    setDocumentsInCollaboration(
+      allDocuments.filter((doc: any) => doc.status === "collaboration").length
+    );
+    setDocumentsInFormalReview(
+      allDocuments.filter((doc: any) => doc.status === "formal_review").length
+    );
+    setDocumentsAwaitingRelease(
+      allDocuments.filter((doc: any) => doc.status === "approved").length
+    );
+    setEffectiveDocuments(
+      allDocuments.filter((doc: any) => doc.status === "effective").length
+    );
+
+    const openReviews = allReviewers.filter(
+      (reviewer: any) =>
+        reviewer.review_status !== "approved" &&
+        reviewer.review_status !== "rejected"
+    );
+
+    const overdueReviews = openReviews.filter((reviewer: any) =>
+      isOverdue(reviewer.due_date)
+    );
+
+    setOpenWorkflowReviews(openReviews.length);
+    setOverdueWorkflowReviews(overdueReviews.length);
+    setOverdueDocumentReviews(overdueReviews.length);
+
+    const workflowSla =
+      allReviewers.length > 0
+        ? (((allReviewers.length - overdueReviews.length) / allReviewers.length) * 100).toFixed(1)
+        : "100.0";
+
+    setWorkflowSlaCompliance(workflowSla);
+
+    const completedTraining = allTraining.filter(
+      (item: any) => item.status === "completed"
+    );
+
+    const overdueTrainingRecords = allTraining.filter(
+      (item: any) => item.status !== "completed" && isOverdue(item.due_date)
+    );
+
+    setTrainingAssigned(allTraining.length);
+    setTrainingCompleted(completedTraining.length);
+    setTrainingOverdue(overdueTrainingRecords.length);
+    setTrainingComplianceRate(
+      allTraining.length > 0
+        ? ((completedTraining.length / allTraining.length) * 100).toFixed(1)
+        : "100.0"
+    );
+
+    setCriticalWorkflowNotifications(
+      allNotifications.filter(
+        (item: any) =>
+          item.severity === "critical" &&
+          item.read_status !== true &&
+          (
+            item.related_module === "documents" ||
+            item.related_module === "training" ||
+            item.related_module === "workflow"
+          )
+      ).length
+    );
+
+    setWorkflowEventCount(allWorkflowEvents.length);
+
+    const documentMap: Record<string, any> = {};
+    allDocuments.forEach((doc: any) => {
+      documentMap[doc.id] = doc;
+    });
+
+    setWorkflowEscalationQueue(
+      overdueReviews.map((reviewer: any) => {
+        const linkedDocument = documentMap[reviewer.document_id] || {};
+
+        return {
+          ...reviewer,
+          document_number: linkedDocument.document_number || null,
+          revision: linkedDocument.revision || null,
+        };
+      })
+    );
   };
 
   const buildNotifications = (
@@ -617,6 +755,8 @@ export default function DashboardPage() {
       )
     );
 
+    await fetchDocumentWorkflowMetrics();
+
     buildNotifications(allNcmrs, allCapas, allScars, allOos, allAudits, allFindings);
   };
 
@@ -674,6 +814,18 @@ export default function DashboardPage() {
   return (
     <main style={{ padding: "24px", fontFamily: "Arial, sans-serif", background: "#f8fafc", minHeight: "100vh" }}>
       <div style={{ marginBottom: "22px" }}>
+        <div
+          style={{
+            fontSize: "12px",
+            fontWeight: 800,
+            letterSpacing: "0.08em",
+            color: "#6b7280",
+            marginBottom: "6px",
+          }}
+        >
+          QUALIFLOW ENTERPRISE
+        </div>
+
         <h1 style={{ marginBottom: "4px" }}>Executive Quality Dashboard</h1>
         <p style={{ margin: 0, color: "#4b5563" }}>
           NCMR, CAPA, SCAR, OOS/OOT, Audit, Supplier Quality, effectiveness, and executive risk overview
@@ -803,6 +955,30 @@ export default function DashboardPage() {
         openSupplierCapas={openSupplierCapas}
         openScars={openScars}
         topSuppliers={topSuppliers}
+      />
+
+      <DocumentWorkflowSection
+        documentsInCollaboration={documentsInCollaboration}
+        documentsInFormalReview={documentsInFormalReview}
+        documentsAwaitingRelease={documentsAwaitingRelease}
+        effectiveDocuments={effectiveDocuments}
+        overdueDocumentReviews={overdueDocumentReviews}
+        workflowSlaCompliance={workflowSlaCompliance}
+      />
+
+      <TrainingComplianceSection
+        trainingAssigned={trainingAssigned}
+        trainingCompleted={trainingCompleted}
+        trainingOverdue={trainingOverdue}
+        trainingComplianceRate={trainingComplianceRate}
+      />
+
+      <WorkflowEscalationSection
+        openReviews={openWorkflowReviews}
+        overdueReviews={overdueWorkflowReviews}
+        criticalNotifications={criticalWorkflowNotifications}
+        workflowEvents={workflowEventCount}
+        escalationQueue={workflowEscalationQueue}
       />
 
       <CapaGovernanceQueueSection
