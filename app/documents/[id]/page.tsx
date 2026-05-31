@@ -7,6 +7,7 @@ import ESignatureModal from "../../../components/ESignatureModal";
 import DocumentSignatures from "../../../components/DocumentSignatures";
 import { createESignature } from "../../../lib/eSignatureEngine";
 import { processRetrainingForDocument } from "../../../services/retrainingService";
+import { generateControlledCopy } from "../../../services/controlledCopyService";
 import {
   canManageWorkflow as canUserManageWorkflow,
   canTransition,
@@ -58,6 +59,11 @@ type ControlledDocument = {
   release_comments?: string | null;
   release_approved_by?: string | null;
   release_approved_at?: string | null;
+  controlled_copy_file_name?: string | null;
+  controlled_copy_file_path?: string | null;
+  controlled_copy_file_url?: string | null;
+  controlled_copy_generated_at?: string | null;
+  controlled_copy_generated_by?: string | null;
   created_at: string | null;
   created_by: string | null;
 };
@@ -135,6 +141,7 @@ export default function DocumentWorkflowPage() {
 
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [generatingControlledCopy, setGeneratingControlledCopy] = useState(false);
   const [userEmail, setUserEmail] = useState("");
   const [userRole, setUserRole] = useState("");
 
@@ -352,7 +359,7 @@ export default function DocumentWorkflowPage() {
         .order("performed_at", { ascending: false }),
       supabase
         .from("controlled_documents")
-        .select("id, document_number, title, document_type, revision, status, department, process_area, file_name, file_path, file_url, change_summary, approval_comments, owner_email, approver_email, submitted_for_approval_at, submitted_for_approval_by, approved_at, approved_by, effective_date, obsolete_at, obsolete_by, obsolete_reason, read_ack_required, training_required, originating_change_control_id, change_required, superseded_by_document_id, superseded_document_id, collaboration_required, formal_review_required, collaboration_completed, formal_review_completed, release_comments, release_approved_by, release_approved_at, created_at, created_by")
+        .select("id, document_number, title, document_type, revision, status, department, process_area, file_name, file_path, file_url, change_summary, approval_comments, owner_email, approver_email, submitted_for_approval_at, submitted_for_approval_by, approved_at, approved_by, effective_date, obsolete_at, obsolete_by, obsolete_reason, read_ack_required, training_required, originating_change_control_id, change_required, superseded_by_document_id, superseded_document_id, collaboration_required, formal_review_required, collaboration_completed, formal_review_completed, release_comments, release_approved_by, release_approved_at, controlled_copy_file_name, controlled_copy_file_path, controlled_copy_file_url, controlled_copy_generated_at, controlled_copy_generated_by, created_at, created_by")
         .neq("id", documentId)
         .order("document_number", { ascending: true }),
       supabase
@@ -1175,72 +1182,156 @@ export default function DocumentWorkflowPage() {
     fetchData();
   };
 
-  const makeEffective = async (doc: ControlledDocument) => {
+  const releaseDocument = async (doc: ControlledDocument) => {
     if (!canApprove) {
-      alert("Only approvers, admins, or VP Quality can make documents effective.");
+      alert("Only approvers, admins, or VP Quality can release documents.");
       return;
     }
 
     if (doc.status !== "approved") {
-      alert("Only approved documents can be made effective.");
+      alert("Only approved documents can be released.");
       return;
     }
 
-    const today = new Date().toISOString().slice(0, 10);
+    const effectiveDate = doc.effective_date || new Date().toISOString().slice(0, 10);
+    const releaseComment =
+      releaseComments[doc.id] ||
+      "Document released as controlled copy.";
 
-    const { error } = await supabase
-      .from("controlled_documents")
-      .update({
-        status: "effective",
-        effective_date: doc.effective_date || today,
-        release_comments: releaseComments[doc.id] || "Document released effective.",
-        release_approved_by: userEmail,
-        release_approved_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", doc.id);
+    setBusy(true);
 
-    if (error) {
-      alert(error.message);
-      return;
-    }
+    try {
+      const { error } = await supabase
+        .from("controlled_documents")
+        .update({
+          status: "release",
+          effective_date: effectiveDate,
+          release_comments: releaseComment,
+          release_approved_by: userEmail,
+          release_approved_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", doc.id);
 
-    await logWorkflowEvent({
-      eventType: "document_effective",
-      fromStatus: doc.status,
-      toStatus: "effective",
-      comments: releaseComments[doc.id] || "Document released effective.",
-    });
+      if (error) throw new Error(error.message);
 
-    if (doc.training_required) {
+      await logWorkflowEvent({
+        eventType: "document_released",
+        fromStatus: doc.status,
+        toStatus: "release",
+        comments: releaseComment,
+      });
+
+      let controlledCopyResult: any = null;
+
       try {
-        const retrainingResult = await processRetrainingForDocument(
-          doc.id,
-          doc.document_number,
-          doc.revision,
-          userEmail || "system"
+        controlledCopyResult = await generateControlledCopy({
+          documentId: doc.id,
+          generatedBy: userEmail || "system",
+        });
+
+        await logWorkflowEvent({
+          eventType: "controlled_copy_generated",
+          fromStatus: "approved",
+          toStatus: "release",
+          comments: "Controlled copy generated automatically during release.",
+          metadata: controlledCopyResult,
+        });
+      } catch (copyError: any) {
+        console.error("Controlled Copy Generation Error:", copyError);
+
+        await logWorkflowEvent({
+          eventType: "controlled_copy_generation_error",
+          fromStatus: "approved",
+          toStatus: "release",
+          comments:
+            copyError?.message ||
+            "Controlled copy generation failed after document release.",
+        });
+
+        alert(
+          `Document was released, but controlled copy generation failed: ${
+            copyError?.message || "Unknown error"
+          }`
         );
-
-        await logWorkflowEvent({
-          eventType: "automatic_retraining_generated",
-          fromStatus: "effective",
-          toStatus: "effective",
-          comments: `Retraining assignments created: ${retrainingResult.created}. Skipped duplicates: ${retrainingResult.skipped}.`,
-          metadata: retrainingResult,
-        });
-      } catch (error: any) {
-        console.error("Retraining Engine Error:", error);
-
-        await logWorkflowEvent({
-          eventType: "automatic_retraining_error",
-          fromStatus: "effective",
-          toStatus: "effective",
-          comments: error?.message || "Retraining engine failed after document became effective.",
-        });
       }
+
+      if (doc.training_required) {
+        try {
+          const retrainingResult = await processRetrainingForDocument(
+            doc.id,
+            doc.document_number,
+            doc.revision,
+            userEmail || "system"
+          );
+
+          await logWorkflowEvent({
+            eventType: "automatic_retraining_generated",
+            fromStatus: "release",
+            toStatus: "release",
+            comments: `Retraining assignments created: ${retrainingResult.created}. Skipped duplicates: ${retrainingResult.skipped}.`,
+            metadata: retrainingResult,
+          });
+        } catch (error: any) {
+          console.error("Retraining Engine Error:", error);
+
+          await logWorkflowEvent({
+            eventType: "automatic_retraining_error",
+            fromStatus: "release",
+            toStatus: "release",
+            comments:
+              error?.message ||
+              "Retraining engine failed after document was released.",
+          });
+        }
+      }
+
+      if (controlledCopyResult?.fileUrl) {
+        alert("Document released and controlled copy generated.");
+      }
+
+      await fetchData();
+    } catch (error: any) {
+      alert(error.message);
     }
 
-    fetchData();
+    setBusy(false);
+  };
+
+  const regenerateControlledCopy = async (doc: ControlledDocument) => {
+    if (!canApprove && !canManageWorkflow) {
+      alert("Only authorized quality, document control, approver, admin, or VP Quality users can regenerate a controlled copy.");
+      return;
+    }
+
+    if (doc.status !== "release") {
+      alert("Controlled copies can only be regenerated for released documents.");
+      return;
+    }
+
+    setGeneratingControlledCopy(true);
+
+    try {
+      const controlledCopyResult = await generateControlledCopy({
+        documentId: doc.id,
+        generatedBy: userEmail || "system",
+      });
+
+      await logWorkflowEvent({
+        eventType: "controlled_copy_regenerated",
+        fromStatus: "release",
+        toStatus: "release",
+        comments: "Controlled copy regenerated.",
+        metadata: controlledCopyResult,
+      });
+
+      await fetchData();
+      alert("Controlled copy regenerated.");
+    } catch (error: any) {
+      alert(error.message);
+    }
+
+    setGeneratingControlledCopy(false);
   };
 
   const obsoleteDocument = async (doc: ControlledDocument) => {
@@ -1756,6 +1847,77 @@ export default function DocumentWorkflowPage() {
       <section style={cardStyle}>
         <div style={rowBetweenStyle}>
           <div>
+            <h2 style={{ marginTop: 0 }}>Controlled Copy</h2>
+            <p style={subtleText}>
+              Released controlled copy PDF with watermark, revision, and effective date. Approval signatures remain in the electronic signature record and audit trail.
+            </p>
+          </div>
+          <StatusBadge status={doc.controlled_copy_file_url ? "controlled_copy_available" : "not_generated"} />
+        </div>
+
+        <div style={gridStyle}>
+          <Field label="Controlled Copy Status">
+            <div>{doc.controlled_copy_file_url ? "Generated" : "Not generated"}</div>
+          </Field>
+
+          <Field label="Document Number">
+            <div>{doc.document_number}</div>
+          </Field>
+
+          <Field label="Revision">
+            <div>{doc.revision}</div>
+          </Field>
+
+          <Field label="Effective Date">
+            <div>{doc.effective_date || "N/A"}</div>
+          </Field>
+
+          <Field label="Generated At">
+            <div>{formatDateTime(doc.controlled_copy_generated_at)}</div>
+          </Field>
+
+          <Field label="Generated By">
+            <div>{doc.controlled_copy_generated_by || "N/A"}</div>
+          </Field>
+        </div>
+
+        {doc.status !== "release" ? (
+          <div style={noticeStyle}>
+            Controlled copy is generated automatically when the approved document is released.
+          </div>
+        ) : null}
+
+        {doc.controlled_copy_file_name ? (
+          <div style={smallTextStyle}>File: {doc.controlled_copy_file_name}</div>
+        ) : null}
+
+        <div style={buttonRowStyle}>
+          {doc.controlled_copy_file_url ? (
+            <a
+              href={doc.controlled_copy_file_url}
+              target="_blank"
+              rel="noreferrer"
+              style={primaryLinkStyle}
+            >
+              Download Controlled Copy
+            </a>
+          ) : null}
+
+          {doc.status === "release" && (canApprove || canManageWorkflow) ? (
+            <button
+              disabled={generatingControlledCopy}
+              onClick={() => regenerateControlledCopy(doc)}
+              style={secondaryButtonStyle}
+            >
+              {generatingControlledCopy ? "Regenerating..." : "Regenerate Controlled Copy"}
+            </button>
+          ) : null}
+        </div>
+      </section>
+
+      <section style={cardStyle}>
+        <div style={rowBetweenStyle}>
+          <div>
             <h2 style={{ marginTop: 0 }}>Related Documents</h2>
             <p style={subtleText}>
               Link parent SOPs, work instructions, forms, specifications, templates, protocols, reports, and impacted documents.
@@ -2179,7 +2341,7 @@ export default function DocumentWorkflowPage() {
 
           {transitionPermissions.makeEffective.allowed ? (
             <details>
-              <summary>Make Effective / Release</summary>
+              <summary>Release Controlled Document</summary>
               <textarea
                 value={releaseComments[doc.id] || ""}
                 onChange={(e) =>
@@ -2189,8 +2351,8 @@ export default function DocumentWorkflowPage() {
                 rows={3}
                 style={textareaStyle}
               />
-              <button disabled={busy} onClick={() => makeEffective(doc)} style={primaryButtonStyle}>
-                Make Effective
+              <button disabled={busy} onClick={() => releaseDocument(doc)} style={primaryButtonStyle}>
+                Release Controlled Document
               </button>
             </details>
           ) : null}
@@ -2406,6 +2568,8 @@ function KpiCard({ title, value, color }: { title: string; value: number; color:
 
 function StatusBadge({ status }: { status: string }) {
   const color =
+    status === "release" ||
+    status === "controlled_copy_available" ||
     status === "effective"
       ? "#15803d"
       : status === "approved"
