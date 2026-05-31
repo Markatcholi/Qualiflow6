@@ -33,6 +33,9 @@ type ControlledDocument = {
   file_name: string | null;
   file_path: string | null;
   file_url: string | null;
+  release_pdf_file_name?: string | null;
+  release_pdf_file_path?: string | null;
+  release_pdf_file_url?: string | null;
   change_summary: string | null;
   change_rationale?: string | null;
   approval_comments: string | null;
@@ -183,6 +186,8 @@ export default function DocumentWorkflowPage() {
     training_required: false,
   });
   const [initiationFile, setInitiationFile] = useState<File | null>(null);
+  const [releasePdfFile, setReleasePdfFile] = useState<File | null>(null);
+  const [uploadingReleasePdf, setUploadingReleasePdf] = useState(false);
 
   const doc = documents[0] || null;
 
@@ -359,7 +364,7 @@ export default function DocumentWorkflowPage() {
         .order("performed_at", { ascending: false }),
       supabase
         .from("controlled_documents")
-        .select("id, document_number, title, document_type, revision, status, department, process_area, file_name, file_path, file_url, change_summary, approval_comments, owner_email, approver_email, submitted_for_approval_at, submitted_for_approval_by, approved_at, approved_by, effective_date, obsolete_at, obsolete_by, obsolete_reason, read_ack_required, training_required, originating_change_control_id, change_required, superseded_by_document_id, superseded_document_id, collaboration_required, formal_review_required, collaboration_completed, formal_review_completed, release_comments, release_approved_by, release_approved_at, controlled_copy_file_name, controlled_copy_file_path, controlled_copy_file_url, controlled_copy_generated_at, controlled_copy_generated_by, created_at, created_by")
+        .select("id, document_number, title, document_type, revision, status, department, process_area, file_name, file_path, file_url, release_pdf_file_name, release_pdf_file_path, release_pdf_file_url, change_summary, approval_comments, owner_email, approver_email, submitted_for_approval_at, submitted_for_approval_by, approved_at, approved_by, effective_date, obsolete_at, obsolete_by, obsolete_reason, read_ack_required, training_required, originating_change_control_id, change_required, superseded_by_document_id, superseded_document_id, collaboration_required, formal_review_required, collaboration_completed, formal_review_completed, release_comments, release_approved_by, release_approved_at, controlled_copy_file_name, controlled_copy_file_path, controlled_copy_file_url, controlled_copy_generated_at, controlled_copy_generated_by, created_at, created_by")
         .neq("id", documentId)
         .order("document_number", { ascending: true }),
       supabase
@@ -1182,6 +1187,84 @@ export default function DocumentWorkflowPage() {
     fetchData();
   };
 
+  const uploadReleasePdf = async (
+    doc: ControlledDocument,
+    options: { refreshAfterUpload?: boolean } = { refreshAfterUpload: true }
+  ) => {
+    if (!releasePdfFile) {
+      throw new Error("Select a final release PDF first.");
+    }
+
+    const isPdf =
+      releasePdfFile.type === "application/pdf" ||
+      releasePdfFile.name.toLowerCase().endsWith(".pdf");
+
+    if (!isPdf) {
+      throw new Error("Final release file must be a PDF.");
+    }
+
+    setUploadingReleasePdf(true);
+
+    try {
+      const safeDocNumber = doc.document_number.replace(/[^a-zA-Z0-9-_]/g, "_");
+      const safeRev = doc.revision.replace(/[^a-zA-Z0-9-_]/g, "_");
+      const filePath = `release-pdfs/${safeDocNumber}/Rev-${safeRev}/${Date.now()}_${releasePdfFile.name}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("controlled-documents")
+        .upload(filePath, releasePdfFile, {
+          contentType: "application/pdf",
+          upsert: true,
+        });
+
+      if (uploadError) throw new Error(uploadError.message);
+
+      const { data } = supabase.storage
+        .from("controlled-documents")
+        .getPublicUrl(filePath);
+
+      const releasePdfUrl = data?.publicUrl || null;
+
+      const { error: updateError } = await supabase
+        .from("controlled_documents")
+        .update({
+          release_pdf_file_name: releasePdfFile.name,
+          release_pdf_file_path: filePath,
+          release_pdf_file_url: releasePdfUrl,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", doc.id);
+
+      if (updateError) throw new Error(updateError.message);
+
+      await logWorkflowEvent({
+        eventType: "release_pdf_uploaded",
+        fromStatus: doc.status,
+        toStatus: doc.status,
+        comments: "Final release PDF uploaded for controlled-copy generation.",
+        metadata: {
+          release_pdf_file_name: releasePdfFile.name,
+          release_pdf_file_path: filePath,
+          release_pdf_file_url: releasePdfUrl,
+        },
+      });
+
+      setReleasePdfFile(null);
+
+      if (options.refreshAfterUpload) {
+        await fetchData();
+      }
+
+      return {
+        release_pdf_file_name: releasePdfFile.name,
+        release_pdf_file_path: filePath,
+        release_pdf_file_url: releasePdfUrl,
+      };
+    } finally {
+      setUploadingReleasePdf(false);
+    }
+  };
+
   const releaseDocument = async (doc: ControlledDocument) => {
     if (!canApprove) {
       alert("Only approvers, admins, or VP Quality can release documents.");
@@ -1193,6 +1276,11 @@ export default function DocumentWorkflowPage() {
       return;
     }
 
+    if (!doc.release_pdf_file_url && !releasePdfFile) {
+      alert("A final release PDF is required before releasing the controlled document.");
+      return;
+    }
+
     const effectiveDate = doc.effective_date || new Date().toISOString().slice(0, 10);
     const releaseComment =
       releaseComments[doc.id] ||
@@ -1201,6 +1289,10 @@ export default function DocumentWorkflowPage() {
     setBusy(true);
 
     try {
+      if (releasePdfFile) {
+        await uploadReleasePdf(doc, { refreshAfterUpload: false });
+      }
+
       const { error } = await supabase
         .from("controlled_documents")
         .update({
@@ -1222,39 +1314,18 @@ export default function DocumentWorkflowPage() {
         comments: releaseComment,
       });
 
-      let controlledCopyResult: any = null;
+      const controlledCopyResult = await generateControlledCopy({
+        documentId: doc.id,
+        generatedBy: userEmail || "system",
+      });
 
-      try {
-        controlledCopyResult = await generateControlledCopy({
-          documentId: doc.id,
-          generatedBy: userEmail || "system",
-        });
-
-        await logWorkflowEvent({
-          eventType: "controlled_copy_generated",
-          fromStatus: "approved",
-          toStatus: "release",
-          comments: "Controlled copy generated automatically during release.",
-          metadata: controlledCopyResult,
-        });
-      } catch (copyError: any) {
-        console.error("Controlled Copy Generation Error:", copyError);
-
-        await logWorkflowEvent({
-          eventType: "controlled_copy_generation_error",
-          fromStatus: "approved",
-          toStatus: "release",
-          comments:
-            copyError?.message ||
-            "Controlled copy generation failed after document release.",
-        });
-
-        alert(
-          `Document was released, but controlled copy generation failed: ${
-            copyError?.message || "Unknown error"
-          }`
-        );
-      }
+      await logWorkflowEvent({
+        eventType: "controlled_copy_generated",
+        fromStatus: "approved",
+        toStatus: "release",
+        comments: "Controlled copy generated automatically during release from the final release PDF.",
+        metadata: controlledCopyResult,
+      });
 
       if (doc.training_required) {
         try {
@@ -1286,10 +1357,7 @@ export default function DocumentWorkflowPage() {
         }
       }
 
-      if (controlledCopyResult?.fileUrl) {
-        alert("Document released and controlled copy generated.");
-      }
-
+      alert("Document released and controlled copy generated.");
       await fetchData();
     } catch (error: any) {
       alert(error.message);
@@ -1847,77 +1915,6 @@ export default function DocumentWorkflowPage() {
       <section style={cardStyle}>
         <div style={rowBetweenStyle}>
           <div>
-            <h2 style={{ marginTop: 0 }}>Controlled Copy</h2>
-            <p style={subtleText}>
-              Released controlled copy PDF with watermark, revision, and effective date. Approval signatures remain in the electronic signature record and audit trail.
-            </p>
-          </div>
-          <StatusBadge status={doc.controlled_copy_file_url ? "controlled_copy_available" : "not_generated"} />
-        </div>
-
-        <div style={gridStyle}>
-          <Field label="Controlled Copy Status">
-            <div>{doc.controlled_copy_file_url ? "Generated" : "Not generated"}</div>
-          </Field>
-
-          <Field label="Document Number">
-            <div>{doc.document_number}</div>
-          </Field>
-
-          <Field label="Revision">
-            <div>{doc.revision}</div>
-          </Field>
-
-          <Field label="Effective Date">
-            <div>{doc.effective_date || "N/A"}</div>
-          </Field>
-
-          <Field label="Generated At">
-            <div>{formatDateTime(doc.controlled_copy_generated_at)}</div>
-          </Field>
-
-          <Field label="Generated By">
-            <div>{doc.controlled_copy_generated_by || "N/A"}</div>
-          </Field>
-        </div>
-
-        {doc.status !== "release" ? (
-          <div style={noticeStyle}>
-            Controlled copy is generated automatically when the approved document is released.
-          </div>
-        ) : null}
-
-        {doc.controlled_copy_file_name ? (
-          <div style={smallTextStyle}>File: {doc.controlled_copy_file_name}</div>
-        ) : null}
-
-        <div style={buttonRowStyle}>
-          {doc.controlled_copy_file_url ? (
-            <a
-              href={doc.controlled_copy_file_url}
-              target="_blank"
-              rel="noreferrer"
-              style={primaryLinkStyle}
-            >
-              Download Controlled Copy
-            </a>
-          ) : null}
-
-          {doc.status === "release" && (canApprove || canManageWorkflow) ? (
-            <button
-              disabled={generatingControlledCopy}
-              onClick={() => regenerateControlledCopy(doc)}
-              style={secondaryButtonStyle}
-            >
-              {generatingControlledCopy ? "Regenerating..." : "Regenerate Controlled Copy"}
-            </button>
-          ) : null}
-        </div>
-      </section>
-
-      <section style={cardStyle}>
-        <div style={rowBetweenStyle}>
-          <div>
             <h2 style={{ marginTop: 0 }}>Related Documents</h2>
             <p style={subtleText}>
               Link parent SOPs, work instructions, forms, specifications, templates, protocols, reports, and impacted documents.
@@ -2342,6 +2339,43 @@ export default function DocumentWorkflowPage() {
           {transitionPermissions.makeEffective.allowed ? (
             <details>
               <summary>Release Controlled Document</summary>
+
+              <div style={noticeStyle}>
+                Final release PDF is required. The controlled copy will be generated from this PDF and stamped with document title, document number, revision, effective date, watermark, and page count.
+              </div>
+
+              <Field label="Final Release PDF">
+                <div style={buttonRowStyle}>
+                  {doc.release_pdf_file_url ? (
+                    <a href={doc.release_pdf_file_url} target="_blank" rel="noreferrer" style={primaryLinkStyle}>
+                      Open Current Release PDF
+                    </a>
+                  ) : (
+                    <span style={warningStyle}>No final release PDF uploaded.</span>
+                  )}
+
+                  <input
+                    type="file"
+                    accept="application/pdf,.pdf"
+                    onChange={(e) => setReleasePdfFile(e.target.files?.[0] || null)}
+                  />
+                </div>
+
+                {releasePdfFile ? (
+                  <div style={smallTextStyle}>Selected release PDF: {releasePdfFile.name}</div>
+                ) : null}
+              </Field>
+
+              <div style={buttonRowStyle}>
+                <button
+                  disabled={busy || uploadingReleasePdf || !releasePdfFile}
+                  onClick={() => uploadReleasePdf(doc)}
+                  style={secondaryButtonStyle}
+                >
+                  {uploadingReleasePdf ? "Uploading..." : "Upload Release PDF"}
+                </button>
+              </div>
+
               <textarea
                 value={releaseComments[doc.id] || ""}
                 onChange={(e) =>
@@ -2499,6 +2533,82 @@ export default function DocumentWorkflowPage() {
           </div>
         )}
       </section>
+
+      <section style={cardStyle}>
+        <div style={rowBetweenStyle}>
+          <div>
+            <h2 style={{ marginTop: 0 }}>Controlled Copy</h2>
+            <p style={subtleText}>
+              Released controlled copy PDF with watermark, revision, and effective date. Approval signatures remain in the electronic signature record and audit trail.
+            </p>
+          </div>
+          <StatusBadge status={doc.controlled_copy_file_url ? "controlled_copy_available" : "not_generated"} />
+        </div>
+
+        <div style={gridStyle}>
+          <Field label="Controlled Copy Status">
+            <div>{doc.controlled_copy_file_url ? "Generated" : "Not generated"}</div>
+          </Field>
+
+          <Field label="Document Number">
+            <div>{doc.document_number}</div>
+          </Field>
+
+          <Field label="Revision">
+            <div>{doc.revision}</div>
+          </Field>
+
+          <Field label="Effective Date">
+            <div>{doc.effective_date || "N/A"}</div>
+          </Field>
+
+          <Field label="Final Release PDF">
+            <div>{doc.release_pdf_file_name || "N/A"}</div>
+          </Field>
+
+          <Field label="Generated At">
+            <div>{formatDateTime(doc.controlled_copy_generated_at)}</div>
+          </Field>
+
+          <Field label="Generated By">
+            <div>{doc.controlled_copy_generated_by || "N/A"}</div>
+          </Field>
+        </div>
+
+        {doc.status !== "release" ? (
+          <div style={noticeStyle}>
+            Controlled copy is generated automatically when the approved document is released.
+          </div>
+        ) : null}
+
+        {doc.controlled_copy_file_name ? (
+          <div style={smallTextStyle}>File: {doc.controlled_copy_file_name}</div>
+        ) : null}
+
+        <div style={buttonRowStyle}>
+          {doc.controlled_copy_file_url ? (
+            <a
+              href={doc.controlled_copy_file_url}
+              target="_blank"
+              rel="noreferrer"
+              style={primaryLinkStyle}
+            >
+              Download Controlled Copy
+            </a>
+          ) : null}
+
+          {doc.status === "release" && (canApprove || canManageWorkflow) ? (
+            <button
+              disabled={generatingControlledCopy}
+              onClick={() => regenerateControlledCopy(doc)}
+              style={secondaryButtonStyle}
+            >
+              {generatingControlledCopy ? "Regenerating..." : "Regenerate Controlled Copy"}
+            </button>
+          ) : null}
+        </div>
+      </section>
+
 
       <section style={cardStyle}>
         <h2 style={{ marginTop: 0 }}>Electronic Signatures</h2>
