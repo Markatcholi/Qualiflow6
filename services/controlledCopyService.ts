@@ -1,4 +1,4 @@
-import { jsPDF } from "jspdf";
+import { degrees, PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import { supabase } from "../lib/supabaseClient";
 
 type ControlledDocument = {
@@ -10,6 +10,9 @@ type ControlledDocument = {
   effective_date: string | null;
   file_name: string | null;
   file_url: string | null;
+  release_pdf_file_name?: string | null;
+  release_pdf_file_path?: string | null;
+  release_pdf_file_url?: string | null;
   controlled_copy_file_name?: string | null;
   controlled_copy_file_path?: string | null;
   controlled_copy_file_url?: string | null;
@@ -31,86 +34,151 @@ function formatDate(value: string | null | undefined) {
   }
 }
 
-function addControlledCopyWatermark(pdf: jsPDF) {
-  const pageWidth = pdf.internal.pageSize.getWidth();
-  const pageHeight = pdf.internal.pageSize.getHeight();
-
-  pdf.setTextColor(210, 210, 210);
-  pdf.setFontSize(44);
-  pdf.setFont("helvetica", "bold");
-
-  pdf.text("CONTROLLED COPY", pageWidth / 2, pageHeight / 2, {
-    align: "center",
-    angle: 35,
-  });
-
-  pdf.setTextColor(17, 24, 39);
-  pdf.setFont("helvetica", "normal");
+function getFileExtension(fileNameOrUrl: string | null | undefined) {
+  const value = String(fileNameOrUrl || "").toLowerCase().split("?")[0];
+  const parts = value.split(".");
+  return parts.length > 1 ? parts[parts.length - 1] : "";
 }
 
-function addHeaderFooter({
-  pdf,
+async function fetchPdfBytes(url: string) {
+  const response = await fetch(url);
+
+  if (!response.ok) {
+    throw new Error("Unable to download the final release PDF for controlled-copy stamping.");
+  }
+
+  const contentType = response.headers.get("content-type") || "";
+  if (contentType && !contentType.toLowerCase().includes("pdf")) {
+    // Some Supabase public URLs may return octet-stream. Do not block solely on content type.
+    console.warn("Release PDF content-type was not application/pdf:", contentType);
+  }
+
+  return await response.arrayBuffer();
+}
+
+function drawHeaderFooterAndWatermark({
+  pdfDoc,
   doc,
-  pageNumber,
-  totalPages,
 }: {
-  pdf: jsPDF;
+  pdfDoc: PDFDocument;
   doc: ControlledDocument;
-  pageNumber: number;
-  totalPages: number;
 }) {
-  const pageWidth = pdf.internal.pageSize.getWidth();
-  const pageHeight = pdf.internal.pageSize.getHeight();
+  const pages = pdfDoc.getPages();
+  const totalPages = pages.length;
   const effectiveDate = formatDate(doc.effective_date);
 
-  pdf.setDrawColor(209, 213, 219);
-  pdf.setLineWidth(0.4);
-  pdf.line(15, 22, pageWidth - 15, 22);
+  const helvetica = pdfDoc.embedStandardFont(StandardFonts.Helvetica);
+  const helveticaBold = pdfDoc.embedStandardFont(StandardFonts.HelveticaBold);
 
-  pdf.setFont("helvetica", "bold");
-  pdf.setFontSize(10);
-  pdf.text("QUALIFLOW ENTERPRISE - CONTROLLED COPY", 15, 12);
+  pages.forEach((page, index) => {
+    const { width, height } = page.getSize();
+    const pageNumber = index + 1;
 
-  pdf.setFont("helvetica", "normal");
-  pdf.setFontSize(9);
-  pdf.text(`Document Number: ${doc.document_number}`, 15, 18);
-  pdf.text(`Revision: ${doc.revision}`, pageWidth / 2 - 10, 18);
-  pdf.text(`Effective Date: ${effectiveDate}`, pageWidth - 15, 18, {
-    align: "right",
+    // Header white band to keep release metadata readable.
+    page.drawRectangle({
+      x: 0,
+      y: height - 48,
+      width,
+      height: 48,
+      color: rgb(1, 1, 1),
+      opacity: 0.92,
+    });
+
+    page.drawLine({
+      start: { x: 36, y: height - 48 },
+      end: { x: width - 36, y: height - 48 },
+      thickness: 0.8,
+      color: rgb(0.82, 0.84, 0.87),
+    });
+
+    page.drawText("QUALIFLOW ENTERPRISE - CONTROLLED COPY", {
+      x: 36,
+      y: height - 18,
+      size: 9,
+      font: helveticaBold,
+      color: rgb(0.07, 0.09, 0.15),
+    });
+
+    const title = doc.title || "Controlled Document";
+    const titleMaxChars = 90;
+    const displayTitle = title.length > titleMaxChars ? `${title.slice(0, titleMaxChars)}...` : title;
+
+    page.drawText(displayTitle, {
+      x: 36,
+      y: height - 32,
+      size: 8.5,
+      font: helveticaBold,
+      color: rgb(0.07, 0.09, 0.15),
+    });
+
+    page.drawText(`Document Number: ${doc.document_number}`, {
+      x: 36,
+      y: height - 43,
+      size: 7.5,
+      font: helvetica,
+      color: rgb(0.07, 0.09, 0.15),
+    });
+
+    page.drawText(`Revision: ${doc.revision}`, {
+      x: width / 2 - 40,
+      y: height - 43,
+      size: 7.5,
+      font: helvetica,
+      color: rgb(0.07, 0.09, 0.15),
+    });
+
+    page.drawText(`Effective Date: ${effectiveDate}`, {
+      x: width - 155,
+      y: height - 43,
+      size: 7.5,
+      font: helvetica,
+      color: rgb(0.07, 0.09, 0.15),
+    });
+
+    // Watermark.
+    page.drawText("CONTROLLED COPY", {
+      x: width * 0.16,
+      y: height * 0.42,
+      size: 54,
+      font: helveticaBold,
+      color: rgb(0.75, 0.75, 0.75),
+      rotate: degrees(35),
+      opacity: 0.18,
+    });
+
+    // Footer white band.
+    page.drawRectangle({
+      x: 0,
+      y: 0,
+      width,
+      height: 34,
+      color: rgb(1, 1, 1),
+      opacity: 0.92,
+    });
+
+    page.drawLine({
+      start: { x: 36, y: 34 },
+      end: { x: width - 36, y: 34 },
+      thickness: 0.8,
+      color: rgb(0.82, 0.84, 0.87),
+    });
+
+    page.drawText(`${doc.document_number} | Rev ${doc.revision} | Effective Date: ${effectiveDate}`, {
+      x: 36,
+      y: 16,
+      size: 7.5,
+      font: helvetica,
+      color: rgb(0.07, 0.09, 0.15),
+    });
+
+    page.drawText(`Page ${pageNumber} of ${totalPages}`, {
+      x: width - 92,
+      y: 16,
+      size: 7.5,
+      font: helvetica,
+      color: rgb(0.07, 0.09, 0.15),
+    });
   });
-
-  pdf.line(15, pageHeight - 18, pageWidth - 15, pageHeight - 18);
-  pdf.setFontSize(8);
-  pdf.text(
-    `${doc.document_number} | Rev ${doc.revision} | Effective Date: ${effectiveDate}`,
-    15,
-    pageHeight - 10
-  );
-  pdf.text(`Page ${pageNumber} of ${totalPages}`, pageWidth - 15, pageHeight - 10, {
-    align: "right",
-  });
-}
-
-function addWrappedText({
-  pdf,
-  text,
-  x,
-  y,
-  maxWidth,
-  lineHeight,
-}: {
-  pdf: jsPDF;
-  text: string;
-  x: number;
-  y: number;
-  maxWidth: number;
-  lineHeight: number;
-}) {
-  const lines = pdf.splitTextToSize(text || "N/A", maxWidth);
-  lines.forEach((line: string, index: number) => {
-    pdf.text(line, x, y + index * lineHeight);
-  });
-  return y + lines.length * lineHeight;
 }
 
 export async function generateControlledCopy({
@@ -127,7 +195,7 @@ export async function generateControlledCopy({
   const { data, error } = await supabase
     .from("controlled_documents")
     .select(
-      "id, document_number, title, revision, status, effective_date, file_name, file_url, controlled_copy_file_name, controlled_copy_file_path, controlled_copy_file_url"
+      "id, document_number, title, revision, status, effective_date, file_name, file_url, release_pdf_file_name, release_pdf_file_path, release_pdf_file_url, controlled_copy_file_name, controlled_copy_file_path, controlled_copy_file_url"
     )
     .eq("id", documentId)
     .maybeSingle();
@@ -141,87 +209,32 @@ export async function generateControlledCopy({
     throw new Error("Controlled copy can only be generated during release.");
   }
 
-  const pdf = new jsPDF({ unit: "mm", format: "letter" });
-  const pageWidth = pdf.internal.pageSize.getWidth();
-  const pageHeight = pdf.internal.pageSize.getHeight();
-
-  addControlledCopyWatermark(pdf);
-  addHeaderFooter({ pdf, doc, pageNumber: 1, totalPages: 1 });
-
-  let y = 38;
-
-  pdf.setFont("helvetica", "bold");
-  pdf.setFontSize(18);
-  y = addWrappedText({
-    pdf,
-    text: doc.title || "Controlled Document",
-    x: 15,
-    y,
-    maxWidth: pageWidth - 30,
-    lineHeight: 8,
-  });
-
-  y += 8;
-
-  pdf.setFontSize(11);
-  pdf.text("Controlled Document Metadata", 15, y);
-  y += 8;
-
-  pdf.setFont("helvetica", "normal");
-  pdf.setFontSize(10);
-
-  const rows = [
-    ["Document Number", doc.document_number],
-    ["Revision", doc.revision],
-    ["Effective Date", formatDate(doc.effective_date)],
-    ["Status", "RELEASED CONTROLLED COPY"],
-    ["Source File", doc.file_name || "N/A"],
-    ["Generated By", generatedBy || "system"],
-    ["Generated At", new Date().toLocaleString()],
-  ];
-
-  rows.forEach(([label, value]) => {
-    pdf.setFont("helvetica", "bold");
-    pdf.text(`${label}:`, 15, y);
-    pdf.setFont("helvetica", "normal");
-    pdf.text(String(value || "N/A"), 58, y);
-    y += 7;
-  });
-
-  y += 8;
-  pdf.setFont("helvetica", "bold");
-  pdf.text("Controlled Copy Notice", 15, y);
-  y += 7;
-
-  pdf.setFont("helvetica", "normal");
-  const notice =
-    "This PDF represents the controlled copy record generated by QualiFlow Enterprise for the effective revision listed above. Approval signatures and approval metadata are maintained separately in the electronic signature record and workflow audit trail.";
-
-  addWrappedText({
-    pdf,
-    text: notice,
-    x: 15,
-    y,
-    maxWidth: pageWidth - 30,
-    lineHeight: 6,
-  });
-
-  if (doc.file_url) {
-    y = pageHeight - 34;
-    pdf.setFont("helvetica", "bold");
-    pdf.text("Source Document Link:", 15, y);
-    pdf.setFont("helvetica", "normal");
-    pdf.setTextColor(37, 99, 235);
-    pdf.textWithLink("Open source document", 55, y, { url: doc.file_url });
-    pdf.setTextColor(17, 24, 39);
+  if (!doc.release_pdf_file_url) {
+    throw new Error("A final release PDF must be uploaded before controlled copy generation.");
   }
+
+  const releasePdfExtension = getFileExtension(doc.release_pdf_file_name || doc.release_pdf_file_url);
+  if (releasePdfExtension !== "pdf") {
+    throw new Error("Final release file must be a PDF before controlled copy generation.");
+  }
+
+  const releasePdfBytes = await fetchPdfBytes(doc.release_pdf_file_url);
+  const pdfDoc = await PDFDocument.load(releasePdfBytes, {
+    ignoreEncryption: true,
+  });
+
+  drawHeaderFooterAndWatermark({ pdfDoc, doc });
+
+  const stampedPdfBytes = await pdfDoc.save();
 
   const safeDocNumber = sanitizePathSegment(doc.document_number);
   const safeRevision = sanitizePathSegment(doc.revision);
   const fileName = `${safeDocNumber}_Rev_${safeRevision}_Controlled_Copy.pdf`;
   const filePath = `controlled-copies/${safeDocNumber}/Rev-${safeRevision}/${fileName}`;
 
-  const pdfBlob = pdf.output("blob");
+  const pdfBlob = new Blob([stampedPdfBytes], {
+    type: "application/pdf",
+  });
 
   const { error: uploadError } = await supabase.storage
     .from("controlled-documents")
@@ -238,13 +251,15 @@ export async function generateControlledCopy({
 
   const controlledCopyUrl = publicUrlData?.publicUrl || null;
 
+  const generatedAt = new Date().toISOString();
+
   const { error: updateError } = await supabase
     .from("controlled_documents")
     .update({
       controlled_copy_file_name: fileName,
       controlled_copy_file_path: filePath,
       controlled_copy_file_url: controlledCopyUrl,
-      controlled_copy_generated_at: new Date().toISOString(),
+      controlled_copy_generated_at: generatedAt,
       controlled_copy_generated_by: generatedBy || "system",
     })
     .eq("id", documentId);
@@ -255,5 +270,9 @@ export async function generateControlledCopy({
     fileName,
     filePath,
     fileUrl: controlledCopyUrl,
+    generatedAt,
+    generatedBy: generatedBy || "system",
+    sourceReleasePdf: doc.release_pdf_file_name || null,
+    pagesStamped: pdfDoc.getPageCount(),
   };
 }
