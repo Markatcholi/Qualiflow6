@@ -1,4 +1,4 @@
-import { degrees, PDFDocument, rgb, StandardFonts } from "pdf-lib";
+import { PDFDocument, rgb, degrees, StandardFonts } from "pdf-lib";
 import { supabase } from "../lib/supabaseClient";
 
 type ControlledDocument = {
@@ -34,151 +34,219 @@ function formatDate(value: string | null | undefined) {
   }
 }
 
-function getFileExtension(fileNameOrUrl: string | null | undefined) {
-  const value = String(fileNameOrUrl || "").toLowerCase().split("?")[0];
-  const parts = value.split(".");
-  return parts.length > 1 ? parts[parts.length - 1] : "";
+function isPdfFile(fileName?: string | null, fileUrl?: string | null) {
+  const text = `${fileName || ""} ${fileUrl || ""}`.toLowerCase();
+  return text.includes(".pdf") || text.includes("application/pdf");
 }
 
 async function fetchPdfBytes(url: string) {
   const response = await fetch(url);
 
   if (!response.ok) {
-    throw new Error("Unable to download the final release PDF for controlled-copy stamping.");
+    throw new Error(`Unable to fetch release PDF. HTTP status: ${response.status}`);
   }
 
   const contentType = response.headers.get("content-type") || "";
   if (contentType && !contentType.toLowerCase().includes("pdf")) {
-    // Some Supabase public URLs may return octet-stream. Do not block solely on content type.
-    console.warn("Release PDF content-type was not application/pdf:", contentType);
+    // Some Supabase public URLs may return octet-stream, so do not block solely on content-type.
+    console.warn(`Release PDF content type is ${contentType}. Continuing based on file extension.`);
   }
 
   return await response.arrayBuffer();
 }
 
-function drawHeaderFooterAndWatermark({
-  pdfDoc,
+function drawCenteredText({
+  page,
+  text,
+  y,
+  size,
+  font,
+  color = rgb(0.1, 0.1, 0.1),
+}: {
+  page: any;
+  text: string;
+  y: number;
+  size: number;
+  font: any;
+  color?: any;
+}) {
+  const { width } = page.getSize();
+  const textWidth = font.widthOfTextAtSize(text, size);
+  page.drawText(text, {
+    x: Math.max(24, (width - textWidth) / 2),
+    y,
+    size,
+    font,
+    color,
+  });
+}
+
+function truncateForWidth({
+  text,
+  font,
+  size,
+  maxWidth,
+}: {
+  text: string;
+  font: any;
+  size: number;
+  maxWidth: number;
+}) {
+  const clean = String(text || "").replace(/\s+/g, " ").trim();
+  if (font.widthOfTextAtSize(clean, size) <= maxWidth) return clean;
+
+  let result = clean;
+  while (result.length > 3 && font.widthOfTextAtSize(`${result}...`, size) > maxWidth) {
+    result = result.slice(0, -1);
+  }
+
+  return `${result}...`;
+}
+
+async function stampPdf({
+  sourcePdfBytes,
   doc,
 }: {
-  pdfDoc: PDFDocument;
+  sourcePdfBytes: ArrayBuffer;
   doc: ControlledDocument;
 }) {
+  const pdfDoc = await PDFDocument.load(sourcePdfBytes, {
+    ignoreEncryption: true,
+  });
+
+  const regularFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
   const pages = pdfDoc.getPages();
   const totalPages = pages.length;
   const effectiveDate = formatDate(doc.effective_date);
-
-  const helvetica = pdfDoc.embedStandardFont(StandardFonts.Helvetica);
-  const helveticaBold = pdfDoc.embedStandardFont(StandardFonts.HelveticaBold);
 
   pages.forEach((page, index) => {
     const { width, height } = page.getSize();
     const pageNumber = index + 1;
 
-    // Header white band to keep release metadata readable.
+    // Header background band for readability.
     page.drawRectangle({
       x: 0,
-      y: height - 48,
+      y: height - 42,
       width,
-      height: 48,
+      height: 42,
       color: rgb(1, 1, 1),
       opacity: 0.92,
     });
 
+    // Header separator.
     page.drawLine({
-      start: { x: 36, y: height - 48 },
-      end: { x: width - 36, y: height - 48 },
-      thickness: 0.8,
-      color: rgb(0.82, 0.84, 0.87),
+      start: { x: 24, y: height - 42 },
+      end: { x: width - 24, y: height - 42 },
+      thickness: 0.7,
+      color: rgb(0.78, 0.81, 0.86),
     });
 
     page.drawText("QUALIFLOW ENTERPRISE - CONTROLLED COPY", {
-      x: 36,
-      y: height - 18,
-      size: 9,
-      font: helveticaBold,
-      color: rgb(0.07, 0.09, 0.15),
+      x: 24,
+      y: height - 16,
+      size: 8.5,
+      font: boldFont,
+      color: rgb(0.05, 0.08, 0.14),
     });
 
-    const title = doc.title || "Controlled Document";
-    const titleMaxChars = 90;
-    const displayTitle = title.length > titleMaxChars ? `${title.slice(0, titleMaxChars)}...` : title;
+    const title = truncateForWidth({
+      text: doc.title || "Controlled Document",
+      font: boldFont,
+      size: 8,
+      maxWidth: width - 48,
+    });
 
-    page.drawText(displayTitle, {
-      x: 36,
-      y: height - 32,
-      size: 8.5,
-      font: helveticaBold,
-      color: rgb(0.07, 0.09, 0.15),
+    drawCenteredText({
+      page,
+      text: title,
+      y: height - 28,
+      size: 8,
+      font: boldFont,
+      color: rgb(0.05, 0.08, 0.14),
     });
 
     page.drawText(`Document Number: ${doc.document_number}`, {
-      x: 36,
-      y: height - 43,
+      x: 24,
+      y: height - 38,
       size: 7.5,
-      font: helvetica,
-      color: rgb(0.07, 0.09, 0.15),
+      font: regularFont,
+      color: rgb(0.05, 0.08, 0.14),
     });
 
-    page.drawText(`Revision: ${doc.revision}`, {
-      x: width / 2 - 40,
-      y: height - 43,
+    drawCenteredText({
+      page,
+      text: `Revision: ${doc.revision}`,
+      y: height - 38,
       size: 7.5,
-      font: helvetica,
-      color: rgb(0.07, 0.09, 0.15),
+      font: regularFont,
+      color: rgb(0.05, 0.08, 0.14),
     });
 
-    page.drawText(`Effective Date: ${effectiveDate}`, {
-      x: width - 155,
-      y: height - 43,
+    const effectiveText = `Effective Date: ${effectiveDate}`;
+    const effectiveWidth = regularFont.widthOfTextAtSize(effectiveText, 7.5);
+    page.drawText(effectiveText, {
+      x: width - 24 - effectiveWidth,
+      y: height - 38,
       size: 7.5,
-      font: helvetica,
-      color: rgb(0.07, 0.09, 0.15),
+      font: regularFont,
+      color: rgb(0.05, 0.08, 0.14),
     });
 
     // Watermark.
-    page.drawText("CONTROLLED COPY", {
-      x: width * 0.16,
-      y: height * 0.42,
-      size: 54,
-      font: helveticaBold,
-      color: rgb(0.75, 0.75, 0.75),
+    const watermarkText = "CONTROLLED COPY";
+    const watermarkSize = Math.min(54, Math.max(34, width / 11));
+    const watermarkWidth = boldFont.widthOfTextAtSize(watermarkText, watermarkSize);
+
+    page.drawText(watermarkText, {
+      x: (width - watermarkWidth) / 2,
+      y: height / 2,
+      size: watermarkSize,
+      font: boldFont,
+      color: rgb(0.62, 0.65, 0.7),
+      opacity: 0.28,
       rotate: degrees(35),
-      opacity: 0.18,
     });
 
-    // Footer white band.
+    // Footer background band.
     page.drawRectangle({
       x: 0,
       y: 0,
       width,
-      height: 34,
+      height: 30,
       color: rgb(1, 1, 1),
       opacity: 0.92,
     });
 
     page.drawLine({
-      start: { x: 36, y: 34 },
-      end: { x: width - 36, y: 34 },
-      thickness: 0.8,
-      color: rgb(0.82, 0.84, 0.87),
+      start: { x: 24, y: 30 },
+      end: { x: width - 24, y: 30 },
+      thickness: 0.7,
+      color: rgb(0.78, 0.81, 0.86),
     });
 
-    page.drawText(`${doc.document_number} | Rev ${doc.revision} | Effective Date: ${effectiveDate}`, {
-      x: 36,
-      y: 16,
+    const footerLeft = `${doc.document_number} | Rev ${doc.revision} | Effective Date: ${effectiveDate}`;
+    page.drawText(footerLeft, {
+      x: 24,
+      y: 12,
       size: 7.5,
-      font: helvetica,
-      color: rgb(0.07, 0.09, 0.15),
+      font: regularFont,
+      color: rgb(0.05, 0.08, 0.14),
     });
 
-    page.drawText(`Page ${pageNumber} of ${totalPages}`, {
-      x: width - 92,
-      y: 16,
+    const footerRight = `Page ${pageNumber} of ${totalPages}`;
+    const footerRightWidth = regularFont.widthOfTextAtSize(footerRight, 7.5);
+    page.drawText(footerRight, {
+      x: width - 24 - footerRightWidth,
+      y: 12,
       size: 7.5,
-      font: helvetica,
-      color: rgb(0.07, 0.09, 0.15),
+      font: regularFont,
+      color: rgb(0.05, 0.08, 0.14),
     });
   });
+
+  return await pdfDoc.save();
 }
 
 export async function generateControlledCopy({
@@ -210,29 +278,27 @@ export async function generateControlledCopy({
   }
 
   if (!doc.release_pdf_file_url) {
-    throw new Error("A final release PDF must be uploaded before controlled copy generation.");
+    throw new Error("A final release PDF is required before generating a controlled copy.");
   }
 
-  const releasePdfExtension = getFileExtension(doc.release_pdf_file_name || doc.release_pdf_file_url);
-  if (releasePdfExtension !== "pdf") {
-    throw new Error("Final release file must be a PDF before controlled copy generation.");
+  if (!isPdfFile(doc.release_pdf_file_name, doc.release_pdf_file_url)) {
+    throw new Error("The final release file must be a PDF before it can be stamped as a controlled copy.");
   }
 
-  const releasePdfBytes = await fetchPdfBytes(doc.release_pdf_file_url);
-  const pdfDoc = await PDFDocument.load(releasePdfBytes, {
-    ignoreEncryption: true,
-  });
-
-  drawHeaderFooterAndWatermark({ pdfDoc, doc });
-
-  const stampedPdfBytes = await pdfDoc.save();
+  const sourcePdfBytes = await fetchPdfBytes(doc.release_pdf_file_url);
+  const stampedPdfBytes = await stampPdf({ sourcePdfBytes, doc });
 
   const safeDocNumber = sanitizePathSegment(doc.document_number);
   const safeRevision = sanitizePathSegment(doc.revision);
   const fileName = `${safeDocNumber}_Rev_${safeRevision}_Controlled_Copy.pdf`;
   const filePath = `controlled-copies/${safeDocNumber}/Rev-${safeRevision}/${fileName}`;
 
-  const pdfBlob = new Blob([stampedPdfBytes], {
+  // Convert pdf-lib Uint8Array output into a BlobPart that satisfies TypeScript/Vercel builds.
+  const pdfArrayBuffer = new ArrayBuffer(stampedPdfBytes.byteLength);
+  const pdfArray = new Uint8Array(pdfArrayBuffer);
+  pdfArray.set(stampedPdfBytes);
+
+  const pdfBlob = new Blob([pdfArrayBuffer], {
     type: "application/pdf",
   });
 
@@ -251,15 +317,13 @@ export async function generateControlledCopy({
 
   const controlledCopyUrl = publicUrlData?.publicUrl || null;
 
-  const generatedAt = new Date().toISOString();
-
   const { error: updateError } = await supabase
     .from("controlled_documents")
     .update({
       controlled_copy_file_name: fileName,
       controlled_copy_file_path: filePath,
       controlled_copy_file_url: controlledCopyUrl,
-      controlled_copy_generated_at: generatedAt,
+      controlled_copy_generated_at: new Date().toISOString(),
       controlled_copy_generated_by: generatedBy || "system",
     })
     .eq("id", documentId);
@@ -270,9 +334,5 @@ export async function generateControlledCopy({
     fileName,
     filePath,
     fileUrl: controlledCopyUrl,
-    generatedAt,
-    generatedBy: generatedBy || "system",
-    sourceReleasePdf: doc.release_pdf_file_name || null,
-    pagesStamped: pdfDoc.getPageCount(),
   };
 }
