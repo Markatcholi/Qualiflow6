@@ -291,15 +291,30 @@ export default function DocumentWorkflowPage() {
 
   const relatedDocumentCount = documentRelationships.length;
 
-  const releasedDocumentUrl =
-    doc && (doc.status === "release" || doc.status === "effective") && doc.controlled_copy_file_url
-      ? doc.controlled_copy_file_url
-      : doc?.file_url || null;
+  const getLocalDateString = () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
 
-  const releasedDocumentFileName =
-    doc && (doc.status === "release" || doc.status === "effective") && doc.controlled_copy_file_name
-      ? doc.controlled_copy_file_name
-      : doc?.file_name || null;
+    return `${year}-${month}-${day}`;
+  };
+
+  const getReleasedDocumentUrl = (documentRecord: ControlledDocument) => {
+    if (documentRecord.status === "release" && documentRecord.controlled_copy_file_url) {
+      return documentRecord.controlled_copy_file_url;
+    }
+
+    return documentRecord.file_url;
+  };
+
+  const getReleasedDocumentLabel = (documentRecord: ControlledDocument) => {
+    if (documentRecord.status === "release" && documentRecord.controlled_copy_file_url) {
+      return "Open Controlled Copy";
+    }
+
+    return "Open Working Copy";
+  };
 
   const fetchUser = async () => {
     const { data: userData } = await supabase.auth.getUser();
@@ -1291,7 +1306,7 @@ export default function DocumentWorkflowPage() {
       return;
     }
 
-    const effectiveDate = doc.effective_date || new Date().toISOString().slice(0, 10);
+    const effectiveDate = doc.effective_date || getLocalDateString();
     const releaseComment =
       releaseComments[doc.id] ||
       "Document released as controlled copy.";
@@ -1458,13 +1473,8 @@ export default function DocumentWorkflowPage() {
       return;
     }
 
-    const acknowledgementDocumentUrl =
-      (doc.status === "release" || doc.status === "effective") && doc.controlled_copy_file_url
-        ? doc.controlled_copy_file_url
-        : doc.file_url;
-
-    if (!acknowledgementDocumentUrl) {
-      alert("No released document file is attached for acknowledgement.");
+    if (!doc.file_url) {
+      alert("No effective document file is attached for acknowledgement.");
       return;
     }
 
@@ -1497,12 +1507,7 @@ export default function DocumentWorkflowPage() {
       return;
     }
 
-    const trainingDocumentUrl =
-      (doc.status === "release" || doc.status === "effective") && doc.controlled_copy_file_url
-        ? doc.controlled_copy_file_url
-        : doc.file_url;
-
-    if (!trainingDocumentUrl) {
+    if (!doc.file_url) {
       alert("Cannot assign training because no document file is attached.");
       return;
     }
@@ -1546,7 +1551,7 @@ export default function DocumentWorkflowPage() {
     await logWorkflowEvent({
       eventType: "training_assigned",
       comments: `Training assigned to ${emails.length} user(s).`,
-      metadata: { users: emails, document_file_url: trainingDocumentUrl },
+      metadata: { users: emails, document_file_url: doc.file_url },
     });
 
     setTrainingEmails({ ...trainingEmails, [doc.id]: "" });
@@ -1915,11 +1920,17 @@ export default function DocumentWorkflowPage() {
             <div style={buttonRowStyle}>
               {doc.file_url ? (
                 <a href={doc.file_url} target="_blank" rel="noreferrer" style={primaryLinkStyle}>
-                  Open / Download Current Document
+                  Open Master / Redline Copy
                 </a>
               ) : (
-                <span style={warningStyle}>No document file attached.</span>
+                <span style={warningStyle}>No master / redline copy attached.</span>
               )}
+
+              {doc.status === "release" && doc.controlled_copy_file_url ? (
+                <a href={doc.controlled_copy_file_url} target="_blank" rel="noreferrer" style={primaryLinkStyle}>
+                  Open Released Controlled Copy
+                </a>
+              ) : null}
             </div>
 
             {doc.approval_comments ? (
@@ -2412,7 +2423,7 @@ export default function DocumentWorkflowPage() {
           ) : null}
 
           {transitionPermissions.acknowledge.allowed ? (
-            <button disabled={busy || !releasedDocumentUrl} onClick={() => acknowledgeDocument(doc)} style={primaryButtonStyle}>
+            <button disabled={busy || !doc.file_url} onClick={() => acknowledgeDocument(doc)} style={primaryButtonStyle}>
               Opened, Read & Acknowledge
             </button>
           ) : null}
@@ -2420,12 +2431,10 @@ export default function DocumentWorkflowPage() {
           {doc.training_required ? (
             <details>
               <summary>Assign Training</summary>
-              {!releasedDocumentUrl ? (
+              {!doc.file_url ? (
                 <p style={warningStyle}>Training cannot be assigned until a document file is attached.</p>
               ) : (
-                <p style={smallTextStyle}>
-                  Training will open the {doc.status === "release" && doc.controlled_copy_file_url ? "controlled copy" : "current document attachment"}.
-                </p>
+                <p style={smallTextStyle}>Training will include the current document attachment link.</p>
               )}
               <textarea
                 value={trainingEmails[doc.id] || ""}
@@ -2530,11 +2539,9 @@ export default function DocumentWorkflowPage() {
                     </div>
 
                     <div style={buttonRowStyle}>
-                      {releasedDocumentUrl ? (
-                        <a href={releasedDocumentUrl} target="_blank" rel="noreferrer" style={primaryLinkStyle}>
-                          {(doc.status === "release" || doc.status === "effective") && doc.controlled_copy_file_url
-                            ? "Open Controlled Copy"
-                            : "Open Training Document"}
+                      {getReleasedDocumentUrl(doc) ? (
+                        <a href={getReleasedDocumentUrl(doc) || "#"} target="_blank" rel="noreferrer" style={primaryLinkStyle}>
+                          {doc.status === "release" ? "Open Controlled Training Document" : "Open Training Document"}
                         </a>
                       ) : (
                         <span style={warningStyle}>No document attached.</span>
@@ -2563,7 +2570,7 @@ export default function DocumentWorkflowPage() {
           <div>
             <h2 style={{ marginTop: 0 }}>Controlled Copy</h2>
             <p style={subtleText}>
-              Released controlled copy PDF with watermark, revision, and effective date. Approval signatures remain in the electronic signature record and audit trail.
+              Released controlled copy PDF with revision, effective date, and release status. Approval signatures remain in the electronic signature record and audit trail. The master / redline source remains available separately for future revisions.
             </p>
           </div>
           <StatusBadge status={doc.controlled_copy_file_url ? "controlled_copy_available" : "not_generated"} />
@@ -2588,6 +2595,10 @@ export default function DocumentWorkflowPage() {
 
           <Field label="Final Release PDF">
             <div>{doc.release_pdf_file_name || "N/A"}</div>
+          </Field>
+
+          <Field label="Master / Redline Source">
+            <div>{doc.file_name || "N/A"}</div>
           </Field>
 
           <Field label="Generated At">
@@ -2618,6 +2629,12 @@ export default function DocumentWorkflowPage() {
               style={primaryLinkStyle}
             >
               Download Controlled Copy
+            </a>
+          ) : null}
+
+          {doc.status === "release" && doc.file_url ? (
+            <a href={doc.file_url} target="_blank" rel="noreferrer" style={secondaryButtonStyle}>
+              Open Master / Redline Copy
             </a>
           ) : null}
 
