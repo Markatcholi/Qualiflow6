@@ -44,6 +44,9 @@ type ControlledDocument = {
   process_area?: string | null;
   file_name?: string | null;
   file_url?: string | null;
+  controlled_copy_file_name?: string | null;
+  controlled_copy_file_url?: string | null;
+  controlled_copy_generated_at?: string | null;
   effective_date?: string | null;
 };
 
@@ -114,6 +117,20 @@ export default function TrainingAssignmentDetailPage() {
       assignment.due_date < new Date().toISOString().slice(0, 10)
   );
 
+  const trainingDocumentUrl =
+    documentRecord &&
+    (documentRecord.status === "release" || documentRecord.status === "effective") &&
+    documentRecord.controlled_copy_file_url
+      ? documentRecord.controlled_copy_file_url
+      : documentRecord?.file_url || null;
+
+  const trainingDocumentLabel =
+    documentRecord &&
+    (documentRecord.status === "release" || documentRecord.status === "effective") &&
+    documentRecord.controlled_copy_file_url
+      ? "Open Controlled Copy"
+      : "Open Training Document";
+
   const fetchUser = async () => {
     const { data: userData } = await supabase.auth.getUser();
     const email = userData?.user?.email || "";
@@ -153,7 +170,7 @@ export default function TrainingAssignmentDetailPage() {
     if (loadedAssignment?.document_id) {
       const docRes = await supabase
         .from("controlled_documents")
-        .select("id, document_number, title, revision, status, document_type, department, process_area, file_name, file_url, effective_date")
+        .select("id, document_number, title, revision, status, document_type, department, process_area, file_name, file_url, controlled_copy_file_name, controlled_copy_file_url, controlled_copy_generated_at, effective_date")
         .eq("id", loadedAssignment.document_id)
         .maybeSingle();
 
@@ -238,7 +255,7 @@ export default function TrainingAssignmentDetailPage() {
       return;
     }
 
-    if (assignment.acknowledgement_required && !documentRecord?.file_url && assignment.document_id) {
+    if (assignment.acknowledgement_required && !trainingDocumentUrl && assignment.document_id) {
       alert("A controlled document file is required before training can be acknowledged.");
       return;
     }
@@ -427,12 +444,19 @@ export default function TrainingAssignmentDetailPage() {
               <Field label="Type"><div>{documentRecord.document_type || "N/A"}</div></Field>
               <Field label="Department"><div>{documentRecord.department || "N/A"}</div></Field>
               <Field label="Effective Date"><div>{documentRecord.effective_date || "N/A"}</div></Field>
+              <Field label="Training Document Source">
+                <div>
+                  {(documentRecord.status === "release" || documentRecord.status === "effective") && documentRecord.controlled_copy_file_url
+                    ? "Controlled Copy"
+                    : "Working Copy"}
+                </div>
+              </Field>
             </div>
 
             <div style={buttonRowStyle}>
-              {documentRecord.file_url ? (
-                <a href={documentRecord.file_url} target="_blank" rel="noreferrer" style={primaryLinkStyle}>
-                  Open Training Document
+              {trainingDocumentUrl ? (
+                <a href={trainingDocumentUrl} target="_blank" rel="noreferrer" style={primaryLinkStyle}>
+                  {trainingDocumentLabel}
                 </a>
               ) : (
                 <span style={warningStyle}>No document file attached.</span>
