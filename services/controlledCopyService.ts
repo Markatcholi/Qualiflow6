@@ -27,11 +27,10 @@ function sanitizePathSegment(value: string | null | undefined) {
 
 function formatDate(value: string | null | undefined) {
   if (!value) return "N/A";
-  try {
-    return new Date(value).toLocaleDateString();
-  } catch {
-    return value;
-  }
+
+  // Avoid timezone conversion. Supabase date fields such as 2026-05-31
+  // can shift backward by one day when parsed with new Date() in local time.
+  return String(value).slice(0, 10);
 }
 
 function isPdfFile(fileName?: string | null, fileUrl?: string | null) {
@@ -196,7 +195,7 @@ async function stampPdf({
 
     // Watermark.
     const watermarkText = "CONTROLLED COPY";
-    const watermarkSize = Math.min(54, Math.max(34, width / 11));
+    const watermarkSize = Math.min(72, Math.max(46, width / 8.5));
     const watermarkWidth = boldFont.widthOfTextAtSize(watermarkText, watermarkSize);
 
     page.drawText(watermarkText, {
@@ -204,8 +203,8 @@ async function stampPdf({
       y: height / 2,
       size: watermarkSize,
       font: boldFont,
-      color: rgb(0.62, 0.65, 0.7),
-      opacity: 0.28,
+      color: rgb(0.7, 0.7, 0.7),
+      opacity: 0.5,
       rotate: degrees(35),
     });
 
