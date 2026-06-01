@@ -51,6 +51,9 @@ type ControlledDocument = {
   obsolete_reason: string | null;
   read_ack_required: boolean | null;
   training_required: boolean | null;
+  training_impact?: string | null;
+  revision_change_description?: string | null;
+  revision_change_justification?: string | null;
   originating_change_control_id?: string | null;
   change_required?: boolean | null;
   superseded_by_document_id?: string | null;
@@ -182,12 +185,20 @@ export default function DocumentWorkflowPage() {
     owner_email: "",
     change_summary: "",
     change_rationale: "",
+    training_impact: "FORMAL_TRAINING",
     read_ack_required: true,
     training_required: false,
   });
   const [initiationFile, setInitiationFile] = useState<File | null>(null);
   const [releasePdfFile, setReleasePdfFile] = useState<File | null>(null);
   const [uploadingReleasePdf, setUploadingReleasePdf] = useState(false);
+  const [showRevisionPanel, setShowRevisionPanel] = useState(false);
+  const [revisionForm, setRevisionForm] = useState({
+    revision: "",
+    change_description: "",
+    change_justification: "",
+    training_impact: "FORMAL_TRAINING",
+  });
 
   const doc = documents[0] || null;
 
@@ -291,6 +302,80 @@ export default function DocumentWorkflowPage() {
 
   const relatedDocumentCount = documentRelationships.length;
 
+  const revisionHistory = useMemo(() => {
+    if (!doc) return [];
+
+    return [...documents, ...allDocuments]
+      .filter((item) => item.document_number === doc.document_number)
+      .sort((a, b) => {
+        const dateCompare = String(b.created_at || "").localeCompare(String(a.created_at || ""));
+        if (dateCompare !== 0) return dateCompare;
+        return String(b.revision || "").localeCompare(String(a.revision || ""));
+      });
+  }, [doc, documents, allDocuments]);
+
+  const isRevisionRecord = (documentRecord: ControlledDocument) =>
+    Boolean(documentRecord.superseded_document_id || documentRecord.change_required);
+
+  const getNextRevisionValue = (revision: string | null | undefined) => {
+    const value = String(revision || "").trim();
+
+    if (/^\d+$/.test(value)) {
+      return String(Number(value) + 1).padStart(value.length, "0");
+    }
+
+    if (/^[A-Z]$/i.test(value)) {
+      const code = value.toUpperCase().charCodeAt(0);
+      if (code >= 65 && code < 90) return String.fromCharCode(code + 1);
+      return `${value}-1`;
+    }
+
+    const numericSuffix = value.match(/^(.*?)(\d+)$/);
+    if (numericSuffix) {
+      const prefix = numericSuffix[1];
+      const numberText = numericSuffix[2];
+      return `${prefix}${String(Number(numberText) + 1).padStart(numberText.length, "0")}`;
+    }
+
+    return value ? `${value}-1` : "01";
+  };
+
+  const trainingImpactLabel = (value: string | null | undefined) => {
+    if (value === "NO_TRAINING") return "No Training Required";
+    if (value === "READ_AND_ACKNOWLEDGE") return "Read & Acknowledge";
+    if (value === "FORMAL_TRAINING") return "Formal Training Required";
+    return "Not assessed";
+  };
+
+  const validateInitiationGate = (documentRecord: ControlledDocument) => {
+    const revisionChangeDescription = documentRecord.revision_change_description || documentRecord.change_summary;
+    const revisionChangeJustification = documentRecord.revision_change_justification || documentRecord.change_rationale;
+
+    if (isRevisionRecord(documentRecord)) {
+      if (!String(revisionChangeDescription || "").trim()) {
+        alert("Change description is required before a revision can leave draft.");
+        return false;
+      }
+
+      if (!String(revisionChangeJustification || "").trim()) {
+        alert("Change justification is required before a revision can leave draft.");
+        return false;
+      }
+
+      if (!documentRecord.training_impact) {
+        alert("Training impact assessment is required before a revision can leave draft.");
+        return false;
+      }
+
+      if (!documentRecord.file_url) {
+        alert("A master / redline source document is required before a revision can leave draft.");
+        return false;
+      }
+    }
+
+    return true;
+  };
+
   const getLocalDateString = () => {
     const now = new Date();
     const year = now.getFullYear();
@@ -389,7 +474,7 @@ export default function DocumentWorkflowPage() {
         .order("performed_at", { ascending: false }),
       supabase
         .from("controlled_documents")
-        .select("id, document_number, title, document_type, revision, status, department, process_area, file_name, file_path, file_url, release_pdf_file_name, release_pdf_file_path, release_pdf_file_url, change_summary, approval_comments, owner_email, approver_email, submitted_for_approval_at, submitted_for_approval_by, approved_at, approved_by, effective_date, obsolete_at, obsolete_by, obsolete_reason, read_ack_required, training_required, originating_change_control_id, change_required, superseded_by_document_id, superseded_document_id, collaboration_required, formal_review_required, collaboration_completed, formal_review_completed, release_comments, release_approved_by, release_approved_at, controlled_copy_file_name, controlled_copy_file_path, controlled_copy_file_url, controlled_copy_generated_at, controlled_copy_generated_by, created_at, created_by")
+        .select("id, document_number, title, document_type, revision, status, department, process_area, file_name, file_path, file_url, release_pdf_file_name, release_pdf_file_path, release_pdf_file_url, change_summary, approval_comments, owner_email, approver_email, submitted_for_approval_at, submitted_for_approval_by, approved_at, approved_by, effective_date, obsolete_at, obsolete_by, obsolete_reason, read_ack_required, training_required, training_impact, revision_change_description, revision_change_justification, originating_change_control_id, change_required, superseded_by_document_id, superseded_document_id, collaboration_required, formal_review_required, collaboration_completed, formal_review_completed, release_comments, release_approved_by, release_approved_at, controlled_copy_file_name, controlled_copy_file_path, controlled_copy_file_url, controlled_copy_generated_at, controlled_copy_generated_by, created_at, created_by")
         .neq("id", documentId)
         .order("document_number", { ascending: true }),
       supabase
@@ -425,8 +510,9 @@ export default function DocumentWorkflowPage() {
       department: doc.department || "",
       process_area: doc.process_area || "",
       owner_email: doc.owner_email || "",
-      change_summary: doc.change_summary || "",
-      change_rationale: doc.change_rationale || "",
+      change_summary: doc.change_summary || doc.revision_change_description || "",
+      change_rationale: doc.change_rationale || doc.revision_change_justification || "",
+      training_impact: doc.training_impact || (doc.training_required ? "FORMAL_TRAINING" : doc.read_ack_required ? "READ_AND_ACKNOWLEDGE" : "NO_TRAINING"),
       read_ack_required: Boolean(doc.read_ack_required),
       training_required: Boolean(doc.training_required),
     });
@@ -538,8 +624,11 @@ export default function DocumentWorkflowPage() {
           owner_email: ownerEmail || null,
           change_summary: initiationForm.change_summary || null,
           change_rationale: initiationForm.change_rationale || null,
-          read_ack_required: initiationForm.read_ack_required,
-          training_required: initiationForm.training_required,
+          revision_change_description: initiationForm.change_summary || null,
+          revision_change_justification: initiationForm.change_rationale || null,
+          training_impact: initiationForm.training_impact || null,
+          read_ack_required: initiationForm.training_impact === "READ_AND_ACKNOWLEDGE" || initiationForm.read_ack_required,
+          training_required: initiationForm.training_impact === "FORMAL_TRAINING" || initiationForm.training_required,
           file_name: uploaded.file_name,
           file_path: uploaded.file_path,
           file_url: uploaded.file_url,
@@ -898,6 +987,8 @@ export default function DocumentWorkflowPage() {
       return;
     }
 
+    if (!validateInitiationGate(doc)) return;
+
     const reviewerText = collaborationReviewerEmails[doc.id] || "";
     const reviewers = reviewerText
       .split(/[,\n;]/)
@@ -1015,6 +1106,8 @@ export default function DocumentWorkflowPage() {
       alert("Collaboration must be completed before formal review.");
       return;
     }
+
+    if (!validateInitiationGate(doc)) return;
 
     const reviewerText = formalReviewerEmails[doc.id] || "";
     const reviewers = reviewerText
@@ -1352,6 +1445,17 @@ export default function DocumentWorkflowPage() {
         metadata: controlledCopyResult,
       });
 
+      if (doc.superseded_document_id) {
+        await supabase
+          .from("controlled_documents")
+          .update({
+            status: "superseded",
+            superseded_by_document_id: doc.id,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", doc.superseded_document_id);
+      }
+
       if (doc.training_required) {
         try {
           const retrainingResult = await processRetrainingForDocument(
@@ -1425,6 +1529,137 @@ export default function DocumentWorkflowPage() {
     }
 
     setGeneratingControlledCopy(false);
+  };
+
+  const openRevisionPanel = (doc: ControlledDocument) => {
+    setRevisionForm({
+      revision: getNextRevisionValue(doc.revision),
+      change_description: "",
+      change_justification: "",
+      training_impact: doc.training_required ? "FORMAL_TRAINING" : doc.read_ack_required ? "READ_AND_ACKNOWLEDGE" : "NO_TRAINING",
+    });
+    setShowRevisionPanel(true);
+  };
+
+  const createRevision = async (sourceDoc: ControlledDocument) => {
+    if (!canManageWorkflow && !canApprove) {
+      alert("Only document owner, quality, document control, approver, admin, or VP Quality can create a revision.");
+      return;
+    }
+
+    if (sourceDoc.status !== "release" && sourceDoc.status !== "superseded") {
+      alert("Only released or superseded documents can be revised.");
+      return;
+    }
+
+    if (!revisionForm.revision.trim()) {
+      alert("New revision is required.");
+      return;
+    }
+
+    if (!revisionForm.change_description.trim()) {
+      alert("Change description is required to create a revision.");
+      return;
+    }
+
+    if (!revisionForm.change_justification.trim()) {
+      alert("Change justification is required to create a revision.");
+      return;
+    }
+
+    if (!revisionForm.training_impact) {
+      alert("Training impact assessment is required.");
+      return;
+    }
+
+    setBusy(true);
+
+    try {
+      const { data, error } = await supabase
+        .from("controlled_documents")
+        .insert({
+          document_number: sourceDoc.document_number,
+          title: sourceDoc.title,
+          document_type: sourceDoc.document_type,
+          revision: revisionForm.revision.trim(),
+          status: "draft",
+          department: sourceDoc.department,
+          process_area: sourceDoc.process_area,
+          file_name: sourceDoc.file_name,
+          file_path: sourceDoc.file_path,
+          file_url: sourceDoc.file_url,
+          release_pdf_file_name: null,
+          release_pdf_file_path: null,
+          release_pdf_file_url: null,
+          controlled_copy_file_name: null,
+          controlled_copy_file_path: null,
+          controlled_copy_file_url: null,
+          controlled_copy_generated_at: null,
+          controlled_copy_generated_by: null,
+          change_summary: revisionForm.change_description.trim(),
+          change_rationale: revisionForm.change_justification.trim(),
+          revision_change_description: revisionForm.change_description.trim(),
+          revision_change_justification: revisionForm.change_justification.trim(),
+          training_impact: revisionForm.training_impact,
+          read_ack_required: revisionForm.training_impact === "READ_AND_ACKNOWLEDGE",
+          training_required: revisionForm.training_impact === "FORMAL_TRAINING",
+          owner_email: sourceDoc.owner_email || userEmail || null,
+          approver_email: null,
+          effective_date: null,
+          approved_at: null,
+          approved_by: null,
+          approval_comments: null,
+          submitted_for_approval_at: null,
+          submitted_for_approval_by: null,
+          release_comments: null,
+          release_approved_by: null,
+          release_approved_at: null,
+          obsolete_at: null,
+          obsolete_by: null,
+          obsolete_reason: null,
+          collaboration_required: sourceDoc.collaboration_required ?? true,
+          formal_review_required: sourceDoc.formal_review_required ?? true,
+          collaboration_completed: false,
+          formal_review_completed: false,
+          superseded_document_id: sourceDoc.id,
+          superseded_by_document_id: null,
+          change_required: true,
+          created_by: userEmail || "unknown",
+        })
+        .select()
+        .single();
+
+      if (error) throw new Error(error.message);
+
+      await supabase
+        .from("controlled_documents")
+        .update({
+          superseded_by_document_id: data.id,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", sourceDoc.id);
+
+      await supabase.from("document_workflow_events").insert({
+        document_id: data.id,
+        event_type: "revision_created",
+        performed_by: userEmail || "unknown",
+        from_status: sourceDoc.status,
+        to_status: "draft",
+        comments: `Revision ${revisionForm.revision.trim()} created from ${sourceDoc.document_number} Rev ${sourceDoc.revision}.`,
+        metadata: {
+          previous_document_id: sourceDoc.id,
+          previous_revision: sourceDoc.revision,
+          new_revision: revisionForm.revision.trim(),
+          training_impact: revisionForm.training_impact,
+        },
+      });
+
+      window.location.href = `/documents/${data.id}`;
+    } catch (error: any) {
+      alert(error.message);
+    }
+
+    setBusy(false);
   };
 
   const obsoleteDocument = async (doc: ControlledDocument) => {
@@ -1697,6 +1932,11 @@ export default function DocumentWorkflowPage() {
         <div style={buttonRowStyle}>
           <a href="/documents" style={darkButtonStyle}>Back to Document Register</a>
           <a href="/dashboard" style={darkButtonStyle}>Dashboard</a>
+          {(doc.status === "release" || doc.status === "superseded") && (canManageWorkflow || canApprove) ? (
+            <button onClick={() => openRevisionPanel(doc)} style={secondaryButtonStyle}>
+              Revise Document
+            </button>
+          ) : null}
         </div>
       </header>
 
@@ -1725,6 +1965,71 @@ export default function DocumentWorkflowPage() {
           <Field label="Your Role"><div>{userRole || "user"}</div></Field>
         </div>
       </section>
+
+      {showRevisionPanel ? (
+        <section style={cardStyle}>
+          <div style={rowBetweenStyle}>
+            <div>
+              <h2 style={{ marginTop: 0 }}>Create New Revision</h2>
+              <p style={subtleText}>
+                Create the next draft revision with documented change description, justification, and training impact assessment.
+              </p>
+            </div>
+            <StatusBadge status="revision_initiation" />
+          </div>
+
+          <div style={gridStyle}>
+            <Field label="Current Revision"><div>{doc.revision}</div></Field>
+            <Field label="New Revision">
+              <input
+                value={revisionForm.revision}
+                onChange={(e) => setRevisionForm({ ...revisionForm, revision: e.target.value })}
+                style={inputStyle}
+              />
+            </Field>
+            <Field label="Training Impact Assessment">
+              <select
+                value={revisionForm.training_impact}
+                onChange={(e) => setRevisionForm({ ...revisionForm, training_impact: e.target.value })}
+                style={inputStyle}
+              >
+                <option value="NO_TRAINING">No Training Required</option>
+                <option value="READ_AND_ACKNOWLEDGE">Read & Acknowledge</option>
+                <option value="FORMAL_TRAINING">Formal Training Required</option>
+              </select>
+            </Field>
+          </div>
+
+          <Field label="Change Description">
+            <textarea
+              value={revisionForm.change_description}
+              onChange={(e) => setRevisionForm({ ...revisionForm, change_description: e.target.value })}
+              rows={3}
+              style={textareaStyle}
+              placeholder="Describe what is changing in this revision."
+            />
+          </Field>
+
+          <Field label="Change Justification">
+            <textarea
+              value={revisionForm.change_justification}
+              onChange={(e) => setRevisionForm({ ...revisionForm, change_justification: e.target.value })}
+              rows={3}
+              style={textareaStyle}
+              placeholder="Explain why this revision is needed."
+            />
+          </Field>
+
+          <div style={buttonRowStyle}>
+            <button disabled={busy} onClick={() => createRevision(doc)} style={primaryButtonStyle}>
+              Create Revision Draft
+            </button>
+            <button disabled={busy} onClick={() => setShowRevisionPanel(false)} style={darkButtonStyle}>
+              Cancel
+            </button>
+          </div>
+        </section>
+      ) : null}
 
       <section style={cardStyle}>
         <div style={rowBetweenStyle}>
@@ -1833,6 +2138,25 @@ export default function DocumentWorkflowPage() {
               />
             </Field>
 
+            <Field label="Training Impact Assessment">
+              <select
+                value={initiationForm.training_impact}
+                onChange={(e) =>
+                  setInitiationForm({
+                    ...initiationForm,
+                    training_impact: e.target.value,
+                    read_ack_required: e.target.value === "READ_AND_ACKNOWLEDGE",
+                    training_required: e.target.value === "FORMAL_TRAINING",
+                  })
+                }
+                style={inputStyle}
+              >
+                <option value="NO_TRAINING">No Training Required</option>
+                <option value="READ_AND_ACKNOWLEDGE">Read & Acknowledge</option>
+                <option value="FORMAL_TRAINING">Formal Training Required</option>
+              </select>
+            </Field>
+
             <div style={buttonRowStyle}>
               <label>
                 <input
@@ -1906,6 +2230,7 @@ export default function DocumentWorkflowPage() {
               <Field label="Effective Date"><div>{doc.effective_date || "N/A"}</div></Field>
               <Field label="Read Acknowledgement Required"><div>{doc.read_ack_required ? "Yes" : "No"}</div></Field>
               <Field label="Training Required"><div>{doc.training_required ? "Yes" : "No"}</div></Field>
+              <Field label="Training Impact"><div>{trainingImpactLabel(doc.training_impact)}</div></Field>
               <Field label="Originating Change Control"><div>{doc.originating_change_control_id || "None"}</div></Field>
             </div>
 
@@ -2568,6 +2893,60 @@ export default function DocumentWorkflowPage() {
       <section style={cardStyle}>
         <div style={rowBetweenStyle}>
           <div>
+            <h2 style={{ marginTop: 0 }}>Revision History</h2>
+            <p style={subtleText}>
+              Shows released, superseded, and draft revisions for this document number.
+            </p>
+          </div>
+          <div style={relationshipCountStyle}>{revisionHistory.length} revision(s)</div>
+        </div>
+
+        {revisionHistory.length === 0 ? (
+          <p style={subtleText}>No revision history available.</p>
+        ) : (
+          <div style={{ display: "grid", gap: "10px" }}>
+            {revisionHistory.map((revisionItem) => (
+              <div key={revisionItem.id} style={trainingCardStyle}>
+                <div style={rowBetweenStyle}>
+                  <div>
+                    <strong>{revisionItem.document_number} Rev {revisionItem.revision}</strong>
+                    <div style={smallTextStyle}>{revisionItem.title}</div>
+                    <div style={smallTextStyle}>
+                      Change: {revisionItem.revision_change_description || revisionItem.change_summary || "N/A"}
+                    </div>
+                    <div style={smallTextStyle}>
+                      Training Impact: {trainingImpactLabel(revisionItem.training_impact)}
+                    </div>
+                  </div>
+                  <StatusBadge status={revisionItem.id === doc.id ? `${revisionItem.status}_current` : revisionItem.status} />
+                </div>
+
+                <div style={buttonRowStyle}>
+                  {revisionItem.controlled_copy_file_url ? (
+                    <a href={revisionItem.controlled_copy_file_url} target="_blank" rel="noreferrer" style={primaryLinkStyle}>
+                      Open Controlled Copy
+                    </a>
+                  ) : null}
+
+                  {revisionItem.file_url ? (
+                    <a href={revisionItem.file_url} target="_blank" rel="noreferrer" style={secondaryButtonStyle}>
+                      Open Master Copy
+                    </a>
+                  ) : null}
+
+                  <a href={`/documents/${revisionItem.id}`} style={darkButtonStyle}>
+                    Open Workflow
+                  </a>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section style={cardStyle}>
+        <div style={rowBetweenStyle}>
+          <div>
             <h2 style={{ marginTop: 0 }}>Controlled Copy</h2>
             <p style={subtleText}>
               Released controlled copy PDF with revision, effective date, and release status. Approval signatures remain in the electronic signature record and audit trail. The master / redline source remains available separately for future revisions.
@@ -2719,7 +3098,7 @@ function KpiCard({ title, value, color }: { title: string; value: number; color:
 
 function StatusBadge({ status }: { status: string }) {
   const color =
-    status === "release" ||
+    status.includes("release") ||
     status === "controlled_copy_available" ||
     status === "effective"
       ? "#15803d"
