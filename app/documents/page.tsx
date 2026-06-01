@@ -823,11 +823,10 @@ export default function DocumentControlLandingPage() {
           <table style={tableStyle}>
             <thead>
               <tr>
-                <th style={thStyle}>Document</th>
-                <th style={thStyle}>Type / Area</th>
+                <th style={thStyle}>Document Number</th>
+                <th style={thStyle}>Document Title</th>
                 <th style={thStyle}>Revision</th>
                 <th style={thStyle}>Workflow Status</th>
-                <th style={thStyle}>Owner</th>
                 <th style={thStyle}>Effective Date</th>
                 <th style={thStyle}>Actions</th>
               </tr>
@@ -835,72 +834,45 @@ export default function DocumentControlLandingPage() {
             <tbody>
               {filteredDocuments.length === 0 ? (
                 <tr>
-                  <td colSpan={7} style={tdStyle}>No documents match the current filter.</td>
+                  <td colSpan={6} style={tdStyle}>No documents match the current filter.</td>
                 </tr>
               ) : (
-                filteredDocuments.map((doc) => {
-                  const stats = documentReviewStats.get(doc.id) || {
-                    openReviews: 0,
-                    overdueReviews: 0,
-                    needsMyReview: false,
-                  };
+                filteredDocuments.map((doc) => (
+                  <tr key={doc.id}>
+                    <td style={tdStyle}>
+                      <strong>{doc.document_number}</strong>
+                    </td>
+                    <td style={tdStyle}>{doc.title}</td>
+                    <td style={tdStyle}>{doc.revision}</td>
+                    <td style={tdStyle}>
+                      <StatusBadge status={doc.status} />
+                    </td>
+                    <td style={tdStyle}>{doc.effective_date || "N/A"}</td>
+                    <td style={tdStyle}>
+                      <div style={actionButtonGroupStyle}>
+                        {getPrimaryDocumentUrl(doc) ? (
+                          <a href={getPrimaryDocumentUrl(doc) || "#"} target="_blank" rel="noreferrer" style={smallLinkButtonStyle}>
+                            {getPrimaryDocumentLabel(doc)}
+                          </a>
+                        ) : (
+                          <span style={disabledActionStyle}>No File</span>
+                        )}
 
-                  return (
-                    <tr key={doc.id}>
-                      <td style={tdStyle}>
-                        <strong>{doc.document_number}</strong>
-                        <div>{doc.title}</div>
-                        <div style={smallTextStyle}>
-                          {doc.status === "release" && doc.controlled_copy_file_name
-                            ? `Controlled copy: ${doc.controlled_copy_file_name}`
-                            : doc.file_name || "No file attached"}
-                        </div>
-                        {doc.status === "release" && doc.file_name ? (
-                          <div style={smallTextStyle}>Master / redline source: {doc.file_name}</div>
+                        {doc.status === "release" && doc.file_url ? (
+                          <a href={doc.file_url} target="_blank" rel="noreferrer" style={smallLinkButtonStyle}>
+                            Open Master Copy
+                          </a>
                         ) : null}
-                        {stats.needsMyReview ? (
-                          <div style={myReviewBadgeStyle}>Awaiting my review</div>
-                        ) : null}
-                      </td>
-                      <td style={tdStyle}>
-                        <div>{doc.document_type || "N/A"}</div>
-                        <div style={smallTextStyle}>{doc.department || "No department"} {doc.process_area ? `• ${doc.process_area}` : ""}</div>
-                      </td>
-                      <td style={tdStyle}>{doc.revision}</td>
-                      <td style={tdStyle}>
-                        <StatusBadge status={doc.status} />
-                        <div style={smallTextStyle}>
-                          {stats.openReviews} open review(s)
-                          {stats.overdueReviews > 0 ? (
-                            <span style={inlineOverdueStyle}> • {stats.overdueReviews} overdue</span>
-                          ) : null}
-                        </div>
-                      </td>
-                      <td style={tdStyle}>{doc.owner_email || "N/A"}</td>
-                      <td style={tdStyle}>{doc.effective_date || "N/A"}</td>
-                      <td style={tdStyle}>
-                        <div style={actionButtonGroupStyle}>
-                          {getPrimaryDocumentUrl(doc) ? (
-                            <a href={getPrimaryDocumentUrl(doc) || "#"} target="_blank" rel="noreferrer" style={smallLinkButtonStyle}>
-                              {getPrimaryDocumentLabel(doc)}
-                            </a>
-                          ) : (
-                            <span style={disabledActionStyle}>No File</span>
-                          )}
 
-                          {doc.status === "release" && doc.file_url ? (
-                            <a href={doc.file_url} target="_blank" rel="noreferrer" style={smallLinkButtonStyle}>
-                              Open Master Copy
-                            </a>
-                          ) : null}
-
+                        {doc.status !== "release" && doc.status !== "effective" ? (
                           <a href={`/documents/${doc.id}`} style={primaryLinkStyle}>Workflow</a>
-                          <button onClick={() => reviseDocument(doc)} style={secondaryButtonStyle}>Revise</button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
+                        ) : null}
+
+                        <button onClick={() => reviseDocument(doc)} style={secondaryButtonStyle}>Revise</button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
               )}
             </tbody>
           </table>
@@ -1010,7 +982,7 @@ export default function DocumentControlLandingPage() {
 function Field({ label, children }: { label: string; children: React.ReactNode }) { return <div style={{ marginBottom: "12px" }}><label style={labelStyle}>{label}</label><div style={{ marginTop: "5px" }}>{children}</div></div>; }
 function KpiCard({ title, value, color }: { title: string; value: number | string; color: string }) { return <div style={{ ...kpiCardStyle, borderLeft: `8px solid ${color}` }}><div style={kpiTitleStyle}>{title}</div><div style={{ fontSize: "30px", fontWeight: 800, color }}>{value}</div></div>; }
 function SummaryPill({ label, value, color }: { label: string; value: number | string; color: string }) { return <div style={{ ...summaryPillStyle, borderColor: color }}><span style={smallTextStyle}>{label}</span><strong style={{ color }}>{value}</strong></div>; }
-function StatusBadge({ status }: { status: string }) { const color = status === "effective" ? "#15803d" : status === "approved" ? "#2563eb" : status === "formal_review" ? "#d97706" : status === "collaboration" ? "#7c3aed" : status === "rejected" ? "#dc2626" : status === "obsolete" || status === "superseded" ? "#991b1b" : "#6b7280"; return <span style={{ background: color, color: "white", borderRadius: "999px", padding: "3px 8px", fontSize: "12px", fontWeight: 700 }}>{status}</span>; }
+function StatusBadge({ status }: { status: string }) { const color = status === "release" || status === "effective" ? "#15803d" : status === "approved" ? "#2563eb" : status === "formal_review" ? "#d97706" : status === "collaboration" ? "#7c3aed" : status === "rejected" ? "#dc2626" : status === "obsolete" || status === "superseded" ? "#991b1b" : "#6b7280"; return <span style={{ background: color, color: "white", borderRadius: "999px", padding: "3px 8px", fontSize: "12px", fontWeight: 700 }}>{status}</span>; }
 function formatDate(value: string | null | undefined) { if (!value) return "N/A"; try { return new Date(value).toLocaleDateString(); } catch { return value; } }
 
 const pageStyle: React.CSSProperties = { padding: "24px", background: "#f8fafc", minHeight: "100vh", fontFamily: "Arial, sans-serif" };
