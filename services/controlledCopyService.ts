@@ -1,4 +1,4 @@
-import { PDFDocument, rgb, degrees, StandardFonts } from "pdf-lib";
+import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import { supabase } from "../lib/supabaseClient";
 
 type ControlledDocument = {
@@ -28,9 +28,14 @@ function sanitizePathSegment(value: string | null | undefined) {
 function formatDate(value: string | null | undefined) {
   if (!value) return "N/A";
 
-  // Avoid timezone conversion. Supabase date fields such as 2026-05-31
-  // can shift backward by one day when parsed with new Date() in local time.
-  return String(value).slice(0, 10);
+  const raw = String(value).trim();
+  const dateOnlyMatch = raw.match(/^\d{4}-\d{2}-\d{2}/);
+
+  if (dateOnlyMatch) {
+    return dateOnlyMatch[0];
+  }
+
+  return raw;
 }
 
 function isPdfFile(fileName?: string | null, fileUrl?: string | null) {
@@ -142,8 +147,18 @@ async function stampPdf({
       color: rgb(0.78, 0.81, 0.86),
     });
 
-    page.drawText("QUALIFLOW ENTERPRISE - CONTROLLED COPY", {
+    page.drawText("QUALIFLOW ENTERPRISE - RELEASED DOCUMENT", {
       x: 24,
+      y: height - 16,
+      size: 8.5,
+      font: boldFont,
+      color: rgb(0.05, 0.08, 0.14),
+    });
+
+    const releaseStatusText = "Status: RELEASE";
+    const releaseStatusWidth = boldFont.widthOfTextAtSize(releaseStatusText, 8.5);
+    page.drawText(releaseStatusText, {
+      x: width - 24 - releaseStatusWidth,
       y: height - 16,
       size: 8.5,
       font: boldFont,
@@ -193,20 +208,6 @@ async function stampPdf({
       color: rgb(0.05, 0.08, 0.14),
     });
 
-    // Watermark.
-    const watermarkText = "CONTROLLED COPY";
-    const watermarkSize = Math.min(72, Math.max(46, width / 8.5));
-    const watermarkWidth = boldFont.widthOfTextAtSize(watermarkText, watermarkSize);
-
-    page.drawText(watermarkText, {
-      x: (width - watermarkWidth) / 2,
-      y: height / 2,
-      size: watermarkSize,
-      font: boldFont,
-      color: rgb(0.7, 0.7, 0.7),
-      opacity: 0.5,
-      rotate: degrees(35),
-    });
 
     // Footer background band.
     page.drawRectangle({
@@ -225,7 +226,7 @@ async function stampPdf({
       color: rgb(0.78, 0.81, 0.86),
     });
 
-    const footerLeft = `${doc.document_number} | Rev ${doc.revision} | Effective Date: ${effectiveDate}`;
+    const footerLeft = `${doc.document_number} | Rev ${doc.revision} | Effective Date: ${effectiveDate} | Status: RELEASE`;
     page.drawText(footerLeft, {
       x: 24,
       y: 12,
