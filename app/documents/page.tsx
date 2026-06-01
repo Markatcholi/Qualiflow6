@@ -51,7 +51,7 @@ type QuickFilter =
   | "my_documents"
   | "awaiting_my_review"
   | "in_workflow"
-  | "effective"
+  | "released"
   | "rejected"
   | "my_rejected_documents";
 
@@ -80,7 +80,6 @@ const STATUSES = [
   "formal_review",
   "approved",
   "release",
-  "effective",
   "rejected",
   "obsolete",
   "superseded",
@@ -218,7 +217,7 @@ export default function DocumentControlLandingPage() {
 
     return {
       total: documents.length,
-      effective: documents.filter((doc) => doc.status === "release" || doc.status === "effective").length,
+      released: documents.filter((doc) => doc.status === "release" || doc.status === "effective").length,
       inWorkflow,
       rejected: documents.filter((doc) => doc.status === "rejected").length,
       obsolete: documents.filter((doc) => doc.status === "obsolete" || doc.status === "superseded").length,
@@ -280,7 +279,7 @@ export default function DocumentControlLandingPage() {
   }, [documents, assignedReviewers, userEmail]);
 
   const getPrimaryDocumentUrl = (doc: ControlledDocument) => {
-    if (doc.status === "release" && doc.controlled_copy_file_url) {
+    if ((doc.status === "release" || doc.status === "effective") && doc.controlled_copy_file_url) {
       return doc.controlled_copy_file_url;
     }
 
@@ -288,7 +287,7 @@ export default function DocumentControlLandingPage() {
   };
 
   const getPrimaryDocumentLabel = (doc: ControlledDocument) => {
-    if (doc.status === "release" && doc.controlled_copy_file_url) {
+    if ((doc.status === "release" || doc.status === "effective") && doc.controlled_copy_file_url) {
       return "Open Controlled Copy";
     }
 
@@ -322,7 +321,7 @@ export default function DocumentControlLandingPage() {
           doc.status === "approved";
       }
 
-      if (quickFilter === "effective") {
+      if (quickFilter === "released") {
         matchesQuickFilter = doc.status === "release" || doc.status === "effective";
       }
 
@@ -407,7 +406,7 @@ export default function DocumentControlLandingPage() {
       documentsInCollaboration: documents.filter((doc) => doc.status === "collaboration").length,
       documentsInFormalReview: documents.filter((doc) => doc.status === "formal_review").length,
       documentsAwaitingRelease: documents.filter((doc) => doc.status === "approved").length,
-      effectiveDocuments: documents.filter((doc) => doc.status === "release" || doc.status === "effective").length,
+      releasedDocuments: documents.filter((doc) => doc.status === "release" || doc.status === "effective").length,
       openReviews: openReviews.length,
       overdueReviews: overdueReviews.length,
       workflowSla,
@@ -629,7 +628,7 @@ export default function DocumentControlLandingPage() {
           <KpiCard title="Collaboration" value={workflowSnapshot.documentsInCollaboration} color="#7c3aed" />
           <KpiCard title="Formal Review" value={workflowSnapshot.documentsInFormalReview} color="#d97706" />
           <KpiCard title="Awaiting Release" value={workflowSnapshot.documentsAwaitingRelease} color="#2563eb" />
-          <KpiCard title="Released" value={workflowSnapshot.effectiveDocuments} color="#15803d" />
+          <KpiCard title="Released" value={workflowSnapshot.releasedDocuments} color="#15803d" />
           <KpiCard title="Open Reviews" value={workflowSnapshot.openReviews} color="#d97706" />
           <KpiCard title="Overdue Reviews" value={workflowSnapshot.overdueReviews} color="#dc2626" />
           <KpiCard title="Workflow SLA" value={`${workflowSnapshot.workflowSla}%`} color="#2563eb" />
@@ -777,7 +776,7 @@ export default function DocumentControlLandingPage() {
 
         <div style={summaryBarStyle}>
           <SummaryPill label="Total" value={registerSummary.total} color="#2563eb" />
-          <SummaryPill label="Effective" value={registerSummary.effective} color="#15803d" />
+          <SummaryPill label="Released" value={registerSummary.released} color="#15803d" />
           <SummaryPill label="In Workflow" value={registerSummary.inWorkflow} color="#d97706" />
           <SummaryPill label="Rejected" value={registerSummary.rejected} color="#dc2626" />
           <SummaryPill label="Obsolete" value={registerSummary.obsolete} color="#991b1b" />
@@ -788,7 +787,7 @@ export default function DocumentControlLandingPage() {
           <button onClick={() => setQuickFilter("my_documents")} style={quickFilter === "my_documents" ? activeFilterButtonStyle : filterButtonStyle}>My Documents</button>
           <button onClick={() => setQuickFilter("awaiting_my_review")} style={quickFilter === "awaiting_my_review" ? activeFilterButtonStyle : filterButtonStyle}>Awaiting My Review</button>
           <button onClick={() => setQuickFilter("in_workflow")} style={quickFilter === "in_workflow" ? activeFilterButtonStyle : filterButtonStyle}>In Workflow</button>
-          <button onClick={() => setQuickFilter("effective")} style={quickFilter === "effective" ? activeFilterButtonStyle : filterButtonStyle}>Released Only</button>
+          <button onClick={() => setQuickFilter("released")} style={quickFilter === "released" ? activeFilterButtonStyle : filterButtonStyle}>Released Only</button>
           <button onClick={() => setQuickFilter("rejected")} style={quickFilter === "rejected" ? activeFilterButtonStyle : filterButtonStyle}>Rejected</button>
           <button onClick={() => setQuickFilter("my_rejected_documents")} style={quickFilter === "my_rejected_documents" ? activeFilterButtonStyle : filterButtonStyle}>My Rejected Documents</button>
         </div>
@@ -802,7 +801,7 @@ export default function DocumentControlLandingPage() {
           />
           <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} style={inputStyle}>
             <option value="all">All Statuses</option>
-            {STATUSES.map((status) => <option key={status} value={status}>{status}</option>)}
+            {STATUSES.map((status) => <option key={status} value={status}>{getStatusLabel(status)}</option>)}
           </select>
           <select value={sortBy} onChange={(e) => setSortBy(e.target.value as SortOption)} style={inputStyle}>
             <option value="newest">Sort: Newest First</option>
@@ -816,7 +815,7 @@ export default function DocumentControlLandingPage() {
         <div style={resultSummaryStyle}>
           Showing <strong>{filteredDocuments.length}</strong> of <strong>{documents.length}</strong> documents
           {quickFilter !== "all" ? <> • Quick filter: <strong>{quickFilter.split("_").join(" ")}</strong></> : null}
-          {filterStatus !== "all" ? <> • Status: <strong>{filterStatus}</strong></> : null}
+          {filterStatus !== "all" ? <> • Status: <strong>{getStatusLabel(filterStatus)}</strong></> : null}
         </div>
 
         <div style={{ overflowX: "auto" }}>
@@ -858,7 +857,7 @@ export default function DocumentControlLandingPage() {
                           <span style={disabledActionStyle}>No File</span>
                         )}
 
-                        {doc.status === "release" && doc.file_url ? (
+                        {(doc.status === "release" || doc.status === "effective") && doc.file_url ? (
                           <a href={doc.file_url} target="_blank" rel="noreferrer" style={smallLinkButtonStyle}>
                             Open Master Copy
                           </a>
@@ -982,8 +981,63 @@ export default function DocumentControlLandingPage() {
 function Field({ label, children }: { label: string; children: React.ReactNode }) { return <div style={{ marginBottom: "12px" }}><label style={labelStyle}>{label}</label><div style={{ marginTop: "5px" }}>{children}</div></div>; }
 function KpiCard({ title, value, color }: { title: string; value: number | string; color: string }) { return <div style={{ ...kpiCardStyle, borderLeft: `8px solid ${color}` }}><div style={kpiTitleStyle}>{title}</div><div style={{ fontSize: "30px", fontWeight: 800, color }}>{value}</div></div>; }
 function SummaryPill({ label, value, color }: { label: string; value: number | string; color: string }) { return <div style={{ ...summaryPillStyle, borderColor: color }}><span style={smallTextStyle}>{label}</span><strong style={{ color }}>{value}</strong></div>; }
-function StatusBadge({ status }: { status: string }) { const color = status === "release" || status === "effective" ? "#15803d" : status === "approved" ? "#2563eb" : status === "formal_review" ? "#d97706" : status === "collaboration" ? "#7c3aed" : status === "rejected" ? "#dc2626" : status === "obsolete" || status === "superseded" ? "#991b1b" : "#6b7280"; return <span style={{ background: color, color: "white", borderRadius: "999px", padding: "3px 8px", fontSize: "12px", fontWeight: 700 }}>{status}</span>; }
-function formatDate(value: string | null | undefined) { if (!value) return "N/A"; try { return new Date(value).toLocaleDateString(); } catch { return value; } }
+function getStatusLabel(status: string) {
+  const labels: Record<string, string> = {
+    draft: "Draft",
+    collaboration: "Collaboration",
+    formal_review: "Formal Review",
+    approved: "Approved",
+    release: "Released",
+    effective: "Released",
+    rejected: "Rejected",
+    obsolete: "Obsolete",
+    superseded: "Superseded",
+  };
+
+  return labels[status] || status;
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const color =
+    status === "release" || status === "effective"
+      ? "#15803d"
+      : status === "approved"
+      ? "#2563eb"
+      : status === "formal_review"
+      ? "#d97706"
+      : status === "collaboration"
+      ? "#7c3aed"
+      : status === "rejected"
+      ? "#dc2626"
+      : status === "obsolete" || status === "superseded"
+      ? "#991b1b"
+      : "#6b7280";
+
+  return (
+    <span
+      style={{
+        background: color,
+        color: "white",
+        borderRadius: "999px",
+        padding: "3px 8px",
+        fontSize: "12px",
+        fontWeight: 700,
+      }}
+    >
+      {getStatusLabel(status)}
+    </span>
+  );
+}
+function formatDate(value: string | null | undefined) {
+  if (!value) return "N/A";
+  const text = String(value);
+  if (/^\d{4}-\d{2}-\d{2}/.test(text)) return text.slice(0, 10);
+  try {
+    return new Date(value).toLocaleDateString();
+  } catch {
+    return value;
+  }
+}
 
 const pageStyle: React.CSSProperties = { padding: "24px", background: "#f8fafc", minHeight: "100vh", fontFamily: "Arial, sans-serif" };
 const headerStyle: React.CSSProperties = { display: "flex", justifyContent: "space-between", gap: "16px", alignItems: "flex-start", flexWrap: "wrap", marginBottom: "20px" };
