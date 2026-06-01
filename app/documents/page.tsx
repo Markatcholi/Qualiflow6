@@ -22,8 +22,6 @@ type ControlledDocument = {
   controlled_copy_file_name?: string | null;
   controlled_copy_file_path?: string | null;
   controlled_copy_file_url?: string | null;
-  controlled_copy_generated_at?: string | null;
-  controlled_copy_generated_by?: string | null;
   change_summary: string | null;
   change_rationale?: string | null;
   owner_email: string | null;
@@ -280,6 +278,22 @@ export default function DocumentControlLandingPage() {
 
     return stats;
   }, [documents, assignedReviewers, userEmail]);
+
+  const getPrimaryDocumentUrl = (doc: ControlledDocument) => {
+    if (doc.status === "release" && doc.controlled_copy_file_url) {
+      return doc.controlled_copy_file_url;
+    }
+
+    return doc.file_url;
+  };
+
+  const getPrimaryDocumentLabel = (doc: ControlledDocument) => {
+    if (doc.status === "release" && doc.controlled_copy_file_url) {
+      return "Open Controlled Copy";
+    }
+
+    return "Open Working Copy";
+  };
 
   const filteredDocuments = useMemo(() => {
     const currentUser = normalizeEmail(userEmail);
@@ -549,6 +563,17 @@ export default function DocumentControlLandingPage() {
         status: "draft",
         department: doc.department,
         process_area: doc.process_area,
+        file_name: doc.file_name || null,
+        file_path: doc.file_path || null,
+        file_url: doc.file_url || null,
+        release_pdf_file_name: null,
+        release_pdf_file_path: null,
+        release_pdf_file_url: null,
+        controlled_copy_file_name: null,
+        controlled_copy_file_path: null,
+        controlled_copy_file_url: null,
+        controlled_copy_generated_at: null,
+        controlled_copy_generated_by: null,
         owner_email: doc.owner_email || userEmail || null,
         approver_email: null,
         read_ack_required: doc.read_ack_required,
@@ -604,7 +629,7 @@ export default function DocumentControlLandingPage() {
           <KpiCard title="Collaboration" value={workflowSnapshot.documentsInCollaboration} color="#7c3aed" />
           <KpiCard title="Formal Review" value={workflowSnapshot.documentsInFormalReview} color="#d97706" />
           <KpiCard title="Awaiting Release" value={workflowSnapshot.documentsAwaitingRelease} color="#2563eb" />
-          <KpiCard title="Effective" value={workflowSnapshot.effectiveDocuments} color="#15803d" />
+          <KpiCard title="Released" value={workflowSnapshot.effectiveDocuments} color="#15803d" />
           <KpiCard title="Open Reviews" value={workflowSnapshot.openReviews} color="#d97706" />
           <KpiCard title="Overdue Reviews" value={workflowSnapshot.overdueReviews} color="#dc2626" />
           <KpiCard title="Workflow SLA" value={`${workflowSnapshot.workflowSla}%`} color="#2563eb" />
@@ -763,7 +788,7 @@ export default function DocumentControlLandingPage() {
           <button onClick={() => setQuickFilter("my_documents")} style={quickFilter === "my_documents" ? activeFilterButtonStyle : filterButtonStyle}>My Documents</button>
           <button onClick={() => setQuickFilter("awaiting_my_review")} style={quickFilter === "awaiting_my_review" ? activeFilterButtonStyle : filterButtonStyle}>Awaiting My Review</button>
           <button onClick={() => setQuickFilter("in_workflow")} style={quickFilter === "in_workflow" ? activeFilterButtonStyle : filterButtonStyle}>In Workflow</button>
-          <button onClick={() => setQuickFilter("effective")} style={quickFilter === "effective" ? activeFilterButtonStyle : filterButtonStyle}>Effective Only</button>
+          <button onClick={() => setQuickFilter("effective")} style={quickFilter === "effective" ? activeFilterButtonStyle : filterButtonStyle}>Released Only</button>
           <button onClick={() => setQuickFilter("rejected")} style={quickFilter === "rejected" ? activeFilterButtonStyle : filterButtonStyle}>Rejected</button>
           <button onClick={() => setQuickFilter("my_rejected_documents")} style={quickFilter === "my_rejected_documents" ? activeFilterButtonStyle : filterButtonStyle}>My Rejected Documents</button>
         </div>
@@ -826,10 +851,13 @@ export default function DocumentControlLandingPage() {
                         <strong>{doc.document_number}</strong>
                         <div>{doc.title}</div>
                         <div style={smallTextStyle}>
-                          {(doc.status === "release" || doc.status === "effective") && doc.controlled_copy_file_name
+                          {doc.status === "release" && doc.controlled_copy_file_name
                             ? `Controlled copy: ${doc.controlled_copy_file_name}`
                             : doc.file_name || "No file attached"}
                         </div>
+                        {doc.status === "release" && doc.file_name ? (
+                          <div style={smallTextStyle}>Master / redline source: {doc.file_name}</div>
+                        ) : null}
                         {stats.needsMyReview ? (
                           <div style={myReviewBadgeStyle}>Awaiting my review</div>
                         ) : null}
@@ -852,13 +880,20 @@ export default function DocumentControlLandingPage() {
                       <td style={tdStyle}>{doc.effective_date || "N/A"}</td>
                       <td style={tdStyle}>
                         <div style={actionButtonGroupStyle}>
-                          {(doc.status === "release" || doc.status === "effective") && doc.controlled_copy_file_url ? (
-                            <a href={doc.controlled_copy_file_url} target="_blank" rel="noreferrer" style={smallLinkButtonStyle}>Open Controlled Copy</a>
-                          ) : doc.file_url ? (
-                            <a href={doc.file_url} target="_blank" rel="noreferrer" style={smallLinkButtonStyle}>Open Working File</a>
+                          {getPrimaryDocumentUrl(doc) ? (
+                            <a href={getPrimaryDocumentUrl(doc) || "#"} target="_blank" rel="noreferrer" style={smallLinkButtonStyle}>
+                              {getPrimaryDocumentLabel(doc)}
+                            </a>
                           ) : (
                             <span style={disabledActionStyle}>No File</span>
                           )}
+
+                          {doc.status === "release" && doc.file_url ? (
+                            <a href={doc.file_url} target="_blank" rel="noreferrer" style={smallLinkButtonStyle}>
+                              Open Master Copy
+                            </a>
+                          ) : null}
+
                           <a href={`/documents/${doc.id}`} style={primaryLinkStyle}>Workflow</a>
                           <button onClick={() => reviseDocument(doc)} style={secondaryButtonStyle}>Revise</button>
                         </div>
