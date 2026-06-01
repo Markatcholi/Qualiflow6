@@ -291,6 +291,16 @@ export default function DocumentWorkflowPage() {
 
   const relatedDocumentCount = documentRelationships.length;
 
+  const releasedDocumentUrl =
+    doc && (doc.status === "release" || doc.status === "effective") && doc.controlled_copy_file_url
+      ? doc.controlled_copy_file_url
+      : doc?.file_url || null;
+
+  const releasedDocumentFileName =
+    doc && (doc.status === "release" || doc.status === "effective") && doc.controlled_copy_file_name
+      ? doc.controlled_copy_file_name
+      : doc?.file_name || null;
+
   const fetchUser = async () => {
     const { data: userData } = await supabase.auth.getUser();
     const email = userData?.user?.email || "";
@@ -1448,8 +1458,13 @@ export default function DocumentWorkflowPage() {
       return;
     }
 
-    if (!doc.file_url) {
-      alert("No effective document file is attached for acknowledgement.");
+    const acknowledgementDocumentUrl =
+      (doc.status === "release" || doc.status === "effective") && doc.controlled_copy_file_url
+        ? doc.controlled_copy_file_url
+        : doc.file_url;
+
+    if (!acknowledgementDocumentUrl) {
+      alert("No released document file is attached for acknowledgement.");
       return;
     }
 
@@ -1482,7 +1497,12 @@ export default function DocumentWorkflowPage() {
       return;
     }
 
-    if (!doc.file_url) {
+    const trainingDocumentUrl =
+      (doc.status === "release" || doc.status === "effective") && doc.controlled_copy_file_url
+        ? doc.controlled_copy_file_url
+        : doc.file_url;
+
+    if (!trainingDocumentUrl) {
       alert("Cannot assign training because no document file is attached.");
       return;
     }
@@ -1526,7 +1546,7 @@ export default function DocumentWorkflowPage() {
     await logWorkflowEvent({
       eventType: "training_assigned",
       comments: `Training assigned to ${emails.length} user(s).`,
-      metadata: { users: emails, document_file_url: doc.file_url },
+      metadata: { users: emails, document_file_url: trainingDocumentUrl },
     });
 
     setTrainingEmails({ ...trainingEmails, [doc.id]: "" });
@@ -2392,7 +2412,7 @@ export default function DocumentWorkflowPage() {
           ) : null}
 
           {transitionPermissions.acknowledge.allowed ? (
-            <button disabled={busy || !doc.file_url} onClick={() => acknowledgeDocument(doc)} style={primaryButtonStyle}>
+            <button disabled={busy || !releasedDocumentUrl} onClick={() => acknowledgeDocument(doc)} style={primaryButtonStyle}>
               Opened, Read & Acknowledge
             </button>
           ) : null}
@@ -2400,10 +2420,12 @@ export default function DocumentWorkflowPage() {
           {doc.training_required ? (
             <details>
               <summary>Assign Training</summary>
-              {!doc.file_url ? (
+              {!releasedDocumentUrl ? (
                 <p style={warningStyle}>Training cannot be assigned until a document file is attached.</p>
               ) : (
-                <p style={smallTextStyle}>Training will include the current document attachment link.</p>
+                <p style={smallTextStyle}>
+                  Training will open the {doc.status === "release" && doc.controlled_copy_file_url ? "controlled copy" : "current document attachment"}.
+                </p>
               )}
               <textarea
                 value={trainingEmails[doc.id] || ""}
@@ -2508,9 +2530,11 @@ export default function DocumentWorkflowPage() {
                     </div>
 
                     <div style={buttonRowStyle}>
-                      {doc.file_url ? (
-                        <a href={doc.file_url} target="_blank" rel="noreferrer" style={primaryLinkStyle}>
-                          Open Training Document
+                      {releasedDocumentUrl ? (
+                        <a href={releasedDocumentUrl} target="_blank" rel="noreferrer" style={primaryLinkStyle}>
+                          {(doc.status === "release" || doc.status === "effective") && doc.controlled_copy_file_url
+                            ? "Open Controlled Copy"
+                            : "Open Training Document"}
                         </a>
                       ) : (
                         <span style={warningStyle}>No document attached.</span>
