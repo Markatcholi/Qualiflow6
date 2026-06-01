@@ -16,6 +16,14 @@ type ControlledDocument = {
   file_name: string | null;
   file_path: string | null;
   file_url: string | null;
+  release_pdf_file_name?: string | null;
+  release_pdf_file_path?: string | null;
+  release_pdf_file_url?: string | null;
+  controlled_copy_file_name?: string | null;
+  controlled_copy_file_path?: string | null;
+  controlled_copy_file_url?: string | null;
+  controlled_copy_generated_at?: string | null;
+  controlled_copy_generated_by?: string | null;
   change_summary: string | null;
   change_rationale?: string | null;
   owner_email: string | null;
@@ -73,6 +81,7 @@ const STATUSES = [
   "collaboration",
   "formal_review",
   "approved",
+  "release",
   "effective",
   "rejected",
   "obsolete",
@@ -211,7 +220,7 @@ export default function DocumentControlLandingPage() {
 
     return {
       total: documents.length,
-      effective: documents.filter((doc) => doc.status === "effective").length,
+      effective: documents.filter((doc) => doc.status === "release" || doc.status === "effective").length,
       inWorkflow,
       rejected: documents.filter((doc) => doc.status === "rejected").length,
       obsolete: documents.filter((doc) => doc.status === "obsolete" || doc.status === "superseded").length,
@@ -300,7 +309,7 @@ export default function DocumentControlLandingPage() {
       }
 
       if (quickFilter === "effective") {
-        matchesQuickFilter = doc.status === "effective";
+        matchesQuickFilter = doc.status === "release" || doc.status === "effective";
       }
 
       if (quickFilter === "rejected") {
@@ -384,7 +393,7 @@ export default function DocumentControlLandingPage() {
       documentsInCollaboration: documents.filter((doc) => doc.status === "collaboration").length,
       documentsInFormalReview: documents.filter((doc) => doc.status === "formal_review").length,
       documentsAwaitingRelease: documents.filter((doc) => doc.status === "approved").length,
-      effectiveDocuments: documents.filter((doc) => doc.status === "effective").length,
+      effectiveDocuments: documents.filter((doc) => doc.status === "release" || doc.status === "effective").length,
       openReviews: openReviews.length,
       overdueReviews: overdueReviews.length,
       workflowSla,
@@ -816,7 +825,11 @@ export default function DocumentControlLandingPage() {
                       <td style={tdStyle}>
                         <strong>{doc.document_number}</strong>
                         <div>{doc.title}</div>
-                        <div style={smallTextStyle}>{doc.file_name || "No file attached"}</div>
+                        <div style={smallTextStyle}>
+                          {(doc.status === "release" || doc.status === "effective") && doc.controlled_copy_file_name
+                            ? `Controlled copy: ${doc.controlled_copy_file_name}`
+                            : doc.file_name || "No file attached"}
+                        </div>
                         {stats.needsMyReview ? (
                           <div style={myReviewBadgeStyle}>Awaiting my review</div>
                         ) : null}
@@ -839,8 +852,10 @@ export default function DocumentControlLandingPage() {
                       <td style={tdStyle}>{doc.effective_date || "N/A"}</td>
                       <td style={tdStyle}>
                         <div style={actionButtonGroupStyle}>
-                          {doc.file_url ? (
-                            <a href={doc.file_url} target="_blank" rel="noreferrer" style={smallLinkButtonStyle}>Open File</a>
+                          {(doc.status === "release" || doc.status === "effective") && doc.controlled_copy_file_url ? (
+                            <a href={doc.controlled_copy_file_url} target="_blank" rel="noreferrer" style={smallLinkButtonStyle}>Open Controlled Copy</a>
+                          ) : doc.file_url ? (
+                            <a href={doc.file_url} target="_blank" rel="noreferrer" style={smallLinkButtonStyle}>Open Working File</a>
                           ) : (
                             <span style={disabledActionStyle}>No File</span>
                           )}
