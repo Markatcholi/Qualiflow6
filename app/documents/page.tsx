@@ -217,7 +217,7 @@ export default function DocumentControlLandingPage() {
 
     return {
       total: documents.length,
-      released: documents.filter((doc) => doc.status === "release" || doc.status === "effective").length,
+      released: documents.filter((doc) => doc.status === "release").length,
       inWorkflow,
       rejected: documents.filter((doc) => doc.status === "rejected").length,
       obsolete: documents.filter((doc) => doc.status === "obsolete" || doc.status === "superseded").length,
@@ -279,7 +279,12 @@ export default function DocumentControlLandingPage() {
   }, [documents, assignedReviewers, userEmail]);
 
   const getPrimaryDocumentUrl = (doc: ControlledDocument) => {
-    if ((doc.status === "release" || doc.status === "effective") && doc.controlled_copy_file_url) {
+    const isControlledDocument =
+      doc.status === "release" ||
+      doc.status === "superseded" ||
+      doc.status === "obsolete";
+
+    if (isControlledDocument && doc.controlled_copy_file_url) {
       return doc.controlled_copy_file_url;
     }
 
@@ -287,7 +292,12 @@ export default function DocumentControlLandingPage() {
   };
 
   const getPrimaryDocumentLabel = (doc: ControlledDocument) => {
-    if ((doc.status === "release" || doc.status === "effective") && doc.controlled_copy_file_url) {
+    const isControlledDocument =
+      doc.status === "release" ||
+      doc.status === "superseded" ||
+      doc.status === "obsolete";
+
+    if (isControlledDocument && doc.controlled_copy_file_url) {
       return "Open Controlled Copy";
     }
 
@@ -322,7 +332,7 @@ export default function DocumentControlLandingPage() {
       }
 
       if (quickFilter === "released") {
-        matchesQuickFilter = doc.status === "release" || doc.status === "effective";
+        matchesQuickFilter = doc.status === "release";
       }
 
       if (quickFilter === "rejected") {
@@ -406,7 +416,7 @@ export default function DocumentControlLandingPage() {
       documentsInCollaboration: documents.filter((doc) => doc.status === "collaboration").length,
       documentsInFormalReview: documents.filter((doc) => doc.status === "formal_review").length,
       documentsAwaitingRelease: documents.filter((doc) => doc.status === "approved").length,
-      releasedDocuments: documents.filter((doc) => doc.status === "release" || doc.status === "effective").length,
+      releasedDocuments: documents.filter((doc) => doc.status === "release").length,
       openReviews: openReviews.length,
       overdueReviews: overdueReviews.length,
       workflowSla,
@@ -545,57 +555,7 @@ export default function DocumentControlLandingPage() {
   };
 
   const reviseDocument = async (doc: ControlledDocument) => {
-    const nextRevision = prompt(
-      `Enter new revision for ${doc.document_number}`,
-      `${doc.revision}-1`
-    );
-
-    if (!nextRevision) return;
-
-    const { data, error } = await supabase
-      .from("controlled_documents")
-      .insert({
-        document_number: doc.document_number,
-        title: doc.title,
-        document_type: doc.document_type,
-        revision: nextRevision,
-        status: "draft",
-        department: doc.department,
-        process_area: doc.process_area,
-        file_name: doc.file_name || null,
-        file_path: doc.file_path || null,
-        file_url: doc.file_url || null,
-        release_pdf_file_name: null,
-        release_pdf_file_path: null,
-        release_pdf_file_url: null,
-        controlled_copy_file_name: null,
-        controlled_copy_file_path: null,
-        controlled_copy_file_url: null,
-        controlled_copy_generated_at: null,
-        controlled_copy_generated_by: null,
-        owner_email: doc.owner_email || userEmail || null,
-        approver_email: null,
-        read_ack_required: doc.read_ack_required,
-        training_required: doc.training_required,
-        superseded_document_id: doc.id,
-        change_summary: `Revision created from ${doc.document_number} Rev ${doc.revision}`,
-        change_rationale: doc.change_rationale || null,
-        created_by: userEmail || "unknown",
-      })
-      .select()
-      .single();
-
-    if (error) {
-      alert(error.message);
-      return;
-    }
-
-    await supabase
-      .from("controlled_documents")
-      .update({ superseded_by_document_id: data.id })
-      .eq("id", doc.id);
-
-    window.location.href = `/documents/${data.id}`;
+    window.location.href = `/documents/${doc.id}`;
   };
 
   if (loading) return <main style={pageStyle}>Loading Document Control...</main>;
@@ -857,13 +817,13 @@ export default function DocumentControlLandingPage() {
                           <span style={disabledActionStyle}>No File</span>
                         )}
 
-                        {(doc.status === "release" || doc.status === "effective") && doc.file_url ? (
+                        {["release", "superseded", "obsolete"].includes(doc.status) && doc.file_url ? (
                           <a href={doc.file_url} target="_blank" rel="noreferrer" style={smallLinkButtonStyle}>
                             Open Master Copy
                           </a>
                         ) : null}
 
-                        {doc.status !== "release" && doc.status !== "effective" ? (
+                        {!["release", "superseded", "obsolete"].includes(doc.status) ? (
                           <a href={`/documents/${doc.id}`} style={primaryLinkStyle}>Workflow</a>
                         ) : null}
 
