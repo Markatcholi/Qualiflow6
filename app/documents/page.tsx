@@ -98,6 +98,7 @@ export default function DocumentControlLandingPage() {
   const [search, setSearch] = useState("");
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [showHistoricalRevisions, setShowHistoricalRevisions] = useState(false);
+  const [showActions, setShowActions] = useState(true);
   const [autoGeneratingNumber, setAutoGeneratingNumber] = useState(false);
   const [manualDocumentNumber, setManualDocumentNumber] = useState(false);
 
@@ -768,6 +769,16 @@ export default function DocumentControlLandingPage() {
             />{" "}
             Show Historical Revisions
           </label>
+
+          <label style={{ fontWeight: 700 }}>
+            <input
+              type="checkbox"
+              checked={showActions}
+              onChange={(e) => setShowActions(e.target.checked)}
+            />{" "}
+            Show Actions
+          </label>
+
           <span style={smallTextStyle}>
             Superseded and obsolete documents are hidden by default unless this option is selected.
           </span>
@@ -808,13 +819,13 @@ export default function DocumentControlLandingPage() {
                 <th style={thStyle}>Revision</th>
                 <th style={thStyle}>Workflow Status</th>
                 <th style={thStyle}>Effective Date</th>
-                <th style={thStyle}>Actions</th>
+                {showActions ? <th style={thStyle}>Actions</th> : null}
               </tr>
             </thead>
             <tbody>
               {filteredDocuments.length === 0 ? (
                 <tr>
-                  <td colSpan={6} style={tdStyle}>No documents match the current filter.</td>
+                  <td colSpan={showActions ? 6 : 5} style={tdStyle}>No documents match the current filter.</td>
                 </tr>
               ) : (
                 filteredDocuments.map((doc) => (
@@ -828,29 +839,31 @@ export default function DocumentControlLandingPage() {
                       <StatusBadge status={doc.status} />
                     </td>
                     <td style={tdStyle}>{doc.effective_date || "N/A"}</td>
-                    <td style={tdStyle}>
-                      <div style={actionButtonGroupStyle}>
-                        {getPrimaryDocumentUrl(doc) ? (
-                          <a href={getPrimaryDocumentUrl(doc) || "#"} target="_blank" rel="noreferrer" style={smallLinkButtonStyle}>
-                            {getPrimaryDocumentLabel(doc)}
-                          </a>
-                        ) : (
-                          <span style={disabledActionStyle}>No File</span>
-                        )}
+                    {showActions ? (
+                      <td style={tdStyle}>
+                        <div style={actionButtonGroupStyle}>
+                          {getPrimaryDocumentUrl(doc) ? (
+                            <a href={getPrimaryDocumentUrl(doc) || "#"} target="_blank" rel="noreferrer" style={smallLinkButtonStyle}>
+                              {getPrimaryDocumentLabel(doc)}
+                            </a>
+                          ) : (
+                            <span style={disabledActionStyle}>No File</span>
+                          )}
 
-                        {isControlledLifecycleStatus(doc.status) && doc.file_url ? (
-                          <a href={doc.file_url} target="_blank" rel="noreferrer" style={smallLinkButtonStyle}>
-                            Open Master Copy
-                          </a>
-                        ) : null}
+                          {isControlledLifecycleStatus(doc.status) && doc.file_url ? (
+                            <a href={doc.file_url} target="_blank" rel="noreferrer" style={smallLinkButtonStyle}>
+                              Open Master Copy
+                            </a>
+                          ) : null}
 
-                        {doc.status !== "superseded" && doc.status !== "obsolete" ? (
-                          <a href={`/documents/${doc.id}`} style={primaryLinkStyle}>Workflow</a>
-                        ) : null}
+                          {doc.status !== "superseded" && doc.status !== "obsolete" ? (
+                            <a href={`/documents/${doc.id}`} style={primaryLinkStyle}>Workflow</a>
+                          ) : null}
 
-                        <button onClick={() => reviseDocument(doc)} style={secondaryButtonStyle}>Revise</button>
-                      </div>
-                    </td>
+                          <button onClick={() => reviseDocument(doc)} style={secondaryButtonStyle}>Revise</button>
+                        </div>
+                      </td>
+                    ) : null}
                   </tr>
                 ))
               )}
