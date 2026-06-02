@@ -97,6 +97,7 @@ export default function DocumentControlLandingPage() {
   const [sortBy, setSortBy] = useState<SortOption>("newest");
   const [search, setSearch] = useState("");
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [showHistoricalRevisions, setShowHistoricalRevisions] = useState(false);
   const [autoGeneratingNumber, setAutoGeneratingNumber] = useState(false);
   const [manualDocumentNumber, setManualDocumentNumber] = useState(false);
 
@@ -278,8 +279,13 @@ export default function DocumentControlLandingPage() {
     return stats;
   }, [documents, assignedReviewers, userEmail]);
 
+  const isControlledLifecycleStatus = (status: string) =>
+    status === "release" ||
+    status === "superseded" ||
+    status === "obsolete";
+
   const getPrimaryDocumentUrl = (doc: ControlledDocument) => {
-    if ((doc.status === "release" || doc.status === "effective") && doc.controlled_copy_file_url) {
+    if (isControlledLifecycleStatus(doc.status) && doc.controlled_copy_file_url) {
       return doc.controlled_copy_file_url;
     }
 
@@ -287,7 +293,7 @@ export default function DocumentControlLandingPage() {
   };
 
   const getPrimaryDocumentLabel = (doc: ControlledDocument) => {
-    if ((doc.status === "release" || doc.status === "effective") && doc.controlled_copy_file_url) {
+    if (isControlledLifecycleStatus(doc.status) && doc.controlled_copy_file_url) {
       return "Open Controlled Copy";
     }
 
@@ -338,7 +344,17 @@ export default function DocumentControlLandingPage() {
           );
       }
 
-      return matchesStatus && matchesSearch && matchesQuickFilter;
+      const isHistoricalRevision =
+        doc.status === "superseded" ||
+        doc.status === "obsolete";
+
+      const matchesHistoricalFilter =
+        showHistoricalRevisions ||
+        !isHistoricalRevision ||
+        filterStatus === "superseded" ||
+        filterStatus === "obsolete";
+
+      return matchesStatus && matchesSearch && matchesQuickFilter && matchesHistoricalFilter;
     });
 
     return [...filtered].sort((a, b) => {
@@ -372,6 +388,7 @@ export default function DocumentControlLandingPage() {
     sortBy,
     userEmail,
     myReviewDocumentIds,
+    showHistoricalRevisions,
   ]);
 
   const myRejectedDocuments = useMemo(() => {
@@ -545,57 +562,7 @@ export default function DocumentControlLandingPage() {
   };
 
   const reviseDocument = async (doc: ControlledDocument) => {
-    const nextRevision = prompt(
-      `Enter new revision for ${doc.document_number}`,
-      `${doc.revision}-1`
-    );
-
-    if (!nextRevision) return;
-
-    const { data, error } = await supabase
-      .from("controlled_documents")
-      .insert({
-        document_number: doc.document_number,
-        title: doc.title,
-        document_type: doc.document_type,
-        revision: nextRevision,
-        status: "draft",
-        department: doc.department,
-        process_area: doc.process_area,
-        file_name: doc.file_name || null,
-        file_path: doc.file_path || null,
-        file_url: doc.file_url || null,
-        release_pdf_file_name: null,
-        release_pdf_file_path: null,
-        release_pdf_file_url: null,
-        controlled_copy_file_name: null,
-        controlled_copy_file_path: null,
-        controlled_copy_file_url: null,
-        controlled_copy_generated_at: null,
-        controlled_copy_generated_by: null,
-        owner_email: doc.owner_email || userEmail || null,
-        approver_email: null,
-        read_ack_required: doc.read_ack_required,
-        training_required: doc.training_required,
-        superseded_document_id: doc.id,
-        change_summary: `Revision created from ${doc.document_number} Rev ${doc.revision}`,
-        change_rationale: doc.change_rationale || null,
-        created_by: userEmail || "unknown",
-      })
-      .select()
-      .single();
-
-    if (error) {
-      alert(error.message);
-      return;
-    }
-
-    await supabase
-      .from("controlled_documents")
-      .update({ superseded_by_document_id: data.id })
-      .eq("id", doc.id);
-
-    window.location.href = `/documents/${data.id}`;
+    window.location.href = `/documents/${doc.id}`;
   };
 
   if (loading) return <main style={pageStyle}>Loading Document Control...</main>;
@@ -792,6 +759,20 @@ export default function DocumentControlLandingPage() {
           <button onClick={() => setQuickFilter("my_rejected_documents")} style={quickFilter === "my_rejected_documents" ? activeFilterButtonStyle : filterButtonStyle}>My Rejected Documents</button>
         </div>
 
+        <div style={historyToggleStyle}>
+          <label style={{ fontWeight: 700 }}>
+            <input
+              type="checkbox"
+              checked={showHistoricalRevisions}
+              onChange={(e) => setShowHistoricalRevisions(e.target.checked)}
+            />{" "}
+            Show Historical Revisions
+          </label>
+          <span style={smallTextStyle}>
+            Superseded and obsolete documents are hidden by default unless this option is selected.
+          </span>
+        </div>
+
         <div style={filterRowStyle}>
           <input
             placeholder="Search document number, title, type, department..."
@@ -857,13 +838,13 @@ export default function DocumentControlLandingPage() {
                           <span style={disabledActionStyle}>No File</span>
                         )}
 
-                        {(doc.status === "release" || doc.status === "effective") && doc.file_url ? (
+                        {isControlledLifecycleStatus(doc.status) && doc.file_url ? (
                           <a href={doc.file_url} target="_blank" rel="noreferrer" style={smallLinkButtonStyle}>
                             Open Master Copy
                           </a>
                         ) : null}
 
-                        {doc.status !== "release" && doc.status !== "effective" ? (
+                        {doc.status !== "superseded" && doc.status !== "obsolete" ? (
                           <a href={`/documents/${doc.id}`} style={primaryLinkStyle}>Workflow</a>
                         ) : null}
 
@@ -1079,3 +1060,4 @@ const inlineOverdueStyle: React.CSSProperties = { color: "#dc2626", fontWeight: 
 const disabledActionStyle: React.CSSProperties = { background: "#f3f4f6", color: "#6b7280", padding: "8px 12px", borderRadius: "8px", fontWeight: 700, display: "inline-block" };
 const actionButtonGroupStyle: React.CSSProperties = { display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" };
 const inlineFieldRowStyle: React.CSSProperties = { display: "grid", gridTemplateColumns: "1fr auto", gap: "8px", alignItems: "center" };
+const historyToggleStyle: React.CSSProperties = { display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap", marginBottom: "14px", background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: "10px", padding: "10px 12px" };
