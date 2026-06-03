@@ -538,6 +538,50 @@ export default function MasterDataPage() {
             Open Company Settings
           </Link>
         </div>
+
+        <div
+          style={{
+            border: "1px solid #d1d5db",
+            borderRadius: "12px",
+            padding: "20px",
+            background: "#f8fafc",
+          }}
+        >
+          <div
+            style={{
+              fontSize: "12px",
+              fontWeight: 800,
+              color: "#6b7280",
+              letterSpacing: "0.08em",
+              marginBottom: "8px",
+            }}
+          >
+            APPROVAL GOVERNANCE
+          </div>
+
+          <h2 style={{ marginTop: 0 }}>Approval Matrix Templates</h2>
+
+          <p style={{ color: "#4b5563" }}>
+            Create and maintain reusable approval matrix templates for
+            Document Control, Change Control, CAPA, Audit, and Training workflows.
+          </p>
+
+          <Link
+            href="/admin/approval-matrix"
+            style={{
+              display: "inline-block",
+              marginTop: "10px",
+              background: "#111827",
+              color: "white",
+              padding: "10px 14px",
+              borderRadius: "8px",
+              textDecoration: "none",
+              fontWeight: 700,
+            }}
+          >
+            Open Approval Matrix Templates
+          </Link>
+        </div>
       </div>
 
       <div style={sectionStyle}>
