@@ -48,6 +48,8 @@ export default function ApprovalMatrixAdminPage() {
   const [templates, setTemplates] = useState<ApprovalMatrixTemplate[]>([]);
   const [reviewers, setReviewers] = useState<ApprovalMatrixReviewer[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
+  const [showTemplateForm, setShowTemplateForm] = useState(false);
+  const [showReviewerForm, setShowReviewerForm] = useState(false);
 
   const [newTemplate, setNewTemplate] = useState({
     template_name: "",
@@ -166,15 +168,37 @@ export default function ApprovalMatrixAdminPage() {
     userRole?.includes("admin") ||
     userRole?.includes("quality");
 
+  const resetTemplateForm = () => {
+    setNewTemplate({
+      template_name: "",
+      module_name: "documents",
+      description: "",
+      active: true,
+    });
+  };
+
+  const resetReviewerForm = () => {
+    setNewReviewer({
+      reviewer_type: "formal_review",
+      reviewer_role: "",
+      reviewer_email: "",
+      required_reviewer: true,
+      sequence_order: selectedReviewers.length > 0
+        ? String(Math.max(...selectedReviewers.map((item) => Number(item.sequence_order || 1))) + 1)
+        : "1",
+      active: true,
+    });
+  };
+
   const createTemplate = async () => {
     if (!newTemplate.template_name.trim()) {
       alert("Template name is required.");
-      return;
+      return false;
     }
 
     if (!newTemplate.module_name.trim()) {
       alert("Module is required.");
-      return;
+      return false;
     }
 
     setBusy(true);
@@ -195,19 +219,16 @@ export default function ApprovalMatrixAdminPage() {
     if (error) {
       alert(error.message);
       setBusy(false);
-      return;
+      return false;
     }
 
-    setNewTemplate({
-      template_name: "",
-      module_name: "documents",
-      description: "",
-      active: true,
-    });
+    resetTemplateForm();
+    setShowTemplateForm(false);
 
     await fetchData();
     setSelectedTemplateId(data.id);
     setBusy(false);
+    return true;
   };
 
   const updateTemplateActive = async (template: ApprovalMatrixTemplate, active: boolean) => {
@@ -252,31 +273,31 @@ export default function ApprovalMatrixAdminPage() {
   const addReviewer = async () => {
     if (!selectedTemplateId) {
       alert("Select a template before adding reviewers.");
-      return;
+      return false;
     }
 
     if (!newReviewer.reviewer_type.trim()) {
       alert("Review phase is required.");
-      return;
+      return false;
     }
 
     if (!newReviewer.reviewer_role.trim() && !newReviewer.reviewer_email.trim()) {
       alert("Reviewer role or reviewer email is required.");
-      return;
+      return false;
     }
 
     const reviewerEmail = normalizeEmail(newReviewer.reviewer_email);
 
     if (newReviewer.reviewer_email && !reviewerEmail) {
       alert("Reviewer email must be valid when provided.");
-      return;
+      return false;
     }
 
     const sequence = Number(newReviewer.sequence_order || 1);
 
     if (!Number.isFinite(sequence) || sequence < 1) {
       alert("Sequence must be a positive number.");
-      return;
+      return false;
     }
 
     setBusy(true);
@@ -294,7 +315,7 @@ export default function ApprovalMatrixAdminPage() {
     if (error) {
       alert(error.message);
       setBusy(false);
-      return;
+      return false;
     }
 
     setNewReviewer({
@@ -305,9 +326,11 @@ export default function ApprovalMatrixAdminPage() {
       sequence_order: String(sequence + 1),
       active: true,
     });
+    setShowReviewerForm(false);
 
     await fetchData();
     setBusy(false);
+    return true;
   };
 
   const updateReviewerActive = async (reviewer: ApprovalMatrixReviewer, active: boolean) => {
@@ -379,54 +402,89 @@ export default function ApprovalMatrixAdminPage() {
       </header>
 
       <section style={cardStyle}>
-        <h2 style={{ marginTop: 0 }}>Create Template</h2>
-        <div style={gridStyle}>
-          <Field label="Template Name">
-            <input
-              value={newTemplate.template_name}
-              onChange={(e) => setNewTemplate({ ...newTemplate, template_name: e.target.value })}
-              placeholder="SOP Approval Matrix"
-              style={inputStyle}
-            />
-          </Field>
-
-          <Field label="Module">
-            <select
-              value={newTemplate.module_name}
-              onChange={(e) => setNewTemplate({ ...newTemplate, module_name: e.target.value })}
-              style={inputStyle}
+        <div style={sectionHeaderStyle}>
+          <div>
+            <h2 style={{ margin: 0 }}>Create Template</h2>
+            <p style={subtleText}>Create reusable approval matrix templates for workflow reviewer assignment.</p>
+          </div>
+          {!showTemplateForm ? (
+            <button
+              onClick={() => {
+                resetTemplateForm();
+                setShowTemplateForm(true);
+              }}
+              style={primaryButtonStyle}
             >
-              {MODULE_OPTIONS.map((module) => (
-                <option key={module} value={module}>{getModuleLabel(module)}</option>
-              ))}
-            </select>
-          </Field>
-
-          <Field label="Active">
-            <label>
-              <input
-                type="checkbox"
-                checked={newTemplate.active}
-                onChange={(e) => setNewTemplate({ ...newTemplate, active: e.target.checked })}
-              />{" "}
-              Active template
-            </label>
-          </Field>
+              New Template
+            </button>
+          ) : null}
         </div>
 
-        <Field label="Description">
-          <textarea
-            value={newTemplate.description}
-            onChange={(e) => setNewTemplate({ ...newTemplate, description: e.target.value })}
-            placeholder="Describe when this matrix should be used."
-            rows={3}
-            style={textareaStyle}
-          />
-        </Field>
+        {showTemplateForm ? (
+          <>
+            <div style={gridStyle}>
+              <Field label="Template Name">
+                <input
+                  value={newTemplate.template_name}
+                  onChange={(e) => setNewTemplate({ ...newTemplate, template_name: e.target.value })}
+                  placeholder="SOP Approval Matrix"
+                  style={inputStyle}
+                />
+              </Field>
 
-        <button onClick={createTemplate} disabled={busy} style={busy ? disabledButtonStyle : primaryButtonStyle}>
-          Create Template
-        </button>
+              <Field label="Module">
+                <select
+                  value={newTemplate.module_name}
+                  onChange={(e) => setNewTemplate({ ...newTemplate, module_name: e.target.value })}
+                  style={inputStyle}
+                >
+                  {MODULE_OPTIONS.map((module) => (
+                    <option key={module} value={module}>{getModuleLabel(module)}</option>
+                  ))}
+                </select>
+              </Field>
+
+              <Field label="Active">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={newTemplate.active}
+                    onChange={(e) => setNewTemplate({ ...newTemplate, active: e.target.checked })}
+                  />{" "}
+                  Active template
+                </label>
+              </Field>
+            </div>
+
+            <Field label="Description">
+              <textarea
+                value={newTemplate.description}
+                onChange={(e) => setNewTemplate({ ...newTemplate, description: e.target.value })}
+                placeholder="Describe when this matrix should be used."
+                rows={3}
+                style={textareaStyle}
+              />
+            </Field>
+
+            <div style={buttonRowStyle}>
+              <button onClick={createTemplate} disabled={busy} style={busy ? disabledButtonStyle : primaryButtonStyle}>
+                Save Template
+              </button>
+              <button
+                onClick={() => {
+                  resetTemplateForm();
+                  setShowTemplateForm(false);
+                }}
+                disabled={busy}
+                style={darkButtonStyle}
+              >
+                Cancel
+              </button>
+            </div>
+          </>
+        ) : (
+          <p style={subtleText}>Use “New Template” to create a reusable approval matrix. Existing templates can be selected and maintained below.</p>
+        )}
       </section>
 
       <section style={cardStyle}>
@@ -461,7 +519,16 @@ export default function ApprovalMatrixAdminPage() {
                     <td style={tdStyle}>{template.description || "N/A"}</td>
                     <td style={tdStyle}>
                       <div style={buttonRowStyle}>
-                        <button onClick={() => setSelectedTemplateId(template.id)} style={secondaryButtonStyle}>Select</button>
+                        <button
+                          onClick={() => {
+                            setSelectedTemplateId(template.id);
+                            setShowReviewerForm(false);
+                            resetReviewerForm();
+                          }}
+                          style={secondaryButtonStyle}
+                        >
+                          Select
+                        </button>
                         <button onClick={() => updateTemplateActive(template, !template.active)} style={darkButtonStyle}>
                           {template.active ? "Deactivate" : "Activate"}
                         </button>
@@ -484,83 +551,112 @@ export default function ApprovalMatrixAdminPage() {
               Add reviewer rows that will populate the workflow when the template is loaded.
             </p>
           </div>
-          {selectedTemplate ? (
-            <StatusBadge label={selectedTemplate.template_name} color="#2563eb" />
-          ) : null}
+          <div style={buttonRowStyle}>
+            {selectedTemplate ? (
+              <StatusBadge label={selectedTemplate.template_name} color="#2563eb" />
+            ) : null}
+            {selectedTemplate && !showReviewerForm ? (
+              <button
+                onClick={() => {
+                  resetReviewerForm();
+                  setShowReviewerForm(true);
+                }}
+                style={primaryButtonStyle}
+              >
+                Add Reviewer
+              </button>
+            ) : null}
+          </div>
         </div>
 
         {!selectedTemplate ? (
           <p style={subtleText}>Select a template before adding reviewer rows.</p>
         ) : (
           <>
-            <div style={gridStyle}>
-              <Field label="Review Phase">
-                <select
-                  value={newReviewer.reviewer_type}
-                  onChange={(e) => setNewReviewer({ ...newReviewer, reviewer_type: e.target.value })}
-                  style={inputStyle}
-                >
-                  {REVIEWER_TYPES.map((type) => (
-                    <option key={type} value={type}>{getReviewerTypeLabel(type)}</option>
-                  ))}
-                </select>
-              </Field>
+            {showReviewerForm ? (
+              <div style={reviewerFormStyle}>
+                <div style={gridStyle}>
+                  <Field label="Review Phase">
+                    <select
+                      value={newReviewer.reviewer_type}
+                      onChange={(e) => setNewReviewer({ ...newReviewer, reviewer_type: e.target.value })}
+                      style={inputStyle}
+                    >
+                      {REVIEWER_TYPES.map((type) => (
+                        <option key={type} value={type}>{getReviewerTypeLabel(type)}</option>
+                      ))}
+                    </select>
+                  </Field>
 
-              <Field label="Reviewer Role">
-                <input
-                  value={newReviewer.reviewer_role}
-                  onChange={(e) => setNewReviewer({ ...newReviewer, reviewer_role: e.target.value })}
-                  placeholder="Quality Manager"
-                  style={inputStyle}
-                />
-              </Field>
+                  <Field label="Reviewer Role">
+                    <input
+                      value={newReviewer.reviewer_role}
+                      onChange={(e) => setNewReviewer({ ...newReviewer, reviewer_role: e.target.value })}
+                      placeholder="Quality Manager"
+                      style={inputStyle}
+                    />
+                  </Field>
 
-              <Field label="Reviewer Email Optional">
-                <input
-                  type="email"
-                  value={newReviewer.reviewer_email}
-                  onChange={(e) => setNewReviewer({ ...newReviewer, reviewer_email: e.target.value })}
-                  placeholder="reviewer@company.com"
-                  style={inputStyle}
-                />
-              </Field>
+                  <Field label="Reviewer Email Optional">
+                    <input
+                      type="email"
+                      value={newReviewer.reviewer_email}
+                      onChange={(e) => setNewReviewer({ ...newReviewer, reviewer_email: e.target.value })}
+                      placeholder="reviewer@company.com"
+                      style={inputStyle}
+                    />
+                  </Field>
 
-              <Field label="Sequence">
-                <input
-                  type="number"
-                  min="1"
-                  value={newReviewer.sequence_order}
-                  onChange={(e) => setNewReviewer({ ...newReviewer, sequence_order: e.target.value })}
-                  style={inputStyle}
-                />
-              </Field>
+                  <Field label="Sequence">
+                    <input
+                      type="number"
+                      min="1"
+                      value={newReviewer.sequence_order}
+                      onChange={(e) => setNewReviewer({ ...newReviewer, sequence_order: e.target.value })}
+                      style={inputStyle}
+                    />
+                  </Field>
 
-              <Field label="Required Reviewer">
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={newReviewer.required_reviewer}
-                    onChange={(e) => setNewReviewer({ ...newReviewer, required_reviewer: e.target.checked })}
-                  />{" "}
-                  Required
-                </label>
-              </Field>
+                  <Field label="Required Reviewer">
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={newReviewer.required_reviewer}
+                        onChange={(e) => setNewReviewer({ ...newReviewer, required_reviewer: e.target.checked })}
+                      />{" "}
+                      Required
+                    </label>
+                  </Field>
 
-              <Field label="Active">
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={newReviewer.active}
-                    onChange={(e) => setNewReviewer({ ...newReviewer, active: e.target.checked })}
-                  />{" "}
-                  Active
-                </label>
-              </Field>
-            </div>
+                  <Field label="Active">
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={newReviewer.active}
+                        onChange={(e) => setNewReviewer({ ...newReviewer, active: e.target.checked })}
+                      />{" "}
+                      Active
+                    </label>
+                  </Field>
+                </div>
 
-            <button onClick={addReviewer} disabled={busy} style={busy ? disabledButtonStyle : primaryButtonStyle}>
-              Add Reviewer Row
-            </button>
+                <div style={buttonRowStyle}>
+                  <button onClick={addReviewer} disabled={busy} style={busy ? disabledButtonStyle : primaryButtonStyle}>
+                    Save Reviewer
+                  </button>
+                  <button
+                    onClick={() => {
+                      resetReviewerForm();
+                      setShowReviewerForm(false);
+                    }}
+                    disabled={busy}
+                    style={darkButtonStyle}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : null}
 
             <div style={{ marginTop: "18px", overflowX: "auto" }}>
               <table style={tableStyle}>
@@ -809,6 +905,14 @@ const tdStyle: React.CSSProperties = {
   borderBottom: "1px solid #e5e7eb",
   padding: "10px",
   verticalAlign: "top",
+};
+
+const reviewerFormStyle: React.CSSProperties = {
+  background: "#f9fafb",
+  border: "1px solid #e5e7eb",
+  borderRadius: "12px",
+  padding: "14px",
+  marginBottom: "16px",
 };
 
 const selectedRowStyle: React.CSSProperties = {
