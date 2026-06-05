@@ -556,25 +556,77 @@ export default function ChangeControlWorkflowPage() {
     if (!change) return;
     if (!canImplement) return alert("Controlled document revisions can only be created after change approval.");
 
+    const documentNumber = String(linkedDoc.document_number || "").trim();
+    const proposedRevision = String(linkedDoc.proposed_revision || "").trim();
+    const currentRevision = String(linkedDoc.current_revision || "").trim();
+
+    if (!documentNumber) return alert("Document number is required.");
+
+    const matchingDocuments = controlledDocuments
+      .filter((doc: any) => String(doc.document_number || "").trim() === documentNumber)
+      .sort((a: any, b: any) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
+
+    const sourceDoc = currentRevision
+      ? matchingDocuments.find((doc: any) => String(doc.revision || "").trim() === currentRevision) || null
+      : matchingDocuments.find((doc: any) => doc.status === "release" || doc.status === "effective") ||
+        matchingDocuments[0] ||
+        null;
+
+    const isExistingControlledDocument = Boolean(sourceDoc);
+
+    if (isExistingControlledDocument && !proposedRevision) {
+      return alert("Proposed revision is required when revising an existing controlled document.");
+    }
+
+    const revisionToCreate = proposedRevision || "A";
+
+    const duplicateRevision = matchingDocuments.find(
+      (doc: any) => String(doc.revision || "").trim() === revisionToCreate
+    );
+
+    if (duplicateRevision) {
+      return alert(
+        `Document ${documentNumber} Rev ${revisionToCreate} already exists. Enter a new proposed revision before creating the controlled document revision.`
+      );
+    }
+
+    const insertPayload: any = {
+      document_number: documentNumber,
+      title: linkedDoc.document_title || sourceDoc?.title || documentNumber,
+      document_type: sourceDoc?.document_type || null,
+      department: sourceDoc?.department || null,
+      process_area: sourceDoc?.process_area || null,
+      revision: revisionToCreate,
+      status: "draft",
+      file_name: sourceDoc?.file_name || null,
+      file_path: sourceDoc?.file_path || null,
+      file_url: sourceDoc?.file_url || null,
+      release_pdf_file_name: null,
+      release_pdf_file_path: null,
+      release_pdf_file_url: null,
+      controlled_copy_file_name: null,
+      controlled_copy_file_path: null,
+      controlled_copy_file_url: null,
+      controlled_copy_generated_at: null,
+      controlled_copy_generated_by: null,
+      originating_change_control_id: change.id,
+      change_required: true,
+      change_summary: linkedDoc.change_description || change.change_description,
+      change_rationale: change.change_justification,
+      revision_change_description: linkedDoc.change_description || change.change_description,
+      revision_change_justification: change.change_justification,
+      superseded_document_id: sourceDoc?.id || null,
+      owner_email: change.owner_email || sourceDoc?.owner_email || userEmail || null,
+      approver_email: null,
+      training_impact: linkedDoc.training_required ? "FORMAL_TRAINING" : "NO_TRAINING",
+      training_required: linkedDoc.training_required || false,
+      read_ack_required: linkedDoc.training_required || false,
+      created_by: userEmail || "unknown",
+    };
+
     const { data, error } = await supabase
       .from("controlled_documents")
-      .insert({
-        document_number: linkedDoc.document_number,
-        title: linkedDoc.document_title || linkedDoc.document_number,
-        revision: linkedDoc.proposed_revision || "A",
-        status: "draft",
-        originating_change_control_id: change.id,
-        change_required: true,
-        change_summary: linkedDoc.change_description || change.change_description,
-        change_rationale: change.change_justification,
-        revision_change_description: linkedDoc.change_description || change.change_description,
-        revision_change_justification: change.change_justification,
-        owner_email: change.owner_email || userEmail || null,
-        training_impact: linkedDoc.training_required ? "FORMAL_TRAINING" : "NO_TRAINING",
-        training_required: linkedDoc.training_required || false,
-        read_ack_required: linkedDoc.training_required || false,
-        created_by: userEmail || "unknown",
-      })
+      .insert(insertPayload)
       .select()
       .single();
 
@@ -582,11 +634,22 @@ export default function ChangeControlWorkflowPage() {
 
     const linkRes = await supabase
       .from("change_control_documents")
-      .update({ controlled_document_id: data.id, document_status: "draft" })
+      .update({
+        controlled_document_id: data.id,
+        current_revision: sourceDoc?.revision || linkedDoc.current_revision || null,
+        proposed_revision: revisionToCreate,
+        document_title: linkedDoc.document_title || sourceDoc?.title || documentNumber,
+        document_status: "draft",
+      })
       .eq("id", linkedDoc.id);
 
     if (linkRes.error) return alert(linkRes.error.message);
-    alert("Controlled document revision created from approved change.");
+
+    alert(
+      sourceDoc?.file_url
+        ? "Controlled document revision created from approved change. The master copy was carried forward from the current revision."
+        : "Controlled document revision created from approved change. No existing master copy was found to carry forward."
+    );
     fetchData();
   };
 
