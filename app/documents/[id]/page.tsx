@@ -11,10 +11,8 @@ import { generateControlledCopy } from "../../../services/controlledCopyService"
 import {
   canManageWorkflow as canUserManageWorkflow,
   canTransition,
-  canUserActOnReviewer,
   getSlaLabel,
   getWorkflowState,
-  hasPriorRequiredReviewerOpen,
   isApproverRole,
   isManagementRole,
   isOverdue,
@@ -795,24 +793,10 @@ export default function DocumentWorkflowPage() {
 
     const currentUser = normalizeEmail(userEmail);
     const assignedUser = normalizeEmail(reviewer.reviewer_email);
+    const canOverrideReviewer = canApprove || canManage;
 
-    if (currentUser !== assignedUser) {
-      alert("Only the assigned reviewer can complete this review.");
-      return;
-    }
-
-    const previousRequiredReviewers = assignedReviewers.filter(
-      (r) =>
-        Number(r.review_sequence || 0) < Number(reviewer.review_sequence || 0) &&
-        r.required_reviewer
-    );
-
-    const blockedReviewer = previousRequiredReviewers.find(
-      (r) => r.review_status !== "approved"
-    );
-
-    if (blockedReviewer) {
-      alert(`Waiting for ${blockedReviewer.reviewer_email} to complete review first.`);
+    if (currentUser !== assignedUser && !canOverrideReviewer) {
+      alert("Only the assigned reviewer, Quality/Document Control, Admin, or VP Quality can complete this review.");
       return;
     }
 
@@ -2492,12 +2476,10 @@ export default function DocumentWorkflowPage() {
             <p style={subtleText}>No reviewers assigned yet.</p>
           ) : (
             assignedReviewers.map((reviewer) => {
-              const canCurrentUserReview = canUserActOnReviewer(reviewer, userEmail);
-
-              const priorRequiredOpen = hasPriorRequiredReviewerOpen(
-                reviewer,
-                assignedReviewers
-              );
+              const canCurrentUserReview =
+                normalizeEmail(reviewer.reviewer_email) === normalizeEmail(userEmail) ||
+                canApprove ||
+                canManage;
 
               const slaLabel = getSlaLabel(reviewer);
               const overdue = isOverdue(reviewer.due_date);
@@ -2539,62 +2521,60 @@ export default function DocumentWorkflowPage() {
 
                   {canCurrentUserReview && reviewer.review_status !== "approved" && reviewer.review_status !== "rejected" ? (
                     <>
-                      {priorRequiredOpen ? (
-                        <div style={warningStyle}>
-                          Waiting for prior required reviewer before this review can be completed.
+                      {normalizeEmail(reviewer.reviewer_email) !== normalizeEmail(userEmail) && (canApprove || canManage) ? (
+                        <div style={noticeStyle}>
+                          Override mode: you are completing this review as an authorized Quality/Admin/VP Quality user for {reviewer.reviewer_email}.
                         </div>
-                      ) : (
-                        <>
-                          <Field label="Upload Reviewed / Redlined Document">
-                            <input
-                              type="file"
-                              onChange={(e) =>
-                                setReviewedFiles({
-                                  ...reviewedFiles,
-                                  [reviewer.id]: e.target.files?.[0] || null,
-                                })
-                              }
-                            />
-                          </Field>
+                      ) : null}
 
-                          <textarea
-                            placeholder="Review comments. Rejection comments are required if rejecting."
-                            value={reviewComments[reviewer.id] || ""}
-                            onChange={(e) =>
-                              setReviewComments({
-                                ...reviewComments,
-                                [reviewer.id]: e.target.value,
-                              })
-                            }
-                            rows={3}
-                            style={textareaStyle}
-                          />
+                      <Field label="Upload Reviewed / Redlined Document">
+                        <input
+                          type="file"
+                          onChange={(e) =>
+                            setReviewedFiles({
+                              ...reviewedFiles,
+                              [reviewer.id]: e.target.files?.[0] || null,
+                            })
+                          }
+                        />
+                      </Field>
 
-                          <div style={buttonRowStyle}>
-                            <button
-                              disabled={busy}
-                              onClick={() => reviewerDecision(reviewer, "approved")}
-                              style={primaryButtonStyle}
-                            >
-                              Approve Review
-                            </button>
+                      <textarea
+                        placeholder="Review comments. Rejection comments are required if rejecting."
+                        value={reviewComments[reviewer.id] || ""}
+                        onChange={(e) =>
+                          setReviewComments({
+                            ...reviewComments,
+                            [reviewer.id]: e.target.value,
+                          })
+                        }
+                        rows={3}
+                        style={textareaStyle}
+                      />
 
-                            <button
-                              disabled={busy}
-                              onClick={() => reviewerDecision(reviewer, "rejected")}
-                              style={dangerButtonStyle}
-                            >
-                              Reject & Return to Owner
-                            </button>
-                          </div>
-                        </>
-                      )}
+                      <div style={buttonRowStyle}>
+                        <button
+                          disabled={busy}
+                          onClick={() => reviewerDecision(reviewer, "approved")}
+                          style={primaryButtonStyle}
+                        >
+                          Approve Review
+                        </button>
+
+                        <button
+                          disabled={busy}
+                          onClick={() => reviewerDecision(reviewer, "rejected")}
+                          style={dangerButtonStyle}
+                        >
+                          Reject & Return to Owner
+                        </button>
+                      </div>
                     </>
                   ) : (
                     <div style={smallTextStyle}>
                       {canCurrentUserReview
-                        ? "Your review has been completed."
-                        : "Waiting for assigned reviewer."}
+                        ? "This review has been completed."
+                        : `Waiting for assigned reviewer: ${reviewer.reviewer_email}`}
                     </div>
                   )}
                 </div>
