@@ -274,6 +274,29 @@ export default function ChangeControlWorkflowPage() {
     return text;
   };
 
+  const getNextRevisionValue = (revision: string | null | undefined) => {
+    const value = String(revision || "").trim();
+
+    if (/^\d+$/.test(value)) {
+      return String(Number(value) + 1).padStart(value.length, "0");
+    }
+
+    if (/^[A-Z]$/i.test(value)) {
+      const code = value.toUpperCase().charCodeAt(0);
+      if (code >= 65 && code < 90) return String.fromCharCode(code + 1);
+      return `${value}-1`;
+    }
+
+    const numericSuffix = value.match(/^(.*?)(\d+)$/);
+    if (numericSuffix) {
+      const prefix = numericSuffix[1];
+      const numberText = numericSuffix[2];
+      return `${prefix}${String(Number(numberText) + 1).padStart(numberText.length, "0")}`;
+    }
+
+    return value ? `${value}-1` : "01";
+  };
+
   const linkedControlledDocuments = documents
     .map((doc) => controlledDocuments.find((cd) => cd.id === doc.controlled_document_id))
     .filter(Boolean);
@@ -557,7 +580,7 @@ export default function ChangeControlWorkflowPage() {
     if (!canImplement) return alert("Controlled document revisions can only be created after change approval.");
 
     const documentNumber = String(linkedDoc.document_number || "").trim();
-    const proposedRevision = String(linkedDoc.proposed_revision || "").trim();
+    const requestedRevision = String(linkedDoc.proposed_revision || "").trim();
     const currentRevision = String(linkedDoc.current_revision || "").trim();
 
     if (!documentNumber) return alert("Document number is required.");
@@ -566,19 +589,26 @@ export default function ChangeControlWorkflowPage() {
       .filter((doc: any) => String(doc.document_number || "").trim() === documentNumber)
       .sort((a: any, b: any) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
 
+    const releasedOrHistoricalDocuments = matchingDocuments.filter((doc: any) =>
+      doc.status === "release" || doc.status === "effective" || doc.status === "superseded"
+    );
+
     const sourceDoc = currentRevision
-      ? matchingDocuments.find((doc: any) => String(doc.revision || "").trim() === currentRevision) || null
-      : matchingDocuments.find((doc: any) => doc.status === "release" || doc.status === "effective") ||
+      ? matchingDocuments.find((doc: any) => String(doc.revision || "").trim() === currentRevision) ||
+        releasedOrHistoricalDocuments[0] ||
         matchingDocuments[0] ||
-        null;
+        null
+      : releasedOrHistoricalDocuments[0] || matchingDocuments[0] || null;
 
     const isExistingControlledDocument = Boolean(sourceDoc);
 
-    if (isExistingControlledDocument && !proposedRevision) {
-      return alert("Proposed revision is required when revising an existing controlled document.");
-    }
+    const revisionToCreate = isExistingControlledDocument
+      ? requestedRevision || getNextRevisionValue(sourceDoc?.revision)
+      : requestedRevision || "A";
 
-    const revisionToCreate = proposedRevision || "A";
+    if (!revisionToCreate) {
+      return alert("Unable to determine the new revision. Enter a proposed revision and try again.");
+    }
 
     const duplicateRevision = matchingDocuments.find(
       (doc: any) => String(doc.revision || "").trim() === revisionToCreate
@@ -590,17 +620,23 @@ export default function ChangeControlWorkflowPage() {
       );
     }
 
+    const masterSourceDoc =
+      (sourceDoc?.file_url ? sourceDoc : null) ||
+      releasedOrHistoricalDocuments.find((doc: any) => doc.file_url) ||
+      matchingDocuments.find((doc: any) => doc.file_url) ||
+      null;
+
     const insertPayload: any = {
       document_number: documentNumber,
       title: linkedDoc.document_title || sourceDoc?.title || documentNumber,
-      document_type: sourceDoc?.document_type || null,
-      department: sourceDoc?.department || null,
-      process_area: sourceDoc?.process_area || null,
+      document_type: sourceDoc?.document_type || masterSourceDoc?.document_type || null,
+      department: sourceDoc?.department || masterSourceDoc?.department || null,
+      process_area: sourceDoc?.process_area || masterSourceDoc?.process_area || null,
       revision: revisionToCreate,
       status: "draft",
-      file_name: sourceDoc?.file_name || null,
-      file_path: sourceDoc?.file_path || null,
-      file_url: sourceDoc?.file_url || null,
+      file_name: masterSourceDoc?.file_name || null,
+      file_path: masterSourceDoc?.file_path || null,
+      file_url: masterSourceDoc?.file_url || null,
       release_pdf_file_name: null,
       release_pdf_file_path: null,
       release_pdf_file_url: null,
@@ -616,8 +652,22 @@ export default function ChangeControlWorkflowPage() {
       revision_change_description: linkedDoc.change_description || change.change_description,
       revision_change_justification: change.change_justification,
       superseded_document_id: sourceDoc?.id || null,
-      owner_email: change.owner_email || sourceDoc?.owner_email || userEmail || null,
+      superseded_by_document_id: null,
+      owner_email: change.owner_email || sourceDoc?.owner_email || masterSourceDoc?.owner_email || userEmail || null,
       approver_email: null,
+      effective_date: null,
+      approved_at: null,
+      approved_by: null,
+      approval_comments: null,
+      submitted_for_approval_at: null,
+      submitted_for_approval_by: null,
+      release_comments: null,
+      release_approved_by: null,
+      release_approved_at: null,
+      collaboration_required: sourceDoc?.collaboration_required ?? true,
+      formal_review_required: sourceDoc?.formal_review_required ?? true,
+      collaboration_completed: false,
+      formal_review_completed: false,
       training_impact: linkedDoc.training_required ? "FORMAL_TRAINING" : "NO_TRAINING",
       training_required: linkedDoc.training_required || false,
       read_ack_required: linkedDoc.training_required || false,
@@ -631,6 +681,16 @@ export default function ChangeControlWorkflowPage() {
       .single();
 
     if (error) return alert(error.message);
+
+    if (sourceDoc?.id) {
+      await supabase
+        .from("controlled_documents")
+        .update({
+          superseded_by_document_id: data.id,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", sourceDoc.id);
+    }
 
     const linkRes = await supabase
       .from("change_control_documents")
@@ -646,9 +706,9 @@ export default function ChangeControlWorkflowPage() {
     if (linkRes.error) return alert(linkRes.error.message);
 
     alert(
-      sourceDoc?.file_url
-        ? "Controlled document revision created from approved change. The master copy was carried forward from the current revision."
-        : "Controlled document revision created from approved change. No existing master copy was found to carry forward."
+      masterSourceDoc?.file_url
+        ? `Controlled document revision ${revisionToCreate} created. The editable master/redline source was carried forward.`
+        : `Controlled document revision ${revisionToCreate} created. No editable master/redline source was found to carry forward.`
     );
     fetchData();
   };
@@ -894,8 +954,8 @@ export default function ChangeControlWorkflowPage() {
                 <div style={gridStyle}>
                   <input placeholder="Document Number" value={newDoc.document_number} onChange={(e) => setNewDoc({ ...newDoc, document_number: e.target.value })} style={inputStyle} />
                   <input placeholder="Document Title" value={newDoc.document_title} onChange={(e) => setNewDoc({ ...newDoc, document_title: e.target.value })} style={inputStyle} />
-                  <input placeholder="Current Revision" value={newDoc.current_revision} onChange={(e) => setNewDoc({ ...newDoc, current_revision: e.target.value })} style={inputStyle} />
-                  <input placeholder="Proposed Revision" value={newDoc.proposed_revision} onChange={(e) => setNewDoc({ ...newDoc, proposed_revision: e.target.value })} style={inputStyle} />
+                  <input placeholder="Current Revision Optional" value={newDoc.current_revision} onChange={(e) => setNewDoc({ ...newDoc, current_revision: e.target.value })} style={inputStyle} />
+                  <input placeholder="Proposed Revision Optional / Auto" value={newDoc.proposed_revision} onChange={(e) => setNewDoc({ ...newDoc, proposed_revision: e.target.value })} style={inputStyle} />
                 </div>
                 <textarea placeholder="Document change description" value={newDoc.change_description} onChange={(e) => setNewDoc({ ...newDoc, change_description: e.target.value })} rows={3} style={textareaStyle} />
                 <label><input type="checkbox" checked={newDoc.training_required} onChange={(e) => setNewDoc({ ...newDoc, training_required: e.target.checked })} /> Training Required</label>
