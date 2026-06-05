@@ -4,6 +4,7 @@ export type DocumentStatus =
   | "formal_review"
   | "approved"
   | "effective"
+  | "release"
   | "rejected"
   | "obsolete"
   | "superseded";
@@ -144,28 +145,25 @@ export function getPendingRequiredReviewers(
 }
 
 export function getNextPendingReviewer(reviewers: WorkflowReviewer[]) {
-  const pending = reviewers
-    .filter((reviewer) => reviewer.review_status !== "approved")
-    .sort(
-      (a, b) =>
-        Number(a.review_sequence || 9999) -
-        Number(b.review_sequence || 9999)
-    );
-
-  return pending[0] || null;
+  return (
+    reviewers.find((reviewer) => reviewer.review_status !== "approved") ||
+    null
+  );
 }
 
 export function hasPriorRequiredReviewerOpen(
   reviewer: WorkflowReviewer,
   reviewers: WorkflowReviewer[]
 ) {
-  return reviewers.some(
-    (item) =>
-      Number(item.review_sequence || 0) <
-        Number(reviewer.review_sequence || 0) &&
-      item.required_reviewer !== false &&
-      item.review_status !== "approved"
-  );
+  /*
+   * QualiFlow uses parallel review routing.
+   *
+   * Collaboration reviewers, formal reviewers, and approvers may all act
+   * independently as soon as the workflow is in the applicable status.
+   * The workflow waits for all required reviewers to approve before it can
+   * advance, but no reviewer is blocked by another reviewer's sequence.
+   */
+  return false;
 }
 
 export function canUserActOnReviewer(
@@ -247,8 +245,8 @@ export function getWorkflowState(
     workflowPercentComplete = 90;
   }
 
-  if (doc.status === "effective") {
-    currentStepLabel = "Effective / Released";
+  if (doc.status === "effective" || doc.status === "release") {
+    currentStepLabel = "Released";
     workflowPercentComplete = 100;
   }
 
@@ -388,7 +386,7 @@ export function canTransition({
   if (transition === "acknowledge") {
     return {
       allowed:
-        doc.status === "effective" &&
+        (doc.status === "effective" || doc.status === "release") &&
         Boolean(doc.read_ack_required) &&
         Boolean(doc.file_url),
       reason: !doc.file_url
