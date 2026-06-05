@@ -27,6 +27,15 @@ type ChangeControl = {
   regulatory_impact?: boolean | null;
   validation_impact?: boolean | null;
   training_impact?: boolean | null;
+  product_impact_summary?: string | null;
+  document_impact_summary?: string | null;
+  process_impact_summary?: string | null;
+  equipment_impact_summary?: string | null;
+  supplier_impact_summary?: string | null;
+  software_impact_summary?: string | null;
+  regulatory_impact_summary?: string | null;
+  validation_impact_summary?: string | null;
+  training_impact_summary?: string | null;
   risk_review_summary?: string | null;
   risk_acceptability?: string | null;
   residual_risk?: string | null;
@@ -112,6 +121,15 @@ export default function ChangeControlWorkflowPage() {
     validation_impact: false,
     training_impact: false,
     impact_assessment: "",
+    product_impact_summary: "",
+    document_impact_summary: "",
+    process_impact_summary: "",
+    equipment_impact_summary: "",
+    supplier_impact_summary: "",
+    software_impact_summary: "",
+    regulatory_impact_summary: "",
+    validation_impact_summary: "",
+    training_impact_summary: "",
   });
 
   const [riskForm, setRiskForm] = useState({
@@ -249,6 +267,15 @@ export default function ChangeControlWorkflowPage() {
       validation_impact: Boolean(change.validation_impact),
       training_impact: Boolean(change.training_impact),
       impact_assessment: change.impact_assessment || "",
+      product_impact_summary: change.product_impact_summary || "",
+      document_impact_summary: change.document_impact_summary || "",
+      process_impact_summary: change.process_impact_summary || "",
+      equipment_impact_summary: change.equipment_impact_summary || "",
+      supplier_impact_summary: change.supplier_impact_summary || "",
+      software_impact_summary: change.software_impact_summary || "",
+      regulatory_impact_summary: change.regulatory_impact_summary || "",
+      validation_impact_summary: change.validation_impact_summary || "",
+      training_impact_summary: change.training_impact_summary || "",
     });
 
     setRiskForm({
@@ -272,6 +299,24 @@ export default function ChangeControlWorkflowPage() {
     const text = String(value || "").trim().toLowerCase();
     if (!text || !text.includes("@")) return "";
     return text;
+  };
+
+  const getImpactSummaryMissing = () => {
+    const impactFields = [
+      { flag: assessmentForm.product_impact, summary: assessmentForm.product_impact_summary, label: "Product" },
+      { flag: assessmentForm.document_impact, summary: assessmentForm.document_impact_summary, label: "Document" },
+      { flag: assessmentForm.process_impact, summary: assessmentForm.process_impact_summary, label: "Process" },
+      { flag: assessmentForm.equipment_impact, summary: assessmentForm.equipment_impact_summary, label: "Equipment" },
+      { flag: assessmentForm.supplier_impact, summary: assessmentForm.supplier_impact_summary, label: "Supplier" },
+      { flag: assessmentForm.software_impact, summary: assessmentForm.software_impact_summary, label: "Software" },
+      { flag: assessmentForm.regulatory_impact, summary: assessmentForm.regulatory_impact_summary, label: "Regulatory" },
+      { flag: assessmentForm.validation_impact, summary: assessmentForm.validation_impact_summary, label: "Validation" },
+      { flag: assessmentForm.training_impact, summary: assessmentForm.training_impact_summary, label: "Training" },
+    ];
+
+    return impactFields
+      .filter((item) => item.flag && !String(item.summary || "").trim())
+      .map((item) => item.label);
   };
 
   const getNextRevisionValue = (revision: string | null | undefined) => {
@@ -330,7 +375,12 @@ export default function ChangeControlWorkflowPage() {
     if (!initiationForm.change_description.trim()) return alert("Change description is required.");
     if (!initiationForm.change_justification.trim()) return alert("Change justification is required.");
     if (initiationForm.owner_email && !normalizeEmail(initiationForm.owner_email)) return alert("Owner email must be valid.");
-    if (!assessmentForm.impact_assessment.trim()) return alert("Impact assessment summary is required.");
+    const missingImpactSummaries = getImpactSummaryMissing();
+
+    if (missingImpactSummaries.length > 0) {
+      return alert(`Impact summary is required for: ${missingImpactSummaries.join(", ")}.`);
+    }
+
     if (!riskForm.risk_review_summary.trim()) return alert("Risk review summary is required.");
     if (!riskForm.risk_acceptability.trim()) return alert("Risk acceptability is required.");
 
@@ -499,8 +549,14 @@ export default function ChangeControlWorkflowPage() {
     const payload: any = { status, updated_at: new Date().toISOString() };
 
     if (status === "pending_approval") {
-      if (!assessmentForm.impact_assessment.trim() || !riskForm.risk_review_summary.trim() || !riskForm.risk_acceptability.trim()) {
-        return alert("Impact assessment, risk review summary, and risk acceptability are required before submitting for approval.");
+      const missingImpactSummaries = getImpactSummaryMissing();
+
+      if (missingImpactSummaries.length > 0) {
+        return alert(`Impact summary is required for: ${missingImpactSummaries.join(", ")}.`);
+      }
+
+      if (!riskForm.risk_review_summary.trim() || !riskForm.risk_acceptability.trim()) {
+        return alert("Risk review summary and risk acceptability are required before submitting for approval.");
       }
       if (!hasRequiredReviewers) return alert("Load an approval matrix or add at least one required reviewer before submitting for approval.");
       payload.submitted_at = new Date().toISOString();
@@ -814,27 +870,85 @@ export default function ChangeControlWorkflowPage() {
         <h2 style={{ marginTop: 0 }}>2. Impact Assessment</h2>
         {canEditPlanning ? (
           <>
-            <div style={checkboxGridStyle}>
-              {[["product_impact", "Product"], ["document_impact", "Document"], ["process_impact", "Process"], ["equipment_impact", "Equipment"], ["supplier_impact", "Supplier"], ["software_impact", "Software"], ["regulatory_impact", "Regulatory"], ["validation_impact", "Validation"], ["training_impact", "Training"]].map(([key, label]) => (
-                <label key={key}><input type="checkbox" checked={(assessmentForm as any)[key]} onChange={(e) => setAssessmentForm({ ...assessmentForm, [key]: e.target.checked } as any)} /> {label}</label>
-              ))}
+            <div style={impactGridStyle}>
+              <ImpactAssessmentEditor
+                label="Product"
+                checked={assessmentForm.product_impact}
+                summary={assessmentForm.product_impact_summary}
+                onCheckedChange={(value) => setAssessmentForm({ ...assessmentForm, product_impact: value, product_impact_summary: value ? assessmentForm.product_impact_summary : "" })}
+                onSummaryChange={(value) => setAssessmentForm({ ...assessmentForm, product_impact_summary: value })}
+              />
+              <ImpactAssessmentEditor
+                label="Document"
+                checked={assessmentForm.document_impact}
+                summary={assessmentForm.document_impact_summary}
+                onCheckedChange={(value) => setAssessmentForm({ ...assessmentForm, document_impact: value, document_impact_summary: value ? assessmentForm.document_impact_summary : "" })}
+                onSummaryChange={(value) => setAssessmentForm({ ...assessmentForm, document_impact_summary: value })}
+              />
+              <ImpactAssessmentEditor
+                label="Process"
+                checked={assessmentForm.process_impact}
+                summary={assessmentForm.process_impact_summary}
+                onCheckedChange={(value) => setAssessmentForm({ ...assessmentForm, process_impact: value, process_impact_summary: value ? assessmentForm.process_impact_summary : "" })}
+                onSummaryChange={(value) => setAssessmentForm({ ...assessmentForm, process_impact_summary: value })}
+              />
+              <ImpactAssessmentEditor
+                label="Equipment"
+                checked={assessmentForm.equipment_impact}
+                summary={assessmentForm.equipment_impact_summary}
+                onCheckedChange={(value) => setAssessmentForm({ ...assessmentForm, equipment_impact: value, equipment_impact_summary: value ? assessmentForm.equipment_impact_summary : "" })}
+                onSummaryChange={(value) => setAssessmentForm({ ...assessmentForm, equipment_impact_summary: value })}
+              />
+              <ImpactAssessmentEditor
+                label="Supplier"
+                checked={assessmentForm.supplier_impact}
+                summary={assessmentForm.supplier_impact_summary}
+                onCheckedChange={(value) => setAssessmentForm({ ...assessmentForm, supplier_impact: value, supplier_impact_summary: value ? assessmentForm.supplier_impact_summary : "" })}
+                onSummaryChange={(value) => setAssessmentForm({ ...assessmentForm, supplier_impact_summary: value })}
+              />
+              <ImpactAssessmentEditor
+                label="Software"
+                checked={assessmentForm.software_impact}
+                summary={assessmentForm.software_impact_summary}
+                onCheckedChange={(value) => setAssessmentForm({ ...assessmentForm, software_impact: value, software_impact_summary: value ? assessmentForm.software_impact_summary : "" })}
+                onSummaryChange={(value) => setAssessmentForm({ ...assessmentForm, software_impact_summary: value })}
+              />
+              <ImpactAssessmentEditor
+                label="Regulatory"
+                checked={assessmentForm.regulatory_impact}
+                summary={assessmentForm.regulatory_impact_summary}
+                onCheckedChange={(value) => setAssessmentForm({ ...assessmentForm, regulatory_impact: value, regulatory_impact_summary: value ? assessmentForm.regulatory_impact_summary : "" })}
+                onSummaryChange={(value) => setAssessmentForm({ ...assessmentForm, regulatory_impact_summary: value })}
+              />
+              <ImpactAssessmentEditor
+                label="Validation"
+                checked={assessmentForm.validation_impact}
+                summary={assessmentForm.validation_impact_summary}
+                onCheckedChange={(value) => setAssessmentForm({ ...assessmentForm, validation_impact: value, validation_impact_summary: value ? assessmentForm.validation_impact_summary : "" })}
+                onSummaryChange={(value) => setAssessmentForm({ ...assessmentForm, validation_impact_summary: value })}
+              />
+              <ImpactAssessmentEditor
+                label="Training"
+                checked={assessmentForm.training_impact}
+                summary={assessmentForm.training_impact_summary}
+                onCheckedChange={(value) => setAssessmentForm({ ...assessmentForm, training_impact: value, training_impact_summary: value ? assessmentForm.training_impact_summary : "" })}
+                onSummaryChange={(value) => setAssessmentForm({ ...assessmentForm, training_impact_summary: value })}
+              />
             </div>
-            <Field label="Impact Assessment Summary"><textarea value={assessmentForm.impact_assessment} onChange={(e) => setAssessmentForm({ ...assessmentForm, impact_assessment: e.target.value })} rows={4} style={textareaStyle} /></Field>
           </>
         ) : (
           <>
-            <div style={checkboxGridStyle}>
-              <Impact label="Product" value={change.product_impact} />
-              <Impact label="Document" value={change.document_impact} />
-              <Impact label="Process" value={change.process_impact} />
-              <Impact label="Equipment" value={change.equipment_impact} />
-              <Impact label="Supplier" value={change.supplier_impact} />
-              <Impact label="Software" value={change.software_impact} />
-              <Impact label="Regulatory" value={change.regulatory_impact} />
-              <Impact label="Validation" value={change.validation_impact} />
-              <Impact label="Training" value={change.training_impact} />
+            <div style={impactGridStyle}>
+              <Impact label="Product" value={change.product_impact} summary={change.product_impact_summary} />
+              <Impact label="Document" value={change.document_impact} summary={change.document_impact_summary} />
+              <Impact label="Process" value={change.process_impact} summary={change.process_impact_summary} />
+              <Impact label="Equipment" value={change.equipment_impact} summary={change.equipment_impact_summary} />
+              <Impact label="Supplier" value={change.supplier_impact} summary={change.supplier_impact_summary} />
+              <Impact label="Software" value={change.software_impact} summary={change.software_impact_summary} />
+              <Impact label="Regulatory" value={change.regulatory_impact} summary={change.regulatory_impact_summary} />
+              <Impact label="Validation" value={change.validation_impact} summary={change.validation_impact_summary} />
+              <Impact label="Training" value={change.training_impact} summary={change.training_impact_summary} />
             </div>
-            <Detail label="Impact Summary" value={change.impact_assessment || "N/A"} />
           </>
         )}
       </section>
@@ -1001,7 +1115,65 @@ export default function ChangeControlWorkflowPage() {
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) { return <div style={{ marginBottom: "12px" }}><label style={labelStyle}>{label}</label><div style={{ marginTop: "5px" }}>{children}</div></div>; }
 function Detail({ label, value }: { label: string; value: string }) { return <div style={detailTileStyle}><div style={smallTextStyle}>{label}</div><strong>{value}</strong></div>; }
-function Impact({ label, value }: { label: string; value: boolean | null | undefined }) { return <div style={detailTileStyle}><div style={smallTextStyle}>{label}</div><strong>{value ? "Yes" : "No"}</strong></div>; }
+function Impact({ label, value, summary }: { label: string; value: boolean | null | undefined; summary?: string | null }) {
+  return (
+    <div style={detailTileStyle}>
+      <div style={smallTextStyle}>{label}</div>
+      <strong>{value ? "Yes" : "No"}</strong>
+      {value ? <div style={{ marginTop: "8px", color: "#374151" }}>{summary || "No summary provided."}</div> : null}
+    </div>
+  );
+}
+
+function ImpactAssessmentEditor({
+  label,
+  checked,
+  summary,
+  onCheckedChange,
+  onSummaryChange,
+}: {
+  label: string;
+  checked: boolean;
+  summary: string;
+  onCheckedChange: (value: boolean) => void;
+  onSummaryChange: (value: string) => void;
+}) {
+  return (
+    <div style={impactEditorStyle}>
+      <label style={{ fontWeight: 700 }}>
+        {label} Impact
+      </label>
+      <div style={yesNoRowStyle}>
+        <label>
+          <input
+            type="radio"
+            checked={checked}
+            onChange={() => onCheckedChange(true)}
+          />{" "}
+          Yes
+        </label>
+        <label>
+          <input
+            type="radio"
+            checked={!checked}
+            onChange={() => onCheckedChange(false)}
+          />{" "}
+          No
+        </label>
+      </div>
+
+      {checked ? (
+        <textarea
+          placeholder={`${label} impact summary`}
+          value={summary}
+          onChange={(e) => onSummaryChange(e.target.value)}
+          rows={3}
+          style={textareaStyle}
+        />
+      ) : null}
+    </div>
+  );
+}
 function KpiCard({ title, value, color }: { title: string; value: string; color: string }) { return <div style={{ ...kpiCardStyle, borderLeft: `8px solid ${color}` }}><div style={kpiTitleStyle}>{title}</div><div style={{ fontSize: "24px", fontWeight: 800, color }}>{value}</div></div>; }
 function getStatusLabel(status: string) { const labels: Record<string, string> = { draft: "Draft", pending: "Pending", pending_approval: "Pending Approval", approved: "Approved", implementation: "Implementation", verification: "Verification", closed: "Closed", rejected: "Rejected" }; return labels[status] || status; }
 function getReviewerTypeLabel(value: string) { const labels: Record<string, string> = { formal_review: "Formal Review", approver: "Approval", collaboration: "Collaboration" }; return labels[value] || value; }
@@ -1034,3 +1206,6 @@ const tableStyle: React.CSSProperties = { width: "100%", borderCollapse: "collap
 const thStyle: React.CSSProperties = { textAlign: "left", borderBottom: "1px solid #d1d5db", padding: "10px" };
 const tdStyle: React.CSSProperties = { borderBottom: "1px solid #e5e7eb", padding: "10px", verticalAlign: "top" };
 const warningStyle: React.CSSProperties = { background: "#fef3c7", border: "1px solid #fde68a", borderRadius: "12px", padding: "12px", marginTop: "12px" };
+const impactGridStyle: React.CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "12px", marginBottom: "12px" };
+const impactEditorStyle: React.CSSProperties = { background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: "12px", padding: "12px" };
+const yesNoRowStyle: React.CSSProperties = { display: "flex", gap: "16px", marginTop: "8px", marginBottom: "8px", alignItems: "center" };
