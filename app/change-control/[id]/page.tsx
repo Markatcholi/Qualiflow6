@@ -78,6 +78,16 @@ const CATEGORIES = ["Design", "Manufacturing", "Quality System", "Supplier", "Re
 const PRIORITIES = ["Low", "Medium", "High", "Critical"];
 const RISKS = ["Low", "Medium", "High", "Critical"];
 const REVIEWER_TYPES = ["formal_review", "approver"];
+const PRODUCT_DISPOSITIONS = [
+  "No Product Impact",
+  "Use As Is",
+  "Rework",
+  "Scrap",
+  "Quarantine",
+  "Return to Supplier",
+  "Field Action / Customer Notification",
+  "Other",
+];
 
 export default function ChangeControlWorkflowPage() {
   const params = useParams();
@@ -178,6 +188,28 @@ export default function ChangeControlWorkflowPage() {
     owner_email: "",
     due_date: "",
   });
+
+  const [productDispositionForms, setProductDispositionForms] = useState<
+    Record<
+      string,
+      {
+        product_disposition: string;
+        product_disposition_rationale: string;
+        product_disposition_owner_email: string;
+        product_disposition_date: string;
+      }
+    >
+  >({});
+
+  const [taskCompletionForms, setTaskCompletionForms] = useState<
+    Record<
+      string,
+      {
+        completion_summary: string;
+        completion_evidence: string;
+      }
+    >
+  >({});
 
   const canApprove =
     userRole === "admin" || userRole === "approver" || userRole === "vp_quality" || userRole === "quality";
@@ -366,7 +398,16 @@ export default function ChangeControlWorkflowPage() {
     .every((reviewer) => reviewer.review_status === "approved");
 
   const hasRequiredReviewers = reviewers.some((reviewer) => reviewer.required_reviewer);
-  const closureEligible = implementationComplete && documentsReleased && trainingComplete;
+
+  const productsDispositioned = products.length === 0
+    ? true
+    : products.every(
+        (product) =>
+          product.product_disposition_status === "dispositioned" ||
+          product.disposition_status === "dispositioned"
+      );
+
+  const closureEligible = implementationComplete && documentsReleased && trainingComplete && productsDispositioned;
 
   const savePlanningPackage = async () => {
     if (!change) return;
@@ -581,7 +622,7 @@ export default function ChangeControlWorkflowPage() {
     }
 
     if (status === "closed") {
-      if (!closureEligible) return alert("Cannot close change. Implementation tasks, linked released documents, and required training must be complete.");
+      if (!closureEligible) return alert("Cannot close change. Implementation tasks, linked released documents, affected product dispositions, and required training must be complete.");
       payload.closed_at = new Date().toISOString();
       payload.closed_by = userEmail;
       payload.documents_effective = documentsReleased;
@@ -772,7 +813,11 @@ export default function ChangeControlWorkflowPage() {
   const addProduct = async () => {
     if (!canImplement) return alert("Affected products are managed after change approval.");
     if (!newProduct.product_part_number.trim()) return alert("Product part number is required.");
-    const { error } = await supabase.from("change_control_products").insert({ change_control_id: changeId, ...newProduct });
+    const { error } = await supabase.from("change_control_products").insert({
+      change_control_id: changeId,
+      ...newProduct,
+      product_disposition_status: "pending_disposition",
+    });
     if (error) return alert(error.message);
     setNewProduct({ product_part_number: "", product_name: "", lot_or_serial_scope: "", impact_description: "" });
     fetchData();
@@ -794,11 +839,67 @@ export default function ChangeControlWorkflowPage() {
     fetchData();
   };
 
-  const completeTask = async (id: string) => {
+  const saveProductDisposition = async (product: any) => {
+    if (!canImplement && !canVerify) {
+      return alert("Product disposition is available after change approval.");
+    }
+
+    const form = productDispositionForms[product.id] || {
+      product_disposition: product.product_disposition || "",
+      product_disposition_rationale: product.product_disposition_rationale || "",
+      product_disposition_owner_email: product.product_disposition_owner_email || userEmail || "",
+      product_disposition_date: product.product_disposition_date || new Date().toISOString().slice(0, 10),
+    };
+
+    if (!form.product_disposition.trim()) {
+      return alert("Product disposition is required.");
+    }
+
+    if (!form.product_disposition_rationale.trim()) {
+      return alert("Product disposition rationale is required.");
+    }
+
+    if (form.product_disposition_owner_email && !normalizeEmail(form.product_disposition_owner_email)) {
+      return alert("Disposition owner email must be valid.");
+    }
+
+    const { error } = await supabase
+      .from("change_control_products")
+      .update({
+        product_disposition: form.product_disposition.trim(),
+        product_disposition_rationale: form.product_disposition_rationale.trim(),
+        product_disposition_owner_email: normalizeEmail(form.product_disposition_owner_email) || userEmail || null,
+        product_disposition_date: form.product_disposition_date || new Date().toISOString().slice(0, 10),
+        product_disposition_status: "dispositioned",
+        product_dispositioned_by: userEmail || "unknown",
+        product_dispositioned_at: new Date().toISOString(),
+      })
+      .eq("id", product.id);
+
+    if (error) return alert(error.message);
+    fetchData();
+  };
+
+  const completeTask = async (task: any) => {
+    const form = taskCompletionForms[task.id] || {
+      completion_summary: task.completion_summary || "",
+      completion_evidence: task.completion_evidence || "",
+    };
+
+    if (!form.completion_summary.trim()) {
+      return alert("Completion summary is required before completing the task.");
+    }
+
     const { error } = await supabase
       .from("change_control_tasks")
-      .update({ status: "complete", completed_at: new Date().toISOString(), completed_by: userEmail })
-      .eq("id", id);
+      .update({
+        status: "complete",
+        completion_summary: form.completion_summary.trim(),
+        completion_evidence: form.completion_evidence.trim() || null,
+        completed_at: new Date().toISOString(),
+        completed_by: userEmail,
+      })
+      .eq("id", task.id);
     if (error) return alert(error.message);
     fetchData();
   };
@@ -824,6 +925,7 @@ export default function ChangeControlWorkflowPage() {
         <KpiCard title="Implementation Complete" value={implementationComplete ? "Yes" : "No"} color={implementationComplete ? "#15803d" : "#dc2626"} />
         <KpiCard title="Documents Released" value={documentsReleased ? "Yes" : "No"} color={documentsReleased ? "#15803d" : "#dc2626"} />
         <KpiCard title="Training Complete" value={trainingComplete ? "Yes" : "No"} color={trainingComplete ? "#15803d" : "#dc2626"} />
+        <KpiCard title="Products Dispositioned" value={productsDispositioned ? "Yes" : "No"} color={productsDispositioned ? "#15803d" : "#dc2626"} />
         <KpiCard title="Closure Eligible" value={closureEligible ? "Yes" : "No"} color={closureEligible ? "#15803d" : "#dc2626"} />
       </section>
 
@@ -1088,7 +1190,87 @@ export default function ChangeControlWorkflowPage() {
                 <button onClick={addProduct} style={primaryButtonStyle}>Add Product</button>
               </>
             ) : null}
-            <ul>{products.map((product) => <li key={product.id} style={listCardStyle}><strong>{product.product_part_number}</strong> — {product.product_name}<div style={smallTextStyle}>{product.impact_description}</div></li>)}</ul>
+            <ul>{products.map((product) => {
+              const dispositionForm = productDispositionForms[product.id] || {
+                product_disposition: product.product_disposition || "",
+                product_disposition_rationale: product.product_disposition_rationale || "",
+                product_disposition_owner_email: product.product_disposition_owner_email || userEmail || "",
+                product_disposition_date: product.product_disposition_date || new Date().toISOString().slice(0, 10),
+              };
+              const dispositionComplete = product.product_disposition_status === "dispositioned" || product.disposition_status === "dispositioned";
+
+              return (
+                <li key={product.id} style={listCardStyle}>
+                  <strong>{product.product_part_number}</strong> — {product.product_name || "N/A"}
+                  <div style={smallTextStyle}>Lot / Serial Scope: {product.lot_or_serial_scope || "N/A"}</div>
+                  <div style={smallTextStyle}>Impact: {product.impact_description || "N/A"}</div>
+                  <div style={smallTextStyle}>Disposition Status: {dispositionComplete ? "Dispositioned" : "Pending Disposition"}</div>
+
+                  {dispositionComplete ? (
+                    <div style={dispositionSummaryStyle}>
+                      <strong>Disposition:</strong> {product.product_disposition || "N/A"}
+                      <div><strong>Rationale:</strong> {product.product_disposition_rationale || "N/A"}</div>
+                      <div><strong>Owner:</strong> {product.product_disposition_owner_email || "N/A"}</div>
+                      <div><strong>Date:</strong> {product.product_disposition_date || "N/A"}</div>
+                      <div style={smallTextStyle}>Dispositioned by {product.product_dispositioned_by || "N/A"}</div>
+                    </div>
+                  ) : canImplement || canVerify ? (
+                    <div style={subCardStyle}>
+                      <h4 style={{ marginTop: 0 }}>Product Disposition</h4>
+                      <div style={gridStyle}>
+                        <Field label="Disposition">
+                          <select
+                            value={dispositionForm.product_disposition}
+                            onChange={(e) => setProductDispositionForms({
+                              ...productDispositionForms,
+                              [product.id]: { ...dispositionForm, product_disposition: e.target.value },
+                            })}
+                            style={inputStyle}
+                          >
+                            <option value="">Select disposition</option>
+                            {PRODUCT_DISPOSITIONS.map((item) => <option key={item} value={item}>{item}</option>)}
+                          </select>
+                        </Field>
+                        <Field label="Disposition Owner Email">
+                          <input
+                            type="email"
+                            value={dispositionForm.product_disposition_owner_email}
+                            onChange={(e) => setProductDispositionForms({
+                              ...productDispositionForms,
+                              [product.id]: { ...dispositionForm, product_disposition_owner_email: e.target.value },
+                            })}
+                            style={inputStyle}
+                          />
+                        </Field>
+                        <Field label="Disposition Date">
+                          <input
+                            type="date"
+                            value={dispositionForm.product_disposition_date}
+                            onChange={(e) => setProductDispositionForms({
+                              ...productDispositionForms,
+                              [product.id]: { ...dispositionForm, product_disposition_date: e.target.value },
+                            })}
+                            style={inputStyle}
+                          />
+                        </Field>
+                      </div>
+                      <Field label="Disposition Rationale">
+                        <textarea
+                          value={dispositionForm.product_disposition_rationale}
+                          onChange={(e) => setProductDispositionForms({
+                            ...productDispositionForms,
+                            [product.id]: { ...dispositionForm, product_disposition_rationale: e.target.value },
+                          })}
+                          rows={3}
+                          style={textareaStyle}
+                        />
+                      </Field>
+                      <button onClick={() => saveProductDisposition(product)} style={primaryButtonStyle}>Save Product Disposition</button>
+                    </div>
+                  ) : null}
+                </li>
+              );
+            })}</ul>
           </section>
 
           <section style={cardStyle}>
@@ -1100,7 +1282,59 @@ export default function ChangeControlWorkflowPage() {
                 <button onClick={addTask} style={primaryButtonStyle}>Add Task</button>
               </>
             ) : null}
-            <ul>{tasks.map((task) => <li key={task.id} style={listCardStyle}><strong>{task.task_title}</strong> — {task.owner_email}<div style={smallTextStyle}>Status: {task.status}</div><div style={smallTextStyle}>Due: {task.due_date || "N/A"}</div>{task.status !== "complete" && canImplement ? <button onClick={() => completeTask(task.id)} style={primaryButtonStyle}>Complete</button> : null}</li>)}</ul>
+            <ul>{tasks.map((task) => {
+              const completionForm = taskCompletionForms[task.id] || {
+                completion_summary: task.completion_summary || "",
+                completion_evidence: task.completion_evidence || "",
+              };
+              const taskComplete = task.status === "complete";
+
+              return (
+                <li key={task.id} style={listCardStyle}>
+                  <strong>{task.task_title}</strong> — {task.owner_email}
+                  <div style={smallTextStyle}>Status: {task.status}</div>
+                  <div style={smallTextStyle}>Due: {task.due_date || "N/A"}</div>
+                  <div style={smallTextStyle}>{task.task_description || "No task description provided."}</div>
+
+                  {taskComplete ? (
+                    <div style={completionSummaryStyle}>
+                      <strong>Completion Summary:</strong> {task.completion_summary || "N/A"}
+                      {task.completion_evidence ? <div><strong>Evidence / Reference:</strong> {task.completion_evidence}</div> : null}
+                      <div style={smallTextStyle}>Completed by {task.completed_by || "N/A"} on {task.completed_at || "N/A"}</div>
+                    </div>
+                  ) : canImplement ? (
+                    <div style={subCardStyle}>
+                      <h4 style={{ marginTop: 0 }}>Complete Implementation Task</h4>
+                      <Field label="Completion Summary">
+                        <textarea
+                          value={completionForm.completion_summary}
+                          onChange={(e) => setTaskCompletionForms({
+                            ...taskCompletionForms,
+                            [task.id]: { ...completionForm, completion_summary: e.target.value },
+                          })}
+                          rows={3}
+                          style={textareaStyle}
+                          placeholder="Describe how the task was completed."
+                        />
+                      </Field>
+                      <Field label="Evidence / Reference Optional">
+                        <textarea
+                          value={completionForm.completion_evidence}
+                          onChange={(e) => setTaskCompletionForms({
+                            ...taskCompletionForms,
+                            [task.id]: { ...completionForm, completion_evidence: e.target.value },
+                          })}
+                          rows={2}
+                          style={textareaStyle}
+                          placeholder="Reference validation report, training record, work order, attachment location, or other evidence."
+                        />
+                      </Field>
+                      <button onClick={() => completeTask(task)} style={primaryButtonStyle}>Complete Task</button>
+                    </div>
+                  ) : null}
+                </li>
+              );
+            })}</ul>
           </section>
         </>
       ) : (
@@ -1209,3 +1443,5 @@ const warningStyle: React.CSSProperties = { background: "#fef3c7", border: "1px 
 const impactGridStyle: React.CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "12px", marginBottom: "12px" };
 const impactEditorStyle: React.CSSProperties = { background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: "12px", padding: "12px" };
 const yesNoRowStyle: React.CSSProperties = { display: "flex", gap: "16px", marginTop: "8px", marginBottom: "8px", alignItems: "center" };
+const dispositionSummaryStyle: React.CSSProperties = { background: "#ecfdf5", border: "1px solid #bbf7d0", borderRadius: "12px", padding: "12px", marginTop: "10px" };
+const completionSummaryStyle: React.CSSProperties = { background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: "12px", padding: "12px", marginTop: "10px" };
