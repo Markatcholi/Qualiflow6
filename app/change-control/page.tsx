@@ -16,6 +16,9 @@ type ChangeControl = {
   owner_email: string | null;
   initiator_email?: string | null;
   risk_level: string | null;
+  change_origin?: string | null;
+  originating_record_number?: string | null;
+  closure_decision?: string | null;
   created_at: string | null;
   closed_at?: string | null;
   approved_at?: string | null;
@@ -43,6 +46,21 @@ const CATEGORIES = [
   "Other",
 ];
 const PRIORITIES = ["Low", "Medium", "High", "Critical"];
+const CHANGE_ORIGINS = [
+  "N/A",
+  "NCMR",
+  "CAPA",
+  "SCAR",
+  "Supplier Change Notification",
+  "Audit Finding",
+  "Equipment Change",
+  "Validation Activity",
+  "Customer Complaint",
+  "Management Review",
+  "Regulatory Requirement",
+  "Continuous Improvement",
+  "Other",
+];
 
 const OPEN_STATUSES = [
   "draft",
@@ -50,6 +68,7 @@ const OPEN_STATUSES = [
   "approved",
   "implementation",
   "verification",
+  "closure_approval",
   "rejected",
 ];
 
@@ -69,6 +88,8 @@ export default function ChangeControlLandingPage() {
     change_category: "Process",
     priority: "Medium",
     owner_email: "",
+    change_origin: "N/A",
+    originating_record_number: "",
   });
 
   const fetchUser = async () => {
@@ -143,6 +164,7 @@ export default function ChangeControlLandingPage() {
       if (quickFilter === "high_risk") quickMatch = isHighRisk(change);
       if (quickFilter === "implementation") quickMatch = change.status === "implementation";
       if (quickFilter === "verification") quickMatch = change.status === "verification";
+      if (quickFilter === "closure_approval") quickMatch = change.status === "closure_approval";
       if (quickFilter === "pending_approval") quickMatch = change.status === "pending_approval";
 
       return statusMatch && quickMatch;
@@ -164,7 +186,9 @@ export default function ChangeControlLandingPage() {
       approved: changes.filter((c) => c.status === "approved").length,
       implementation: changes.filter((c) => c.status === "implementation").length,
       verification: changes.filter((c) => c.status === "verification").length,
+      closureApproval: changes.filter((c) => c.status === "closure_approval").length,
       closed: closedChanges.length,
+      cancelled: changes.filter((c) => c.status === "cancelled").length,
       rejected: changes.filter((c) => c.status === "rejected").length,
       overdue: changes.filter((c) => isOverdue(c)).length,
       highRisk: changes.filter((c) => isHighRisk(c)).length,
@@ -195,7 +219,9 @@ export default function ChangeControlLandingPage() {
       { label: "Approved", count: metrics.approved },
       { label: "Implementation", count: metrics.implementation },
       { label: "Verification", count: metrics.verification },
+      { label: "Closure Approval", count: metrics.closureApproval },
       { label: "Closed", count: metrics.closed },
+      { label: "Cancelled", count: metrics.cancelled },
       { label: "Rejected", count: metrics.rejected },
     ];
   }, [metrics]);
@@ -224,6 +250,8 @@ export default function ChangeControlLandingPage() {
       change_category: "Process",
       priority: "Medium",
       owner_email: "",
+      change_origin: "N/A",
+      originating_record_number: "",
     });
   };
 
@@ -232,6 +260,9 @@ export default function ChangeControlLandingPage() {
     if (!newChange.change_description.trim()) return alert("Change description is required.");
     if (!newChange.change_justification.trim()) return alert("Change justification is required.");
     if (newChange.owner_email && !normalizeEmail(newChange.owner_email)) return alert("Owner email must be valid.");
+    if (newChange.change_origin !== "N/A" && !String(newChange.originating_record_number || "").trim()) {
+      return alert("Originating record number is required when change origin is not N/A.");
+    }
 
     const changeNumber = `CC-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
 
@@ -245,6 +276,11 @@ export default function ChangeControlLandingPage() {
         change_type: newChange.change_type,
         change_category: newChange.change_category,
         priority: newChange.priority,
+        change_origin: newChange.change_origin || "N/A",
+        originating_record_number:
+          newChange.change_origin === "N/A"
+            ? null
+            : newChange.originating_record_number.trim(),
         initiator_email: userEmail || null,
         owner_email: normalizeEmail(newChange.owner_email) || userEmail || null,
         approver_email: null,
@@ -282,7 +318,9 @@ export default function ChangeControlLandingPage() {
         <KpiCard title="Pending Approval" value={metrics.pending} color="#d97706" />
         <KpiCard title="Implementation" value={metrics.implementation} color="#2563eb" />
         <KpiCard title="Verification" value={metrics.verification} color="#7c3aed" />
+        <KpiCard title="Closure Approval" value={metrics.closureApproval} color="#9333ea" />
         <KpiCard title="Closed" value={metrics.closed} color="#15803d" />
+        <KpiCard title="Cancelled" value={metrics.cancelled} color="#991b1b" />
         <KpiCard title="Overdue" value={metrics.overdue} color="#dc2626" />
         <KpiCard title="High/Critical Risk" value={metrics.highRisk} color="#dc2626" />
         <KpiCard title="Avg Days to Close" value={metrics.averageClosureDays} color="#111827" />
@@ -318,7 +356,9 @@ export default function ChangeControlLandingPage() {
             <option value="approved">Approved</option>
             <option value="implementation">Implementation</option>
             <option value="verification">Verification</option>
+            <option value="closure_approval">Closure Approval</option>
             <option value="closed">Closed</option>
+            <option value="cancelled">Cancelled</option>
             <option value="rejected">Rejected</option>
           </select>
           <div style={quickFilterRowStyle}>
@@ -328,6 +368,7 @@ export default function ChangeControlLandingPage() {
             <QuickFilterButton label="Pending Approval" active={quickFilter === "pending_approval"} onClick={() => setQuickFilter("pending_approval")} />
             <QuickFilterButton label="Implementation" active={quickFilter === "implementation"} onClick={() => setQuickFilter("implementation")} />
             <QuickFilterButton label="Verification" active={quickFilter === "verification"} onClick={() => setQuickFilter("verification")} />
+            <QuickFilterButton label="Closure Approval" active={quickFilter === "closure_approval"} onClick={() => setQuickFilter("closure_approval")} />
             <QuickFilterButton label="Overdue" active={quickFilter === "overdue"} onClick={() => setQuickFilter("overdue")} />
             <QuickFilterButton label="High Risk" active={quickFilter === "high_risk"} onClick={() => setQuickFilter("high_risk")} />
           </div>
@@ -338,6 +379,7 @@ export default function ChangeControlLandingPage() {
             <thead>
               <tr>
                 <th style={thStyle}>Change</th>
+                <th style={thStyle}>Origin</th>
                 <th style={thStyle}>Type</th>
                 <th style={thStyle}>Priority</th>
                 <th style={thStyle}>Risk</th>
@@ -350,7 +392,7 @@ export default function ChangeControlLandingPage() {
             </thead>
             <tbody>
               {filteredChanges.length === 0 ? (
-                <tr><td colSpan={9} style={tdStyle}>No changes found.</td></tr>
+                <tr><td colSpan={10} style={tdStyle}>No changes found.</td></tr>
               ) : filteredChanges.map((change) => {
                 const daysOpen = change.status === "closed" ? daysBetween(change.created_at, change.closed_at) : daysBetween(change.created_at);
                 return (
@@ -360,6 +402,12 @@ export default function ChangeControlLandingPage() {
                       <div>{change.change_title}</div>
                       <div style={smallTextStyle}>{change.change_description}</div>
                       {isOverdue(change) ? <div style={overdueTextStyle}>Overdue / Aging Alert</div> : null}
+                    </td>
+                    <td style={tdStyle}>
+                      {change.change_origin || "N/A"}
+                      {change.change_origin && change.change_origin !== "N/A" ? (
+                        <div style={smallTextStyle}>{change.originating_record_number || "No record number"}</div>
+                      ) : null}
                     </td>
                     <td style={tdStyle}>{change.change_type || "N/A"}</td>
                     <td style={tdStyle}>{change.priority || "N/A"}</td>
@@ -396,6 +444,8 @@ export default function ChangeControlLandingPage() {
               <Field label="Change Category"><select value={newChange.change_category} onChange={(e) => setNewChange({ ...newChange, change_category: e.target.value })} style={inputStyle}>{CATEGORIES.map((x) => <option key={x} value={x}>{x}</option>)}</select></Field>
               <Field label="Priority"><select value={newChange.priority} onChange={(e) => setNewChange({ ...newChange, priority: e.target.value })} style={inputStyle}>{PRIORITIES.map((x) => <option key={x} value={x}>{x}</option>)}</select></Field>
               <Field label="Owner Email"><input type="email" value={newChange.owner_email} onChange={(e) => setNewChange({ ...newChange, owner_email: e.target.value })} placeholder={userEmail || "owner@company.com"} style={inputStyle} /></Field>
+              <Field label="Change Origin"><select value={newChange.change_origin} onChange={(e) => setNewChange({ ...newChange, change_origin: e.target.value, originating_record_number: e.target.value === "N/A" ? "" : newChange.originating_record_number })} style={inputStyle}>{CHANGE_ORIGINS.map((origin) => <option key={origin} value={origin}>{origin === "N/A" ? "N/A (Not Applicable)" : origin}</option>)}</select></Field>
+              {newChange.change_origin !== "N/A" ? <Field label="Originating Record Number"><input value={newChange.originating_record_number} onChange={(e) => setNewChange({ ...newChange, originating_record_number: e.target.value })} placeholder="CAPA-000123, NCMR-000456, AUD-000789" style={inputStyle} /></Field> : null}
             </div>
 
             <Field label="Change Description"><textarea value={newChange.change_description} onChange={(e) => setNewChange({ ...newChange, change_description: e.target.value })} rows={4} style={textareaStyle} /></Field>
@@ -460,7 +510,9 @@ function getStatusLabel(status: string) {
     approved: "Approved",
     implementation: "Implementation",
     verification: "Verification",
+    closure_approval: "Closure Approval",
     closed: "Closed",
+    cancelled: "Cancelled",
     rejected: "Rejected",
   };
   return labels[status] || status;
@@ -469,6 +521,10 @@ function getStatusLabel(status: string) {
 function StatusBadge({ status }: { status: string }) {
   const color = status === "closed"
     ? "#15803d"
+    : status === "cancelled"
+    ? "#991b1b"
+    : status === "closure_approval"
+    ? "#9333ea"
     : status === "verification"
     ? "#7c3aed"
     : status === "implementation"
