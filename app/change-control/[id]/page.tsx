@@ -17,6 +17,18 @@ type ChangeControl = {
   status: string | null;
   owner_email: string | null;
   risk_level: string | null;
+  change_origin?: string | null;
+  originating_record_number?: string | null;
+  verification_summary?: string | null;
+  verified_by?: string | null;
+  verified_at?: string | null;
+  closure_approved_by?: string | null;
+  closure_approved_at?: string | null;
+  closure_approval_comments?: string | null;
+  closure_decision?: string | null;
+  closure_decision_reason?: string | null;
+  cancelled_at?: string | null;
+  cancelled_by?: string | null;
   impact_assessment?: string | null;
   product_impact?: boolean | null;
   document_impact?: boolean | null;
@@ -96,6 +108,22 @@ const CATEGORIES = [
 const PRIORITIES = ["Low", "Medium", "High", "Critical"];
 const RISKS = ["Low", "Medium", "High", "Critical"];
 const REVIEWER_TYPES = ["formal_review", "approver"];
+const CHANGE_ORIGINS = [
+  "N/A",
+  "NCMR",
+  "CAPA",
+  "SCAR",
+  "Supplier Change Notification",
+  "Audit Finding",
+  "Equipment Change",
+  "Validation Activity",
+  "Customer Complaint",
+  "Management Review",
+  "Regulatory Requirement",
+  "Continuous Improvement",
+  "Other",
+];
+const CLOSURE_DECISIONS = ["Accepted", "Rejected", "Cancelled"];
 const PRODUCT_DISPOSITIONS = [
   "No Product Impact",
   "Use As Is",
@@ -129,6 +157,12 @@ export default function ChangeControlWorkflowPage() {
     Record<string, string>
   >({});
   const [rejectionComment, setRejectionComment] = useState("");
+  const [verificationSummary, setVerificationSummary] = useState("");
+  const [closureApprovalComments, setClosureApprovalComments] = useState("");
+  const [closureForm, setClosureForm] = useState({
+    closure_decision: "Accepted",
+    closure_decision_reason: "",
+  });
 
   const [initiationForm, setInitiationForm] = useState({
     change_title: "",
@@ -138,6 +172,8 @@ export default function ChangeControlWorkflowPage() {
     change_category: "Process",
     priority: "Medium",
     owner_email: "",
+    change_origin: "N/A",
+    originating_record_number: "",
   });
 
   const [assessmentForm, setAssessmentForm] = useState({
@@ -252,6 +288,9 @@ export default function ChangeControlWorkflowPage() {
     change &&
     (change.status === "implementation" || change.status === "verification"),
   );
+  const canClosureApprove = Boolean(
+    change && change.status === "closure_approval" && canApprove,
+  );
 
   const fetchUser = async () => {
     const { data: userData } = await supabase.auth.getUser();
@@ -360,6 +399,8 @@ export default function ChangeControlWorkflowPage() {
       change_category: change.change_category || "Process",
       priority: change.priority || "Medium",
       owner_email: change.owner_email || "",
+      change_origin: change.change_origin || "N/A",
+      originating_record_number: change.originating_record_number || "",
     });
 
     setAssessmentForm({
@@ -398,6 +439,12 @@ export default function ChangeControlWorkflowPage() {
       verification_plan: change.verification_plan || "",
       effectiveness_required: Boolean(change.effectiveness_required),
       effectiveness_plan: change.effectiveness_plan || "",
+    });
+    setVerificationSummary(change.verification_summary || "");
+    setClosureApprovalComments(change.closure_approval_comments || "");
+    setClosureForm({
+      closure_decision: change.closure_decision || "Accepted",
+      closure_decision_reason: change.closure_decision_reason || "",
     });
   }, [change?.id]);
 
@@ -577,6 +624,11 @@ export default function ChangeControlWorkflowPage() {
       !normalizeEmail(initiationForm.owner_email)
     )
       return alert("Owner email must be valid.");
+    if (
+      initiationForm.change_origin !== "N/A" &&
+      !String(initiationForm.originating_record_number || "").trim()
+    )
+      return alert("Originating record number is required when change origin is not N/A.");
     const missingImpactSummaries = getImpactSummaryMissing();
 
     if (missingImpactSummaries.length > 0) {
@@ -600,6 +652,11 @@ export default function ChangeControlWorkflowPage() {
         change_type: initiationForm.change_type,
         change_category: initiationForm.change_category,
         priority: initiationForm.priority,
+        change_origin: initiationForm.change_origin || "N/A",
+        originating_record_number:
+          initiationForm.change_origin === "N/A"
+            ? null
+            : initiationForm.originating_record_number.trim(),
         owner_email:
           normalizeEmail(initiationForm.owner_email) || userEmail || null,
         approver_email: null,
@@ -814,6 +871,13 @@ export default function ChangeControlWorkflowPage() {
         return alert("Owner email must be valid.");
       }
 
+      if (
+        initiationForm.change_origin !== "N/A" &&
+        !String(initiationForm.originating_record_number || "").trim()
+      ) {
+        return alert("Originating record number is required when change origin is not N/A.");
+      }
+
       const missingImpactSummaries = getImpactSummaryMissing();
 
       if (missingImpactSummaries.length > 0) {
@@ -842,6 +906,11 @@ export default function ChangeControlWorkflowPage() {
       payload.change_type = initiationForm.change_type;
       payload.change_category = initiationForm.change_category;
       payload.priority = initiationForm.priority;
+      payload.change_origin = initiationForm.change_origin || "N/A";
+      payload.originating_record_number =
+        initiationForm.change_origin === "N/A"
+          ? null
+          : initiationForm.originating_record_number.trim();
       payload.owner_email = normalizeEmail(initiationForm.owner_email) || userEmail || null;
       payload.approver_email = null;
 
@@ -879,17 +948,26 @@ export default function ChangeControlWorkflowPage() {
         );
     }
 
-    if (status === "closed") {
+    if (status === "closure_approval") {
+      if (change.status !== "verification")
+        return alert("Only changes in verification can be submitted for closure approval.");
       if (!closureEligible)
         return alert(
-          "Cannot close change. Implementation tasks, linked released documents, affected product dispositions, and required training must be complete.",
+          "Cannot submit for closure approval. Implementation tasks, linked released documents, affected product dispositions, and required training must be complete.",
         );
-      payload.closed_at = new Date().toISOString();
-      payload.closed_by = userEmail;
+      if (!verificationSummary.trim())
+        return alert("Verification summary is required before closure approval.");
+      payload.verification_summary = verificationSummary.trim();
+      payload.verified_by = userEmail || "unknown";
+      payload.verified_at = new Date().toISOString();
       payload.documents_effective = documentsReleased;
       payload.training_complete = trainingComplete;
       payload.implementation_complete = implementationComplete;
       payload.closure_block_reason = null;
+    }
+
+    if (status === "closed") {
+      return alert("Use the Closure Decision section to accept, reject, or cancel the change before final closure.");
     }
 
     const { error } = await supabase
@@ -907,11 +985,12 @@ export default function ChangeControlWorkflowPage() {
       "pending_approval",
       "approved",
       "implementation",
+      "closure_approval",
     ];
 
     if (!returnAllowedStatuses.includes(String(change.status || ""))) {
       return alert(
-        "Only changes in pending approval, approved, or implementation can be returned to creation.",
+        "Only changes in pending approval, approved, implementation, or closure approval can be returned to creation.",
       );
     }
 
@@ -968,8 +1047,8 @@ export default function ChangeControlWorkflowPage() {
 
   const returnToImplementation = async () => {
     if (!change) return;
-    if (change.status !== "verification") {
-      return alert("Only changes in verification can be returned to implementation.");
+    if (change.status !== "verification" && change.status !== "closure_approval") {
+      return alert("Only changes in verification or closure approval can be returned to implementation.");
     }
 
     const reason = window.prompt(
@@ -991,6 +1070,133 @@ export default function ChangeControlWorkflowPage() {
 
     if (error) return alert(error.message);
     fetchData();
+  };
+
+
+  const returnToVerification = async () => {
+    if (!change) return;
+    if (change.status !== "closure_approval") {
+      return alert("Only changes in closure approval can be returned to verification.");
+    }
+
+    const reason = window.prompt("Enter reason for returning this change to verification:");
+    if (!reason || !reason.trim()) {
+      return alert("Return-to-verification reason is required.");
+    }
+
+    const { error } = await supabase
+      .from("change_controls")
+      .update({
+        status: "verification",
+        closure_approval_comments: reason.trim(),
+        closure_block_reason: reason.trim(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", change.id);
+
+    if (error) return alert(error.message);
+
+    await createESignature({
+      moduleName: "change_control",
+      recordId: change.id,
+      actionType: "return_change_to_verification",
+      signedBy: userEmail || "unknown",
+      signerRole: userRole || null,
+      signatureMeaning: "Return Change to Verification",
+      signatureReason: reason.trim(),
+    });
+
+    fetchData();
+  };
+
+  const completeClosureDecision = async () => {
+    if (!change) return;
+    if (change.status !== "closure_approval") {
+      return alert("Closure decision is only available during closure approval.");
+    }
+    if (!canApprove) {
+      return alert("Only authorized approvers/admin/VP Quality can complete closure approval.");
+    }
+
+    const decision = closureForm.closure_decision || "Accepted";
+    const reason = String(closureForm.closure_decision_reason || "").trim();
+
+    if (!reason) {
+      return alert("Closure decision reason / final closure rationale is required.");
+    }
+
+    if (!closureEligible) {
+      return alert("Closure readiness is incomplete. Return to verification or implementation before completing closure.");
+    }
+
+    setBusy(true);
+
+    const now = new Date().toISOString();
+    const payload: any = {
+      closure_decision: decision,
+      closure_decision_reason: reason,
+      closure_approval_comments: closureApprovalComments || reason,
+      closure_approved_by: userEmail || "unknown",
+      closure_approved_at: now,
+      documents_effective: documentsReleased,
+      training_complete: trainingComplete,
+      implementation_complete: implementationComplete,
+      updated_at: now,
+    };
+
+    if (decision === "Accepted") {
+      payload.status = "closed";
+      payload.closed_at = now;
+      payload.closed_by = userEmail || "unknown";
+      payload.closure_block_reason = null;
+    }
+
+    if (decision === "Rejected") {
+      payload.status = "verification";
+      payload.closure_block_reason = reason;
+    }
+
+    if (decision === "Cancelled") {
+      payload.status = "cancelled";
+      payload.cancelled_at = now;
+      payload.cancelled_by = userEmail || "unknown";
+      payload.closed_at = now;
+      payload.closed_by = userEmail || "unknown";
+      payload.closure_block_reason = reason;
+    }
+
+    const { error } = await supabase
+      .from("change_controls")
+      .update(payload)
+      .eq("id", change.id);
+
+    if (error) {
+      setBusy(false);
+      return alert(error.message);
+    }
+
+    await createESignature({
+      moduleName: "change_control",
+      recordId: change.id,
+      actionType:
+        decision === "Accepted"
+          ? "accept_and_close_change"
+          : decision === "Rejected"
+            ? "reject_change_closure"
+            : "cancel_change_closure",
+      signedBy: userEmail || "unknown",
+      signerRole: userRole || null,
+      signatureMeaning:
+        decision === "Accepted"
+          ? "Accept Change Closure"
+          : decision === "Rejected"
+            ? "Reject Change Closure"
+            : "Cancel Change",
+      signatureReason: reason,
+    });
+
+    await fetchData();
+    setBusy(false);
   };
 
   const resubmitRejectedChange = async () => {
@@ -1463,6 +1669,32 @@ export default function ChangeControlWorkflowPage() {
       </section>
 
       <section style={cardStyle}>
+        <h2 style={{ marginTop: 0 }}>Change Traceability & Closure Readiness</h2>
+        <div style={gridStyle}>
+          <Detail label="Origin" value={change.change_origin || "N/A"} />
+          <Detail
+            label="Originating Record"
+            value={
+              change.change_origin && change.change_origin !== "N/A"
+                ? change.originating_record_number || "Not entered"
+                : "No originating quality record"
+            }
+          />
+          <Detail label="Implementation Tasks" value={`${activeTasks.filter((task) => task.status === "complete").length}/${activeTasks.length} complete`} />
+          <Detail label="Affected Documents" value={`${activeDocuments.length} active`} />
+          <Detail label="Affected Products" value={`${products.length} listed`} />
+          <Detail label="Closure Approval" value={change.status === "closure_approval" ? "Pending" : change.closure_approved_at ? "Approved" : "Not submitted"} />
+        </div>
+        <div style={readinessGridStyle}>
+          <ReadinessItem label="Implementation Complete" ready={implementationComplete} />
+          <ReadinessItem label="Documents Released" ready={documentsReleased} />
+          <ReadinessItem label="Training Complete" ready={trainingComplete} />
+          <ReadinessItem label="Products Dispositioned" ready={productsDispositioned} />
+          <ReadinessItem label="Ready for Closure Approval" ready={closureEligible} />
+        </div>
+      </section>
+
+      <section style={cardStyle}>
         <h2 style={{ marginTop: 0 }}>Workflow Actions</h2>
         <div style={buttonRowStyle}>
           {change.status === "draft" || change.status === "rejected" ? (
@@ -1548,11 +1780,29 @@ export default function ChangeControlWorkflowPage() {
           ) : null}
           {change.status === "verification" ? (
             <button
-              onClick={() => updateStatus("closed")}
+              onClick={() => updateStatus("closure_approval")}
               disabled={busy}
               style={primaryButtonStyle}
             >
-              Close Change
+              Submit for Closure Approval
+            </button>
+          ) : null}
+          {change.status === "closure_approval" ? (
+            <button
+              onClick={returnToVerification}
+              disabled={busy}
+              style={secondaryLinkStyle}
+            >
+              Return to Verification
+            </button>
+          ) : null}
+          {change.status === "closure_approval" ? (
+            <button
+              onClick={returnToImplementation}
+              disabled={busy}
+              style={secondaryLinkStyle}
+            >
+              Return to Implementation
             </button>
           ) : null}
           <StatusBadge status={change.status || "draft"} />
@@ -1643,6 +1893,43 @@ export default function ChangeControlWorkflowPage() {
                   style={inputStyle}
                 />
               </Field>
+              <Field label="Change Origin">
+                <select
+                  value={initiationForm.change_origin}
+                  onChange={(e) =>
+                    setInitiationForm({
+                      ...initiationForm,
+                      change_origin: e.target.value,
+                      originating_record_number:
+                        e.target.value === "N/A"
+                          ? ""
+                          : initiationForm.originating_record_number,
+                    })
+                  }
+                  style={inputStyle}
+                >
+                  {CHANGE_ORIGINS.map((origin) => (
+                    <option key={origin} value={origin}>
+                      {origin === "N/A" ? "N/A (Not Applicable)" : origin}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              {initiationForm.change_origin !== "N/A" ? (
+                <Field label="Originating Record Number">
+                  <input
+                    value={initiationForm.originating_record_number}
+                    onChange={(e) =>
+                      setInitiationForm({
+                        ...initiationForm,
+                        originating_record_number: e.target.value,
+                      })
+                    }
+                    placeholder="CAPA-000123, NCMR-000456, AUD-000789"
+                    style={inputStyle}
+                  />
+                </Field>
+              ) : null}
             </div>
             <Field label="Change Description">
               <textarea
@@ -1677,6 +1964,15 @@ export default function ChangeControlWorkflowPage() {
             <Detail label="Category" value={change.change_category || "N/A"} />
             <Detail label="Priority" value={change.priority || "N/A"} />
             <Detail label="Owner" value={change.owner_email || "N/A"} />
+            <Detail label="Change Origin" value={change.change_origin || "N/A"} />
+            <Detail
+              label="Originating Record"
+              value={
+                change.change_origin && change.change_origin !== "N/A"
+                  ? change.originating_record_number || "Not entered"
+                  : "N/A"
+              }
+            />
             <Detail
               label="Description"
               value={change.change_description || "N/A"}
@@ -2226,7 +2522,9 @@ export default function ChangeControlWorkflowPage() {
       {change.status === "approved" ||
       change.status === "implementation" ||
       change.status === "verification" ||
-      change.status === "closed" ? (
+      change.status === "closure_approval" ||
+      change.status === "closed" ||
+      change.status === "cancelled" ? (
         <>
           <section style={cardStyle}>
             <h2 style={{ marginTop: 0 }}>
@@ -2848,6 +3146,118 @@ export default function ChangeControlWorkflowPage() {
               })}
             </ul>
           </section>
+
+          {change.status === "verification" ||
+          change.status === "closure_approval" ||
+          change.status === "closed" ||
+          change.status === "cancelled" ? (
+            <section style={cardStyle}>
+              <h2 style={{ marginTop: 0 }}>Verification / Closure Readiness Review</h2>
+              <div style={readinessGridStyle}>
+                <ReadinessItem label="Implementation Tasks Complete" ready={implementationComplete} />
+                <ReadinessItem label="Affected Documents Released" ready={documentsReleased} />
+                <ReadinessItem label="Required Training Complete" ready={trainingComplete} />
+                <ReadinessItem label="Product Dispositions Complete" ready={productsDispositioned} />
+              </div>
+              {change.status === "verification" ? (
+                <Field label="Verification Summary">
+                  <textarea
+                    value={verificationSummary}
+                    onChange={(e) => setVerificationSummary(e.target.value)}
+                    rows={4}
+                    style={textareaStyle}
+                    placeholder="Summarize verification activities and confirm closure readiness evidence."
+                  />
+                </Field>
+              ) : (
+                <div style={detailTileStyle}>
+                  <div style={smallTextStyle}>Verification Summary</div>
+                  <strong>{change.verification_summary || "Not provided"}</strong>
+                  <div style={smallTextStyle}>
+                    Verified by {change.verified_by || "N/A"} on {change.verified_at || "N/A"}
+                  </div>
+                </div>
+              )}
+            </section>
+          ) : null}
+
+          {change.status === "closure_approval" ||
+          change.status === "closed" ||
+          change.status === "cancelled" ? (
+            <section style={cardStyle}>
+              <h2 style={{ marginTop: 0 }}>Closure Approval & Final Decision</h2>
+              <div style={gridStyle}>
+                <Detail label="Closure Readiness" value={closureEligible ? "Ready" : "Not Ready"} />
+                <Detail label="Verified By" value={change.verified_by || "N/A"} />
+                <Detail label="Verified At" value={change.verified_at || "N/A"} />
+                <Detail label="Closure Approved By" value={change.closure_approved_by || "Pending"} />
+              </div>
+              {change.status === "closure_approval" ? (
+                <div style={subCardStyle}>
+                  <Field label="Closure Approval Comments">
+                    <textarea
+                      value={closureApprovalComments}
+                      onChange={(e) => setClosureApprovalComments(e.target.value)}
+                      rows={3}
+                      style={textareaStyle}
+                      placeholder="Optional closure approval comments."
+                    />
+                  </Field>
+                  <Field label="Closure Decision">
+                    <select
+                      value={closureForm.closure_decision}
+                      onChange={(e) =>
+                        setClosureForm({
+                          ...closureForm,
+                          closure_decision: e.target.value,
+                        })
+                      }
+                      style={inputStyle}
+                    >
+                      {CLOSURE_DECISIONS.map((decision) => (
+                        <option key={decision} value={decision}>
+                          {decision}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label="Closure Decision Reason / E-Signature Reason">
+                    <textarea
+                      value={closureForm.closure_decision_reason}
+                      onChange={(e) =>
+                        setClosureForm({
+                          ...closureForm,
+                          closure_decision_reason: e.target.value,
+                        })
+                      }
+                      rows={4}
+                      style={textareaStyle}
+                      placeholder="Enter final closure rationale. This will be recorded with the closure e-signature."
+                    />
+                  </Field>
+                  <button
+                    onClick={completeClosureDecision}
+                    disabled={busy || !canClosureApprove}
+                    style={primaryButtonStyle}
+                  >
+                    Complete Closure Decision with E-Signature
+                  </button>
+                  {!canClosureApprove ? (
+                    <p style={smallTextStyle}>Only an authorized approver, admin, quality role, or VP Quality can complete closure approval.</p>
+                  ) : null}
+                </div>
+              ) : (
+                <div style={detailTileStyle}>
+                  <div style={smallTextStyle}>Closure Decision</div>
+                  <strong>{change.closure_decision || "N/A"}</strong>
+                  <div>{change.closure_decision_reason || "No closure rationale recorded."}</div>
+                  <div style={smallTextStyle}>
+                    Approved by {change.closure_approved_by || "N/A"} on {change.closure_approved_at || "N/A"}
+                  </div>
+                </div>
+              )}
+            </section>
+          ) : null}
         </>
       ) : (
         <section style={cardStyle}>
@@ -2954,6 +3364,15 @@ function ImpactAssessmentEditor({
     </div>
   );
 }
+function ReadinessItem({ label, ready }: { label: string; ready: boolean }) {
+  return (
+    <div style={{ ...readinessItemStyle, borderLeft: `6px solid ${ready ? "#15803d" : "#dc2626"}` }}>
+      <strong style={{ color: ready ? "#15803d" : "#dc2626" }}>{ready ? "✓" : "!"}</strong>
+      <span>{label}</span>
+    </div>
+  );
+}
+
 function KpiCard({
   title,
   value,
@@ -2978,7 +3397,9 @@ function getStatusLabel(status: string) {
     approved: "Approved",
     implementation: "Implementation",
     verification: "Verification",
+    closure_approval: "Closure Approval",
     closed: "Closed",
+    cancelled: "Cancelled",
     rejected: "Rejected",
   };
   return labels[status] || status;
@@ -2995,7 +3416,11 @@ function StatusBadge({ status }: { status: string }) {
   const color =
     status === "closed"
       ? "#15803d"
-      : status === "verification"
+      : status === "cancelled"
+        ? "#991b1b"
+        : status === "closure_approval"
+          ? "#9333ea"
+          : status === "verification"
         ? "#7c3aed"
         : status === "implementation"
           ? "#2563eb"
@@ -3021,6 +3446,22 @@ function StatusBadge({ status }: { status: string }) {
     </span>
   );
 }
+
+const readinessGridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+  gap: "10px",
+  marginTop: "14px",
+};
+const readinessItemStyle: React.CSSProperties = {
+  display: "flex",
+  gap: "10px",
+  alignItems: "center",
+  background: "#f9fafb",
+  border: "1px solid #e5e7eb",
+  borderRadius: "10px",
+  padding: "10px",
+};
 
 const pageStyle: React.CSSProperties = {
   padding: "24px",
