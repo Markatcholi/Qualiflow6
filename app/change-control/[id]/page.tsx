@@ -791,6 +791,29 @@ export default function ChangeControlWorkflowPage() {
     const payload: any = { status, updated_at: new Date().toISOString() };
 
     if (status === "pending_approval") {
+      if (!canEditPlanning) {
+        return alert("Planning sections are locked after approval.");
+      }
+
+      if (!initiationForm.change_title.trim()) {
+        return alert("Change title is required.");
+      }
+
+      if (!initiationForm.change_description.trim()) {
+        return alert("Change description is required.");
+      }
+
+      if (!initiationForm.change_justification.trim()) {
+        return alert("Change justification is required.");
+      }
+
+      if (
+        initiationForm.owner_email &&
+        !normalizeEmail(initiationForm.owner_email)
+      ) {
+        return alert("Owner email must be valid.");
+      }
+
       const missingImpactSummaries = getImpactSummaryMissing();
 
       if (missingImpactSummaries.length > 0) {
@@ -807,10 +830,23 @@ export default function ChangeControlWorkflowPage() {
           "Risk review summary and risk acceptability are required before submitting for approval.",
         );
       }
+
       if (!hasRequiredReviewers)
         return alert(
           "Load an approval matrix or add at least one required reviewer before submitting for approval.",
         );
+
+      payload.change_title = initiationForm.change_title.trim();
+      payload.change_description = initiationForm.change_description.trim();
+      payload.change_justification = initiationForm.change_justification.trim();
+      payload.change_type = initiationForm.change_type;
+      payload.change_category = initiationForm.change_category;
+      payload.priority = initiationForm.priority;
+      payload.owner_email = normalizeEmail(initiationForm.owner_email) || userEmail || null;
+      payload.approver_email = null;
+
+      Object.assign(payload, assessmentForm, riskForm);
+
       payload.submitted_at = new Date().toISOString();
       payload.submitted_by = userEmail;
     }
