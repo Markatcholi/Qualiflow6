@@ -900,6 +900,72 @@ export default function ChangeControlWorkflowPage() {
     fetchData();
   };
 
+  const returnToCreation = async () => {
+    if (!change) return;
+
+    const returnAllowedStatuses = [
+      "pending_approval",
+      "approved",
+      "implementation",
+    ];
+
+    if (!returnAllowedStatuses.includes(String(change.status || ""))) {
+      return alert(
+        "Only changes in pending approval, approved, or implementation can be returned to creation.",
+      );
+    }
+
+    const reason = window.prompt(
+      "Enter reason for returning this change to creation / planning:",
+    );
+
+    if (!reason || !reason.trim()) {
+      return alert("Return-to-creation reason is required.");
+    }
+
+    setBusy(true);
+
+    const { error } = await supabase
+      .from("change_controls")
+      .update({
+        status: "draft",
+        approval_comments: reason.trim(),
+        closure_block_reason: reason.trim(),
+        approved_at: null,
+        approved_by: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", change.id);
+
+    if (error) {
+      setBusy(false);
+      return alert(error.message);
+    }
+
+    await supabase
+      .from("change_control_reviewers")
+      .update({
+        review_status: "pending",
+        review_comments: null,
+        reviewed_at: null,
+        reviewed_by: null,
+      })
+      .eq("change_control_id", change.id);
+
+    await createESignature({
+      moduleName: "change_control",
+      recordId: change.id,
+      actionType: "return_change_to_creation",
+      signedBy: userEmail || "unknown",
+      signerRole: userRole || null,
+      signatureMeaning: "Return Change to Creation / Planning",
+      signatureReason: reason.trim(),
+    });
+
+    await fetchData();
+    setBusy(false);
+  };
+
   const returnToImplementation = async () => {
     if (!change) return;
     if (change.status !== "verification") {
@@ -1426,6 +1492,15 @@ export default function ChangeControlWorkflowPage() {
               Finalize Approval
             </button>
           ) : null}
+          {change.status === "pending_approval" ? (
+            <button
+              onClick={returnToCreation}
+              disabled={busy}
+              style={secondaryLinkStyle}
+            >
+              Return to Creation
+            </button>
+          ) : null}
           {change.status === "approved" ? (
             <button
               onClick={() => updateStatus("implementation")}
@@ -1435,6 +1510,15 @@ export default function ChangeControlWorkflowPage() {
               Start Implementation
             </button>
           ) : null}
+          {change.status === "approved" ? (
+            <button
+              onClick={returnToCreation}
+              disabled={busy}
+              style={secondaryLinkStyle}
+            >
+              Return to Creation
+            </button>
+          ) : null}
           {change.status === "implementation" ? (
             <button
               onClick={() => updateStatus("verification")}
@@ -1442,6 +1526,15 @@ export default function ChangeControlWorkflowPage() {
               style={primaryButtonStyle}
             >
               Move to Verification
+            </button>
+          ) : null}
+          {change.status === "implementation" ? (
+            <button
+              onClick={returnToCreation}
+              disabled={busy}
+              style={secondaryLinkStyle}
+            >
+              Return to Creation
             </button>
           ) : null}
           {change.status === "verification" ? (
