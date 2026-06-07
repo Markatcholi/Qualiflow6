@@ -35,6 +35,7 @@ const CHANGE_TYPES = [
   "Material",
   "Other",
 ];
+
 const CATEGORIES = [
   "Design",
   "Manufacturing",
@@ -45,7 +46,9 @@ const CATEGORIES = [
   "Document",
   "Other",
 ];
+
 const PRIORITIES = ["Low", "Medium", "High", "Critical"];
+
 const CHANGE_ORIGINS = [
   "N/A",
   "NCMR",
@@ -157,7 +160,9 @@ export default function ChangeControlLandingPage() {
 
       let quickMatch = true;
       if (quickFilter === "my_changes") {
-        quickMatch = Boolean(normalizedUser && (owner === normalizedUser || initiator === normalizedUser));
+        quickMatch = Boolean(
+          normalizedUser && (owner === normalizedUser || initiator === normalizedUser),
+        );
       }
       if (quickFilter === "open") quickMatch = isOpen(change);
       if (quickFilter === "overdue") quickMatch = isOverdue(change);
@@ -170,76 +175,6 @@ export default function ChangeControlLandingPage() {
       return statusMatch && quickMatch;
     });
   }, [changes, filterStatus, quickFilter, userEmail]);
-
-  const metrics = useMemo(() => {
-    const closedChanges = changes.filter((c) => c.status === "closed");
-    const closedDays = closedChanges.map((c) => daysBetween(c.created_at, c.closed_at));
-    const averageClosureDays = closedDays.length
-      ? Math.round(closedDays.reduce((sum, value) => sum + value, 0) / closedDays.length)
-      : 0;
-
-    return {
-      total: changes.length,
-      open: changes.filter((c) => isOpen(c)).length,
-      draft: changes.filter((c) => c.status === "draft").length,
-      pending: changes.filter((c) => c.status === "pending_approval").length,
-      approved: changes.filter((c) => c.status === "approved").length,
-      implementation: changes.filter((c) => c.status === "implementation").length,
-      verification: changes.filter((c) => c.status === "verification").length,
-      closureApproval: changes.filter((c) => c.status === "closure_approval").length,
-      closed: closedChanges.length,
-      cancelled: changes.filter((c) => c.status === "cancelled").length,
-      rejected: changes.filter((c) => c.status === "rejected").length,
-      overdue: changes.filter((c) => isOverdue(c)).length,
-      highRisk: changes.filter((c) => isHighRisk(c)).length,
-      averageClosureDays,
-    };
-  }, [changes]);
-
-  const aging = useMemo(() => {
-    const openChanges = changes.filter((change) => isOpen(change));
-    return {
-      zeroToThirty: openChanges.filter((c) => daysBetween(c.created_at) <= 30).length,
-      thirtyOneToSixty: openChanges.filter((c) => {
-        const days = daysBetween(c.created_at);
-        return days >= 31 && days <= 60;
-      }).length,
-      sixtyOneToNinety: openChanges.filter((c) => {
-        const days = daysBetween(c.created_at);
-        return days >= 61 && days <= 90;
-      }).length,
-      overNinety: openChanges.filter((c) => daysBetween(c.created_at) > 90).length,
-    };
-  }, [changes]);
-
-  const statusCounts = useMemo(() => {
-    return [
-      { label: "Draft", count: metrics.draft },
-      { label: "Pending Approval", count: metrics.pending },
-      { label: "Approved", count: metrics.approved },
-      { label: "Implementation", count: metrics.implementation },
-      { label: "Verification", count: metrics.verification },
-      { label: "Closure Approval", count: metrics.closureApproval },
-      { label: "Closed", count: metrics.closed },
-      { label: "Cancelled", count: metrics.cancelled },
-      { label: "Rejected", count: metrics.rejected },
-    ];
-  }, [metrics]);
-
-  const typeCounts = useMemo(() => {
-    return CHANGE_TYPES.map((type) => ({
-      label: type,
-      count: changes.filter((change) => change.change_type === type).length,
-    })).filter((item) => item.count > 0);
-  }, [changes]);
-
-  const riskCounts = useMemo(() => {
-    const levels = ["Not assessed", "Low", "Medium", "High", "Critical"];
-    return levels.map((level) => ({
-      label: level,
-      count: changes.filter((change) => (change.risk_level || "Not assessed") === level).length,
-    })).filter((item) => item.count > 0);
-  }, [changes]);
 
   const resetCreateForm = () => {
     setNewChange({
@@ -257,11 +192,19 @@ export default function ChangeControlLandingPage() {
 
   const createChange = async () => {
     if (!newChange.change_title.trim()) return alert("Change title is required.");
-    if (!newChange.change_description.trim()) return alert("Change description is required.");
-    if (!newChange.change_justification.trim()) return alert("Change justification is required.");
-    if (newChange.owner_email && !normalizeEmail(newChange.owner_email)) return alert("Owner email must be valid.");
-    if (newChange.change_origin !== "N/A" && !String(newChange.originating_record_number || "").trim()) {
-      return alert("Originating record number is required when change origin is not N/A.");
+    if (!newChange.change_description.trim())
+      return alert("Change description is required.");
+    if (!newChange.change_justification.trim())
+      return alert("Change justification is required.");
+    if (newChange.owner_email && !normalizeEmail(newChange.owner_email))
+      return alert("Owner email must be valid.");
+    if (
+      newChange.change_origin !== "N/A" &&
+      !String(newChange.originating_record_number || "").trim()
+    ) {
+      return alert(
+        "Originating record number is required when change origin is not N/A.",
+      );
     }
 
     const changeNumber = `CC-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
@@ -303,53 +246,41 @@ export default function ChangeControlLandingPage() {
           <div style={eyebrowStyle}>CHANGE CONTROL / ECO</div>
           <h1 style={{ margin: "6px 0" }}>Change Control</h1>
           <p style={subtleText}>
-            Initiate changes here. Impact assessment, risk review, approval, implementation, document linkage, verification, and closure are handled in the workflow.
+            Create, search, and open change records. Detailed impact assessment,
+            risk review, approval, implementation, verification, and closure are
+            completed in the workflow.
           </p>
         </div>
         <div style={buttonRowStyle}>
-          <button onClick={() => setShowCreateForm(true)} style={primaryButtonStyle}>Create Change Request</button>
-          <a href="/dashboard" style={darkButtonStyle}>Dashboard</a>
+          <button onClick={() => setShowCreateForm(true)} style={primaryButtonStyle}>
+            Create Change Request
+          </button>
+          <a href="/change-control/dashboard" style={darkButtonStyle}>
+            Change Control Dashboard
+          </a>
         </div>
       </header>
-
-      <section style={kpiGridStyle}>
-        <KpiCard title="Total Changes" value={metrics.total} color="#2563eb" />
-        <KpiCard title="Open" value={metrics.open} color="#d97706" />
-        <KpiCard title="Pending Approval" value={metrics.pending} color="#d97706" />
-        <KpiCard title="Implementation" value={metrics.implementation} color="#2563eb" />
-        <KpiCard title="Verification" value={metrics.verification} color="#7c3aed" />
-        <KpiCard title="Closure Approval" value={metrics.closureApproval} color="#9333ea" />
-        <KpiCard title="Closed" value={metrics.closed} color="#15803d" />
-        <KpiCard title="Cancelled" value={metrics.cancelled} color="#991b1b" />
-        <KpiCard title="Overdue" value={metrics.overdue} color="#dc2626" />
-        <KpiCard title="High/Critical Risk" value={metrics.highRisk} color="#dc2626" />
-        <KpiCard title="Avg Days to Close" value={metrics.averageClosureDays} color="#111827" />
-      </section>
-
-      <section style={analyticsGridStyle}>
-        <SummaryCard title="Status Distribution" rows={statusCounts} />
-        <SummaryCard title="Changes by Type" rows={typeCounts.length ? typeCounts : [{ label: "No data", count: 0 }]} />
-        <SummaryCard title="Changes by Risk" rows={riskCounts.length ? riskCounts : [{ label: "No data", count: 0 }]} />
-        <div style={cardStyle}>
-          <h3 style={{ marginTop: 0 }}>Open Change Aging</h3>
-          <AgingRow label="0–30 Days" value={aging.zeroToThirty} color="#15803d" />
-          <AgingRow label="31–60 Days" value={aging.thirtyOneToSixty} color="#d97706" />
-          <AgingRow label="61–90 Days" value={aging.sixtyOneToNinety} color="#ea580c" />
-          <AgingRow label=">90 Days" value={aging.overNinety} color="#dc2626" />
-        </div>
-      </section>
 
       <section style={cardStyle}>
         <div style={sectionHeaderStyle}>
           <div>
             <h2 style={{ margin: 0 }}>Change Register</h2>
-            <p style={subtleText}>Search current and historical change records, then open the workflow to complete assessments and approvals.</p>
+            <p style={subtleText}>
+              Search current and historical change records, then open the workflow
+              to complete assessments and approvals.
+            </p>
           </div>
-          <button onClick={() => setShowCreateForm(true)} style={primaryButtonStyle}>Create Change Request</button>
+          <button onClick={() => setShowCreateForm(true)} style={primaryButtonStyle}>
+            Create Change Request
+          </button>
         </div>
 
         <div style={filterPanelStyle}>
-          <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} style={inputStyle}>
+          <select
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value)}
+            style={inputStyle}
+          >
             <option value="all">All Statuses</option>
             <option value="draft">Draft</option>
             <option value="pending_approval">Pending Approval</option>
@@ -392,34 +323,51 @@ export default function ChangeControlLandingPage() {
             </thead>
             <tbody>
               {filteredChanges.length === 0 ? (
-                <tr><td colSpan={10} style={tdStyle}>No changes found.</td></tr>
-              ) : filteredChanges.map((change) => {
-                const daysOpen = change.status === "closed" ? daysBetween(change.created_at, change.closed_at) : daysBetween(change.created_at);
-                return (
-                  <tr key={change.id}>
-                    <td style={tdStyle}>
-                      <strong>{change.change_number || change.id}</strong>
-                      <div>{change.change_title}</div>
-                      <div style={smallTextStyle}>{change.change_description}</div>
-                      {isOverdue(change) ? <div style={overdueTextStyle}>Overdue / Aging Alert</div> : null}
-                    </td>
-                    <td style={tdStyle}>
-                      {change.change_origin || "N/A"}
-                      {change.change_origin && change.change_origin !== "N/A" ? (
-                        <div style={smallTextStyle}>{change.originating_record_number || "No record number"}</div>
-                      ) : null}
-                    </td>
-                    <td style={tdStyle}>{change.change_type || "N/A"}</td>
-                    <td style={tdStyle}>{change.priority || "N/A"}</td>
-                    <td style={tdStyle}>{change.risk_level || "Not assessed"}</td>
-                    <td style={tdStyle}><StatusBadge status={change.status || "draft"} /></td>
-                    <td style={tdStyle}>{change.owner_email || "N/A"}</td>
-                    <td style={tdStyle}>{formatDate(change.created_at)}</td>
-                    <td style={tdStyle}>{daysOpen}</td>
-                    <td style={tdStyle}><a href={`/change-control/${change.id}`} style={primaryLinkStyle}>Open Workflow</a></td>
-                  </tr>
-                );
-              })}
+                <tr>
+                  <td colSpan={10} style={tdStyle}>No changes found.</td>
+                </tr>
+              ) : (
+                filteredChanges.map((change) => {
+                  const daysOpen =
+                    change.status === "closed"
+                      ? daysBetween(change.created_at, change.closed_at)
+                      : daysBetween(change.created_at);
+                  return (
+                    <tr key={change.id}>
+                      <td style={tdStyle}>
+                        <strong>{change.change_number || change.id}</strong>
+                        <div>{change.change_title}</div>
+                        <div style={smallTextStyle}>{change.change_description}</div>
+                        {isOverdue(change) ? (
+                          <div style={overdueTextStyle}>Overdue / Aging Alert</div>
+                        ) : null}
+                      </td>
+                      <td style={tdStyle}>
+                        {change.change_origin || "N/A"}
+                        {change.change_origin && change.change_origin !== "N/A" ? (
+                          <div style={smallTextStyle}>
+                            {change.originating_record_number || "No record number"}
+                          </div>
+                        ) : null}
+                      </td>
+                      <td style={tdStyle}>{change.change_type || "N/A"}</td>
+                      <td style={tdStyle}>{change.priority || "N/A"}</td>
+                      <td style={tdStyle}>{change.risk_level || "Not assessed"}</td>
+                      <td style={tdStyle}>
+                        <StatusBadge status={change.status || "draft"} />
+                      </td>
+                      <td style={tdStyle}>{change.owner_email || "N/A"}</td>
+                      <td style={tdStyle}>{formatDate(change.created_at)}</td>
+                      <td style={tdStyle}>{daysOpen}</td>
+                      <td style={tdStyle}>
+                        <a href={`/change-control/${change.id}`} style={primaryLinkStyle}>
+                          Open Workflow
+                        </a>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>
@@ -429,9 +377,15 @@ export default function ChangeControlLandingPage() {
         <div style={sectionHeaderStyle}>
           <div>
             <h2 style={{ margin: 0 }}>Initiate Change Request</h2>
-            <p style={subtleText}>Capture the minimum change initiation package. Detailed impact, risk, approval matrix, implementation, and verification are completed in the workflow.</p>
+            <p style={subtleText}>
+              Capture the minimum change initiation package. Detailed impact, risk,
+              approval matrix, implementation, and verification are completed in the workflow.
+            </p>
           </div>
-          <button onClick={() => setShowCreateForm(!showCreateForm)} style={showCreateForm ? secondaryButtonStyle : primaryButtonStyle}>
+          <button
+            onClick={() => setShowCreateForm(!showCreateForm)}
+            style={showCreateForm ? secondaryButtonStyle : primaryButtonStyle}
+          >
             {showCreateForm ? "Hide Form" : "Create New Change"}
           </button>
         </div>
@@ -439,25 +393,138 @@ export default function ChangeControlLandingPage() {
         {showCreateForm ? (
           <>
             <div style={gridStyle}>
-              <Field label="Change Title"><input value={newChange.change_title} onChange={(e) => setNewChange({ ...newChange, change_title: e.target.value })} style={inputStyle} /></Field>
-              <Field label="Change Type"><select value={newChange.change_type} onChange={(e) => setNewChange({ ...newChange, change_type: e.target.value })} style={inputStyle}>{CHANGE_TYPES.map((x) => <option key={x} value={x}>{x}</option>)}</select></Field>
-              <Field label="Change Category"><select value={newChange.change_category} onChange={(e) => setNewChange({ ...newChange, change_category: e.target.value })} style={inputStyle}>{CATEGORIES.map((x) => <option key={x} value={x}>{x}</option>)}</select></Field>
-              <Field label="Priority"><select value={newChange.priority} onChange={(e) => setNewChange({ ...newChange, priority: e.target.value })} style={inputStyle}>{PRIORITIES.map((x) => <option key={x} value={x}>{x}</option>)}</select></Field>
-              <Field label="Owner Email"><input type="email" value={newChange.owner_email} onChange={(e) => setNewChange({ ...newChange, owner_email: e.target.value })} placeholder={userEmail || "owner@company.com"} style={inputStyle} /></Field>
-              <Field label="Change Origin"><select value={newChange.change_origin} onChange={(e) => setNewChange({ ...newChange, change_origin: e.target.value, originating_record_number: e.target.value === "N/A" ? "" : newChange.originating_record_number })} style={inputStyle}>{CHANGE_ORIGINS.map((origin) => <option key={origin} value={origin}>{origin === "N/A" ? "N/A (Not Applicable)" : origin}</option>)}</select></Field>
-              {newChange.change_origin !== "N/A" ? <Field label="Originating Record Number"><input value={newChange.originating_record_number} onChange={(e) => setNewChange({ ...newChange, originating_record_number: e.target.value })} placeholder="CAPA-000123, NCMR-000456, AUD-000789" style={inputStyle} /></Field> : null}
+              <Field label="Change Title">
+                <input
+                  value={newChange.change_title}
+                  onChange={(e) =>
+                    setNewChange({ ...newChange, change_title: e.target.value })
+                  }
+                  style={inputStyle}
+                />
+              </Field>
+              <Field label="Change Type">
+                <select
+                  value={newChange.change_type}
+                  onChange={(e) =>
+                    setNewChange({ ...newChange, change_type: e.target.value })
+                  }
+                  style={inputStyle}
+                >
+                  {CHANGE_TYPES.map((x) => (
+                    <option key={x} value={x}>{x}</option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Change Category">
+                <select
+                  value={newChange.change_category}
+                  onChange={(e) =>
+                    setNewChange({ ...newChange, change_category: e.target.value })
+                  }
+                  style={inputStyle}
+                >
+                  {CATEGORIES.map((x) => (
+                    <option key={x} value={x}>{x}</option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Priority">
+                <select
+                  value={newChange.priority}
+                  onChange={(e) =>
+                    setNewChange({ ...newChange, priority: e.target.value })
+                  }
+                  style={inputStyle}
+                >
+                  {PRIORITIES.map((x) => (
+                    <option key={x} value={x}>{x}</option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Owner Email">
+                <input
+                  type="email"
+                  value={newChange.owner_email}
+                  onChange={(e) =>
+                    setNewChange({ ...newChange, owner_email: e.target.value })
+                  }
+                  placeholder={userEmail || "owner@company.com"}
+                  style={inputStyle}
+                />
+              </Field>
+              <Field label="Change Origin">
+                <select
+                  value={newChange.change_origin}
+                  onChange={(e) =>
+                    setNewChange({
+                      ...newChange,
+                      change_origin: e.target.value,
+                      originating_record_number:
+                        e.target.value === "N/A"
+                          ? ""
+                          : newChange.originating_record_number,
+                    })
+                  }
+                  style={inputStyle}
+                >
+                  {CHANGE_ORIGINS.map((origin) => (
+                    <option key={origin} value={origin}>
+                      {origin === "N/A" ? "N/A (Not Applicable)" : origin}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              {newChange.change_origin !== "N/A" ? (
+                <Field label="Originating Record Number">
+                  <input
+                    value={newChange.originating_record_number}
+                    onChange={(e) =>
+                      setNewChange({
+                        ...newChange,
+                        originating_record_number: e.target.value,
+                      })
+                    }
+                    placeholder="CAPA-000123, NCMR-000456, AUD-000789"
+                    style={inputStyle}
+                  />
+                </Field>
+              ) : null}
             </div>
 
-            <Field label="Change Description"><textarea value={newChange.change_description} onChange={(e) => setNewChange({ ...newChange, change_description: e.target.value })} rows={4} style={textareaStyle} /></Field>
-            <Field label="Change Justification / Rationale"><textarea value={newChange.change_justification} onChange={(e) => setNewChange({ ...newChange, change_justification: e.target.value })} rows={4} style={textareaStyle} /></Field>
+            <Field label="Change Description">
+              <textarea
+                value={newChange.change_description}
+                onChange={(e) =>
+                  setNewChange({ ...newChange, change_description: e.target.value })
+                }
+                rows={4}
+                style={textareaStyle}
+              />
+            </Field>
+            <Field label="Change Justification / Rationale">
+              <textarea
+                value={newChange.change_justification}
+                onChange={(e) =>
+                  setNewChange({ ...newChange, change_justification: e.target.value })
+                }
+                rows={4}
+                style={textareaStyle}
+              />
+            </Field>
 
             <div style={buttonRowStyle}>
-              <button onClick={createChange} style={primaryButtonStyle}>Create Change Request</button>
-              <button onClick={resetCreateForm} style={secondaryButtonStyle}>Reset</button>
+              <button onClick={createChange} style={primaryButtonStyle}>
+                Create Change Request
+              </button>
+              <button onClick={resetCreateForm} style={secondaryButtonStyle}>
+                Reset
+              </button>
             </div>
           </>
         ) : (
-          <p style={subtleText}>The initiation form is collapsed to keep the change register visible.</p>
+          <p style={subtleText}>
+            The initiation form is collapsed to keep the change register visible.
+          </p>
         )}
       </section>
     </main>
@@ -465,37 +532,23 @@ export default function ChangeControlLandingPage() {
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return <div style={{ marginBottom: "12px" }}><label style={labelStyle}>{label}</label><div style={{ marginTop: "5px" }}>{children}</div></div>;
-}
-
-function KpiCard({ title, value, color }: { title: string; value: number; color: string }) {
-  return <div style={{ ...kpiCardStyle, borderLeft: `8px solid ${color}` }}><div style={kpiTitleStyle}>{title}</div><div style={{ fontSize: "30px", fontWeight: 800, color }}>{value}</div></div>;
-}
-
-function SummaryCard({ title, rows }: { title: string; rows: { label: string; count: number }[] }) {
   return (
-    <div style={cardStyle}>
-      <h3 style={{ marginTop: 0 }}>{title}</h3>
-      {rows.map((row) => (
-        <div key={row.label} style={summaryRowStyle}>
-          <span>{row.label}</span>
-          <strong>{row.count}</strong>
-        </div>
-      ))}
+    <div style={{ marginBottom: "12px" }}>
+      <label style={labelStyle}>{label}</label>
+      <div style={{ marginTop: "5px" }}>{children}</div>
     </div>
   );
 }
 
-function AgingRow({ label, value, color }: { label: string; value: number; color: string }) {
-  return (
-    <div style={summaryRowStyle}>
-      <span>{label}</span>
-      <strong style={{ color }}>{value}</strong>
-    </div>
-  );
-}
-
-function QuickFilterButton({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+function QuickFilterButton({
+  label,
+  active,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
   return (
     <button onClick={onClick} style={active ? activeFilterButtonStyle : filterButtonStyle}>
       {label}
@@ -519,24 +572,39 @@ function getStatusLabel(status: string) {
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const color = status === "closed"
-    ? "#15803d"
-    : status === "cancelled"
-    ? "#991b1b"
-    : status === "closure_approval"
-    ? "#9333ea"
-    : status === "verification"
-    ? "#7c3aed"
-    : status === "implementation"
-    ? "#2563eb"
-    : status === "approved"
-    ? "#2563eb"
-    : status === "pending_approval"
-    ? "#d97706"
-    : status === "rejected"
-    ? "#dc2626"
-    : "#6b7280";
-  return <span style={{ background: color, color: "white", borderRadius: "999px", padding: "3px 8px", fontSize: "12px", fontWeight: 700 }}>{getStatusLabel(status)}</span>;
+  const color =
+    status === "closed"
+      ? "#15803d"
+      : status === "cancelled"
+        ? "#991b1b"
+        : status === "closure_approval"
+          ? "#9333ea"
+          : status === "verification"
+            ? "#7c3aed"
+            : status === "implementation"
+              ? "#2563eb"
+              : status === "approved"
+                ? "#2563eb"
+                : status === "pending_approval"
+                  ? "#d97706"
+                  : status === "rejected"
+                    ? "#dc2626"
+                    : "#6b7280";
+
+  return (
+    <span
+      style={{
+        background: color,
+        color: "white",
+        borderRadius: "999px",
+        padding: "3px 8px",
+        fontSize: "12px",
+        fontWeight: 700,
+      }}
+    >
+      {getStatusLabel(status)}
+    </span>
+  );
 }
 
 function formatDate(value?: string | null) {
@@ -553,10 +621,6 @@ const subtleText: React.CSSProperties = { color: "#6b7280" };
 const cardStyle: React.CSSProperties = { background: "white", border: "1px solid #d1d5db", borderRadius: "16px", padding: "20px", marginBottom: "20px" };
 const sectionHeaderStyle: React.CSSProperties = { display: "flex", justifyContent: "space-between", gap: "14px", alignItems: "flex-start", flexWrap: "wrap", marginBottom: "16px" };
 const gridStyle: React.CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "14px" };
-const kpiGridStyle: React.CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "14px", marginBottom: "20px" };
-const analyticsGridStyle: React.CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "14px", marginBottom: "20px" };
-const kpiCardStyle: React.CSSProperties = { background: "white", border: "1px solid #d1d5db", borderRadius: "14px", padding: "16px" };
-const kpiTitleStyle: React.CSSProperties = { color: "#6b7280", marginBottom: "8px" };
 const labelStyle: React.CSSProperties = { fontWeight: 700 };
 const inputStyle: React.CSSProperties = { width: "100%", padding: "9px", borderRadius: "8px", border: "1px solid #d1d5db" };
 const textareaStyle: React.CSSProperties = { width: "100%", padding: "9px", borderRadius: "8px", border: "1px solid #d1d5db", marginTop: "6px" };
@@ -574,4 +638,3 @@ const thStyle: React.CSSProperties = { textAlign: "left", borderBottom: "1px sol
 const tdStyle: React.CSSProperties = { borderBottom: "1px solid #e5e7eb", padding: "10px", verticalAlign: "top" };
 const smallTextStyle: React.CSSProperties = { fontSize: "12px", color: "#6b7280" };
 const overdueTextStyle: React.CSSProperties = { fontSize: "12px", color: "#dc2626", fontWeight: 800, marginTop: "4px" };
-const summaryRowStyle: React.CSSProperties = { display: "flex", justifyContent: "space-between", gap: "12px", borderBottom: "1px solid #e5e7eb", padding: "8px 0" };
