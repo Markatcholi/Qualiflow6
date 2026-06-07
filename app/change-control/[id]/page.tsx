@@ -494,10 +494,14 @@ export default function ChangeControlWorkflowPage() {
     )
     .filter(Boolean);
 
+  const activeTasks = tasks.filter(
+    (task) => !task.cancelled && task.status !== "cancelled",
+  );
+
   const implementationComplete =
     tasks.length === 0
       ? false
-      : tasks.every((task) => task.status === "complete");
+      : activeTasks.every((task) => task.status === "complete");
 
   const documentsReleased =
     activeDocuments.length === 0
@@ -825,8 +829,8 @@ export default function ChangeControlWorkflowPage() {
     }
 
     if (status === "implementation") {
-      if (change.status !== "approved")
-        return alert("Only approved changes can move to implementation.");
+      if (change.status !== "approved" && change.status !== "verification")
+        return alert("Only approved changes or changes in verification can move to implementation.");
       payload.actual_implementation_date = new Date()
         .toISOString()
         .slice(0, 10);
@@ -856,6 +860,33 @@ export default function ChangeControlWorkflowPage() {
       .from("change_controls")
       .update(payload)
       .eq("id", change.id);
+    if (error) return alert(error.message);
+    fetchData();
+  };
+
+  const returnToImplementation = async () => {
+    if (!change) return;
+    if (change.status !== "verification") {
+      return alert("Only changes in verification can be returned to implementation.");
+    }
+
+    const reason = window.prompt(
+      "Enter reason for returning this change to implementation:",
+    );
+
+    if (!reason || !reason.trim()) {
+      return alert("Return-to-implementation reason is required.");
+    }
+
+    const { error } = await supabase
+      .from("change_controls")
+      .update({
+        status: "implementation",
+        closure_block_reason: reason.trim(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", change.id);
+
     if (error) return alert(error.message);
     fetchData();
   };
@@ -1216,6 +1247,36 @@ export default function ChangeControlWorkflowPage() {
     fetchData();
   };
 
+  const cancelTask = async (task: any) => {
+    if (!canImplement && !canVerify) {
+      return alert("Implementation tasks can only be cancelled during implementation or verification.");
+    }
+
+    if (task.status === "complete") {
+      return alert("Completed tasks cannot be cancelled. Add a new corrective task if additional work is needed.");
+    }
+
+    const reason = window.prompt("Enter cancellation reason for this implementation task:");
+
+    if (!reason || !reason.trim()) {
+      return alert("Cancellation reason is required.");
+    }
+
+    const { error } = await supabase
+      .from("change_control_tasks")
+      .update({
+        status: "cancelled",
+        cancelled: true,
+        cancelled_by: userEmail || "unknown",
+        cancelled_at: new Date().toISOString(),
+        cancellation_reason: reason.trim(),
+      })
+      .eq("id", task.id);
+
+    if (error) return alert(error.message);
+    fetchData();
+  };
+
   const completeTask = async (task: any) => {
     const form = taskCompletionForms[task.id] || {
       completion_summary: task.completion_summary || "",
@@ -1345,6 +1406,15 @@ export default function ChangeControlWorkflowPage() {
               style={primaryButtonStyle}
             >
               Move to Verification
+            </button>
+          ) : null}
+          {change.status === "verification" ? (
+            <button
+              onClick={returnToImplementation}
+              disabled={busy}
+              style={secondaryLinkStyle}
+            >
+              Return to Implementation
             </button>
           ) : null}
           {change.status === "verification" ? (
@@ -2263,7 +2333,7 @@ export default function ChangeControlWorkflowPage() {
                           {doc.cancelled_at || "N/A"}
                         </div>
                       </div>
-                    ) : !doc.controlled_document_id && canImplement ? (
+                    ) : !doc.controlled_document_id && (canImplement || canVerify) ? (
                       <div style={buttonRowStyle}>
                         <button
                           onClick={() =>
@@ -2548,9 +2618,16 @@ export default function ChangeControlWorkflowPage() {
                   completion_evidence: task.completion_evidence || "",
                 };
                 const taskComplete = task.status === "complete";
+                const taskCancelled = Boolean(task.cancelled || task.status === "cancelled");
 
                 return (
-                  <li key={task.id} style={listCardStyle}>
+                  <li
+                    key={task.id}
+                    style={{
+                      ...listCardStyle,
+                      opacity: taskCancelled ? 0.75 : 1,
+                    }}
+                  >
                     <strong>{task.task_title}</strong> — {task.owner_email}
                     <div style={smallTextStyle}>Status: {task.status}</div>
                     <div style={smallTextStyle}>
@@ -2559,7 +2636,15 @@ export default function ChangeControlWorkflowPage() {
                     <div style={smallTextStyle}>
                       {task.task_description || "No task description provided."}
                     </div>
-                    {taskComplete ? (
+                    {taskCancelled ? (
+                      <div style={warningStyle}>
+                        <strong>Implementation task cancelled.</strong>
+                        <div>Reason: {task.cancellation_reason || "N/A"}</div>
+                        <div style={smallTextStyle}>
+                          Cancelled by {task.cancelled_by || "N/A"} on {task.cancelled_at || "N/A"}
+                        </div>
+                      </div>
+                    ) : taskComplete ? (
                       <div style={completionSummaryStyle}>
                         <strong>Completion Summary:</strong>{" "}
                         {task.completion_summary || "N/A"}
@@ -2574,7 +2659,7 @@ export default function ChangeControlWorkflowPage() {
                           {task.completed_at || "N/A"}
                         </div>
                       </div>
-                    ) : canImplement ? (
+                    ) : canImplement || canVerify ? (
                       <div style={subCardStyle}>
                         <h4 style={{ marginTop: 0 }}>
                           Complete Implementation Task
@@ -2613,12 +2698,20 @@ export default function ChangeControlWorkflowPage() {
                             placeholder="Reference validation report, training record, work order, attachment location, or other evidence."
                           />
                         </Field>
-                        <button
-                          onClick={() => completeTask(task)}
-                          style={primaryButtonStyle}
-                        >
-                          Complete Task
-                        </button>
+                        <div style={buttonRowStyle}>
+                          <button
+                            onClick={() => completeTask(task)}
+                            style={primaryButtonStyle}
+                          >
+                            Complete Task
+                          </button>
+                          <button
+                            onClick={() => cancelTask(task)}
+                            style={dangerButtonStyle}
+                          >
+                            Cancel Task
+                          </button>
+                        </div>
                       </div>
                     ) : null}
                   </li>
