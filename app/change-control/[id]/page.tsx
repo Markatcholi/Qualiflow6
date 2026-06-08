@@ -207,8 +207,6 @@ export default function ChangeControlWorkflowPage() {
 
   const [implementationForm, setImplementationForm] = useState({
     implementation_plan: "",
-    implementation_owner_email: "",
-    target_implementation_date: "",
     verification_plan: "",
     effectiveness_required: false,
     effectiveness_plan: "",
@@ -434,8 +432,6 @@ export default function ChangeControlWorkflowPage() {
 
     setImplementationForm({
       implementation_plan: change.implementation_plan || "",
-      implementation_owner_email: change.implementation_owner_email || "",
-      target_implementation_date: change.target_implementation_date || "",
       verification_plan: change.verification_plan || "",
       effectiveness_required: Boolean(change.effectiveness_required),
       effectiveness_plan: change.effectiveness_plan || "",
@@ -662,6 +658,10 @@ export default function ChangeControlWorkflowPage() {
         approver_email: null,
         ...assessmentForm,
         ...riskForm,
+        implementation_plan: implementationForm.implementation_plan || null,
+        verification_plan: implementationForm.verification_plan || null,
+        effectiveness_required: implementationForm.effectiveness_required,
+        effectiveness_plan: implementationForm.effectiveness_plan || null,
         updated_at: new Date().toISOString(),
       })
       .eq("id", change.id);
@@ -673,25 +673,17 @@ export default function ChangeControlWorkflowPage() {
 
   const saveImplementationPlan = async () => {
     if (!change) return;
-    if (!canImplement && !canVerify)
+    if (!canEditPlanning) {
       return alert(
-        "Implementation and verification planning is available after approval.",
+        "Implementation planning and verification planning are locked after approval.",
       );
-    if (
-      implementationForm.implementation_owner_email &&
-      !normalizeEmail(implementationForm.implementation_owner_email)
-    )
-      return alert("Implementation owner email must be valid.");
+    }
 
     setBusy(true);
     const { error } = await supabase
       .from("change_controls")
       .update({
         implementation_plan: implementationForm.implementation_plan || null,
-        implementation_owner_email:
-          normalizeEmail(implementationForm.implementation_owner_email) || null,
-        target_implementation_date:
-          implementationForm.target_implementation_date || null,
         verification_plan: implementationForm.verification_plan || null,
         effectiveness_required: implementationForm.effectiveness_required,
         effectiveness_plan: implementationForm.effectiveness_plan || null,
@@ -895,6 +887,18 @@ export default function ChangeControlWorkflowPage() {
         );
       }
 
+      if (!implementationForm.implementation_plan.trim()) {
+        return alert("Implementation planning is required before submitting for approval.");
+      }
+
+      if (!implementationForm.verification_plan.trim()) {
+        return alert("Verification planning is required before submitting for approval.");
+      }
+
+      if (implementationForm.effectiveness_required && !implementationForm.effectiveness_plan.trim()) {
+        return alert("Effectiveness plan is required when effectiveness check is required.");
+      }
+
       if (!hasRequiredReviewers)
         return alert(
           "Load an approval matrix or add at least one required reviewer before submitting for approval.",
@@ -915,6 +919,10 @@ export default function ChangeControlWorkflowPage() {
       payload.approver_email = null;
 
       Object.assign(payload, assessmentForm, riskForm);
+      payload.implementation_plan = implementationForm.implementation_plan || null;
+      payload.verification_plan = implementationForm.verification_plan || null;
+      payload.effectiveness_required = implementationForm.effectiveness_required;
+      payload.effectiveness_plan = implementationForm.effectiveness_plan || null;
 
       payload.submitted_at = new Date().toISOString();
       payload.submitted_by = userEmail;
@@ -1649,6 +1657,47 @@ export default function ChangeControlWorkflowPage() {
     change && change.risk_review_summary && change.risk_acceptability
   );
 
+  const implementationPlanningComplete = Boolean(
+    change?.implementation_plan || implementationForm.implementation_plan
+  );
+
+  const verificationPlanningComplete = Boolean(
+    change?.verification_plan || implementationForm.verification_plan
+  );
+
+  const getImplementationPlanningWorkflowStatus = () => {
+    const status = change?.status || "draft";
+    if (status === "cancelled") return "Cancelled";
+    if (implementationPlanningComplete) return "Complete";
+    if (implementationForm.implementation_plan) return "In Progress";
+    return "Not Started";
+  };
+
+  const getVerificationPlanningWorkflowStatus = () => {
+    const status = change?.status || "draft";
+    if (status === "cancelled") return "Cancelled";
+    if (verificationPlanningComplete) return "Complete";
+    if (implementationForm.verification_plan) return "In Progress";
+    return "Not Started";
+  };
+
+  const getApprovalWorkflowStatus = () => {
+    const status = change?.status || "draft";
+    if (status === "cancelled") return "Cancelled";
+    if (
+      status === "approved" ||
+      status === "implementation" ||
+      status === "verification" ||
+      status === "closure_approval" ||
+      status === "closed"
+    ) {
+      return "Complete";
+    }
+    if (status === "pending_approval") return "In Progress";
+    if (reviewers.length > 0) return "In Progress";
+    return "Not Started";
+  };
+
   const getImplementationWorkflowStatus = () => {
     const status = change?.status || "draft";
     if (status === "cancelled") return "Cancelled";
@@ -1706,6 +1755,36 @@ export default function ChangeControlWorkflowPage() {
       detail: riskReviewComplete
         ? "Risk review and acceptability completed"
         : "Risk review pending",
+    },
+    {
+      label: "Implementation Planning",
+      status: getImplementationPlanningWorkflowStatus(),
+      detail:
+        getImplementationPlanningWorkflowStatus() === "Complete"
+          ? "Implementation planning completed"
+          : getImplementationPlanningWorkflowStatus() === "In Progress"
+            ? "Implementation planning in progress"
+            : "Implementation planning not started",
+    },
+    {
+      label: "Verification Planning",
+      status: getVerificationPlanningWorkflowStatus(),
+      detail:
+        getVerificationPlanningWorkflowStatus() === "Complete"
+          ? "Verification planning completed"
+          : getVerificationPlanningWorkflowStatus() === "In Progress"
+            ? "Verification planning in progress"
+            : "Verification planning not started",
+    },
+    {
+      label: "Approval",
+      status: getApprovalWorkflowStatus(),
+      detail:
+        getApprovalWorkflowStatus() === "Complete"
+          ? "Change package approved"
+          : getApprovalWorkflowStatus() === "In Progress"
+            ? "Approval review in progress"
+            : "Approval not started",
     },
     {
       label: "Implementation",
@@ -2392,7 +2471,98 @@ export default function ChangeControlWorkflowPage() {
       </section>
 
       <section style={cardStyle}>
-        <h2 style={{ marginTop: 0 }}>4. Approval Matrix & Review</h2>
+        <h2 style={{ marginTop: 0 }}>4. Implementation Planning and Verification Planning</h2>
+        {canEditPlanning ? (
+          <>
+            <Field label="Implementation Planning">
+              <textarea
+                value={implementationForm.implementation_plan}
+                onChange={(e) =>
+                  setImplementationForm({
+                    ...implementationForm,
+                    implementation_plan: e.target.value,
+                  })
+                }
+                rows={4}
+                style={textareaStyle}
+                placeholder="Describe the implementation activities, required outputs, affected functions, and how implementation tasks will be assigned after approval."
+              />
+            </Field>
+            <Field label="Verification Planning">
+              <textarea
+                value={implementationForm.verification_plan}
+                onChange={(e) =>
+                  setImplementationForm({
+                    ...implementationForm,
+                    verification_plan: e.target.value,
+                  })
+                }
+                rows={4}
+                style={textareaStyle}
+                placeholder="Describe how implementation will be verified before closure approval."
+              />
+            </Field>
+            <label>
+              <input
+                type="checkbox"
+                checked={implementationForm.effectiveness_required}
+                onChange={(e) =>
+                  setImplementationForm({
+                    ...implementationForm,
+                    effectiveness_required: e.target.checked,
+                  })
+                }
+              />{" "}
+              Effectiveness Check Required
+            </label>
+            {implementationForm.effectiveness_required ? (
+              <Field label="Effectiveness Plan">
+                <textarea
+                  value={implementationForm.effectiveness_plan}
+                  onChange={(e) =>
+                    setImplementationForm({
+                      ...implementationForm,
+                      effectiveness_plan: e.target.value,
+                    })
+                  }
+                  rows={3}
+                  style={textareaStyle}
+                  placeholder="Describe the effectiveness check criteria, timing, and evidence required."
+                />
+              </Field>
+            ) : null}
+            <button
+              onClick={saveImplementationPlan}
+              disabled={busy}
+              style={primaryButtonStyle}
+            >
+              Save Implementation / Verification Planning
+            </button>
+          </>
+        ) : (
+          <div style={gridStyle}>
+            <Detail
+              label="Implementation Planning"
+              value={change.implementation_plan || "N/A"}
+            />
+            <Detail
+              label="Verification Planning"
+              value={change.verification_plan || "N/A"}
+            />
+            <Detail
+              label="Effectiveness Required"
+              value={change.effectiveness_required ? "Yes" : "No"}
+            />
+            <Detail
+              label="Effectiveness Plan"
+              value={change.effectiveness_plan || "N/A"}
+            />
+          </div>
+        )}
+      </section>
+
+      <section style={cardStyle}>
+        <h2 style={{ marginTop: 0 }}>5. Approval Matrix & Review</h2>
         {change.status === "draft" ||
         change.status === "rejected" ||
         change.status === "pending_approval" ? (
@@ -2617,130 +2787,6 @@ export default function ChangeControlWorkflowPage() {
       change.status === "closed" ||
       change.status === "cancelled" ? (
         <>
-          <section style={cardStyle}>
-            <h2 style={{ marginTop: 0 }}>
-              5. Implementation & Verification Plan
-            </h2>
-            {(canImplement || canVerify) && change.status !== "closed" ? (
-              <>
-                <div style={gridStyle}>
-                  <Field label="Implementation Owner Email">
-                    <input
-                      type="email"
-                      value={implementationForm.implementation_owner_email}
-                      onChange={(e) =>
-                        setImplementationForm({
-                          ...implementationForm,
-                          implementation_owner_email: e.target.value,
-                        })
-                      }
-                      style={inputStyle}
-                    />
-                  </Field>
-                  <Field label="Target Implementation Date">
-                    <input
-                      type="date"
-                      value={implementationForm.target_implementation_date}
-                      onChange={(e) =>
-                        setImplementationForm({
-                          ...implementationForm,
-                          target_implementation_date: e.target.value,
-                        })
-                      }
-                      style={inputStyle}
-                    />
-                  </Field>
-                </div>
-                <Field label="Implementation Plan">
-                  <textarea
-                    value={implementationForm.implementation_plan}
-                    onChange={(e) =>
-                      setImplementationForm({
-                        ...implementationForm,
-                        implementation_plan: e.target.value,
-                      })
-                    }
-                    rows={4}
-                    style={textareaStyle}
-                  />
-                </Field>
-                <Field label="Verification Plan">
-                  <textarea
-                    value={implementationForm.verification_plan}
-                    onChange={(e) =>
-                      setImplementationForm({
-                        ...implementationForm,
-                        verification_plan: e.target.value,
-                      })
-                    }
-                    rows={4}
-                    style={textareaStyle}
-                  />
-                </Field>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={implementationForm.effectiveness_required}
-                    onChange={(e) =>
-                      setImplementationForm({
-                        ...implementationForm,
-                        effectiveness_required: e.target.checked,
-                      })
-                    }
-                  />{" "}
-                  Effectiveness Check Required
-                </label>
-                <Field label="Effectiveness Plan">
-                  <textarea
-                    value={implementationForm.effectiveness_plan}
-                    onChange={(e) =>
-                      setImplementationForm({
-                        ...implementationForm,
-                        effectiveness_plan: e.target.value,
-                      })
-                    }
-                    rows={3}
-                    style={textareaStyle}
-                  />
-                </Field>
-                <button
-                  onClick={saveImplementationPlan}
-                  disabled={busy}
-                  style={primaryButtonStyle}
-                >
-                  Save Implementation / Verification Plan
-                </button>
-              </>
-            ) : (
-              <div style={gridStyle}>
-                <Detail
-                  label="Implementation Owner"
-                  value={change.implementation_owner_email || "N/A"}
-                />
-                <Detail
-                  label="Target Date"
-                  value={change.target_implementation_date || "N/A"}
-                />
-                <Detail
-                  label="Implementation Plan"
-                  value={change.implementation_plan || "N/A"}
-                />
-                <Detail
-                  label="Verification Plan"
-                  value={change.verification_plan || "N/A"}
-                />
-                <Detail
-                  label="Effectiveness Required"
-                  value={change.effectiveness_required ? "Yes" : "No"}
-                />
-                <Detail
-                  label="Effectiveness Plan"
-                  value={change.effectiveness_plan || "N/A"}
-                />
-              </div>
-            )}
-          </section>
-
           <section style={cardStyle}>
             <h2 style={{ marginTop: 0 }}>Affected / New Documents</h2>
             {canImplement ? (
@@ -3099,7 +3145,7 @@ export default function ChangeControlWorkflowPage() {
                     style={inputStyle}
                   />
                   <input
-                    placeholder="Owner Email"
+                    placeholder="Assigned To / Owner Email"
                     value={newTask.owner_email}
                     onChange={(e) =>
                       setNewTask({ ...newTask, owner_email: e.target.value })
@@ -3125,7 +3171,7 @@ export default function ChangeControlWorkflowPage() {
                   style={textareaStyle}
                 />
                 <button onClick={addTask} style={primaryButtonStyle}>
-                  Add Task
+                  Add / Assign Task
                 </button>
               </>
             ) : null}
