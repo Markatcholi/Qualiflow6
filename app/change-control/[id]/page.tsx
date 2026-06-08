@@ -1340,24 +1340,46 @@ export default function ChangeControlWorkflowPage() {
       : releasedOrHistoricalDocuments[0] || matchingDocuments[0] || null;
 
     const isExistingControlledDocument = Boolean(sourceDoc);
-
-    const revisionToCreate = isExistingControlledDocument
+    const sourceRevision = String(
+      sourceDoc?.revision || linkedDoc.current_revision || currentRevision || "",
+    ).trim();
+    const suggestedRevision = isExistingControlledDocument
       ? requestedRevision || getNextRevisionValue(sourceDoc?.revision)
       : requestedRevision || "A";
 
+    const selectedRevision = window.prompt(
+      `Confirm or edit the proposed revision for ${documentNumber}.\n\nCurrent Revision: ${sourceRevision || "N/A"}\nProposed Revision:`,
+      suggestedRevision,
+    );
+
+    if (selectedRevision === null) return;
+
+    const revisionToCreate = String(selectedRevision || "").trim();
+
     if (!revisionToCreate) {
       return alert(
-        "Unable to determine the new revision. Enter a proposed revision and try again.",
+        "Proposed revision is required before creating the controlled document revision.",
+      );
+    }
+
+    if (
+      sourceRevision &&
+      revisionToCreate.toLowerCase() === sourceRevision.toLowerCase()
+    ) {
+      return alert(
+        `Proposed revision ${revisionToCreate} cannot be the same as the current revision ${sourceRevision}.`,
       );
     }
 
     const duplicateRevision = matchingDocuments.find(
-      (doc: any) => String(doc.revision || "").trim() === revisionToCreate,
+      (doc: any) =>
+        String(doc.revision || "").trim().toLowerCase() ===
+        revisionToCreate.toLowerCase(),
     );
 
     if (duplicateRevision) {
       return alert(
-        `Document ${documentNumber} Rev ${revisionToCreate} already exists. Enter a new proposed revision before creating the controlled document revision.`,
+        `Document ${documentNumber} Rev ${revisionToCreate} already exists. Enter a different proposed revision before creating the controlled document revision.`,
       );
     }
 
