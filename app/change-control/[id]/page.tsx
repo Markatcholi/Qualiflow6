@@ -1611,6 +1611,136 @@ export default function ChangeControlWorkflowPage() {
     fetchData();
   };
 
+  const impactAssessmentComplete = Boolean(
+    change &&
+      (change.status === "pending_approval" ||
+        change.status === "approved" ||
+        change.status === "implementation" ||
+        change.status === "verification" ||
+        change.status === "closure_approval" ||
+        change.status === "closed" ||
+        change.status === "cancelled")
+  );
+
+  const impactAssessmentInProgress = Boolean(
+    change &&
+      !impactAssessmentComplete &&
+      (change.product_impact ||
+        change.document_impact ||
+        change.process_impact ||
+        change.equipment_impact ||
+        change.supplier_impact ||
+        change.software_impact ||
+        change.regulatory_impact ||
+        change.validation_impact ||
+        change.training_impact ||
+        change.product_impact_summary ||
+        change.document_impact_summary ||
+        change.process_impact_summary ||
+        change.equipment_impact_summary ||
+        change.supplier_impact_summary ||
+        change.software_impact_summary ||
+        change.regulatory_impact_summary ||
+        change.validation_impact_summary ||
+        change.training_impact_summary)
+  );
+
+  const riskReviewComplete = Boolean(
+    change && change.risk_review_summary && change.risk_acceptability
+  );
+
+  const getImplementationWorkflowStatus = () => {
+    const status = change?.status || "draft";
+    if (status === "cancelled") return "Cancelled";
+    if (status === "closed" || status === "closure_approval" || status === "verification") {
+      return "Complete";
+    }
+    if (status === "implementation") {
+      return implementationComplete ? "Complete" : "In Progress";
+    }
+    return "Not Started";
+  };
+
+  const getVerificationWorkflowStatus = () => {
+    const status = change?.status || "draft";
+    if (status === "cancelled") return "Cancelled";
+    if (status === "closed" || status === "closure_approval") return "Complete";
+    if (status === "verification") return "In Progress";
+    return "Not Started";
+  };
+
+  const getClosureWorkflowStatus = () => {
+    const status = change?.status || "draft";
+    if (status === "cancelled") return "Cancelled";
+    if (status === "closed") return "Complete";
+    if (status === "closure_approval") return "In Progress";
+    return "Not Started";
+  };
+
+  const workflowProgressItems = [
+    {
+      label: "Initiation",
+      status: change ? "Complete" : "Not Started",
+      detail: "Change request created",
+    },
+    {
+      label: "Impact Assessment",
+      status: impactAssessmentComplete
+        ? "Complete"
+        : impactAssessmentInProgress
+          ? "In Progress"
+          : "Not Started",
+      detail: impactAssessmentComplete
+        ? "Impact assessment submitted"
+        : impactAssessmentInProgress
+          ? "Impact assessment in progress"
+          : "Impact assessment not started",
+    },
+    {
+      label: "Risk Review",
+      status: riskReviewComplete
+        ? "Complete"
+        : change?.risk_review_summary || change?.risk_acceptability
+          ? "In Progress"
+          : "Not Started",
+      detail: riskReviewComplete
+        ? "Risk review and acceptability completed"
+        : "Risk review pending",
+    },
+    {
+      label: "Implementation",
+      status: getImplementationWorkflowStatus(),
+      detail:
+        getImplementationWorkflowStatus() === "Complete"
+          ? "Implementation stage completed"
+          : getImplementationWorkflowStatus() === "In Progress"
+            ? "Implementation activities in progress"
+            : "Implementation not started",
+    },
+    {
+      label: "Verification",
+      status: getVerificationWorkflowStatus(),
+      detail:
+        getVerificationWorkflowStatus() === "Complete"
+          ? "Verification completed"
+          : getVerificationWorkflowStatus() === "In Progress"
+            ? "Verification review in progress"
+            : "Verification not started",
+    },
+    {
+      label: "Closure",
+      status: getClosureWorkflowStatus(),
+      detail:
+        getClosureWorkflowStatus() === "Complete"
+          ? "Change closed"
+          : getClosureWorkflowStatus() === "Cancelled"
+            ? "Change cancelled"
+            : getClosureWorkflowStatus() === "In Progress"
+              ? "Closure approval in progress"
+              : "Closure not started",
+    },
+  ];
+
   if (loading) return <main style={pageStyle}>Loading Change Workflow...</main>;
   if (!change)
     return (
@@ -1640,57 +1770,18 @@ export default function ChangeControlWorkflowPage() {
         </div>
       </header>
 
-      <section style={kpiGridStyle}>
-        <KpiCard
-          title="Implementation Complete"
-          value={implementationComplete ? "Yes" : "No"}
-          color={implementationComplete ? "#15803d" : "#dc2626"}
-        />
-        <KpiCard
-          title="Documents Released"
-          value={documentsReleased ? "Yes" : "No"}
-          color={documentsReleased ? "#15803d" : "#dc2626"}
-        />
-        <KpiCard
-          title="Training Complete"
-          value={trainingComplete ? "Yes" : "No"}
-          color={trainingComplete ? "#15803d" : "#dc2626"}
-        />
-        <KpiCard
-          title="Products Dispositioned"
-          value={productsDispositioned ? "Yes" : "No"}
-          color={productsDispositioned ? "#15803d" : "#dc2626"}
-        />
-        <KpiCard
-          title="Closure Eligible"
-          value={closureEligible ? "Yes" : "No"}
-          color={closureEligible ? "#15803d" : "#dc2626"}
-        />
-      </section>
-
       <section style={cardStyle}>
-        <h2 style={{ marginTop: 0 }}>Change Traceability & Closure Readiness</h2>
-        <div style={gridStyle}>
-          <Detail label="Origin" value={change.change_origin || "N/A"} />
-          <Detail
-            label="Originating Record"
-            value={
-              change.change_origin && change.change_origin !== "N/A"
-                ? change.originating_record_number || "Not entered"
-                : "No originating quality record"
-            }
-          />
-          <Detail label="Implementation Tasks" value={`${activeTasks.filter((task) => task.status === "complete").length}/${activeTasks.length} complete`} />
-          <Detail label="Affected Documents" value={`${activeDocuments.length} active`} />
-          <Detail label="Affected Products" value={`${products.length} listed`} />
-          <Detail label="Closure Approval" value={change.status === "closure_approval" ? "Pending" : change.closure_approved_at ? "Approved" : "Not submitted"} />
-        </div>
-        <div style={readinessGridStyle}>
-          <ReadinessItem label="Implementation Complete" ready={implementationComplete} />
-          <ReadinessItem label="Documents Released" ready={documentsReleased} />
-          <ReadinessItem label="Training Complete" ready={trainingComplete} />
-          <ReadinessItem label="Products Dispositioned" ready={productsDispositioned} />
-          <ReadinessItem label="Ready for Closure Approval" ready={closureEligible} />
+        <h2 style={{ marginTop: 0 }}>Change Workflow Progress</h2>
+        <p style={subtleText}>Real-time completion status for the change lifecycle.</p>
+        <div style={workflowProgressGridStyle}>
+          {workflowProgressItems.map((item) => (
+            <WorkflowProgressItem
+              key={item.label}
+              label={item.label}
+              status={item.status}
+              detail={item.detail}
+            />
+          ))}
         </div>
       </section>
 
@@ -3373,6 +3464,46 @@ function ReadinessItem({ label, ready }: { label: string; ready: boolean }) {
   );
 }
 
+
+function WorkflowProgressItem({
+  label,
+  status,
+  detail,
+}: {
+  label: string;
+  status: string;
+  detail: string;
+}) {
+  const config = getWorkflowProgressConfig(status);
+  return (
+    <div
+      style={{
+        ...workflowProgressItemStyle,
+        borderLeft: `8px solid ${config.color}`,
+      }}
+    >
+      <div style={{ fontSize: "24px", fontWeight: 900, color: config.color }}>
+        {config.icon}
+      </div>
+      <div>
+        <div style={{ fontWeight: 800 }}>{label}</div>
+        <div style={{ color: config.color, fontWeight: 800 }}>{status}</div>
+        <div style={smallTextStyle}>{detail}</div>
+      </div>
+    </div>
+  );
+}
+
+function getWorkflowProgressConfig(status: string) {
+  if (status === "Complete") return { icon: "✓", color: "#15803d" };
+  if (status === "In Progress") return { icon: "⚠", color: "#d97706" };
+  if (status === "Cancelled") return { icon: "⊘", color: "#991b1b" };
+  if (status === "Returned" || status === "Rejected") {
+    return { icon: "✖", color: "#dc2626" };
+  }
+  return { icon: "○", color: "#6b7280" };
+}
+
 function KpiCard({
   title,
   value,
@@ -3461,6 +3592,23 @@ const readinessItemStyle: React.CSSProperties = {
   border: "1px solid #e5e7eb",
   borderRadius: "10px",
   padding: "10px",
+};
+
+const workflowProgressGridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+  gap: "12px",
+  marginTop: "14px",
+};
+
+const workflowProgressItemStyle: React.CSSProperties = {
+  display: "flex",
+  gap: "12px",
+  alignItems: "flex-start",
+  background: "#f9fafb",
+  border: "1px solid #e5e7eb",
+  borderRadius: "12px",
+  padding: "14px",
 };
 
 const pageStyle: React.CSSProperties = {
