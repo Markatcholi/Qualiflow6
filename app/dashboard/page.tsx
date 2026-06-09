@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
+import { getCompanySettings } from "../../lib/companySettings";
 import { isOverdue } from "../../lib/documentWorkflowEngine";
 
 import ExecutiveSummarySection from "./components/ExecutiveSummarySection";
@@ -26,6 +27,20 @@ import {
   NotificationItem,
   SupplierCount,
 } from "./components/DashboardComponents";
+
+type ConfiguredKpi = {
+  kpi_key: string;
+  kpi_name: string;
+  kpi_category: string | null;
+  calculation_type: string | null;
+  display_order: number | null;
+};
+
+type KpiDisplayValue = {
+  value: string | number;
+  subtitle?: string;
+  distribution?: { label: string; count: number }[];
+};
 
 export default function DashboardPage() {
   const [ncmrOpen, setNcmrOpen] = useState(0);
@@ -114,6 +129,9 @@ export default function DashboardPage() {
   const [workflowEventCount, setWorkflowEventCount] = useState(0);
   const [workflowEscalationQueue, setWorkflowEscalationQueue] = useState<any[]>([]);
 
+  const [configuredChangeKpis, setConfiguredChangeKpis] = useState<ConfiguredKpi[]>([]);
+  const [changeKpiValues, setChangeKpiValues] = useState<Record<string, KpiDisplayValue>>({});
+
   const getLast6Months = () => {
     const months: { key: string; label: string }[] = [];
     const now = new Date();
@@ -163,6 +181,135 @@ export default function DashboardPage() {
     const start = new Date(dateString).getTime();
     const now = new Date().getTime();
     return Math.floor((now - start) / (1000 * 60 * 60 * 24));
+  };
+
+
+  const buildDistribution = (items: any[], field: string) => {
+    const counts: Record<string, number> = {};
+
+    items.forEach((item: any) => {
+      const label = String(item[field] || "N/A").trim() || "N/A";
+      counts[label] = (counts[label] || 0) + 1;
+    });
+
+    return Object.entries(counts)
+      .map(([label, count]) => ({ label, count }))
+      .sort((a, b) => b.count - a.count);
+  };
+
+  const calculateChangeControlKpis = (allChanges: any[]) => {
+    const activeChanges = allChanges.filter(
+      (change: any) => change.status !== "closed" && change.status !== "cancelled",
+    );
+
+    const closedChanges = allChanges.filter((change: any) => change.status === "closed");
+
+    const closedDurations = closedChanges
+      .filter((change: any) => change.created_at && change.closed_at)
+      .map((change: any) => {
+        const created = new Date(change.created_at).getTime();
+        const closed = new Date(change.closed_at).getTime();
+        return (closed - created) / (1000 * 60 * 60 * 24);
+      });
+
+    const averageDaysToClose =
+      closedDurations.length > 0
+        ? (closedDurations.reduce((sum: number, value: number) => sum + value, 0) / closedDurations.length).toFixed(1)
+        : "0.0";
+
+    const overdueChanges = activeChanges.filter((change: any) => {
+      if (change.target_implementation_date) {
+        return change.target_implementation_date < new Date().toISOString().slice(0, 10);
+      }
+      if (!change.created_at) return false;
+      return daysBetween(change.created_at) > 30;
+    });
+
+    return {
+      total_changes: { value: allChanges.length },
+      open_changes: { value: activeChanges.length },
+      closed_changes: { value: closedChanges.length },
+      cancelled_changes: { value: allChanges.filter((change: any) => change.status === "cancelled").length },
+      pending_approval: { value: allChanges.filter((change: any) => change.status === "pending_approval").length },
+      implementation: { value: allChanges.filter((change: any) => change.status === "implementation").length },
+      verification: { value: allChanges.filter((change: any) => change.status === "verification").length },
+      closure_approval: { value: allChanges.filter((change: any) => change.status === "closure_approval").length },
+      overdue_changes: { value: overdueChanges.length, subtitle: "Target date past due or >30 days old" },
+      average_days_to_close: { value: averageDaysToClose, subtitle: "days" },
+      open_high_risk_changes: {
+        value: activeChanges.filter((change: any) => String(change.risk_level || "").toLowerCase() === "high").length,
+      },
+      open_critical_changes: {
+        value: activeChanges.filter((change: any) => String(change.risk_level || "").toLowerCase() === "critical").length,
+      },
+      changes_by_type: { value: "", distribution: buildDistribution(allChanges, "change_type") },
+      changes_by_origin: { value: "", distribution: buildDistribution(allChanges, "change_origin") },
+    };
+  };
+
+  const fetchConfiguredChangeKpis = async () => {
+    const companySettings = await getCompanySettings();
+    const companyName = companySettings?.company_name || "Default Company";
+
+    const { data: configData, error: configError } = await supabase
+      .from("company_dashboard_kpi_configuration")
+      .select("kpi_key, display_order")
+      .eq("company_name", companyName)
+      .eq("module_name", "change_control")
+      .eq("executive_dashboard", true)
+      .order("display_order", { ascending: true });
+
+    if (configError) {
+      console.warn(configError.message);
+      setConfiguredChangeKpis([]);
+      return;
+    }
+
+    let configRows = configData || [];
+
+    if (configRows.length === 0 && companyName !== "Default Company") {
+      const { data: fallbackConfigData } = await supabase
+        .from("company_dashboard_kpi_configuration")
+        .select("kpi_key, display_order")
+        .eq("company_name", "Default Company")
+        .eq("module_name", "change_control")
+        .eq("executive_dashboard", true)
+        .order("display_order", { ascending: true });
+
+      configRows = fallbackConfigData || [];
+    }
+
+    const selectedKeys = configRows.map((item: any) => item.kpi_key);
+    if (selectedKeys.length === 0) {
+      setConfiguredChangeKpis([]);
+      return;
+    }
+
+    const { data: libraryData, error: libraryError } = await supabase
+      .from("kpi_library")
+      .select("kpi_key, kpi_name, kpi_category, calculation_type")
+      .eq("module_name", "change_control")
+      .in("kpi_key", selectedKeys);
+
+    if (libraryError) {
+      console.warn(libraryError.message);
+      setConfiguredChangeKpis([]);
+      return;
+    }
+
+    const displayOrder: Record<string, number> = {};
+    configRows.forEach((item: any) => {
+      displayOrder[item.kpi_key] = item.display_order || 1;
+    });
+
+    const configured = (libraryData || [])
+      .map((item: any) => ({
+        ...item,
+        display_order: displayOrder[item.kpi_key] || 1,
+      }))
+      .sort((a: ConfiguredKpi, b: ConfiguredKpi) => Number(a.display_order || 1) - Number(b.display_order || 1));
+
+    setConfiguredChangeKpis(configured);
   };
 
   const buildSupplierCounts = (allNcmrs: any[]) => {
@@ -761,12 +908,24 @@ export default function DashboardPage() {
       )
     );
 
+    const { data: changeData, error: changeError } = await supabase
+      .from("change_controls")
+      .select("*");
+
+    if (!changeError) {
+      setChangeKpiValues(calculateChangeControlKpis(changeData || []));
+    } else {
+      console.warn(changeError.message);
+      setChangeKpiValues({});
+    }
+
     await fetchDocumentWorkflowMetrics();
 
     buildNotifications(allNcmrs, allCapas, allScars, allOos, allAudits, allFindings);
   };
 
   useEffect(() => {
+    fetchConfiguredChangeKpis();
     fetchData();
   }, []);
 
@@ -890,6 +1049,11 @@ export default function DashboardPage() {
         majorFindings={majorFindings}
       />
 
+      <ConfiguredChangeControlKpiSection
+        configuredKpis={configuredChangeKpis}
+        kpiValues={changeKpiValues}
+      />
+
       <EffectivenessIntelligenceSection
         capaEffective={capaEffective}
         capaPartiallyEffective={capaPartiallyEffective}
@@ -1001,5 +1165,75 @@ export default function DashboardPage() {
 
       <QuickActionsSection />
     </main>
+  );
+}
+
+function ConfiguredChangeControlKpiSection({
+  configuredKpis,
+  kpiValues,
+}: {
+  configuredKpis: ConfiguredKpi[];
+  kpiValues: Record<string, KpiDisplayValue>;
+}) {
+  if (configuredKpis.length === 0) return null;
+
+  const cardKpis = configuredKpis.filter((kpi) => kpi.calculation_type !== "distribution");
+  const distributionKpis = configuredKpis.filter((kpi) => kpi.calculation_type === "distribution");
+
+  return (
+    <section style={{ background: "white", border: "1px solid #d1d5db", borderRadius: "16px", padding: "20px", marginBottom: "18px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", flexWrap: "wrap", alignItems: "flex-start" }}>
+        <div>
+          <div style={{ fontSize: "12px", fontWeight: 800, letterSpacing: "0.08em", color: "#6b7280" }}>
+            CONFIGURED KPI ENGINE
+          </div>
+          <h2 style={{ margin: "6px 0" }}>Change Control Performance</h2>
+          <p style={{ margin: 0, color: "#6b7280" }}>
+            These metrics are controlled by Company Settings → Dashboard & KPI Configuration.
+          </p>
+        </div>
+        <a href="/admin/company-settings" style={{ background: "#111827", color: "white", borderRadius: "8px", padding: "10px 14px", textDecoration: "none", fontWeight: 700 }}>
+          Configure KPIs
+        </a>
+      </div>
+
+      {cardKpis.length > 0 ? (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "14px", marginTop: "16px" }}>
+          {cardKpis.map((kpi) => {
+            const value = kpiValues[kpi.kpi_key];
+            return (
+              <div key={kpi.kpi_key} style={{ border: "1px solid #e5e7eb", borderLeft: "6px solid #2563eb", borderRadius: "14px", padding: "14px", background: "#f9fafb" }}>
+                <div style={{ color: "#4b5563", fontSize: "13px" }}>{kpi.kpi_name}</div>
+                <div style={{ fontSize: "28px", fontWeight: 800, marginTop: "8px", color: "#111827" }}>{value?.value ?? 0}</div>
+                {value?.subtitle ? <div style={{ fontSize: "12px", color: "#6b7280", marginTop: "4px" }}>{value.subtitle}</div> : null}
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
+
+      {distributionKpis.length > 0 ? (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "16px", marginTop: "16px" }}>
+          {distributionKpis.map((kpi) => {
+            const rows = kpiValues[kpi.kpi_key]?.distribution || [];
+            return (
+              <div key={kpi.kpi_key} style={{ border: "1px solid #e5e7eb", borderRadius: "14px", padding: "14px", background: "#ffffff" }}>
+                <h3 style={{ marginTop: 0 }}>{kpi.kpi_name}</h3>
+                {rows.length === 0 ? (
+                  <p style={{ color: "#6b7280" }}>No data available.</p>
+                ) : (
+                  rows.map((row) => (
+                    <div key={row.label} style={{ display: "flex", justifyContent: "space-between", borderBottom: "1px solid #e5e7eb", padding: "8px 0" }}>
+                      <span>{row.label}</span>
+                      <strong>{row.count}</strong>
+                    </div>
+                  ))
+                )}
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
+    </section>
   );
 }
