@@ -1,294 +1,90 @@
 export default function HomePage() {
-  const modules = [
+  const capabilityGroups = [
     {
-      icon: "⚠️",
-      title: "Nonconformance Management",
-      description: "Nonconformance, MRB, disposition, and closure workflows.",
+      title: "Quality Event Management",
+      items: [
+        "Nonconformance Management",
+        "CAPA",
+        "Change Control",
+        "Supplier Quality / SCAR",
+      ],
     },
     {
-      icon: "✅",
-      title: "CAPA",
-      description:
-        "Corrective and preventive action management with effectiveness tracking.",
+      title: "Document & Training Control",
+      items: [
+        "Controlled Documents",
+        "Revision Workflows",
+        "Training Assignments",
+        "Read & Acknowledge",
+      ],
     },
     {
-      icon: "🔄",
-      title: "Change Control",
-      description:
-        "Risk-based change planning, approval, implementation, and verification.",
+      title: "Compliance & Governance",
+      items: [
+        "Audit Management",
+        "Executive Dashboard",
+        "Management Review",
+        "Configurable KPI Reporting",
+      ],
     },
-    {
-      icon: "📄",
-      title: "Document Control",
-      description: "Controlled documents, revision workflows, release, and training.",
-    },
-    {
-      icon: "🏭",
-      title: "Supplier Quality",
-      description:
-        "Supplier oversight, SCARs, supplier CAPA, and performance visibility.",
-    },
-    {
-      icon: "📝",
-      title: "Audit Management",
-      description: "Internal, external, supplier audits, findings, and action tracking.",
-    },
-  ];
-
-  const valueProps = [
-    "Configurable enterprise workflows",
-    "Audit-ready records and e-signatures",
-    "Connected quality processes",
-    "Executive dashboards and management review reporting",
   ];
 
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        background:
-          "radial-gradient(circle at top left, #dbeafe 0, transparent 32%), linear-gradient(135deg, #f8fafc 0%, #eef2ff 45%, #f8fafc 100%)",
-        fontFamily: "Arial, sans-serif",
-        padding: "36px 24px",
-        color: "#0f172a",
-      }}
-    >
-      <section
-        style={{
-          maxWidth: "1120px",
-          margin: "0 auto",
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "flex-end",
-            marginBottom: "48px",
-          }}
-        >
-          <a
-            href="/login"
-            style={{
-              backgroundColor: "#111827",
-              color: "#ffffff",
-              padding: "12px 20px",
-              borderRadius: "999px",
-              textDecoration: "none",
-              fontWeight: 700,
-              boxShadow: "0 10px 24px rgba(15, 23, 42, 0.18)",
-            }}
-          >
+    <main style={pageStyle}>
+      <div style={techBackgroundStyle} />
+
+      <section style={containerStyle}>
+        <div style={topBarStyle}>
+          <a href="/login" style={loginButtonStyle}>
             Login
           </a>
         </div>
 
-        <div
-          style={{
-            textAlign: "center",
-            maxWidth: "850px",
-            margin: "0 auto 48px auto",
-          }}
-        >
-          <div
-            style={{
-              display: "inline-block",
-              fontSize: "12px",
-              fontWeight: 800,
-              letterSpacing: "0.18em",
-              color: "#2563eb",
-              background: "#eff6ff",
-              border: "1px solid #bfdbfe",
-              borderRadius: "999px",
-              padding: "8px 14px",
-              marginBottom: "18px",
-            }}
-          >
-            ENTERPRISE QUALITY MANAGEMENT SYSTEM
-          </div>
+        <section style={heroStyle}>
+          <div style={badgeStyle}>ENTERPRISE QUALITY MANAGEMENT SYSTEM</div>
 
-          <h1
-            style={{
-              fontSize: "clamp(44px, 7vw, 76px)",
-              lineHeight: 1,
-              fontWeight: 900,
-              margin: "0 0 20px 0",
-              color: "#0f172a",
-              letterSpacing: "-0.05em",
-            }}
-          >
-            QualiSphere
-          </h1>
+          <h1 style={titleStyle}>QualiSphere</h1>
 
-          <p
-            style={{
-              fontSize: "22px",
-              lineHeight: "34px",
-              color: "#334155",
-              margin: "0 auto",
-              maxWidth: "760px",
-            }}
-          >
-            Integrated enterprise quality management for regulated companies
-            that need connected workflows, configurable governance, and
-            audit-ready records.
+          <p style={subtitleStyle}>
+            Connected quality workflows, configurable governance, audit-ready
+            records, and management-review visibility for regulated industries.
           </p>
 
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "center",
-              gap: "12px",
-              flexWrap: "wrap",
-              marginTop: "28px",
-            }}
-          >
+          <div style={pillRowStyle}>
             <span style={pillStyle}>Audit-ready</span>
             <span style={pillStyle}>Configurable</span>
             <span style={pillStyle}>Workflow-driven</span>
-            <span style={pillStyle}>Management-review ready</span>
-          </div>
-        </div>
-
-        <div
-          style={{
-            background: "rgba(255,255,255,0.78)",
-            border: "1px solid rgba(148,163,184,0.35)",
-            borderRadius: "28px",
-            padding: "24px",
-            boxShadow: "0 24px 70px rgba(15, 23, 42, 0.12)",
-            backdropFilter: "blur(12px)",
-          }}
-        >
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-              gap: "18px",
-            }}
-          >
-            {modules.map((module) => (
-              <div
-                key={module.title}
-                style={{
-                  backgroundColor: "#ffffff",
-                  padding: "24px",
-                  borderRadius: "20px",
-                  border: "1px solid #e5e7eb",
-                  boxShadow: "0 8px 22px rgba(15,23,42,0.06)",
-                  textAlign: "left",
-                  minHeight: "150px",
-                }}
-              >
-                <div
-                  style={{
-                    width: "42px",
-                    height: "42px",
-                    borderRadius: "14px",
-                    background: "#eff6ff",
-                    border: "1px solid #bfdbfe",
-                    marginBottom: "16px",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: "20px",
-                  }}
-                >
-                  {module.icon}
-                </div>
-
-                <h3
-                  style={{
-                    margin: "0 0 10px 0",
-                    fontSize: "20px",
-                    color: "#0f172a",
-                  }}
-                >
-                  {module.title}
-                </h3>
-
-                <p
-                  style={{
-                    margin: 0,
-                    color: "#475569",
-                    lineHeight: "24px",
-                  }}
-                >
-                  {module.description}
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <section
-          style={{
-            marginTop: "28px",
-            background: "#ffffff",
-            border: "1px solid #e5e7eb",
-            borderRadius: "24px",
-            padding: "28px",
-            boxShadow: "0 12px 35px rgba(15,23,42,0.07)",
-          }}
-        >
-          <h2
-            style={{
-              margin: "0 0 10px 0",
-              fontSize: "26px",
-              color: "#0f172a",
-              textAlign: "center",
-            }}
-          >
-            Why QualiSphere?
-          </h2>
-
-          <p
-            style={{
-              textAlign: "center",
-              color: "#475569",
-              margin: "0 auto 22px auto",
-              maxWidth: "720px",
-              lineHeight: "26px",
-            }}
-          >
-            Built for quality leaders who need flexible governance, connected
-            quality events, and management-ready visibility without forcing
-            every company into the same process.
-          </p>
-
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))",
-              gap: "14px",
-            }}
-          >
-            {valueProps.map((item) => (
-              <div
-                key={item}
-                style={{
-                  border: "1px solid #dbeafe",
-                  background: "#eff6ff",
-                  color: "#1e3a8a",
-                  borderRadius: "14px",
-                  padding: "14px",
-                  fontWeight: 700,
-                }}
-              >
-                ✓ {item}
-              </div>
-            ))}
+            <span style={pillStyle}>Executive visibility</span>
           </div>
         </section>
 
-        <footer
-          style={{
-            marginTop: "36px",
-            textAlign: "center",
-            color: "#64748b",
-            fontSize: "14px",
-            lineHeight: "24px",
-          }}
-        >
+        <section style={capabilityPanelStyle}>
+          {capabilityGroups.map((group) => (
+            <div key={group.title} style={capabilitySectionStyle}>
+              <h2 style={capabilityTitleStyle}>{group.title}</h2>
+
+              <div style={capabilityListStyle}>
+                {group.items.map((item) => (
+                  <div key={item} style={capabilityItemStyle}>
+                    <span style={checkStyle}>✓</span>
+                    <span>{item}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </section>
+
+        <section style={valueStatementStyle}>
+          <h2 style={{ margin: "0 0 12px 0" }}>Built for quality leaders</h2>
+          <p style={{ margin: 0, color: "#475569", lineHeight: "28px" }}>
+            QualiSphere helps regulated companies connect quality events,
+            approvals, document changes, training, supplier quality, audits, and
+            management review into one controlled quality ecosystem.
+          </p>
+        </section>
+
+        <footer style={footerStyle}>
           <div>Built for regulated industries. Designed for quality leaders.</div>
           <div>© {new Date().getFullYear()} QualiSphere. All Rights Reserved.</div>
         </footer>
@@ -297,12 +93,175 @@ export default function HomePage() {
   );
 }
 
+const pageStyle: React.CSSProperties = {
+  position: "relative",
+  minHeight: "100vh",
+  overflow: "hidden",
+  background:
+    "linear-gradient(135deg, #f8fafc 0%, #eef2ff 48%, #f8fafc 100%)",
+  fontFamily: "Arial, sans-serif",
+  color: "#0f172a",
+  padding: "36px 24px",
+};
+
+const techBackgroundStyle: React.CSSProperties = {
+  position: "absolute",
+  inset: 0,
+  backgroundImage: `
+    radial-gradient(circle at 20% 20%, rgba(37, 99, 235, 0.20), transparent 28%),
+    radial-gradient(circle at 80% 15%, rgba(14, 165, 233, 0.16), transparent 24%),
+    radial-gradient(circle at 50% 80%, rgba(59, 130, 246, 0.14), transparent 30%),
+    linear-gradient(90deg, rgba(37,99,235,0.05) 1px, transparent 1px),
+    linear-gradient(0deg, rgba(37,99,235,0.05) 1px, transparent 1px)
+  `,
+  backgroundSize: "auto, auto, auto, 52px 52px, 52px 52px",
+  opacity: 1,
+  pointerEvents: "none",
+};
+
+const containerStyle: React.CSSProperties = {
+  position: "relative",
+  maxWidth: "1120px",
+  margin: "0 auto",
+};
+
+const topBarStyle: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "flex-end",
+  marginBottom: "48px",
+};
+
+const loginButtonStyle: React.CSSProperties = {
+  backgroundColor: "#111827",
+  color: "#ffffff",
+  padding: "12px 22px",
+  borderRadius: "999px",
+  textDecoration: "none",
+  fontWeight: 800,
+  boxShadow: "0 12px 28px rgba(15, 23, 42, 0.22)",
+};
+
+const heroStyle: React.CSSProperties = {
+  textAlign: "center",
+  maxWidth: "880px",
+  margin: "0 auto 48px auto",
+};
+
+const badgeStyle: React.CSSProperties = {
+  display: "inline-block",
+  fontSize: "12px",
+  fontWeight: 900,
+  letterSpacing: "0.18em",
+  color: "#2563eb",
+  background: "rgba(239, 246, 255, 0.88)",
+  border: "1px solid #bfdbfe",
+  borderRadius: "999px",
+  padding: "8px 14px",
+  marginBottom: "18px",
+};
+
+const titleStyle: React.CSSProperties = {
+  fontSize: "clamp(46px, 8vw, 82px)",
+  lineHeight: 1,
+  fontWeight: 950,
+  margin: "0 0 20px 0",
+  color: "#0f172a",
+  letterSpacing: "-0.06em",
+};
+
+const subtitleStyle: React.CSSProperties = {
+  fontSize: "22px",
+  lineHeight: "34px",
+  color: "#334155",
+  margin: "0 auto",
+  maxWidth: "780px",
+};
+
+const pillRowStyle: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "center",
+  gap: "12px",
+  flexWrap: "wrap",
+  marginTop: "28px",
+};
+
 const pillStyle: React.CSSProperties = {
-  background: "#ffffff",
+  background: "rgba(255, 255, 255, 0.86)",
   border: "1px solid #dbeafe",
   color: "#1e40af",
   borderRadius: "999px",
   padding: "8px 12px",
-  fontWeight: 700,
+  fontWeight: 800,
   fontSize: "13px",
+  boxShadow: "0 8px 20px rgba(37,99,235,0.08)",
+};
+
+const capabilityPanelStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
+  gap: "20px",
+  background: "rgba(255,255,255,0.72)",
+  border: "1px solid rgba(148,163,184,0.35)",
+  borderRadius: "30px",
+  padding: "24px",
+  boxShadow: "0 24px 70px rgba(15, 23, 42, 0.12)",
+  backdropFilter: "blur(14px)",
+};
+
+const capabilitySectionStyle: React.CSSProperties = {
+  background:
+    "linear-gradient(180deg, rgba(255,255,255,0.92), rgba(239,246,255,0.65))",
+  border: "1px solid rgba(191,219,254,0.8)",
+  borderRadius: "24px",
+  padding: "26px",
+};
+
+const capabilityTitleStyle: React.CSSProperties = {
+  margin: "0 0 18px 0",
+  fontSize: "22px",
+  color: "#0f172a",
+};
+
+const capabilityListStyle: React.CSSProperties = {
+  display: "grid",
+  gap: "12px",
+};
+
+const capabilityItemStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: "10px",
+  color: "#334155",
+  fontWeight: 700,
+};
+
+const checkStyle: React.CSSProperties = {
+  width: "24px",
+  height: "24px",
+  borderRadius: "999px",
+  background: "#dbeafe",
+  color: "#1d4ed8",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  fontWeight: 900,
+  flexShrink: 0,
+};
+
+const valueStatementStyle: React.CSSProperties = {
+  marginTop: "28px",
+  background: "rgba(255,255,255,0.82)",
+  border: "1px solid rgba(226,232,240,0.9)",
+  borderRadius: "24px",
+  padding: "30px",
+  textAlign: "center",
+  boxShadow: "0 12px 35px rgba(15,23,42,0.07)",
+};
+
+const footerStyle: React.CSSProperties = {
+  marginTop: "36px",
+  textAlign: "center",
+  color: "#64748b",
+  fontSize: "14px",
+  lineHeight: "24px",
 };
