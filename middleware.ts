@@ -1,14 +1,47 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-const PUBLIC_ROUTES = ["/", "/login"];
+const PUBLIC_ROUTES = [
+  "/",
+  "/login",
+  "/auth/callback",
+  "/signup",
+  "/reset-password",
+];
+
+const PROTECTED_PREFIXES = [
+  "/dashboard",
+  "/management-review",
+  "/ncmrs",
+  "/capa",
+  "/change-control",
+  "/documents",
+  "/training",
+  "/suppliers",
+  "/supplier-quality",
+  "/scars",
+  "/audits",
+  "/oos-oot",
+  "/audit",
+  "/admin",
+];
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  const isPublicRoute = PUBLIC_ROUTES.includes(pathname);
+  if (
+    PUBLIC_ROUTES.includes(pathname) ||
+    pathname.startsWith("/_next") ||
+    pathname.startsWith("/favicon.ico")
+  ) {
+    return NextResponse.next();
+  }
 
-  if (isPublicRoute) {
+  const isProtectedRoute = PROTECTED_PREFIXES.some((prefix) =>
+    pathname.startsWith(prefix)
+  );
+
+  if (!isProtectedRoute) {
     return NextResponse.next();
   }
 
