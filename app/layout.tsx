@@ -2,9 +2,21 @@ import "./globals.css";
 import AppHeader from "./components/AppHeader";
 
 export const metadata = {
-  title: "QualiFlow",
-  description: "Quality Management SaaS",
+  title: "QualiSphere",
+  description: "Enterprise Quality Management System",
 };
+
+function HeaderWrapper() {
+  if (typeof window === "undefined") return null;
+
+  const publicRoutes = ["/", "/login"];
+
+  if (publicRoutes.includes(window.location.pathname)) {
+    return null;
+  }
+
+  return <AppHeader />;
+}
 
 export default function RootLayout({
   children,
@@ -14,7 +26,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <AppHeader />
+        <HeaderWrapper />
         {children}
       </body>
     </html>
