@@ -1,29 +1,45 @@
 export default function HomePage() {
   const modules = [
     {
+      icon: "⚠️",
       title: "Nonconformance Management",
       description: "Nonconformance, MRB, disposition, and closure workflows.",
     },
     {
+      icon: "✅",
       title: "CAPA",
-      description: "Corrective and preventive action management with effectiveness tracking.",
+      description:
+        "Corrective and preventive action management with effectiveness tracking.",
     },
     {
+      icon: "🔄",
       title: "Change Control",
-      description: "Risk-based change planning, approval, implementation, and verification.",
+      description:
+        "Risk-based change planning, approval, implementation, and verification.",
     },
     {
+      icon: "📄",
       title: "Document Control",
       description: "Controlled documents, revision workflows, release, and training.",
     },
     {
+      icon: "🏭",
       title: "Supplier Quality",
-      description: "Supplier oversight, SCARs, supplier CAPA, and performance visibility.",
+      description:
+        "Supplier oversight, SCARs, supplier CAPA, and performance visibility.",
     },
     {
+      icon: "📝",
       title: "Audit Management",
       description: "Internal, external, supplier audits, findings, and action tracking.",
     },
+  ];
+
+  const valueProps = [
+    "Configurable enterprise workflows",
+    "Audit-ready records and e-signatures",
+    "Connected quality processes",
+    "Executive dashboards and management review reporting",
   ];
 
   return (
@@ -160,19 +176,26 @@ export default function HomePage() {
                   border: "1px solid #e5e7eb",
                   boxShadow: "0 8px 22px rgba(15,23,42,0.06)",
                   textAlign: "left",
-                  minHeight: "145px",
+                  minHeight: "150px",
                 }}
               >
                 <div
                   style={{
-                    width: "38px",
-                    height: "38px",
-                    borderRadius: "12px",
+                    width: "42px",
+                    height: "42px",
+                    borderRadius: "14px",
                     background: "#eff6ff",
                     border: "1px solid #bfdbfe",
                     marginBottom: "16px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: "20px",
                   }}
-                />
+                >
+                  {module.icon}
+                </div>
+
                 <h3
                   style={{
                     margin: "0 0 10px 0",
@@ -182,6 +205,7 @@ export default function HomePage() {
                 >
                   {module.title}
                 </h3>
+
                 <p
                   style={{
                     margin: 0,
@@ -196,15 +220,77 @@ export default function HomePage() {
           </div>
         </div>
 
+        <section
+          style={{
+            marginTop: "28px",
+            background: "#ffffff",
+            border: "1px solid #e5e7eb",
+            borderRadius: "24px",
+            padding: "28px",
+            boxShadow: "0 12px 35px rgba(15,23,42,0.07)",
+          }}
+        >
+          <h2
+            style={{
+              margin: "0 0 10px 0",
+              fontSize: "26px",
+              color: "#0f172a",
+              textAlign: "center",
+            }}
+          >
+            Why QualiSphere?
+          </h2>
+
+          <p
+            style={{
+              textAlign: "center",
+              color: "#475569",
+              margin: "0 auto 22px auto",
+              maxWidth: "720px",
+              lineHeight: "26px",
+            }}
+          >
+            Built for quality leaders who need flexible governance, connected
+            quality events, and management-ready visibility without forcing
+            every company into the same process.
+          </p>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))",
+              gap: "14px",
+            }}
+          >
+            {valueProps.map((item) => (
+              <div
+                key={item}
+                style={{
+                  border: "1px solid #dbeafe",
+                  background: "#eff6ff",
+                  color: "#1e3a8a",
+                  borderRadius: "14px",
+                  padding: "14px",
+                  fontWeight: 700,
+                }}
+              >
+                ✓ {item}
+              </div>
+            ))}
+          </div>
+        </section>
+
         <footer
           style={{
             marginTop: "36px",
             textAlign: "center",
             color: "#64748b",
             fontSize: "14px",
+            lineHeight: "24px",
           }}
         >
-          © {new Date().getFullYear()} QualiSphere. All Rights Reserved.
+          <div>Built for regulated industries. Designed for quality leaders.</div>
+          <div>© {new Date().getFullYear()} QualiSphere. All Rights Reserved.</div>
         </footer>
       </section>
     </main>
