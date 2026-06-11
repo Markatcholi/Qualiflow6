@@ -50,85 +50,37 @@ const MODULE_TABLE_MAP: Record<string, string> = {
   oos_oot: "oos_oot_investigations",
 };
 
-const SUPPORTED_OPERATORS = [
-  "equals",
-  "not_equals",
-  "contains",
-  "not_contains",
-  "is_blank",
-  "is_not_blank",
-];
+/**
+ * Older custom KPI records may have data_source saved as the module name
+ * instead of the real database table name.
+ *
+ * Example:
+ *   data_source = "change_control"
+ * Actual table:
+ *   change_controls
+ *
+ * This resolver maps both module_name and data_source to the correct table.
+ */
+const resolveTableName = (definition: CustomKpiDefinition) => {
+  const dataSource = definition.data_source?.trim();
+  const moduleName = definition.module_name?.trim();
+
+  if (dataSource && MODULE_TABLE_MAP[dataSource]) {
+    return MODULE_TABLE_MAP[dataSource];
+  }
+
+  if (moduleName && MODULE_TABLE_MAP[moduleName]) {
+    return MODULE_TABLE_MAP[moduleName];
+  }
+
+  if (dataSource) {
+    return dataSource;
+  }
+
+  return moduleName || "";
+};
 
 const normalize = (value: any) => String(value ?? "").trim().toLowerCase();
-
-const getTableName = (definition: CustomKpiDefinition) =>
-  definition.data_source || MODULE_TABLE_MAP[definition.module_name];
-
-const updateCalculationStatus = async ({
-  supabase,
-  definition,
-  status,
-  message,
-}: {
-  supabase: SupabaseClient;
-  definition: CustomKpiDefinition;
-  status: "success" | "failed";
-  message: string;
-}) => {
-  if (!definition.id) return;
-
-  const updatePayload: any = {
-    last_calculated_at: new Date().toISOString(),
-    last_calculation_status: status,
-    last_calculation_message: message,
-  };
-
-  if (status === "success") {
-    updatePayload.validation_status = "valid";
-    updatePayload.validation_message = null;
-  } else {
-    updatePayload.validation_status = "invalid";
-    updatePayload.validation_message = message;
-  }
-
-  const { error } = await supabase
-    .from("custom_kpi_definitions")
-    .update(updatePayload)
-    .eq("id", definition.id);
-
-  if (error) {
-    console.warn(`Unable to update KPI status for ${definition.kpi_key}: ${error.message}`);
-  }
-};
-
-const validateDefinition = (definition: CustomKpiDefinition) => {
-  const tableName = getTableName(definition);
-
-  if (!tableName) {
-    return `No data source is configured for module '${definition.module_name}'.`;
-  }
-
-  if ((definition.calculation_type || "count") !== "count") {
-    return `Unsupported calculation type '${definition.calculation_type}'. Only 'count' is currently supported.`;
-  }
-
-  const operator = definition.filter_operator || "equals";
-
-  if (!SUPPORTED_OPERATORS.includes(operator)) {
-    return `Unsupported filter operator '${operator}'.`;
-  }
-
-  if (
-    operator !== "is_blank" &&
-    operator !== "is_not_blank" &&
-    definition.filter_field?.trim() &&
-    !String(definition.filter_value ?? "").trim()
-  ) {
-    return "Filter value is required when a filter field is provided.";
-  }
-
-  return null;
-};
 
 const matchesFilter = (record: any, definition: CustomKpiDefinition) => {
   const field = definition.filter_field?.trim();
@@ -147,6 +99,37 @@ const matchesFilter = (record: any, definition: CustomKpiDefinition) => {
   if (operator === "is_not_blank") return actual.length > 0;
 
   return actual === expected;
+};
+
+const updateKpiCalculationStatus = async ({
+  supabase,
+  definition,
+  status,
+  message,
+}: {
+  supabase: SupabaseClient;
+  definition: CustomKpiDefinition;
+  status: "success" | "failed";
+  message: string;
+}) => {
+  if (!definition.id) return;
+
+  const now = new Date().toISOString();
+
+  const { error } = await supabase
+    .from("custom_kpi_definitions")
+    .update({
+      validation_status: status === "success" ? "valid" : "invalid",
+      validation_message: message,
+      last_calculated_at: now,
+      last_calculation_status: status,
+      last_calculation_message: message,
+    })
+    .eq("id", definition.id);
+
+  if (error) {
+    console.warn(`Unable to update KPI calculation status: ${error.message}`);
+  }
 };
 
 export async function fetchCustomKpiDefinitions({
@@ -190,39 +173,27 @@ export async function calculateCustomKpiValues({
   definitions: CustomKpiDefinition[];
 }) {
   const values: Record<string, CustomKpiDisplayValue> = {};
+  const definitionsByTable: Record<string, CustomKpiDefinition[]> = {};
 
-  const validDefinitionsByTable: Record<string, CustomKpiDefinition[]> = {};
+  definitions.forEach((definition) => {
+    const tableName = resolveTableName(definition);
 
-  for (const definition of definitions) {
-    const validationMessage = validateDefinition(definition);
-    const tableName = getTableName(definition);
-
-    if (validationMessage || !tableName) {
-      const message = validationMessage || "Unable to determine KPI data source.";
-
+    if (!tableName) {
       values[definition.kpi_key] = {
         value: 0,
-        subtitle: message,
+        subtitle: "Missing data source",
       };
-
-      await updateCalculationStatus({
-        supabase,
-        definition,
-        status: "failed",
-        message,
-      });
-
-      continue;
+      return;
     }
 
-    if (!validDefinitionsByTable[tableName]) {
-      validDefinitionsByTable[tableName] = [];
+    if (!definitionsByTable[tableName]) {
+      definitionsByTable[tableName] = [];
     }
 
-    validDefinitionsByTable[tableName].push(definition);
-  }
+    definitionsByTable[tableName].push(definition);
+  });
 
-  for (const [tableName, tableDefinitions] of Object.entries(validDefinitionsByTable)) {
+  for (const [tableName, tableDefinitions] of Object.entries(definitionsByTable)) {
     const { data, error } = await supabase.from(tableName).select("*");
 
     if (error) {
@@ -235,7 +206,7 @@ export async function calculateCustomKpiValues({
           subtitle: "Unable to calculate",
         };
 
-        await updateCalculationStatus({
+        await updateKpiCalculationStatus({
           supabase,
           definition,
           status: "failed",
@@ -249,57 +220,61 @@ export async function calculateCustomKpiValues({
     const records = data || [];
 
     for (const definition of tableDefinitions) {
-      try {
-        const calculationType = definition.calculation_type || "count";
+      const calculationType = definition.calculation_type || "count";
 
-        if (calculationType !== "count") {
-          const message = `Unsupported calculation type '${calculationType}'.`;
-
-          values[definition.kpi_key] = {
-            value: 0,
-            subtitle: "Unsupported calculation type",
-          };
-
-          await updateCalculationStatus({
-            supabase,
-            definition,
-            status: "failed",
-            message,
-          });
-
-          continue;
-        }
-
-        const matchingRecords = records.filter((record: any) =>
-          matchesFilter(record, definition),
-        );
-
-        values[definition.kpi_key] = {
-          value: matchingRecords.length,
-          subtitle: "Custom KPI",
-        };
-
-        await updateCalculationStatus({
-          supabase,
-          definition,
-          status: "success",
-          message: `Calculated successfully from ${tableName}.`,
-        });
-      } catch (error: any) {
-        const message = error?.message || "Unexpected error calculating custom KPI.";
+      if (calculationType !== "count") {
+        const message = `Unsupported calculation type: ${calculationType}`;
 
         values[definition.kpi_key] = {
           value: 0,
-          subtitle: "Unable to calculate",
+          subtitle: "Unsupported calculation type",
         };
 
-        await updateCalculationStatus({
+        await updateKpiCalculationStatus({
           supabase,
           definition,
           status: "failed",
           message,
         });
+
+        continue;
       }
+
+      const field = definition.filter_field?.trim();
+
+      if (field && records.length > 0 && !(field in records[0])) {
+        const message = `Field '${field}' was not found in table '${tableName}'. Use the database column name, not the UI label.`;
+
+        values[definition.kpi_key] = {
+          value: 0,
+          subtitle: "Invalid filter field",
+        };
+
+        await updateKpiCalculationStatus({
+          supabase,
+          definition,
+          status: "failed",
+          message,
+        });
+
+        continue;
+      }
+
+      const matchingRecords = records.filter((record: any) =>
+        matchesFilter(record, definition),
+      );
+
+      values[definition.kpi_key] = {
+        value: matchingRecords.length,
+        subtitle: "Custom KPI",
+      };
+
+      await updateKpiCalculationStatus({
+        supabase,
+        definition,
+        status: "success",
+        message: `Calculated successfully from ${tableName}.`,
+      });
     }
   }
 
