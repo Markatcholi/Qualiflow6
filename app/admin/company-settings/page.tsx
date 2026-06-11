@@ -30,6 +30,26 @@ type KpiConfigurationState = Record<
   }
 >;
 
+type CustomKpiDefinition = {
+  id: string;
+  company_name: string;
+  module_name: string;
+  kpi_key: string;
+  kpi_name: string;
+  kpi_description: string | null;
+  kpi_category: string | null;
+  data_source: string | null;
+  calculation_type: string | null;
+  filter_field: string | null;
+  filter_operator: string | null;
+  filter_value: string | null;
+  display_type: string | null;
+  executive_dashboard: boolean | null;
+  management_review: boolean | null;
+  display_order: number | null;
+  active: boolean | null;
+};
+
 export default function CompanySettingsPage() {
   const [settings, setSettings] = useState<CompanySettings>(
     DEFAULT_COMPANY_SETTINGS,
@@ -40,6 +60,21 @@ export default function CompanySettingsPage() {
 
   const [kpiLibrary, setKpiLibrary] = useState<KpiLibraryItem[]>([]);
   const [kpiConfig, setKpiConfig] = useState<KpiConfigurationState>({});
+
+  const [customKpis, setCustomKpis] = useState<CustomKpiDefinition[]>([]);
+  const [savingCustomKpi, setSavingCustomKpi] = useState(false);
+  const [customKpiName, setCustomKpiName] = useState("");
+  const [customKpiDescription, setCustomKpiDescription] = useState("");
+  const [customKpiCategory, setCustomKpiCategory] = useState("Custom");
+  const [customModule, setCustomModule] = useState("change_control");
+  const [customCalculationType, setCustomCalculationType] = useState("count");
+  const [customFilterField, setCustomFilterField] = useState("");
+  const [customFilterOperator, setCustomFilterOperator] = useState("equals");
+  const [customFilterValue, setCustomFilterValue] = useState("");
+  const [customExecutiveDashboard, setCustomExecutiveDashboard] =
+    useState(true);
+  const [customManagementReview, setCustomManagementReview] = useState(true);
+  const [customDisplayOrder, setCustomDisplayOrder] = useState(100);
 
   const [userRole, setUserRole] = useState("");
   const [userEmail, setUserEmail] = useState("");
@@ -123,13 +158,35 @@ export default function CompanySettingsPage() {
     setKpiConfig(nextConfig);
   };
 
+  const fetchCustomKpis = async (companyName: string) => {
+    const company = companyName || "Default Company";
+
+    const { data, error } = await supabase
+      .from("custom_kpi_definitions")
+      .select("*")
+      .eq("company_name", company)
+      .eq("active", true)
+      .order("display_order", { ascending: true })
+      .order("kpi_name", { ascending: true });
+
+    if (error) {
+      console.warn(error.message);
+      setCustomKpis([]);
+      return;
+    }
+
+    setCustomKpis((data as CustomKpiDefinition[]) || []);
+  };
+
   const fetchSettings = async () => {
     setLoading(true);
     await fetchUser();
 
     const data = await getCompanySettings();
     setSettings(data);
-    await fetchKpiConfiguration(data.company_name || "Default Company");
+    const companyName = data.company_name || "Default Company";
+    await fetchKpiConfiguration(companyName);
+    await fetchCustomKpis(companyName);
 
     setLoading(false);
   };
@@ -202,6 +259,109 @@ export default function CompanySettingsPage() {
 
     alert("Dashboard KPI configuration saved.");
     await fetchKpiConfiguration(companyName);
+  };
+
+  const createCustomKpi = async () => {
+    if (!canEdit) {
+      alert("Only an approver or VP Quality can create custom KPIs.");
+      return;
+    }
+
+    if (!customKpiName.trim()) {
+      alert("KPI name is required.");
+      return;
+    }
+
+    if (!customFilterField.trim()) {
+      alert("Filter field is required for Version 1 custom KPIs.");
+      return;
+    }
+
+    if (customFilterOperator !== "is_not_blank" && !customFilterValue.trim()) {
+      alert("Filter value is required for the selected operator.");
+      return;
+    }
+
+    const companyName = settings.company_name || "Default Company";
+    const baseKey = customKpiName
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_|_$/g, "");
+
+    if (!baseKey) {
+      alert("KPI name must include letters or numbers.");
+      return;
+    }
+
+    setSavingCustomKpi(true);
+
+    const { error } = await supabase.from("custom_kpi_definitions").insert({
+      company_name: companyName,
+      module_name: customModule,
+      kpi_key: baseKey,
+      kpi_name: customKpiName.trim(),
+      kpi_description: customKpiDescription.trim() || null,
+      kpi_category: customKpiCategory.trim() || "Custom",
+      data_source: customModule,
+      calculation_type: customCalculationType,
+      filter_field: customFilterField.trim(),
+      filter_operator: customFilterOperator,
+      filter_value:
+        customFilterOperator === "is_not_blank"
+          ? null
+          : customFilterValue.trim(),
+      display_type: "card",
+      executive_dashboard: customExecutiveDashboard,
+      management_review: customManagementReview,
+      display_order: Number(customDisplayOrder || 100),
+      active: true,
+    });
+
+    setSavingCustomKpi(false);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    alert("Custom KPI created.");
+    setCustomKpiName("");
+    setCustomKpiDescription("");
+    setCustomKpiCategory("Custom");
+    setCustomModule("change_control");
+    setCustomCalculationType("count");
+    setCustomFilterField("");
+    setCustomFilterOperator("equals");
+    setCustomFilterValue("");
+    setCustomExecutiveDashboard(true);
+    setCustomManagementReview(true);
+    setCustomDisplayOrder(100);
+    await fetchCustomKpis(companyName);
+  };
+
+  const deactivateCustomKpi = async (customKpi: CustomKpiDefinition) => {
+    if (!canEdit) {
+      alert("Only an approver or VP Quality can deactivate custom KPIs.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Deactivate custom KPI: ${customKpi.kpi_name}?`,
+    );
+
+    if (!confirmed) return;
+
+    const { error } = await supabase
+      .from("custom_kpi_definitions")
+      .update({ active: false })
+      .eq("id", customKpi.id);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    await fetchCustomKpis(settings.company_name || "Default Company");
   };
 
   const save = async () => {
@@ -505,6 +665,222 @@ export default function CompanySettingsPage() {
       </section>
 
       <section style={cardStyle}>
+        <div style={sectionHeaderStyle}>
+          <div>
+            <h2 style={{ margin: 0 }}>Custom KPI Builder</h2>
+            <p style={subtleText}>
+              Create customer-specific KPI cards without changing application
+              code. Version 1 supports simple record-count KPIs using one
+              filter condition.
+            </p>
+          </div>
+
+          <button
+            onClick={createCustomKpi}
+            disabled={!canEdit || savingCustomKpi}
+            style={
+              !canEdit || savingCustomKpi
+                ? disabledButtonStyle
+                : primaryButtonStyle
+            }
+          >
+            {savingCustomKpi ? "Creating KPI..." : "Create Custom KPI"}
+          </button>
+        </div>
+
+        <div style={gridStyle}>
+          <Field label="KPI Name">
+            <input
+              value={customKpiName}
+              onChange={(e) => setCustomKpiName(e.target.value)}
+              placeholder="Example: Open Engineering Changes"
+              disabled={!canEdit}
+              style={inputStyle(!canEdit)}
+            />
+          </Field>
+
+          <Field label="Module">
+            <select
+              value={customModule}
+              onChange={(e) => setCustomModule(e.target.value)}
+              disabled={!canEdit}
+              style={inputStyle(!canEdit)}
+            >
+              <option value="change_control">Change Control</option>
+              <option value="ncmr">NCMR</option>
+              <option value="capa">CAPA</option>
+              <option value="scar">SCAR</option>
+              <option value="audit">Audit</option>
+              <option value="oos_oot">OOS/OOT</option>
+              <option value="document_control">Document Control</option>
+              <option value="training">Training</option>
+            </select>
+          </Field>
+
+          <Field label="KPI Category">
+            <input
+              value={customKpiCategory}
+              onChange={(e) => setCustomKpiCategory(e.target.value)}
+              disabled={!canEdit}
+              style={inputStyle(!canEdit)}
+            />
+          </Field>
+
+          <Field label="Calculation Type">
+            <select
+              value={customCalculationType}
+              onChange={(e) => setCustomCalculationType(e.target.value)}
+              disabled={!canEdit}
+              style={inputStyle(!canEdit)}
+            >
+              <option value="count">Record Count</option>
+            </select>
+          </Field>
+
+          <Field label="Filter Field">
+            <input
+              value={customFilterField}
+              onChange={(e) => setCustomFilterField(e.target.value)}
+              placeholder="Example: status, risk_level, change_type"
+              disabled={!canEdit}
+              style={inputStyle(!canEdit)}
+            />
+          </Field>
+
+          <Field label="Operator">
+            <select
+              value={customFilterOperator}
+              onChange={(e) => setCustomFilterOperator(e.target.value)}
+              disabled={!canEdit}
+              style={inputStyle(!canEdit)}
+            >
+              <option value="equals">Equals</option>
+              <option value="not_equals">Not Equals</option>
+              <option value="contains">Contains</option>
+              <option value="is_not_blank">Is Not Blank</option>
+            </select>
+          </Field>
+
+          <Field label="Filter Value">
+            <input
+              value={customFilterValue}
+              onChange={(e) => setCustomFilterValue(e.target.value)}
+              placeholder="Example: implementation, high, closed"
+              disabled={!canEdit || customFilterOperator === "is_not_blank"}
+              style={inputStyle(!canEdit || customFilterOperator === "is_not_blank")}
+            />
+          </Field>
+
+          <Field label="Display Order">
+            <input
+              type="number"
+              min={1}
+              value={customDisplayOrder}
+              onChange={(e) => setCustomDisplayOrder(Number(e.target.value || 100))}
+              disabled={!canEdit}
+              style={inputStyle(!canEdit)}
+            />
+          </Field>
+        </div>
+
+        <Field label="KPI Description">
+          <textarea
+            value={customKpiDescription}
+            onChange={(e) => setCustomKpiDescription(e.target.value)}
+            placeholder="Describe what this KPI measures and why it matters."
+            disabled={!canEdit}
+            rows={3}
+            style={textareaStyle(!canEdit)}
+          />
+        </Field>
+
+        <div style={customToggleRowStyle}>
+          <label style={toggleLabelStyle}>
+            <input
+              type="checkbox"
+              checked={customExecutiveDashboard}
+              disabled={!canEdit}
+              onChange={(e) => setCustomExecutiveDashboard(e.target.checked)}
+            />
+            Executive Dashboard
+          </label>
+
+          <label style={toggleLabelStyle}>
+            <input
+              type="checkbox"
+              checked={customManagementReview}
+              disabled={!canEdit}
+              onChange={(e) => setCustomManagementReview(e.target.checked)}
+            />
+            Management Review
+          </label>
+        </div>
+
+        <div style={infoBoxStyle}>
+          Example: To count changes currently in verification, use Module =
+          Change Control, Filter Field = status, Operator = Equals, Filter Value
+          = verification.
+        </div>
+
+        {customKpis.length > 0 ? (
+          <div style={{ marginTop: "20px", overflowX: "auto" }}>
+            <h3>Active Custom KPIs</h3>
+            <table style={tableStyle}>
+              <thead>
+                <tr>
+                  <th style={thStyle}>KPI</th>
+                  <th style={thStyle}>Module</th>
+                  <th style={thStyle}>Calculation</th>
+                  <th style={thStyle}>Filter</th>
+                  <th style={thStyle}>Executive</th>
+                  <th style={thStyle}>Management Review</th>
+                  <th style={thStyle}>Order</th>
+                  <th style={thStyle}>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {customKpis.map((customKpi) => (
+                  <tr key={customKpi.id}>
+                    <td style={tdStyle}>
+                      <strong>{customKpi.kpi_name}</strong>
+                      <div style={smallTextStyle}>{customKpi.kpi_key}</div>
+                    </td>
+                    <td style={tdStyle}>{customKpi.module_name}</td>
+                    <td style={tdStyle}>{customKpi.calculation_type || "count"}</td>
+                    <td style={tdStyle}>
+                      {customKpi.filter_field || "N/A"} {" "}
+                      {customKpi.filter_operator || ""} {" "}
+                      {customKpi.filter_value || ""}
+                    </td>
+                    <td style={tdStyle}>
+                      {customKpi.executive_dashboard ? "Yes" : "No"}
+                    </td>
+                    <td style={tdStyle}>
+                      {customKpi.management_review ? "Yes" : "No"}
+                    </td>
+                    <td style={tdStyle}>{customKpi.display_order || 100}</td>
+                    <td style={tdStyle}>
+                      <button
+                        onClick={() => deactivateCustomKpi(customKpi)}
+                        disabled={!canEdit}
+                        style={!canEdit ? disabledButtonStyle : dangerButtonStyle}
+                      >
+                        Deactivate
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div style={infoBoxStyle}>
+            No active custom KPIs have been created for this company yet.
+          </div>
+        )}
+      </section>
+
+      <section style={cardStyle}>
         <h2 style={{ marginTop: 0 }}>Task SLA Aging Buckets</h2>
         <p style={subtleText}>
           These values define aging buckets used by the CAPA Intelligence SLA
@@ -668,6 +1044,15 @@ const inputStyle = (disabled: boolean): React.CSSProperties => ({
   background: disabled ? "#f3f4f6" : "white",
 });
 
+const textareaStyle = (disabled: boolean): React.CSSProperties => ({
+  width: "100%",
+  padding: "10px",
+  borderRadius: "8px",
+  border: "1px solid #d1d5db",
+  background: disabled ? "#f3f4f6" : "white",
+  fontFamily: "Arial, sans-serif",
+});
+
 const toggleCardStyle: React.CSSProperties = {
   border: "1px solid #e5e7eb",
   borderRadius: "12px",
@@ -705,6 +1090,13 @@ const buttonRowStyle: React.CSSProperties = {
   display: "flex",
   gap: "8px",
   flexWrap: "wrap",
+};
+
+const customToggleRowStyle: React.CSSProperties = {
+  display: "flex",
+  gap: "24px",
+  flexWrap: "wrap",
+  marginTop: "18px",
 };
 
 const sectionHeaderStyle: React.CSSProperties = {
@@ -772,6 +1164,16 @@ const disabledButtonStyle: React.CSSProperties = {
   padding: "10px 14px",
   fontWeight: 700,
   cursor: "not-allowed",
+};
+
+const dangerButtonStyle: React.CSSProperties = {
+  background: "#dc2626",
+  color: "white",
+  border: "none",
+  borderRadius: "8px",
+  padding: "8px 12px",
+  fontWeight: 700,
+  cursor: "pointer",
 };
 
 const darkLinkStyle: React.CSSProperties = {
