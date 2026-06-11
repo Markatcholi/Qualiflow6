@@ -3,6 +3,11 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
 import { getCompanySettings } from "../../lib/companySettings";
+import {
+  calculateCustomKpiValues,
+  fetchCustomKpiDefinitions,
+  mapCustomDefinitionsToConfiguredKpis,
+} from "../../lib/customKpiEngine";
 
 type TrendItem = {
   label: string;
@@ -303,36 +308,53 @@ export default function ManagementReviewPage() {
     }
 
     const selectedKeys = configRows.map((item: any) => item.kpi_key);
-    if (selectedKeys.length === 0) {
-      setConfiguredChangeKpis([]);
-      return;
+    let configured: ConfiguredKpi[] = [];
+
+    if (selectedKeys.length > 0) {
+      const { data: libraryData, error: libraryError } = await supabase
+        .from("kpi_library")
+        .select("kpi_key, kpi_name, kpi_category, calculation_type")
+        .eq("module_name", "change_control")
+        .in("kpi_key", selectedKeys);
+
+      if (libraryError) {
+        console.warn(libraryError.message);
+      } else {
+        const displayOrder: Record<string, number> = {};
+        configRows.forEach((item: any) => {
+          displayOrder[item.kpi_key] = item.display_order || 1;
+        });
+
+        configured = (libraryData || [])
+          .map((item: any) => ({
+            ...item,
+            display_order: displayOrder[item.kpi_key] || 1,
+          }))
+          .sort((a: ConfiguredKpi, b: ConfiguredKpi) => Number(a.display_order || 1) - Number(b.display_order || 1));
+      }
     }
 
-    const { data: libraryData, error: libraryError } = await supabase
-      .from("kpi_library")
-      .select("kpi_key, kpi_name, kpi_category, calculation_type")
-      .eq("module_name", "change_control")
-      .in("kpi_key", selectedKeys);
-
-    if (libraryError) {
-      console.warn(libraryError.message);
-      setConfiguredChangeKpis([]);
-      return;
-    }
-
-    const displayOrder: Record<string, number> = {};
-    configRows.forEach((item: any) => {
-      displayOrder[item.kpi_key] = item.display_order || 1;
+    const customDefinitions = await fetchCustomKpiDefinitions({
+      supabase,
+      companyName,
+      target: "management_review",
     });
 
-    const configured = (libraryData || [])
-      .map((item: any) => ({
-        ...item,
-        display_order: displayOrder[item.kpi_key] || 1,
-      }))
-      .sort((a: ConfiguredKpi, b: ConfiguredKpi) => Number(a.display_order || 1) - Number(b.display_order || 1));
+    const customConfigured = mapCustomDefinitionsToConfiguredKpis(customDefinitions);
+    const customValues = await calculateCustomKpiValues({
+      supabase,
+      definitions: customDefinitions,
+    });
 
-    setConfiguredChangeKpis(configured);
+    const combined: ConfiguredKpi[] = [...configured, ...customConfigured].sort(
+      (a, b) => Number(a.display_order || 100) - Number(b.display_order || 100),
+    );
+
+    setConfiguredChangeKpis(combined);
+    setChangeKpiValues((prev) => ({
+      ...prev,
+      ...customValues,
+    }));
   };
 
   const buildSupplierCounts = (allNcmrs: any[]) => {
@@ -823,7 +845,7 @@ export default function ManagementReviewPage() {
       .select("*");
 
     if (!changeError) {
-      setChangeKpiValues(calculateChangeControlKpis(changeData || []));
+      setChangeKpiValues((prev) => ({ ...prev, ...calculateChangeControlKpis(changeData || []) }));
     } else {
       console.warn(changeError.message);
       setChangeKpiValues({});
