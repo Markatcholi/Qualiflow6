@@ -48,6 +48,11 @@ type CustomKpiDefinition = {
   management_review: boolean | null;
   display_order: number | null;
   active: boolean | null;
+  validation_status?: string | null;
+  validation_message?: string | null;
+  last_calculated_at?: string | null;
+  last_calculation_status?: string | null;
+  last_calculation_message?: string | null;
 };
 
 export default function CompanySettingsPage() {
@@ -362,6 +367,61 @@ export default function CompanySettingsPage() {
     }
 
     await fetchCustomKpis(settings.company_name || "Default Company");
+  };
+
+  const deleteCustomKpi = async (customKpi: CustomKpiDefinition) => {
+    if (!canEdit) {
+      alert("Only an approver or VP Quality can delete custom KPIs.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Permanently delete custom KPI: ${customKpi.kpi_name}? This cannot be undone.`,
+    );
+
+    if (!confirmed) return;
+
+    const { error } = await supabase
+      .from("custom_kpi_definitions")
+      .delete()
+      .eq("id", customKpi.id);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    await fetchCustomKpis(settings.company_name || "Default Company");
+  };
+
+  const formatStatus = (status?: string | null) => {
+    if (!status) return "Not Run";
+    return status
+      .replace(/_/g, " ")
+      .replace(/\b\w/g, (char) => char.toUpperCase());
+  };
+
+  const formatDateTime = (dateValue?: string | null) => {
+    if (!dateValue) return "Never";
+
+    const parsed = new Date(dateValue);
+    if (Number.isNaN(parsed.getTime())) return "Invalid Date";
+
+    return parsed.toLocaleString();
+  };
+
+  const getStatusBadgeStyle = (status?: string | null): React.CSSProperties => {
+    const normalized = String(status || "").toLowerCase();
+
+    if (normalized === "valid" || normalized === "success") {
+      return successBadgeStyle;
+    }
+
+    if (normalized === "invalid" || normalized === "failed" || normalized === "error") {
+      return errorBadgeStyle;
+    }
+
+    return neutralBadgeStyle;
   };
 
   const save = async () => {
@@ -830,12 +890,14 @@ export default function CompanySettingsPage() {
                 <tr>
                   <th style={thStyle}>KPI</th>
                   <th style={thStyle}>Module</th>
-                  <th style={thStyle}>Calculation</th>
                   <th style={thStyle}>Filter</th>
+                  <th style={thStyle}>Validation</th>
+                  <th style={thStyle}>Calculation</th>
+                  <th style={thStyle}>Last Calculated</th>
                   <th style={thStyle}>Executive</th>
                   <th style={thStyle}>Management Review</th>
                   <th style={thStyle}>Order</th>
-                  <th style={thStyle}>Action</th>
+                  <th style={thStyle}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -844,13 +906,53 @@ export default function CompanySettingsPage() {
                     <td style={tdStyle}>
                       <strong>{customKpi.kpi_name}</strong>
                       <div style={smallTextStyle}>{customKpi.kpi_key}</div>
+                      {customKpi.kpi_description ? (
+                        <div style={smallTextStyle}>
+                          {customKpi.kpi_description}
+                        </div>
+                      ) : null}
                     </td>
-                    <td style={tdStyle}>{customKpi.module_name}</td>
-                    <td style={tdStyle}>{customKpi.calculation_type || "count"}</td>
+                    <td style={tdStyle}>
+                      <strong>{customKpi.module_name}</strong>
+                      <div style={smallTextStyle}>
+                        {customKpi.calculation_type || "count"}
+                      </div>
+                    </td>
                     <td style={tdStyle}>
                       {customKpi.filter_field || "N/A"} {" "}
                       {customKpi.filter_operator || ""} {" "}
                       {customKpi.filter_value || ""}
+                    </td>
+                    <td style={tdStyle}>
+                      <span
+                        style={getStatusBadgeStyle(
+                          customKpi.validation_status || "valid",
+                        )}
+                      >
+                        {formatStatus(customKpi.validation_status || "valid")}
+                      </span>
+                      {customKpi.validation_message ? (
+                        <div style={smallTextStyle}>
+                          {customKpi.validation_message}
+                        </div>
+                      ) : null}
+                    </td>
+                    <td style={tdStyle}>
+                      <span
+                        style={getStatusBadgeStyle(
+                          customKpi.last_calculation_status,
+                        )}
+                      >
+                        {formatStatus(customKpi.last_calculation_status)}
+                      </span>
+                      {customKpi.last_calculation_message ? (
+                        <div style={smallTextStyle}>
+                          {customKpi.last_calculation_message}
+                        </div>
+                      ) : null}
+                    </td>
+                    <td style={tdStyle}>
+                      {formatDateTime(customKpi.last_calculated_at)}
                     </td>
                     <td style={tdStyle}>
                       {customKpi.executive_dashboard ? "Yes" : "No"}
@@ -860,13 +962,27 @@ export default function CompanySettingsPage() {
                     </td>
                     <td style={tdStyle}>{customKpi.display_order || 100}</td>
                     <td style={tdStyle}>
-                      <button
-                        onClick={() => deactivateCustomKpi(customKpi)}
-                        disabled={!canEdit}
-                        style={!canEdit ? disabledButtonStyle : dangerButtonStyle}
-                      >
-                        Deactivate
-                      </button>
+                      <div style={actionButtonGroupStyle}>
+                        <button
+                          onClick={() => deactivateCustomKpi(customKpi)}
+                          disabled={!canEdit}
+                          style={!canEdit ? disabledButtonStyle : dangerButtonStyle}
+                        >
+                          Deactivate
+                        </button>
+
+                        <button
+                          onClick={() => deleteCustomKpi(customKpi)}
+                          disabled={!canEdit}
+                          style={
+                            !canEdit
+                              ? disabledButtonStyle
+                              : permanentDeleteButtonStyle
+                          }
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -1174,6 +1290,55 @@ const dangerButtonStyle: React.CSSProperties = {
   padding: "8px 12px",
   fontWeight: 700,
   cursor: "pointer",
+};
+
+const permanentDeleteButtonStyle: React.CSSProperties = {
+  background: "#7f1d1d",
+  color: "white",
+  border: "none",
+  borderRadius: "8px",
+  padding: "8px 12px",
+  fontWeight: 700,
+  cursor: "pointer",
+};
+
+const actionButtonGroupStyle: React.CSSProperties = {
+  display: "flex",
+  gap: "8px",
+  flexWrap: "wrap",
+};
+
+const successBadgeStyle: React.CSSProperties = {
+  display: "inline-block",
+  background: "#dcfce7",
+  color: "#166534",
+  border: "1px solid #bbf7d0",
+  borderRadius: "999px",
+  padding: "4px 10px",
+  fontSize: "12px",
+  fontWeight: 800,
+};
+
+const errorBadgeStyle: React.CSSProperties = {
+  display: "inline-block",
+  background: "#fee2e2",
+  color: "#991b1b",
+  border: "1px solid #fecaca",
+  borderRadius: "999px",
+  padding: "4px 10px",
+  fontSize: "12px",
+  fontWeight: 800,
+};
+
+const neutralBadgeStyle: React.CSSProperties = {
+  display: "inline-block",
+  background: "#f3f4f6",
+  color: "#374151",
+  border: "1px solid #d1d5db",
+  borderRadius: "999px",
+  padding: "4px 10px",
+  fontSize: "12px",
+  fontWeight: 800,
 };
 
 const darkLinkStyle: React.CSSProperties = {
