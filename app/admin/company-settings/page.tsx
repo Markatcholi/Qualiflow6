@@ -16,8 +16,12 @@ type KpiLibraryItem = {
   kpi_key: string;
   kpi_name: string;
   kpi_description: string | null;
-  kpi_category: string | null;
-  enabled_by_default: boolean | null;
+  kpi_category?: string | null;
+  category?: string | null;
+  enabled_by_default?: boolean | null;
+  default_executive_dashboard?: boolean | null;
+  default_management_review?: boolean | null;
+  default_display_order?: number | null;
   calculation_type: string | null;
 };
 
@@ -65,6 +69,8 @@ export default function CompanySettingsPage() {
 
   const [kpiLibrary, setKpiLibrary] = useState<KpiLibraryItem[]>([]);
   const [kpiConfig, setKpiConfig] = useState<KpiConfigurationState>({});
+  const [selectedKpiModule, setSelectedKpiModule] =
+    useState("change_control");
 
   const [customKpis, setCustomKpis] = useState<CustomKpiDefinition[]>([]);
   const [savingCustomKpi, setSavingCustomKpi] = useState(false);
@@ -103,22 +109,41 @@ export default function CompanySettingsPage() {
     setUserRole(data?.role || "user");
   };
 
-  const fetchKpiConfiguration = async (companyName: string) => {
+  const fetchKpiConfiguration = async (
+    companyName: string,
+    moduleName: string = selectedKpiModule,
+  ) => {
     const company = companyName || "Default Company";
 
-    const { data: libraryData, error: libraryError } = await supabase
-      .from("kpi_library")
-      .select("*")
-      .eq("module_name", "change_control")
-      .order("kpi_category", { ascending: true })
-      .order("kpi_name", { ascending: true });
+    let library: KpiLibraryItem[] = [];
 
-    if (libraryError) {
-      alert(libraryError.message);
-      return;
+    const { data: newLibraryData, error: newLibraryError } = await supabase
+      .from("kpi_library_definitions")
+      .select("*")
+      .eq("module_name", moduleName)
+      .eq("active", true)
+      .order("category", { ascending: true })
+      .order("default_display_order", { ascending: true });
+
+    if (!newLibraryError && newLibraryData && newLibraryData.length > 0) {
+      library = (newLibraryData as KpiLibraryItem[]) || [];
+    } else {
+      const { data: legacyLibraryData, error: legacyLibraryError } =
+        await supabase
+          .from("kpi_library")
+          .select("*")
+          .eq("module_name", moduleName)
+          .order("kpi_category", { ascending: true })
+          .order("kpi_name", { ascending: true });
+
+      if (legacyLibraryError && newLibraryError) {
+        alert(legacyLibraryError.message || newLibraryError.message);
+        return;
+      }
+
+      library = (legacyLibraryData as KpiLibraryItem[]) || [];
     }
 
-    const library = (libraryData as KpiLibraryItem[]) || [];
     setKpiLibrary(library);
 
     const { data: companyConfigData, error: companyConfigError } =
@@ -126,7 +151,7 @@ export default function CompanySettingsPage() {
         .from("company_dashboard_kpi_configuration")
         .select("*")
         .eq("company_name", company)
-        .eq("module_name", "change_control");
+        .eq("module_name", moduleName);
 
     if (companyConfigError) {
       alert(companyConfigError.message);
@@ -139,7 +164,7 @@ export default function CompanySettingsPage() {
       const { data: defaultConfigData } = await supabase
         .from("dashboard_kpi_configuration")
         .select("*")
-        .eq("module_name", "change_control");
+        .eq("module_name", moduleName);
 
       configurationRows = defaultConfigData || [];
     }
@@ -151,12 +176,28 @@ export default function CompanySettingsPage() {
         (row: any) => row.kpi_key === kpi.kpi_key,
       );
 
+      const defaultExecutiveDashboard =
+        kpi.default_executive_dashboard ??
+        kpi.enabled_by_default ??
+        false;
+
+      const defaultManagementReview =
+        kpi.default_management_review ??
+        kpi.enabled_by_default ??
+        false;
+
       nextConfig[kpi.kpi_key] = {
         executive_dashboard:
-          matchedConfig?.executive_dashboard ?? Boolean(kpi.enabled_by_default),
+          matchedConfig?.executive_dashboard ??
+          Boolean(defaultExecutiveDashboard),
         management_review:
-          matchedConfig?.management_review ?? Boolean(kpi.enabled_by_default),
-        display_order: Number(matchedConfig?.display_order || index + 1),
+          matchedConfig?.management_review ??
+          Boolean(defaultManagementReview),
+        display_order: Number(
+          matchedConfig?.display_order ||
+            kpi.default_display_order ||
+            index + 1,
+        ),
       };
     });
 
@@ -190,7 +231,7 @@ export default function CompanySettingsPage() {
     const data = await getCompanySettings();
     setSettings(data);
     const companyName = data.company_name || "Default Company";
-    await fetchKpiConfiguration(companyName);
+    await fetchKpiConfiguration(companyName, selectedKpiModule);
     await fetchCustomKpis(companyName);
 
     setLoading(false);
@@ -232,7 +273,11 @@ export default function CompanySettingsPage() {
     const companyName = settings.company_name || "Default Company";
 
     if (kpiLibrary.length === 0) {
-      alert("No KPI library records found for Change Control.");
+      alert(
+        `No KPI library records found for ${formatModuleName(
+          selectedKpiModule,
+        )}.`,
+      );
       return;
     }
 
@@ -240,14 +285,22 @@ export default function CompanySettingsPage() {
 
     const rows = kpiLibrary.map((kpi, index) => ({
       company_name: companyName,
-      module_name: kpi.module_name,
+      module_name: selectedKpiModule,
       kpi_key: kpi.kpi_key,
       executive_dashboard:
         kpiConfig[kpi.kpi_key]?.executive_dashboard ??
-        Boolean(kpi.enabled_by_default),
+        Boolean(
+          kpi.default_executive_dashboard ??
+            kpi.enabled_by_default ??
+            false,
+        ),
       management_review:
         kpiConfig[kpi.kpi_key]?.management_review ??
-        Boolean(kpi.enabled_by_default),
+        Boolean(
+          kpi.default_management_review ??
+            kpi.enabled_by_default ??
+            false,
+        ),
       display_order: Number(kpiConfig[kpi.kpi_key]?.display_order || index + 1),
     }));
 
@@ -263,7 +316,7 @@ export default function CompanySettingsPage() {
     }
 
     alert("Dashboard KPI configuration saved.");
-    await fetchKpiConfiguration(companyName);
+    await fetchKpiConfiguration(companyName, selectedKpiModule);
   };
 
   const createCustomKpi = async () => {
@@ -307,7 +360,7 @@ export default function CompanySettingsPage() {
       kpi_name: customKpiName.trim(),
       kpi_description: customKpiDescription.trim() || null,
       kpi_category: customKpiCategory.trim() || "Custom",
-      data_source: customModule,
+      data_source: null,
       calculation_type: customCalculationType,
       filter_field: customFilterField.trim(),
       filter_operator: customFilterOperator,
@@ -392,6 +445,12 @@ export default function CompanySettingsPage() {
     }
 
     await fetchCustomKpis(settings.company_name || "Default Company");
+  };
+
+  const formatModuleName = (moduleName: string) => {
+    return moduleName
+      .replace(/_/g, " ")
+      .replace(/\b\w/g, (char) => char.toUpperCase());
   };
 
   const formatStatus = (status?: string | null) => {
@@ -617,10 +676,10 @@ export default function CompanySettingsPage() {
           <div>
             <h2 style={{ margin: 0 }}>Dashboard & KPI Configuration</h2>
             <p style={subtleText}>
-              Select which Change Control KPIs appear on the Executive Dashboard
-              and Management Review package. Customers can use defaults or
-              choose only the metrics that are meaningful for their quality
-              system.
+              Select which KPIs appear on the Executive Dashboard and
+              Management Review package for the selected module. Customers can
+              use defaults or choose only the metrics that are meaningful for
+              each quality process.
             </p>
           </div>
 
@@ -635,10 +694,38 @@ export default function CompanySettingsPage() {
           </button>
         </div>
 
+        <div style={{ marginBottom: "16px" }}>
+          <Field label="KPI Module">
+            <select
+              value={selectedKpiModule}
+              onChange={async (e) => {
+                const moduleName = e.target.value;
+                setSelectedKpiModule(moduleName);
+                await fetchKpiConfiguration(
+                  settings.company_name || "Default Company",
+                  moduleName,
+                );
+              }}
+              disabled={savingKpis}
+              style={inputStyle(savingKpis)}
+            >
+              <option value="change_control">Change Control</option>
+              <option value="complaint">Complaint</option>
+              <option value="ncmr">NCMR</option>
+              <option value="capa">CAPA</option>
+              <option value="audit">Audit</option>
+              <option value="scar">SCAR</option>
+              <option value="document_control">Document Control</option>
+              <option value="training">Training</option>
+              <option value="oos_oot">OOS/OOT</option>
+            </select>
+          </Field>
+        </div>
+
         {kpiLibrary.length === 0 ? (
           <div style={infoBoxStyle}>
-            No Change Control KPI library records were found. Confirm the KPI
-            library seed script was run successfully.
+            No KPI library records were found for the selected module. Confirm
+            the KPI library seed script was run successfully.
           </div>
         ) : (
           <div style={{ overflowX: "auto" }}>
@@ -656,14 +743,24 @@ export default function CompanySettingsPage() {
               <tbody>
                 {kpiLibrary.map((kpi, index) => {
                   const currentConfig = kpiConfig[kpi.kpi_key] || {
-                    executive_dashboard: Boolean(kpi.enabled_by_default),
-                    management_review: Boolean(kpi.enabled_by_default),
+                    executive_dashboard: Boolean(
+                      kpi.default_executive_dashboard ??
+                        kpi.enabled_by_default ??
+                        false,
+                    ),
+                    management_review: Boolean(
+                      kpi.default_management_review ??
+                        kpi.enabled_by_default ??
+                        false,
+                    ),
                     display_order: index + 1,
                   };
 
                   return (
                     <tr key={kpi.kpi_key}>
-                      <td style={tdStyle}>{kpi.kpi_category || "General"}</td>
+                      <td style={tdStyle}>
+                        {kpi.category || kpi.kpi_category || "General"}
+                      </td>
                       <td style={tdStyle}>
                         <strong>{kpi.kpi_name}</strong>
                         <div style={smallTextStyle}>{kpi.kpi_key}</div>
