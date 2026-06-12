@@ -1,9 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
-import { useEffect, useState } from "react";
-import { supabase } from "../../../lib/supabaseClient";
+import { useEffect, useMemo, useState } from "react";
+import { supabase } from "../../lib/supabaseClient";
 
 type Complaint = {
   id: string;
@@ -14,41 +13,25 @@ type Complaint = {
   source: string | null;
   customer_name: string | null;
   customer_organization: string | null;
-  customer_email: string | null;
-  customer_phone: string | null;
-  country: string | null;
-  product_family: string | null;
   product_name: string | null;
   part_number: string | null;
   lot_number: string | null;
   serial_number: string | null;
-  returned_product_available: boolean | null;
   severity: string | null;
   potential_patient_impact: boolean | null;
   potential_safety_issue: boolean | null;
   status: string | null;
-  investigator: string | null;
-  investigation_summary: string | null;
-  complaint_confirmed: boolean | null;
-  root_cause_category: string | null;
-  root_cause_summary: string | null;
   mdr_assessment_required: boolean | null;
   regulatory_assessment: string | null;
-  regulatory_assessment_rationale: string | null;
-  complaint_valid: boolean | null;
   ncmr_required: boolean | null;
   capa_required: boolean | null;
   scar_required: boolean | null;
   change_control_required: boolean | null;
-  customer_response_required: boolean | null;
-  customer_response_sent: boolean | null;
-  customer_response_date: string | null;
-  closure_summary: string | null;
-  closed_by: string | null;
   closed_at: string | null;
+  created_at: string | null;
 };
 
-const workflowSteps = [
+const statusOptions = [
   "intake",
   "investigation",
   "risk_assessment",
@@ -58,63 +41,74 @@ const workflowSteps = [
   "closed",
 ];
 
-export default function ComplaintDetailPage() {
-  const params = useParams();
-  const complaintId = String(params?.id || "");
-  const [complaint, setComplaint] = useState<Complaint | null>(null);
-  const [activityLog, setActivityLog] = useState<any[]>([]);
+const severityOptions = ["minor", "major", "critical"];
+
+const sourceOptions = [
+  "phone",
+  "email",
+  "distributor",
+  "sales_rep",
+  "website",
+  "audit",
+  "other",
+];
+
+export default function ComplaintsPage() {
+  const [complaints, setComplaints] = useState<Complaint[]>([]);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [creating, setCreating] = useState(false);
 
-  const [intakeTitle, setIntakeTitle] = useState("");
-  const [intakeDescription, setIntakeDescription] = useState("");
-  const [intakeDateReceived, setIntakeDateReceived] = useState("");
-  const [intakeSource, setIntakeSource] = useState("");
-  const [intakeCustomerName, setIntakeCustomerName] = useState("");
-  const [intakeCustomerOrganization, setIntakeCustomerOrganization] = useState("");
-  const [intakeCustomerEmail, setIntakeCustomerEmail] = useState("");
-  const [intakeCustomerPhone, setIntakeCustomerPhone] = useState("");
-  const [intakeCountry, setIntakeCountry] = useState("");
-  const [intakeProductFamily, setIntakeProductFamily] = useState("");
-  const [intakeProductName, setIntakeProductName] = useState("");
-  const [intakePartNumber, setIntakePartNumber] = useState("");
-  const [intakeLotNumber, setIntakeLotNumber] = useState("");
-  const [intakeSerialNumber, setIntakeSerialNumber] = useState("");
-  const [intakeReturnedProductAvailable, setIntakeReturnedProductAvailable] = useState(false);
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [severityFilter, setSeverityFilter] = useState("all");
 
-  const [investigator, setInvestigator] = useState("");
-  const [investigationSummary, setInvestigationSummary] = useState("");
-  const [complaintConfirmed, setComplaintConfirmed] = useState("");
-  const [rootCauseCategory, setRootCauseCategory] = useState("");
-  const [rootCauseSummary, setRootCauseSummary] = useState("");
+  const [complaintTitle, setComplaintTitle] = useState("");
+  const [complaintDescription, setComplaintDescription] = useState("");
+  const [source, setSource] = useState("email");
+  const [dateReceived, setDateReceived] = useState(
+    new Date().toISOString().split("T")[0],
+  );
+
+  const [customerName, setCustomerName] = useState("");
+  const [customerOrganization, setCustomerOrganization] = useState("");
+  const [customerEmail, setCustomerEmail] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
+  const [country, setCountry] = useState("");
+
+  const [productFamily, setProductFamily] = useState("");
+  const [productName, setProductName] = useState("");
+  const [partNumber, setPartNumber] = useState("");
+  const [lotNumber, setLotNumber] = useState("");
+  const [serialNumber, setSerialNumber] = useState("");
+  const [returnedProductAvailable, setReturnedProductAvailable] =
+    useState(false);
 
   const [severity, setSeverity] = useState("minor");
   const [potentialPatientImpact, setPotentialPatientImpact] = useState(false);
   const [potentialSafetyIssue, setPotentialSafetyIssue] = useState(false);
 
-  const [mdrAssessmentRequired, setMdrAssessmentRequired] = useState(false);
-  const [regulatoryAssessment, setRegulatoryAssessment] = useState("pending");
-  const [regulatoryRationale, setRegulatoryRationale] = useState("");
+  const generateComplaintNumber = async () => {
+    const year = new Date().getFullYear();
 
-  const [complaintValid, setComplaintValid] = useState("");
-  const [ncmrRequired, setNcmrRequired] = useState(false);
-  const [capaRequired, setCapaRequired] = useState(false);
-  const [scarRequired, setScarRequired] = useState(false);
-  const [changeControlRequired, setChangeControlRequired] = useState(false);
+    const { count, error } = await supabase
+      .from("complaints")
+      .select("id", { count: "exact", head: true });
 
-  const [customerResponseRequired, setCustomerResponseRequired] = useState(false);
-  const [customerResponseSent, setCustomerResponseSent] = useState(false);
-  const [customerResponseDate, setCustomerResponseDate] = useState("");
-  const [closureSummary, setClosureSummary] = useState("");
+    if (error) {
+      return `COMP-${year}-${Math.floor(Math.random() * 999999)
+        .toString()
+        .padStart(6, "0")}`;
+    }
 
-  const fetchComplaint = async () => {
+    return `COMP-${year}-${String((count || 0) + 1).padStart(6, "0")}`;
+  };
+
+  const fetchComplaints = async () => {
     setLoading(true);
 
     const { data, error } = await supabase
       .from("complaints")
       .select("*")
-      .eq("id", complaintId)
-      .maybeSingle();
+      .order("created_at", { ascending: false });
 
     setLoading(false);
 
@@ -123,457 +117,340 @@ export default function ComplaintDetailPage() {
       return;
     }
 
-    if (!data) {
-      setComplaint(null);
-      return;
-    }
-
-    const record = data as Complaint;
-    setComplaint(record);
-
-    setIntakeTitle(record.complaint_title || "");
-    setIntakeDescription(record.complaint_description || "");
-    setIntakeDateReceived(record.date_received || "");
-    setIntakeSource(record.source || "");
-    setIntakeCustomerName(record.customer_name || "");
-    setIntakeCustomerOrganization(record.customer_organization || "");
-    setIntakeCustomerEmail(record.customer_email || "");
-    setIntakeCustomerPhone(record.customer_phone || "");
-    setIntakeCountry(record.country || "");
-    setIntakeProductFamily(record.product_family || "");
-    setIntakeProductName(record.product_name || "");
-    setIntakePartNumber(record.part_number || "");
-    setIntakeLotNumber(record.lot_number || "");
-    setIntakeSerialNumber(record.serial_number || "");
-    setIntakeReturnedProductAvailable(Boolean(record.returned_product_available));
-
-    setInvestigator(record.investigator || "");
-    setInvestigationSummary(record.investigation_summary || "");
-    setComplaintConfirmed(record.complaint_confirmed === true ? "yes" : record.complaint_confirmed === false ? "no" : "");
-    setRootCauseCategory(record.root_cause_category || "");
-    setRootCauseSummary(record.root_cause_summary || "");
-
-    setSeverity(record.severity || "minor");
-    setPotentialPatientImpact(Boolean(record.potential_patient_impact));
-    setPotentialSafetyIssue(Boolean(record.potential_safety_issue));
-
-    setMdrAssessmentRequired(Boolean(record.mdr_assessment_required));
-    setRegulatoryAssessment(record.regulatory_assessment || "pending");
-    setRegulatoryRationale(record.regulatory_assessment_rationale || "");
-
-    setComplaintValid(record.complaint_valid === true ? "yes" : record.complaint_valid === false ? "no" : "");
-    setNcmrRequired(Boolean(record.ncmr_required));
-    setCapaRequired(Boolean(record.capa_required));
-    setScarRequired(Boolean(record.scar_required));
-    setChangeControlRequired(Boolean(record.change_control_required));
-
-    setCustomerResponseRequired(Boolean(record.customer_response_required));
-    setCustomerResponseSent(Boolean(record.customer_response_sent));
-    setCustomerResponseDate(record.customer_response_date || "");
-    setClosureSummary(record.closure_summary || "");
-
-    fetchActivityLog(record.id);
-  };
-
-  const fetchActivityLog = async (complaintId: string) => {
-    const { data, error } = await supabase
-      .from("complaint_activity_log")
-      .select("*")
-      .eq("complaint_id", complaintId)
-      .order("created_at", { ascending: false });
-
-    if (error) {
-      console.warn(error.message);
-      return;
-    }
-
-    setActivityLog(data || []);
+    setComplaints((data as Complaint[]) || []);
   };
 
   useEffect(() => {
-    if (complaintId) {
-      fetchComplaint();
-    }
-  }, [complaintId]);
+    fetchComplaints();
+  }, []);
 
-  const addActivityLog = async (action: string, details: string) => {
+  const filteredComplaints = useMemo(() => {
+    return complaints.filter((complaint) => {
+      const statusMatch =
+        statusFilter === "all" || complaint.status === statusFilter;
+
+      const severityMatch =
+        severityFilter === "all" || complaint.severity === severityFilter;
+
+      return statusMatch && severityMatch;
+    });
+  }, [complaints, statusFilter, severityFilter]);
+
+  const createComplaint = async () => {
+    if (!complaintTitle.trim()) {
+      alert("Complaint title is required.");
+      return;
+    }
+
+    if (!complaintDescription.trim()) {
+      alert("Complaint description is required.");
+      return;
+    }
+
+    setCreating(true);
+
     const { data: userData } = await supabase.auth.getUser();
     const userEmail = userData?.user?.email || "unknown";
+    const complaintNumber = await generateComplaintNumber();
 
-    await supabase.from("complaint_activity_log").insert({
-      complaint_id: complaintId,
-      action,
-      details,
-      user_email: userEmail,
-    });
-  };
-
-  const updateComplaint = async (payload: any, action: string, details: string) => {
-    setSaving(true);
-
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("complaints")
-      .update({ ...payload, updated_at: new Date().toISOString() })
-      .eq("id", complaintId);
+      .insert({
+        complaint_number: complaintNumber,
+        complaint_title: complaintTitle.trim(),
+        complaint_description: complaintDescription.trim(),
+        date_received: dateReceived || new Date().toISOString().split("T")[0],
+        received_by: userEmail,
+        source,
 
-    setSaving(false);
+        customer_name: customerName.trim() || null,
+        customer_organization: customerOrganization.trim() || null,
+        customer_email: customerEmail.trim() || null,
+        customer_phone: customerPhone.trim() || null,
+        country: country.trim() || null,
+
+        product_family: productFamily.trim() || null,
+        product_name: productName.trim() || null,
+        part_number: partNumber.trim() || null,
+        lot_number: lotNumber.trim() || null,
+        serial_number: serialNumber.trim() || null,
+        returned_product_available: returnedProductAvailable,
+
+        severity,
+        potential_patient_impact: potentialPatientImpact,
+        potential_safety_issue: potentialSafetyIssue,
+        status: "intake",
+        regulatory_assessment: "pending",
+        created_by: userEmail,
+      })
+      .select()
+      .single();
+
+    setCreating(false);
 
     if (error) {
       alert(error.message);
       return;
     }
 
-    await addActivityLog(action, details);
-    await fetchComplaint();
-  };
-
-  const saveIntake = async () => {
-    if (!intakeTitle.trim()) {
-      alert("Complaint title is required.");
-      return;
+    if (data?.id) {
+      await supabase.from("complaint_activity_log").insert({
+        complaint_id: data.id,
+        action: "complaint_created",
+        details: `Complaint ${complaintNumber} created.`,
+        user_email: userEmail,
+      });
     }
 
-    if (!intakeDescription.trim()) {
-      alert("Complaint description is required.");
-      return;
-    }
+    alert("Complaint created.");
 
-    await updateComplaint(
-      {
-        complaint_title: intakeTitle.trim(),
-        complaint_description: intakeDescription.trim(),
-        date_received: intakeDateReceived || null,
-        source: intakeSource || null,
-        customer_name: intakeCustomerName.trim() || null,
-        customer_organization: intakeCustomerOrganization.trim() || null,
-        customer_email: intakeCustomerEmail.trim() || null,
-        customer_phone: intakeCustomerPhone.trim() || null,
-        country: intakeCountry.trim() || null,
-        product_family: intakeProductFamily.trim() || null,
-        product_name: intakeProductName.trim() || null,
-        part_number: intakePartNumber.trim() || null,
-        lot_number: intakeLotNumber.trim() || null,
-        serial_number: intakeSerialNumber.trim() || null,
-        returned_product_available: intakeReturnedProductAvailable,
-      },
-      "intake_updated",
-      "Complaint intake information updated.",
-    );
+    setComplaintTitle("");
+    setComplaintDescription("");
+    setSource("email");
+    setDateReceived(new Date().toISOString().split("T")[0]);
+    setCustomerName("");
+    setCustomerOrganization("");
+    setCustomerEmail("");
+    setCustomerPhone("");
+    setCountry("");
+    setProductFamily("");
+    setProductName("");
+    setPartNumber("");
+    setLotNumber("");
+    setSerialNumber("");
+    setReturnedProductAvailable(false);
+    setSeverity("minor");
+    setPotentialPatientImpact(false);
+    setPotentialSafetyIssue(false);
+
+    fetchComplaints();
   };
 
-  const saveInvestigation = async () => {
-    await updateComplaint(
-      {
-        status: "investigation",
-        investigator: investigator || null,
-        investigation_summary: investigationSummary || null,
-        complaint_confirmed: complaintConfirmed === "yes" ? true : complaintConfirmed === "no" ? false : null,
-        root_cause_category: rootCauseCategory || null,
-        root_cause_summary: rootCauseSummary || null,
-      },
-      "investigation_saved",
-      "Complaint investigation information saved.",
-    );
-  };
-
-  const saveRiskAssessment = async () => {
-    await updateComplaint(
-      {
-        status: "risk_assessment",
-        severity,
-        potential_patient_impact: potentialPatientImpact,
-        potential_safety_issue: potentialSafetyIssue,
-      },
-      "risk_assessment_saved",
-      "Complaint risk assessment saved.",
-    );
-  };
-
-  const saveReportability = async () => {
-    await updateComplaint(
-      {
-        status: "reportability_assessment",
-        mdr_assessment_required: mdrAssessmentRequired,
-        regulatory_assessment: regulatoryAssessment,
-        regulatory_assessment_rationale: regulatoryRationale || null,
-      },
-      "reportability_assessment_saved",
-      "Complaint reportability assessment saved.",
-    );
-  };
-
-  const saveDisposition = async () => {
-    await updateComplaint(
-      {
-        status: "disposition",
-        complaint_valid: complaintValid === "yes" ? true : complaintValid === "no" ? false : null,
-        ncmr_required: ncmrRequired,
-        capa_required: capaRequired,
-        scar_required: scarRequired,
-        change_control_required: changeControlRequired,
-      },
-      "disposition_saved",
-      "Complaint disposition and linked action requirements saved.",
-    );
-  };
-
-  const moveToClosure = async () => {
-    await updateComplaint(
-      { status: "closure" },
-      "closure_review_started",
-      "Complaint moved to closure review.",
-    );
-  };
-
-  const closeComplaint = async () => {
-    if (!closureSummary.trim()) {
-      alert("Closure summary is required.");
-      return;
-    }
-
-    const { data: userData } = await supabase.auth.getUser();
-    const userEmail = userData?.user?.email || "unknown";
-
-    await updateComplaint(
-      {
-        status: "closed",
-        customer_response_required: customerResponseRequired,
-        customer_response_sent: customerResponseSent,
-        customer_response_date: customerResponseDate || null,
-        closure_summary: closureSummary,
-        closed_by: userEmail,
-        closed_at: new Date().toISOString(),
-      },
-      "complaint_closed",
-      "Complaint closed with closure summary.",
-    );
-  };
-
-  if (loading) return <main style={pageStyle}>Loading complaint...</main>;
-
-  if (!complaint) {
-    return (
-      <main style={pageStyle}>
-        <h1>Complaint not found</h1>
-        <Link href="/complaints">Back to Complaints</Link>
-      </main>
-    );
+  if (loading) {
+    return <main style={pageStyle}>Loading complaints...</main>;
   }
-
-  const currentStepIndex = workflowSteps.indexOf(complaint.status || "intake");
 
   return (
     <main style={pageStyle}>
       <header style={headerStyle}>
         <div>
-          <div style={eyebrowStyle}>COMPLAINT WORKFLOW EXECUTION</div>
-          <h1 style={{ margin: "6px 0" }}>{complaint.complaint_number} — {complaint.complaint_title}</h1>
-          <p style={subtleText}>{complaint.complaint_description}</p>
+          <div style={eyebrowStyle}>COMPLAINT MANAGEMENT</div>
+          <h1 style={{ margin: "6px 0" }}>Complaints</h1>
+          <p style={subtleText}>
+            Capture, investigate, assess reportability, link quality records,
+            and close customer complaints through a controlled workflow.
+          </p>
         </div>
 
         <div style={buttonRowStyle}>
-          <Link href="/complaints" style={secondaryLinkStyle}>Back to Complaints</Link>
-          <Link href="/dashboard" style={darkLinkStyle}>Dashboard</Link>
+          <Link href="/complaints/dashboard" style={secondaryLinkStyle}>
+            Complaint Dashboard
+          </Link>
+
+          <Link href="/dashboard" style={darkLinkStyle}>
+            Dashboard
+          </Link>
         </div>
       </header>
 
-      <section style={workflowCardStyle}>
-        <h2 style={{ marginTop: 0 }}>Complaint Workflow Progress</h2>
-        <p style={subtleText}>Real-time completion status for complaint intake, investigation, assessment, disposition, and closure.</p>
+      <section style={cardStyle}>
+        <div style={sectionHeaderStyle}>
+          <div>
+            <h2 style={{ margin: 0 }}>Create Complaint</h2>
+            <p style={subtleText}>
+              Start complaint intake. Investigation, reportability assessment,
+              linked records, and closure are completed on the complaint detail
+              page.
+            </p>
+          </div>
 
-        <div style={workflowGridStyle}>
-          {workflowSteps.map((step, index) => {
-            const isComplete = index < currentStepIndex || complaint.status === "closed";
-            const isCurrent = index === currentStepIndex && complaint.status !== "closed";
-
-            return (
-              <div key={step} style={{ ...workflowStepStyle, borderLeft: `6px solid ${isComplete ? "#15803d" : isCurrent ? "#2563eb" : "#6b7280"}` }}>
-                <div style={{ fontSize: "22px" }}>{isComplete ? "✓" : isCurrent ? "●" : "○"}</div>
-                <div>
-                  <strong>{formatLabel(step)}</strong>
-                  <div style={{ color: isComplete ? "#15803d" : isCurrent ? "#2563eb" : "#6b7280", fontWeight: 800 }}>
-                    {isComplete ? "Complete" : isCurrent ? "In Progress" : "Not Started"}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+          <button
+            onClick={createComplaint}
+            disabled={creating}
+            style={creating ? disabledButtonStyle : primaryButtonStyle}
+          >
+            {creating ? "Creating..." : "Create Complaint"}
+          </button>
         </div>
-      </section>
 
-      <section style={summaryGridStyle}>
-        <SummaryCard label="Status" value={formatLabel(complaint.status || "intake")} />
-        <SummaryCard label="Severity" value={formatLabel(complaint.severity || "minor")} />
-        <SummaryCard label="Patient Impact" value={complaint.potential_patient_impact ? "Yes" : "No"} />
-        <SummaryCard label="Safety Issue" value={complaint.potential_safety_issue ? "Yes" : "No"} />
-        <SummaryCard label="Regulatory Assessment" value={formatLabel(complaint.regulatory_assessment || "pending")} />
+        <div style={gridStyle}>
+          <Field label="Complaint Title">
+            <input
+              value={complaintTitle}
+              onChange={(e) => setComplaintTitle(e.target.value)}
+              style={inputStyle}
+            />
+          </Field>
+
+          <Field label="Date Received">
+            <input
+              type="date"
+              value={dateReceived}
+              onChange={(e) => setDateReceived(e.target.value)}
+              style={inputStyle}
+            />
+          </Field>
+
+          <Field label="Source">
+            <select
+              value={source}
+              onChange={(e) => setSource(e.target.value)}
+              style={inputStyle}
+            >
+              {sourceOptions.map((item) => (
+                <option key={item} value={item}>
+                  {formatLabel(item)}
+                </option>
+              ))}
+            </select>
+          </Field>
+
+          <Field label="Severity">
+            <select
+              value={severity}
+              onChange={(e) => setSeverity(e.target.value)}
+              style={inputStyle}
+            >
+              {severityOptions.map((item) => (
+                <option key={item} value={item}>
+                  {formatLabel(item)}
+                </option>
+              ))}
+            </select>
+          </Field>
+        </div>
+
+        <Field label="Complaint Description">
+          <textarea
+            value={complaintDescription}
+            onChange={(e) => setComplaintDescription(e.target.value)}
+            rows={4}
+            style={textareaStyle}
+          />
+        </Field>
+
+        <h3>Customer Information</h3>
+        <div style={gridStyle}>
+          <Field label="Customer Name">
+            <input value={customerName} onChange={(e) => setCustomerName(e.target.value)} style={inputStyle} />
+          </Field>
+          <Field label="Customer Organization">
+            <input value={customerOrganization} onChange={(e) => setCustomerOrganization(e.target.value)} style={inputStyle} />
+          </Field>
+          <Field label="Customer Email">
+            <input value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} style={inputStyle} />
+          </Field>
+          <Field label="Customer Phone">
+            <input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} style={inputStyle} />
+          </Field>
+          <Field label="Country">
+            <input value={country} onChange={(e) => setCountry(e.target.value)} style={inputStyle} />
+          </Field>
+        </div>
+
+        <h3>Product Information</h3>
+        <div style={gridStyle}>
+          <Field label="Product Family">
+            <input value={productFamily} onChange={(e) => setProductFamily(e.target.value)} style={inputStyle} />
+          </Field>
+          <Field label="Product Name">
+            <input value={productName} onChange={(e) => setProductName(e.target.value)} style={inputStyle} />
+          </Field>
+          <Field label="Part Number">
+            <input value={partNumber} onChange={(e) => setPartNumber(e.target.value)} style={inputStyle} />
+          </Field>
+          <Field label="Lot Number">
+            <input value={lotNumber} onChange={(e) => setLotNumber(e.target.value)} style={inputStyle} />
+          </Field>
+          <Field label="Serial Number">
+            <input value={serialNumber} onChange={(e) => setSerialNumber(e.target.value)} style={inputStyle} />
+          </Field>
+        </div>
+
+        <div style={toggleRowStyle}>
+          <label style={toggleLabelStyle}>
+            <input type="checkbox" checked={returnedProductAvailable} onChange={(e) => setReturnedProductAvailable(e.target.checked)} />
+            Returned Product Available
+          </label>
+          <label style={toggleLabelStyle}>
+            <input type="checkbox" checked={potentialPatientImpact} onChange={(e) => setPotentialPatientImpact(e.target.checked)} />
+            Potential Patient Impact
+          </label>
+          <label style={toggleLabelStyle}>
+            <input type="checkbox" checked={potentialSafetyIssue} onChange={(e) => setPotentialSafetyIssue(e.target.checked)} />
+            Potential Safety Issue
+          </label>
+        </div>
       </section>
 
       <section style={cardStyle}>
         <div style={sectionHeaderStyle}>
           <div>
-            <h2 style={{ margin: 0 }}>1. Intake Information</h2>
-            <p style={subtleText}>Edit complaint intake details before or during the workflow.</p>
+            <h2 style={{ margin: 0 }}>Complaint Registry</h2>
+            <p style={subtleText}>
+              Open complaints to continue investigation, assessment,
+              disposition, linked records, and closure.
+            </p>
           </div>
 
-          <button onClick={saveIntake} disabled={saving || complaint.status === "closed"} style={saving || complaint.status === "closed" ? disabledButtonStyle : primaryButtonStyle}>
-            Save Intake
-          </button>
-        </div>
-
-        <div style={gridStyle}>
-          <Field label="Complaint Title"><input value={intakeTitle} onChange={(e) => setIntakeTitle(e.target.value)} disabled={complaint.status === "closed"} style={inputStyle} /></Field>
-          <Field label="Date Received"><input type="date" value={intakeDateReceived} onChange={(e) => setIntakeDateReceived(e.target.value)} disabled={complaint.status === "closed"} style={inputStyle} /></Field>
-          <Field label="Source">
-            <select value={intakeSource} onChange={(e) => setIntakeSource(e.target.value)} disabled={complaint.status === "closed"} style={inputStyle}>
-              <option value="">Select</option>
-              <option value="phone">Phone</option>
-              <option value="email">Email</option>
-              <option value="distributor">Distributor</option>
-              <option value="sales_rep">Sales Rep</option>
-              <option value="website">Website</option>
-              <option value="audit">Audit</option>
-              <option value="other">Other</option>
-            </select>
-          </Field>
-        </div>
-
-        <Field label="Complaint Description"><textarea value={intakeDescription} onChange={(e) => setIntakeDescription(e.target.value)} disabled={complaint.status === "closed"} rows={4} style={textareaStyle} /></Field>
-
-        <h3>Customer Information</h3>
-        <div style={gridStyle}>
-          <Field label="Customer Name"><input value={intakeCustomerName} onChange={(e) => setIntakeCustomerName(e.target.value)} disabled={complaint.status === "closed"} style={inputStyle} /></Field>
-          <Field label="Customer Organization"><input value={intakeCustomerOrganization} onChange={(e) => setIntakeCustomerOrganization(e.target.value)} disabled={complaint.status === "closed"} style={inputStyle} /></Field>
-          <Field label="Customer Email"><input value={intakeCustomerEmail} onChange={(e) => setIntakeCustomerEmail(e.target.value)} disabled={complaint.status === "closed"} style={inputStyle} /></Field>
-          <Field label="Customer Phone"><input value={intakeCustomerPhone} onChange={(e) => setIntakeCustomerPhone(e.target.value)} disabled={complaint.status === "closed"} style={inputStyle} /></Field>
-          <Field label="Country"><input value={intakeCountry} onChange={(e) => setIntakeCountry(e.target.value)} disabled={complaint.status === "closed"} style={inputStyle} /></Field>
-        </div>
-
-        <h3>Product Information</h3>
-        <div style={gridStyle}>
-          <Field label="Product Family"><input value={intakeProductFamily} onChange={(e) => setIntakeProductFamily(e.target.value)} disabled={complaint.status === "closed"} style={inputStyle} /></Field>
-          <Field label="Product Name"><input value={intakeProductName} onChange={(e) => setIntakeProductName(e.target.value)} disabled={complaint.status === "closed"} style={inputStyle} /></Field>
-          <Field label="Part Number"><input value={intakePartNumber} onChange={(e) => setIntakePartNumber(e.target.value)} disabled={complaint.status === "closed"} style={inputStyle} /></Field>
-          <Field label="Lot Number"><input value={intakeLotNumber} onChange={(e) => setIntakeLotNumber(e.target.value)} disabled={complaint.status === "closed"} style={inputStyle} /></Field>
-          <Field label="Serial Number"><input value={intakeSerialNumber} onChange={(e) => setIntakeSerialNumber(e.target.value)} disabled={complaint.status === "closed"} style={inputStyle} /></Field>
-        </div>
-
-        <div style={toggleRowStyle}>
-          <label style={toggleLabelStyle}><input type="checkbox" checked={intakeReturnedProductAvailable} disabled={complaint.status === "closed"} onChange={(e) => setIntakeReturnedProductAvailable(e.target.checked)} />Returned Product Available</label>
-        </div>
-      </section>
-
-      <section style={cardStyle}>
-        <div style={sectionHeaderStyle}>
-          <h2 style={{ margin: 0 }}>2. Investigation</h2>
-          <button onClick={saveInvestigation} disabled={saving} style={saving ? disabledButtonStyle : primaryButtonStyle}>Save Investigation</button>
-        </div>
-
-        <div style={gridStyle}>
-          <Field label="Investigator"><input value={investigator} onChange={(e) => setInvestigator(e.target.value)} style={inputStyle} /></Field>
-          <Field label="Complaint Confirmed">
-            <select value={complaintConfirmed} onChange={(e) => setComplaintConfirmed(e.target.value)} style={inputStyle}>
-              <option value="">Select</option><option value="yes">Yes</option><option value="no">No</option>
-            </select>
-          </Field>
-          <Field label="Root Cause Category">
-            <select value={rootCauseCategory} onChange={(e) => setRootCauseCategory(e.target.value)} style={inputStyle}>
-              <option value="">Select</option><option value="material">Material</option><option value="method">Method</option><option value="equipment">Equipment</option><option value="measurement">Measurement</option><option value="environment">Environment</option><option value="human">Human</option><option value="unknown">Unknown</option>
-            </select>
-          </Field>
-        </div>
-
-        <Field label="Investigation Summary"><textarea value={investigationSummary} onChange={(e) => setInvestigationSummary(e.target.value)} rows={4} style={textareaStyle} /></Field>
-        <Field label="Root Cause Summary"><textarea value={rootCauseSummary} onChange={(e) => setRootCauseSummary(e.target.value)} rows={3} style={textareaStyle} /></Field>
-      </section>
-
-      <section style={cardStyle}>
-        <div style={sectionHeaderStyle}>
-          <h2 style={{ margin: 0 }}>3. Risk Assessment</h2>
-          <button onClick={saveRiskAssessment} disabled={saving} style={saving ? disabledButtonStyle : primaryButtonStyle}>Save Risk Assessment</button>
-        </div>
-
-        <Field label="Severity">
-          <select value={severity} onChange={(e) => setSeverity(e.target.value)} style={inputStyle}>
-            <option value="minor">Minor</option><option value="major">Major</option><option value="critical">Critical</option>
-          </select>
-        </Field>
-
-        <div style={toggleRowStyle}>
-          <label style={toggleLabelStyle}><input type="checkbox" checked={potentialPatientImpact} onChange={(e) => setPotentialPatientImpact(e.target.checked)} />Potential Patient Impact</label>
-          <label style={toggleLabelStyle}><input type="checkbox" checked={potentialSafetyIssue} onChange={(e) => setPotentialSafetyIssue(e.target.checked)} />Potential Safety Issue</label>
-        </div>
-      </section>
-
-      <section style={cardStyle}>
-        <div style={sectionHeaderStyle}>
-          <h2 style={{ margin: 0 }}>4. Reportability Assessment</h2>
-          <button onClick={saveReportability} disabled={saving} style={saving ? disabledButtonStyle : primaryButtonStyle}>Save Reportability</button>
-        </div>
-
-        <Field label="Regulatory Assessment">
-          <select value={regulatoryAssessment} onChange={(e) => setRegulatoryAssessment(e.target.value)} style={inputStyle}>
-            <option value="pending">Pending</option><option value="reportable">Reportable</option><option value="not_reportable">Not Reportable</option>
-          </select>
-        </Field>
-
-        <label style={toggleLabelStyle}><input type="checkbox" checked={mdrAssessmentRequired} onChange={(e) => setMdrAssessmentRequired(e.target.checked)} />MDR / Regulatory Assessment Required</label>
-        <Field label="Assessment Rationale"><textarea value={regulatoryRationale} onChange={(e) => setRegulatoryRationale(e.target.value)} rows={4} style={textareaStyle} /></Field>
-      </section>
-
-      <section style={cardStyle}>
-        <div style={sectionHeaderStyle}>
-          <h2 style={{ margin: 0 }}>5. Disposition & Linked Actions</h2>
-          <button onClick={saveDisposition} disabled={saving} style={saving ? disabledButtonStyle : primaryButtonStyle}>Save Disposition</button>
-        </div>
-
-        <Field label="Complaint Valid">
-          <select value={complaintValid} onChange={(e) => setComplaintValid(e.target.value)} style={inputStyle}>
-            <option value="">Select</option><option value="yes">Yes</option><option value="no">No</option>
-          </select>
-        </Field>
-
-        <div style={toggleRowStyle}>
-          <label style={toggleLabelStyle}><input type="checkbox" checked={ncmrRequired} onChange={(e) => setNcmrRequired(e.target.checked)} />NCMR Required</label>
-          <label style={toggleLabelStyle}><input type="checkbox" checked={capaRequired} onChange={(e) => setCapaRequired(e.target.checked)} />CAPA Required</label>
-          <label style={toggleLabelStyle}><input type="checkbox" checked={scarRequired} onChange={(e) => setScarRequired(e.target.checked)} />SCAR Required</label>
-          <label style={toggleLabelStyle}><input type="checkbox" checked={changeControlRequired} onChange={(e) => setChangeControlRequired(e.target.checked)} />Change Control Required</label>
-        </div>
-
-        <div style={infoBoxStyle}>Phase 1 captures linked action requirements. Phase 2 will add one-click creation/linking to NCMR, CAPA, SCAR, and Change Control records.</div>
-      </section>
-
-      <section style={cardStyle}>
-        <div style={sectionHeaderStyle}>
-          <h2 style={{ margin: 0 }}>6. Closure</h2>
           <div style={buttonRowStyle}>
-            <button onClick={moveToClosure} disabled={saving || complaint.status === "closed"} style={saving || complaint.status === "closed" ? disabledButtonStyle : secondaryButtonStyle}>Move to Closure</button>
-            <button onClick={closeComplaint} disabled={saving || complaint.status === "closed"} style={saving || complaint.status === "closed" ? disabledButtonStyle : primaryButtonStyle}>{complaint.status === "closed" ? "Complaint Closed" : "Close Complaint"}</button>
+            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={smallSelectStyle}>
+              <option value="all">All Statuses</option>
+              {statusOptions.map((item) => <option key={item} value={item}>{formatLabel(item)}</option>)}
+            </select>
+            <select value={severityFilter} onChange={(e) => setSeverityFilter(e.target.value)} style={smallSelectStyle}>
+              <option value="all">All Severities</option>
+              {severityOptions.map((item) => <option key={item} value={item}>{formatLabel(item)}</option>)}
+            </select>
           </div>
         </div>
 
-        <div style={toggleRowStyle}>
-          <label style={toggleLabelStyle}><input type="checkbox" checked={customerResponseRequired} onChange={(e) => setCustomerResponseRequired(e.target.checked)} />Customer Response Required</label>
-          <label style={toggleLabelStyle}><input type="checkbox" checked={customerResponseSent} onChange={(e) => setCustomerResponseSent(e.target.checked)} />Customer Response Sent</label>
-        </div>
-
-        <Field label="Customer Response Date"><input type="date" value={customerResponseDate} onChange={(e) => setCustomerResponseDate(e.target.value)} style={inputStyle} /></Field>
-        <Field label="Closure Summary"><textarea value={closureSummary} onChange={(e) => setClosureSummary(e.target.value)} rows={4} style={textareaStyle} /></Field>
-
-        {complaint.closed_at ? <div style={infoBoxStyle}>Closed by {complaint.closed_by || "unknown"} on {new Date(complaint.closed_at).toLocaleString()}.</div> : null}
-      </section>
-
-      <section style={cardStyle}>
-        <h2 style={{ marginTop: 0 }}>Activity Log</h2>
-        {activityLog.length === 0 ? <div style={infoBoxStyle}>No activity has been recorded yet.</div> : (
-          <ul>
-            {activityLog.map((item) => (
-              <li key={item.id} style={{ marginBottom: "10px" }}>
-                <strong>{formatLabel(item.action)}</strong> — {item.details}
-                <div style={smallTextStyle}>{item.user_email || "unknown"} | {new Date(item.created_at).toLocaleString()}</div>
-              </li>
-            ))}
-          </ul>
+        {filteredComplaints.length === 0 ? (
+          <div style={infoBoxStyle}>No complaints match the current filters.</div>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table style={tableStyle}>
+              <thead>
+                <tr>
+                  <th style={thStyle}>Complaint</th>
+                  <th style={thStyle}>Customer</th>
+                  <th style={thStyle}>Product</th>
+                  <th style={thStyle}>Severity</th>
+                  <th style={thStyle}>Status</th>
+                  <th style={thStyle}>Reportability</th>
+                  <th style={thStyle}>Linked Actions</th>
+                  <th style={thStyle}>Open</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredComplaints.map((complaint) => (
+                  <tr key={complaint.id}>
+                    <td style={tdStyle}>
+                      <strong>{complaint.complaint_number || "Pending Number"}</strong>
+                      <div>{complaint.complaint_title}</div>
+                      <div style={smallTextStyle}>Received: {complaint.date_received || "N/A"}</div>
+                    </td>
+                    <td style={tdStyle}>{complaint.customer_name || "N/A"}<div style={smallTextStyle}>{complaint.customer_organization || ""}</div></td>
+                    <td style={tdStyle}>{complaint.product_name || "N/A"}<div style={smallTextStyle}>Part: {complaint.part_number || "N/A"} | Lot: {complaint.lot_number || "N/A"}</div></td>
+                    <td style={tdStyle}>
+                      <StatusBadge label={formatLabel(complaint.severity || "minor")} tone={complaint.severity === "critical" ? "red" : complaint.severity === "major" ? "orange" : "green"} />
+                    </td>
+                    <td style={tdStyle}>
+                      <StatusBadge label={formatLabel(complaint.status || "intake")} tone={complaint.status === "closed" ? "green" : complaint.status === "closure" ? "blue" : "orange"} />
+                    </td>
+                    <td style={tdStyle}>{complaint.mdr_assessment_required ? "MDR Required" : "N/A"}<div style={smallTextStyle}>{formatLabel(complaint.regulatory_assessment || "pending")}</div></td>
+                    <td style={tdStyle}>
+                      <div>NCMR: {complaint.ncmr_required ? "Yes" : "No"}</div>
+                      <div>CAPA: {complaint.capa_required ? "Yes" : "No"}</div>
+                      <div>SCAR: {complaint.scar_required ? "Yes" : "No"}</div>
+                      <div>Change: {complaint.change_control_required ? "Yes" : "No"}</div>
+                    </td>
+                    <td style={tdStyle}><Link href={`/complaints/${complaint.id}`}>Open Complaint</Link></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </section>
     </main>
@@ -581,11 +458,17 @@ export default function ComplaintDetailPage() {
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return <div style={{ marginBottom: "14px" }}><label style={labelStyle}>{label}</label><div style={{ marginTop: "6px" }}>{children}</div></div>;
+  return (
+    <div style={{ marginBottom: "14px" }}>
+      <label style={labelStyle}>{label}</label>
+      <div style={{ marginTop: "6px" }}>{children}</div>
+    </div>
+  );
 }
 
-function SummaryCard({ label, value }: { label: string; value: string }) {
-  return <div style={summaryCardStyle}><div style={smallTextStyle}>{label}</div><strong>{value}</strong></div>;
+function StatusBadge({ label, tone }: { label: string; tone: "green" | "blue" | "orange" | "red" }) {
+  const toneMap = { green: { background: "#dcfce7", color: "#166534" }, blue: { background: "#dbeafe", color: "#1e40af" }, orange: { background: "#ffedd5", color: "#9a3412" }, red: { background: "#fee2e2", color: "#991b1b" } };
+  return <span style={{ display: "inline-block", background: toneMap[tone].background, color: toneMap[tone].color, borderRadius: "999px", padding: "4px 10px", fontSize: "12px", fontWeight: 800 }}>{label}</span>;
 }
 
 const formatLabel = (value: string) => value.replaceAll("_", " ").replace(/\b\w/g, (char) => char.toUpperCase());
@@ -595,23 +478,29 @@ const headerStyle: React.CSSProperties = { display: "flex", justifyContent: "spa
 const eyebrowStyle: React.CSSProperties = { fontSize: "12px", letterSpacing: "0.08em", color: "#6b7280", fontWeight: 800 };
 const subtleText: React.CSSProperties = { color: "#6b7280" };
 const cardStyle: React.CSSProperties = { background: "white", border: "1px solid #d1d5db", borderRadius: "16px", padding: "20px", marginBottom: "18px" };
-const workflowCardStyle: React.CSSProperties = { ...cardStyle };
-const workflowGridStyle: React.CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "12px" };
-const workflowStepStyle: React.CSSProperties = { display: "flex", gap: "12px", alignItems: "center", background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: "12px", padding: "14px" };
-const summaryGridStyle: React.CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "12px", marginBottom: "18px" };
-const summaryCardStyle: React.CSSProperties = { background: "white", border: "1px solid #d1d5db", borderRadius: "14px", padding: "14px" };
-const gridStyle: React.CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "16px" };
 const sectionHeaderStyle: React.CSSProperties = { display: "flex", justifyContent: "space-between", gap: "16px", alignItems: "flex-start", flexWrap: "wrap", marginBottom: "16px" };
+const gridStyle: React.CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "16px" };
 const labelStyle: React.CSSProperties = { fontWeight: 700 };
 const inputStyle: React.CSSProperties = { width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid #d1d5db" };
 const textareaStyle: React.CSSProperties = { width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid #d1d5db", fontFamily: "Arial, sans-serif" };
-const toggleRowStyle: React.CSSProperties = { display: "flex", gap: "24px", flexWrap: "wrap", marginTop: "16px", marginBottom: "16px" };
+const toggleRowStyle: React.CSSProperties = { display: "flex", gap: "24px", flexWrap: "wrap", marginTop: "16px" };
 const toggleLabelStyle: React.CSSProperties = { display: "flex", alignItems: "center", gap: "8px", fontWeight: 700 };
 const buttonRowStyle: React.CSSProperties = { display: "flex", gap: "8px", flexWrap: "wrap" };
 const primaryButtonStyle: React.CSSProperties = { background: "#2563eb", color: "white", border: "none", borderRadius: "8px", padding: "10px 14px", fontWeight: 700, cursor: "pointer" };
 const disabledButtonStyle: React.CSSProperties = { background: "#9ca3af", color: "white", border: "none", borderRadius: "8px", padding: "10px 14px", fontWeight: 700, cursor: "not-allowed" };
-const secondaryButtonStyle: React.CSSProperties = { background: "#15803d", color: "white", border: "none", borderRadius: "8px", padding: "10px 14px", fontWeight: 700, cursor: "pointer" };
-const secondaryLinkStyle: React.CSSProperties = { background: "#15803d", color: "white", borderRadius: "8px", padding: "10px 14px", textDecoration: "none", fontWeight: 700 };
+const secondaryLinkStyle: React.CSSProperties = {
+  background: "#15803d",
+  color: "white",
+  borderRadius: "8px",
+  padding: "10px 14px",
+  textDecoration: "none",
+  fontWeight: 700,
+};
+
 const darkLinkStyle: React.CSSProperties = { background: "#111827", color: "white", borderRadius: "8px", padding: "10px 14px", textDecoration: "none", fontWeight: 700 };
-const infoBoxStyle: React.CSSProperties = { marginTop: "16px", background: "#eff6ff", color: "#1e3a8a", border: "1px solid #bfdbfe", borderRadius: "12px", padding: "14px" };
+const smallSelectStyle: React.CSSProperties = { padding: "9px", borderRadius: "8px", border: "1px solid #d1d5db" };
+const tableStyle: React.CSSProperties = { width: "100%", borderCollapse: "collapse" };
+const thStyle: React.CSSProperties = { textAlign: "left", borderBottom: "1px solid #d1d5db", padding: "10px", fontSize: "13px" };
+const tdStyle: React.CSSProperties = { borderBottom: "1px solid #e5e7eb", padding: "10px", verticalAlign: "top" };
 const smallTextStyle: React.CSSProperties = { color: "#6b7280", fontSize: "12px", marginTop: "4px" };
+const infoBoxStyle: React.CSSProperties = { marginTop: "16px", background: "#eff6ff", color: "#1e3a8a", border: "1px solid #bfdbfe", borderRadius: "12px", padding: "14px" };
