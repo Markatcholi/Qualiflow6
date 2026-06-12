@@ -770,6 +770,7 @@ export default function CompanySettingsPage() {
               <option value="ncmr">NCMR</option>
               <option value="capa">CAPA</option>
               <option value="scar">SCAR</option>
+              <option value="complaint">Complaint</option>
               <option value="audit">Audit</option>
               <option value="oos_oot">OOS/OOT</option>
               <option value="document_control">Document Control</option>
