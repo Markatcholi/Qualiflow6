@@ -137,6 +137,11 @@ export default function ComplaintDashboardPage() {
         <DistributionCard title="Top Products" items={productDistribution} />
       </section>
 
+      <section style={cardStyle}>
+        <h2 style={{ marginTop: 0 }}>Open High-Risk Complaints</h2>
+        {highRiskComplaints.filter((item) => item.status !== "closed").length === 0 ? (
+          <div style={infoBoxStyle}>No open high-risk complaints.</div>
+        ) : (
           <div style={{ overflowX: "auto" }}>
             <table style={tableStyle}>
               <thead>
