@@ -66,6 +66,22 @@ export default function ComplaintDetailPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
+  const [intakeTitle, setIntakeTitle] = useState("");
+  const [intakeDescription, setIntakeDescription] = useState("");
+  const [intakeDateReceived, setIntakeDateReceived] = useState("");
+  const [intakeSource, setIntakeSource] = useState("");
+  const [intakeCustomerName, setIntakeCustomerName] = useState("");
+  const [intakeCustomerOrganization, setIntakeCustomerOrganization] = useState("");
+  const [intakeCustomerEmail, setIntakeCustomerEmail] = useState("");
+  const [intakeCustomerPhone, setIntakeCustomerPhone] = useState("");
+  const [intakeCountry, setIntakeCountry] = useState("");
+  const [intakeProductFamily, setIntakeProductFamily] = useState("");
+  const [intakeProductName, setIntakeProductName] = useState("");
+  const [intakePartNumber, setIntakePartNumber] = useState("");
+  const [intakeLotNumber, setIntakeLotNumber] = useState("");
+  const [intakeSerialNumber, setIntakeSerialNumber] = useState("");
+  const [intakeReturnedProductAvailable, setIntakeReturnedProductAvailable] = useState(false);
+
   const [investigator, setInvestigator] = useState("");
   const [investigationSummary, setInvestigationSummary] = useState("");
   const [complaintConfirmed, setComplaintConfirmed] = useState("");
@@ -114,6 +130,22 @@ export default function ComplaintDetailPage() {
 
     const record = data as Complaint;
     setComplaint(record);
+
+    setIntakeTitle(record.complaint_title || "");
+    setIntakeDescription(record.complaint_description || "");
+    setIntakeDateReceived(record.date_received || "");
+    setIntakeSource(record.source || "");
+    setIntakeCustomerName(record.customer_name || "");
+    setIntakeCustomerOrganization(record.customer_organization || "");
+    setIntakeCustomerEmail(record.customer_email || "");
+    setIntakeCustomerPhone(record.customer_phone || "");
+    setIntakeCountry(record.country || "");
+    setIntakeProductFamily(record.product_family || "");
+    setIntakeProductName(record.product_name || "");
+    setIntakePartNumber(record.part_number || "");
+    setIntakeLotNumber(record.lot_number || "");
+    setIntakeSerialNumber(record.serial_number || "");
+    setIntakeReturnedProductAvailable(Boolean(record.returned_product_available));
 
     setInvestigator(record.investigator || "");
     setInvestigationSummary(record.investigation_summary || "");
@@ -193,6 +225,40 @@ export default function ComplaintDetailPage() {
 
     await addActivityLog(action, details);
     await fetchComplaint();
+  };
+
+  const saveIntake = async () => {
+    if (!intakeTitle.trim()) {
+      alert("Complaint title is required.");
+      return;
+    }
+
+    if (!intakeDescription.trim()) {
+      alert("Complaint description is required.");
+      return;
+    }
+
+    await updateComplaint(
+      {
+        complaint_title: intakeTitle.trim(),
+        complaint_description: intakeDescription.trim(),
+        date_received: intakeDateReceived || null,
+        source: intakeSource || null,
+        customer_name: intakeCustomerName.trim() || null,
+        customer_organization: intakeCustomerOrganization.trim() || null,
+        customer_email: intakeCustomerEmail.trim() || null,
+        customer_phone: intakeCustomerPhone.trim() || null,
+        country: intakeCountry.trim() || null,
+        product_family: intakeProductFamily.trim() || null,
+        product_name: intakeProductName.trim() || null,
+        part_number: intakePartNumber.trim() || null,
+        lot_number: intakeLotNumber.trim() || null,
+        serial_number: intakeSerialNumber.trim() || null,
+        returned_product_available: intakeReturnedProductAvailable,
+      },
+      "intake_updated",
+      "Complaint intake information updated.",
+    );
   };
 
   const saveInvestigation = async () => {
@@ -344,16 +410,56 @@ export default function ComplaintDetailPage() {
       </section>
 
       <section style={cardStyle}>
-        <h2 style={{ marginTop: 0 }}>1. Intake Summary</h2>
+        <div style={sectionHeaderStyle}>
+          <div>
+            <h2 style={{ margin: 0 }}>1. Intake Information</h2>
+            <p style={subtleText}>Edit complaint intake details before or during the workflow.</p>
+          </div>
+
+          <button onClick={saveIntake} disabled={saving || complaint.status === "closed"} style={saving || complaint.status === "closed" ? disabledButtonStyle : primaryButtonStyle}>
+            Save Intake
+          </button>
+        </div>
+
         <div style={gridStyle}>
-          <ReadOnly label="Date Received" value={complaint.date_received || "N/A"} />
-          <ReadOnly label="Source" value={formatLabel(complaint.source || "N/A")} />
-          <ReadOnly label="Customer" value={complaint.customer_name || "N/A"} />
-          <ReadOnly label="Organization" value={complaint.customer_organization || "N/A"} />
-          <ReadOnly label="Product" value={complaint.product_name || "N/A"} />
-          <ReadOnly label="Part Number" value={complaint.part_number || "N/A"} />
-          <ReadOnly label="Lot Number" value={complaint.lot_number || "N/A"} />
-          <ReadOnly label="Serial Number" value={complaint.serial_number || "N/A"} />
+          <Field label="Complaint Title"><input value={intakeTitle} onChange={(e) => setIntakeTitle(e.target.value)} disabled={complaint.status === "closed"} style={inputStyle} /></Field>
+          <Field label="Date Received"><input type="date" value={intakeDateReceived} onChange={(e) => setIntakeDateReceived(e.target.value)} disabled={complaint.status === "closed"} style={inputStyle} /></Field>
+          <Field label="Source">
+            <select value={intakeSource} onChange={(e) => setIntakeSource(e.target.value)} disabled={complaint.status === "closed"} style={inputStyle}>
+              <option value="">Select</option>
+              <option value="phone">Phone</option>
+              <option value="email">Email</option>
+              <option value="distributor">Distributor</option>
+              <option value="sales_rep">Sales Rep</option>
+              <option value="website">Website</option>
+              <option value="audit">Audit</option>
+              <option value="other">Other</option>
+            </select>
+          </Field>
+        </div>
+
+        <Field label="Complaint Description"><textarea value={intakeDescription} onChange={(e) => setIntakeDescription(e.target.value)} disabled={complaint.status === "closed"} rows={4} style={textareaStyle} /></Field>
+
+        <h3>Customer Information</h3>
+        <div style={gridStyle}>
+          <Field label="Customer Name"><input value={intakeCustomerName} onChange={(e) => setIntakeCustomerName(e.target.value)} disabled={complaint.status === "closed"} style={inputStyle} /></Field>
+          <Field label="Customer Organization"><input value={intakeCustomerOrganization} onChange={(e) => setIntakeCustomerOrganization(e.target.value)} disabled={complaint.status === "closed"} style={inputStyle} /></Field>
+          <Field label="Customer Email"><input value={intakeCustomerEmail} onChange={(e) => setIntakeCustomerEmail(e.target.value)} disabled={complaint.status === "closed"} style={inputStyle} /></Field>
+          <Field label="Customer Phone"><input value={intakeCustomerPhone} onChange={(e) => setIntakeCustomerPhone(e.target.value)} disabled={complaint.status === "closed"} style={inputStyle} /></Field>
+          <Field label="Country"><input value={intakeCountry} onChange={(e) => setIntakeCountry(e.target.value)} disabled={complaint.status === "closed"} style={inputStyle} /></Field>
+        </div>
+
+        <h3>Product Information</h3>
+        <div style={gridStyle}>
+          <Field label="Product Family"><input value={intakeProductFamily} onChange={(e) => setIntakeProductFamily(e.target.value)} disabled={complaint.status === "closed"} style={inputStyle} /></Field>
+          <Field label="Product Name"><input value={intakeProductName} onChange={(e) => setIntakeProductName(e.target.value)} disabled={complaint.status === "closed"} style={inputStyle} /></Field>
+          <Field label="Part Number"><input value={intakePartNumber} onChange={(e) => setIntakePartNumber(e.target.value)} disabled={complaint.status === "closed"} style={inputStyle} /></Field>
+          <Field label="Lot Number"><input value={intakeLotNumber} onChange={(e) => setIntakeLotNumber(e.target.value)} disabled={complaint.status === "closed"} style={inputStyle} /></Field>
+          <Field label="Serial Number"><input value={intakeSerialNumber} onChange={(e) => setIntakeSerialNumber(e.target.value)} disabled={complaint.status === "closed"} style={inputStyle} /></Field>
+        </div>
+
+        <div style={toggleRowStyle}>
+          <label style={toggleLabelStyle}><input type="checkbox" checked={intakeReturnedProductAvailable} disabled={complaint.status === "closed"} onChange={(e) => setIntakeReturnedProductAvailable(e.target.checked)} />Returned Product Available</label>
         </div>
       </section>
 
@@ -478,10 +584,6 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   return <div style={{ marginBottom: "14px" }}><label style={labelStyle}>{label}</label><div style={{ marginTop: "6px" }}>{children}</div></div>;
 }
 
-function ReadOnly({ label, value }: { label: string; value: string }) {
-  return <div style={readOnlyStyle}><div style={smallTextStyle}>{label}</div><strong>{value}</strong></div>;
-}
-
 function SummaryCard({ label, value }: { label: string; value: string }) {
   return <div style={summaryCardStyle}><div style={smallTextStyle}>{label}</div><strong>{value}</strong></div>;
 }
@@ -498,7 +600,6 @@ const workflowGridStyle: React.CSSProperties = { display: "grid", gridTemplateCo
 const workflowStepStyle: React.CSSProperties = { display: "flex", gap: "12px", alignItems: "center", background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: "12px", padding: "14px" };
 const summaryGridStyle: React.CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "12px", marginBottom: "18px" };
 const summaryCardStyle: React.CSSProperties = { background: "white", border: "1px solid #d1d5db", borderRadius: "14px", padding: "14px" };
-const readOnlyStyle: React.CSSProperties = { background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: "12px", padding: "12px" };
 const gridStyle: React.CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "16px" };
 const sectionHeaderStyle: React.CSSProperties = { display: "flex", justifyContent: "space-between", gap: "16px", alignItems: "flex-start", flexWrap: "wrap", marginBottom: "16px" };
 const labelStyle: React.CSSProperties = { fontWeight: 700 };
