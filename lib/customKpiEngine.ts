@@ -41,6 +41,7 @@ export type CustomKpiDisplayValue = {
 
 const MODULE_TABLE_MAP: Record<string, string> = {
   change_control: "change_controls",
+  complaint: "complaints",
   ncmr: "ncmrs",
   capa: "capas",
   audit: "audits",
