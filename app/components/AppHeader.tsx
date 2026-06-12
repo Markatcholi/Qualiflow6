@@ -66,12 +66,16 @@ export default function AppHeader() {
         </a>
 
         <a href="/change-control" style={{ marginRight: "12px" }}>
-          Change Control
-        </a>
+  Change Control
+</a>
 
-        <a href="/documents" style={{ marginRight: "12px" }}>
-          Documents
-        </a>
+<a href="/complaints" style={{ marginRight: "12px" }}>
+  Complaints
+</a>
+
+<a href="/documents" style={{ marginRight: "12px" }}>
+  Documents
+</a>
 
         <a href="/training" style={{ marginRight: "12px" }}>
           Training
