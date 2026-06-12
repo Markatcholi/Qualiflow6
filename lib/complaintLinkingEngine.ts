@@ -9,7 +9,14 @@ type CreateLinkedRecordInput = {
   userEmail: string;
 };
 
-const moduleConfig = {
+type ModuleConfig = {
+  table: string;
+  numberPrefix: string;
+  titlePrefix: string;
+  route: string;
+};
+
+const moduleConfig: Record<LinkModule, ModuleConfig> = {
   ncmr: {
     table: "ncmrs",
     numberPrefix: "NCMR",
@@ -60,7 +67,7 @@ const buildPayload = ({
   module: LinkModule;
   recordNumber: string;
   userEmail: string;
-}) => {
+}): Record<string, any> => {
   const baseTitle = `${moduleConfig[module].titlePrefix}: ${
     complaint.complaint_number || complaint.complaint_title || "Complaint"
   }`;
@@ -73,7 +80,7 @@ const buildPayload = ({
     `Part number: ${complaint.part_number || "N/A"}`,
     `Lot number: ${complaint.lot_number || "N/A"}`,
     `Severity: ${complaint.severity || "N/A"}`,
-  ].join("\\n");
+  ].join("\n");
 
   if (module === "ncmr") {
     return {
@@ -140,13 +147,14 @@ export async function createLinkedQualityRecord({
   userEmail,
 }: CreateLinkedRecordInput) {
   const config = moduleConfig[module];
+
   const recordNumber = await generateRecordNumber(
     supabase,
     config.table,
     config.numberPrefix,
   );
 
-  const payload = buildPayload({
+  const payload: Record<string, any> = buildPayload({
     complaint,
     module,
     recordNumber,
@@ -155,7 +163,7 @@ export async function createLinkedQualityRecord({
 
   const { data, error } = await supabase
     .from(config.table)
-    .insert(payload)
+    .insert(payload as any)
     .select()
     .single();
 
@@ -173,7 +181,9 @@ export async function createLinkedQualityRecord({
     linked_module: module,
     linked_record_id: data.id,
     linked_record_number: recordNumber,
-    link_reason: `Created from complaint ${complaint.complaint_number || complaint.id}`,
+    link_reason: `Created from complaint ${
+      complaint.complaint_number || complaint.id
+    }`,
     created_by: userEmail,
   });
 
@@ -184,7 +194,7 @@ export async function createLinkedQualityRecord({
     user_email: userEmail,
   });
 
-  const complaintUpdate: any = {};
+  const complaintUpdate: Record<string, any> = {};
 
   if (module === "ncmr") {
     complaintUpdate.ncmr_required = true;
