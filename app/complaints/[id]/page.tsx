@@ -4,6 +4,10 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { supabase } from "../../../lib/supabaseClient";
+import {
+  createLinkedQualityRecord,
+  fetchComplaintQualityLinks,
+} from "../../../lib/complaintLinkingEngine";
 
 type Complaint = {
   id: string;
@@ -48,6 +52,17 @@ type Complaint = {
   closed_at: string | null;
 };
 
+type LinkedQualityRecord = {
+  id: string;
+  complaint_id: string;
+  linked_module: string;
+  linked_record_id: string;
+  linked_record_number: string | null;
+  link_reason: string | null;
+  created_by: string | null;
+  created_at: string | null;
+};
+
 const workflowSteps = [
   "intake",
   "investigation",
@@ -63,8 +78,10 @@ export default function ComplaintDetailPage() {
   const complaintId = String(params?.id || "");
   const [complaint, setComplaint] = useState<Complaint | null>(null);
   const [activityLog, setActivityLog] = useState<any[]>([]);
+  const [linkedRecords, setLinkedRecords] = useState<LinkedQualityRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [linking, setLinking] = useState(false);
 
   const [intakeTitle, setIntakeTitle] = useState("");
   const [intakeDescription, setIntakeDescription] = useState("");
@@ -173,6 +190,7 @@ export default function ComplaintDetailPage() {
     setClosureSummary(record.closure_summary || "");
 
     fetchActivityLog(record.id);
+    fetchLinkedRecords(record.id);
   };
 
   const fetchActivityLog = async (complaintId: string) => {
@@ -188,6 +206,15 @@ export default function ComplaintDetailPage() {
     }
 
     setActivityLog(data || []);
+  };
+
+  const fetchLinkedRecords = async (complaintId: string) => {
+    const links = await fetchComplaintQualityLinks({
+      supabase,
+      complaintId,
+    });
+
+    setLinkedRecords((links as LinkedQualityRecord[]) || []);
   };
 
   useEffect(() => {
@@ -224,6 +251,49 @@ export default function ComplaintDetailPage() {
     }
 
     await addActivityLog(action, details);
+    await fetchComplaint();
+  };
+
+  const createLinkedRecord = async (
+    module: "ncmr" | "capa" | "scar" | "change_control",
+  ) => {
+    if (!complaint) {
+      alert("Complaint record is not loaded.");
+      return;
+    }
+
+    if (complaint.status === "closed") {
+      alert("This complaint is closed. Linked records cannot be created.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Create and link a ${formatLabel(module)} record for this complaint?`,
+    );
+
+    if (!confirmed) return;
+
+    setLinking(true);
+
+    const { data: userData } = await supabase.auth.getUser();
+    const userEmail = userData?.user?.email || "unknown";
+
+    const result = await createLinkedQualityRecord({
+      supabase,
+      complaint,
+      module,
+      userEmail,
+    });
+
+    setLinking(false);
+
+    if (result.error) {
+      alert(result.error.message);
+      return;
+    }
+
+    alert(`${result.linkedRecordNumber} created and linked to complaint.`);
+
     await fetchComplaint();
   };
 
@@ -540,7 +610,52 @@ export default function ComplaintDetailPage() {
           <label style={toggleLabelStyle}><input type="checkbox" checked={changeControlRequired} onChange={(e) => setChangeControlRequired(e.target.checked)} />Change Control Required</label>
         </div>
 
-        <div style={infoBoxStyle}>Phase 1 captures linked action requirements. Phase 2 will add one-click creation/linking to NCMR, CAPA, SCAR, and Change Control records.</div>
+        <div style={linkedActionsCardStyle}>
+          <div style={sectionHeaderStyle}>
+            <div>
+              <h3 style={{ margin: 0 }}>Linked Quality Records</h3>
+              <p style={subtleText}>
+                Create and link quality records directly from this complaint.
+              </p>
+            </div>
+
+            <div style={buttonRowStyle}>
+              <button onClick={() => createLinkedRecord("ncmr")} disabled={linking || complaint.status === "closed"} style={linking || complaint.status === "closed" ? disabledButtonStyle : secondaryButtonStyle}>Create NCMR</button>
+              <button onClick={() => createLinkedRecord("capa")} disabled={linking || complaint.status === "closed"} style={linking || complaint.status === "closed" ? disabledButtonStyle : secondaryButtonStyle}>Create CAPA</button>
+              <button onClick={() => createLinkedRecord("scar")} disabled={linking || complaint.status === "closed"} style={linking || complaint.status === "closed" ? disabledButtonStyle : secondaryButtonStyle}>Create SCAR</button>
+              <button onClick={() => createLinkedRecord("change_control")} disabled={linking || complaint.status === "closed"} style={linking || complaint.status === "closed" ? disabledButtonStyle : secondaryButtonStyle}>Create Change Control</button>
+            </div>
+          </div>
+
+          {linkedRecords.length === 0 ? (
+            <div style={infoBoxStyle}>No linked quality records have been created for this complaint yet.</div>
+          ) : (
+            <div style={{ overflowX: "auto" }}>
+              <table style={tableStyle}>
+                <thead>
+                  <tr>
+                    <th style={thStyle}>Module</th>
+                    <th style={thStyle}>Record</th>
+                    <th style={thStyle}>Reason</th>
+                    <th style={thStyle}>Created</th>
+                    <th style={thStyle}>Open</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {linkedRecords.map((record) => (
+                    <tr key={record.id}>
+                      <td style={tdStyle}>{formatLabel(record.linked_module)}</td>
+                      <td style={tdStyle}><strong>{record.linked_record_number || "Linked Record"}</strong></td>
+                      <td style={tdStyle}>{record.link_reason || "N/A"}</td>
+                      <td style={tdStyle}>{record.created_at ? new Date(record.created_at).toLocaleString() : "N/A"}</td>
+                      <td style={tdStyle}><Link href={getLinkedRecordRoute(record)}>Open Record</Link></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </section>
 
       <section style={cardStyle}>
@@ -588,6 +703,14 @@ function SummaryCard({ label, value }: { label: string; value: string }) {
   return <div style={summaryCardStyle}><div style={smallTextStyle}>{label}</div><strong>{value}</strong></div>;
 }
 
+function getLinkedRecordRoute(record: LinkedQualityRecord) {
+  if (record.linked_module === "ncmr") return `/ncmrs/${record.linked_record_id}`;
+  if (record.linked_module === "capa") return `/capa/${record.linked_record_id}`;
+  if (record.linked_module === "scar") return `/supplier-quality/scars/${record.linked_record_id}`;
+  if (record.linked_module === "change_control") return `/change-control/${record.linked_record_id}`;
+  return "#";
+}
+
 const formatLabel = (value: string) => value.replaceAll("_", " ").replace(/\b\w/g, (char) => char.toUpperCase());
 
 const pageStyle: React.CSSProperties = { padding: "24px", background: "#f8fafc", minHeight: "100vh", fontFamily: "Arial, sans-serif" };
@@ -613,5 +736,9 @@ const disabledButtonStyle: React.CSSProperties = { background: "#9ca3af", color:
 const secondaryButtonStyle: React.CSSProperties = { background: "#15803d", color: "white", border: "none", borderRadius: "8px", padding: "10px 14px", fontWeight: 700, cursor: "pointer" };
 const secondaryLinkStyle: React.CSSProperties = { background: "#15803d", color: "white", borderRadius: "8px", padding: "10px 14px", textDecoration: "none", fontWeight: 700 };
 const darkLinkStyle: React.CSSProperties = { background: "#111827", color: "white", borderRadius: "8px", padding: "10px 14px", textDecoration: "none", fontWeight: 700 };
+const linkedActionsCardStyle: React.CSSProperties = { marginTop: "18px", background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: "14px", padding: "16px" };
+const tableStyle: React.CSSProperties = { width: "100%", borderCollapse: "collapse" };
+const thStyle: React.CSSProperties = { textAlign: "left", borderBottom: "1px solid #d1d5db", padding: "10px", fontSize: "13px" };
+const tdStyle: React.CSSProperties = { borderBottom: "1px solid #e5e7eb", padding: "10px", verticalAlign: "top" };
 const infoBoxStyle: React.CSSProperties = { marginTop: "16px", background: "#eff6ff", color: "#1e3a8a", border: "1px solid #bfdbfe", borderRadius: "12px", padding: "14px" };
 const smallTextStyle: React.CSSProperties = { color: "#6b7280", fontSize: "12px", marginTop: "4px" };
