@@ -137,8 +137,6 @@ export default function ComplaintDashboardPage() {
         <DistributionCard title="Top Products" items={productDistribution} />
       </section>
 
-          <div style={infoBoxStyle}>No open high-risk complaints.</div>
-        ) : (
           <div style={{ overflowX: "auto" }}>
             <table style={tableStyle}>
               <thead>
