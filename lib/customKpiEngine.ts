@@ -23,6 +23,8 @@ export type CustomKpiDefinition = {
   last_calculated_at?: string | null;
   last_calculation_status?: string | null;
   last_calculation_message?: string | null;
+  age_date_field?: string | null;
+  close_date_field?: string | null;
 };
 
 export type ConfiguredCustomKpi = {
@@ -100,6 +102,37 @@ const matchesFilter = (record: any, definition: CustomKpiDefinition) => {
   if (operator === "is_not_blank") return actual.length > 0;
 
   return actual === expected;
+};
+
+const daysBetween = (start: string, end: string) => {
+  const startDate = new Date(start);
+  const endDate = new Date(end);
+
+  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+    return null;
+  }
+
+  return (
+    (endDate.getTime() - startDate.getTime()) /
+    (1000 * 60 * 60 * 24)
+  );
+};
+
+const getOpenAgeRecords = ({
+  records,
+  ageField,
+  closeField,
+}: {
+  records: any[];
+  ageField: string;
+  closeField: string;
+}) => {
+  return records.filter((record: any) => {
+    const hasAgeDate = Boolean(record[ageField]);
+    const isClosed = Boolean(record[closeField]);
+
+    return hasAgeDate && !isClosed;
+  });
 };
 
 const updateKpiCalculationStatus = async ({
@@ -222,25 +255,6 @@ export async function calculateCustomKpiValues({
 
     for (const definition of tableDefinitions) {
       const calculationType = definition.calculation_type || "count";
-
-      if (calculationType !== "count") {
-        const message = `Unsupported calculation type: ${calculationType}`;
-
-        values[definition.kpi_key] = {
-          value: 0,
-          subtitle: "Unsupported calculation type",
-        };
-
-        await updateKpiCalculationStatus({
-          supabase,
-          definition,
-          status: "failed",
-          message,
-        });
-
-        continue;
-      }
-
       const field = definition.filter_field?.trim();
 
       if (field && records.length > 0 && !(field in records[0])) {
@@ -265,16 +279,205 @@ export async function calculateCustomKpiValues({
         matchesFilter(record, definition),
       );
 
+      if (calculationType === "count") {
+        values[definition.kpi_key] = {
+          value: matchingRecords.length,
+          subtitle: "Custom KPI",
+        };
+
+        await updateKpiCalculationStatus({
+          supabase,
+          definition,
+          status: "success",
+          message: `Calculated successfully from ${tableName}.`,
+        });
+
+        continue;
+      }
+
+      if (calculationType === "average_open_age") {
+        const ageField = definition.age_date_field || "created_at";
+        const closeField = definition.close_date_field || "closed_at";
+
+        if (records.length > 0 && !(ageField in records[0])) {
+          const message = `Age date field '${ageField}' was not found in table '${tableName}'.`;
+
+          values[definition.kpi_key] = {
+            value: 0,
+            subtitle: "Invalid age field",
+          };
+
+          await updateKpiCalculationStatus({
+            supabase,
+            definition,
+            status: "failed",
+            message,
+          });
+
+          continue;
+        }
+
+        const openRecords = getOpenAgeRecords({
+          records: matchingRecords,
+          ageField,
+          closeField,
+        });
+
+        const ages = openRecords
+          .map((record: any) =>
+            daysBetween(record[ageField], new Date().toISOString()),
+          )
+          .filter((age): age is number => age !== null && age >= 0);
+
+        const average =
+          ages.length > 0
+            ? ages.reduce((sum, age) => sum + age, 0) / ages.length
+            : 0;
+
+        values[definition.kpi_key] = {
+          value: Number(average.toFixed(1)),
+          subtitle: "Days",
+        };
+
+        await updateKpiCalculationStatus({
+          supabase,
+          definition,
+          status: "success",
+          message: `Calculated average open age from ${tableName}.`,
+        });
+
+        continue;
+      }
+
+      if (calculationType === "average_closure_time") {
+        const startField = definition.age_date_field || "created_at";
+        const endField = definition.close_date_field || "closed_at";
+
+        if (records.length > 0 && !(startField in records[0])) {
+          const message = `Start date field '${startField}' was not found in table '${tableName}'.`;
+
+          values[definition.kpi_key] = {
+            value: 0,
+            subtitle: "Invalid start field",
+          };
+
+          await updateKpiCalculationStatus({
+            supabase,
+            definition,
+            status: "failed",
+            message,
+          });
+
+          continue;
+        }
+
+        if (records.length > 0 && !(endField in records[0])) {
+          const message = `Close date field '${endField}' was not found in table '${tableName}'.`;
+
+          values[definition.kpi_key] = {
+            value: 0,
+            subtitle: "Invalid close field",
+          };
+
+          await updateKpiCalculationStatus({
+            supabase,
+            definition,
+            status: "failed",
+            message,
+          });
+
+          continue;
+        }
+
+        const durations = matchingRecords
+          .filter((record: any) => record[startField] && record[endField])
+          .map((record: any) => daysBetween(record[startField], record[endField]))
+          .filter((duration): duration is number => duration !== null && duration >= 0);
+
+        const average =
+          durations.length > 0
+            ? durations.reduce((sum, duration) => sum + duration, 0) /
+              durations.length
+            : 0;
+
+        values[definition.kpi_key] = {
+          value: Number(average.toFixed(1)),
+          subtitle: "Days",
+        };
+
+        await updateKpiCalculationStatus({
+          supabase,
+          definition,
+          status: "success",
+          message: `Calculated average closure time from ${tableName}.`,
+        });
+
+        continue;
+      }
+
+      if (calculationType === "max_age") {
+        const ageField = definition.age_date_field || "created_at";
+        const closeField = definition.close_date_field || "closed_at";
+
+        if (records.length > 0 && !(ageField in records[0])) {
+          const message = `Age date field '${ageField}' was not found in table '${tableName}'.`;
+
+          values[definition.kpi_key] = {
+            value: 0,
+            subtitle: "Invalid age field",
+          };
+
+          await updateKpiCalculationStatus({
+            supabase,
+            definition,
+            status: "failed",
+            message,
+          });
+
+          continue;
+        }
+
+        const openRecords = getOpenAgeRecords({
+          records: matchingRecords,
+          ageField,
+          closeField,
+        });
+
+        const ages = openRecords
+          .map((record: any) =>
+            daysBetween(record[ageField], new Date().toISOString()),
+          )
+          .filter((age): age is number => age !== null && age >= 0);
+
+        const maxAge = ages.length > 0 ? Math.max(...ages) : 0;
+
+        values[definition.kpi_key] = {
+          value: Number(maxAge.toFixed(1)),
+          subtitle: "Days",
+        };
+
+        await updateKpiCalculationStatus({
+          supabase,
+          definition,
+          status: "success",
+          message: `Calculated max age from ${tableName}.`,
+        });
+
+        continue;
+      }
+
+      const message = `Unsupported calculation type: ${calculationType}`;
+
       values[definition.kpi_key] = {
-        value: matchingRecords.length,
-        subtitle: "Custom KPI",
+        value: 0,
+        subtitle: "Unsupported calculation type",
       };
 
       await updateKpiCalculationStatus({
         supabase,
         definition,
-        status: "success",
-        message: `Calculated successfully from ${tableName}.`,
+        status: "failed",
+        message,
       });
     }
   }
