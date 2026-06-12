@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { supabase } from "../../../lib/supabaseClient";
 
@@ -57,7 +58,9 @@ const workflowSteps = [
   "closed",
 ];
 
-export default function ComplaintDetailPage({ params }: { params: { id: string } }) {
+export default function ComplaintDetailPage() {
+  const params = useParams();
+  const complaintId = String(params?.id || "");
   const [complaint, setComplaint] = useState<Complaint | null>(null);
   const [activityLog, setActivityLog] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -94,7 +97,7 @@ export default function ComplaintDetailPage({ params }: { params: { id: string }
     const { data, error } = await supabase
       .from("complaints")
       .select("*")
-      .eq("id", params.id)
+      .eq("id", complaintId)
       .maybeSingle();
 
     setLoading(false);
@@ -156,15 +159,17 @@ export default function ComplaintDetailPage({ params }: { params: { id: string }
   };
 
   useEffect(() => {
-    fetchComplaint();
-  }, [params.id]);
+    if (complaintId) {
+      fetchComplaint();
+    }
+  }, [complaintId]);
 
   const addActivityLog = async (action: string, details: string) => {
     const { data: userData } = await supabase.auth.getUser();
     const userEmail = userData?.user?.email || "unknown";
 
     await supabase.from("complaint_activity_log").insert({
-      complaint_id: params.id,
+      complaint_id: complaintId,
       action,
       details,
       user_email: userEmail,
@@ -177,7 +182,7 @@ export default function ComplaintDetailPage({ params }: { params: { id: string }
     const { error } = await supabase
       .from("complaints")
       .update({ ...payload, updated_at: new Date().toISOString() })
-      .eq("id", params.id);
+      .eq("id", complaintId);
 
     setSaving(false);
 
