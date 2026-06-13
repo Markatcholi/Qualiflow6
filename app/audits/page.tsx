@@ -363,9 +363,6 @@ export default function AuditsPage() {
     return matchesSearch && matchesStatus && matchesType;
   });
 
-  const totalOpenFindings = findings.filter((f) => f.finding_status !== "closed").length;
-  const totalCapaRequiredFindings = findings.filter((f) => f.capa_required).length;
-
   const auditStatusColor = (status: string | null) => {
     if (status === "closed") return "#16a34a";
     if (status === "in_progress") return "#f59e0b";
@@ -376,24 +373,6 @@ export default function AuditsPage() {
     if (severity === "critical") return "#dc2626";
     if (severity === "major") return "#f59e0b";
     return "#16a34a";
-  };
-
-  const summaryCardStyle: React.CSSProperties = {
-    border: "1px solid #d1d5db",
-    borderRadius: "10px",
-    padding: "14px",
-    background: "#f9fafb",
-  };
-
-  const summaryLabelStyle: React.CSSProperties = {
-    fontSize: "13px",
-    color: "#4b5563",
-    marginBottom: "4px",
-  };
-
-  const summaryValueStyle: React.CSSProperties = {
-    fontSize: "24px",
-    fontWeight: "bold",
   };
 
   const badgeStyle: React.CSSProperties = {
@@ -407,7 +386,54 @@ export default function AuditsPage() {
 
   return (
     <main style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
-      <h1>Audit Module</h1>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          flexWrap: "wrap",
+          gap: "12px",
+          marginBottom: "20px",
+        }}
+      >
+        <h1 style={{ margin: 0 }}>Audit Module</h1>
+
+        <div
+          style={{
+            display: "flex",
+            gap: "10px",
+            flexWrap: "wrap",
+          }}
+        >
+          <a
+            href="/audits/dashboard"
+            style={{
+              background: "#111827",
+              color: "white",
+              padding: "10px 16px",
+              borderRadius: "8px",
+              textDecoration: "none",
+              fontWeight: 700,
+            }}
+          >
+            Audit Intelligence Dashboard
+          </a>
+
+          <a
+            href="/dashboard"
+            style={{
+              background: "#2563eb",
+              color: "white",
+              padding: "10px 16px",
+              borderRadius: "8px",
+              textDecoration: "none",
+              fontWeight: 700,
+            }}
+          >
+            Executive Dashboard
+          </a>
+        </div>
+      </div>
 
       <section style={sectionStyle}>
         <h2>Create Audit</h2>
@@ -572,36 +598,6 @@ export default function AuditsPage() {
 
       <section style={sectionStyle}>
         <h2>Existing Audits</h2>
-
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-            gap: "12px",
-            marginBottom: "20px",
-          }}
-        >
-          <div style={summaryCardStyle}>
-            <div style={summaryLabelStyle}>Total Audits</div>
-            <div style={summaryValueStyle}>{audits.length}</div>
-          </div>
-          <div style={summaryCardStyle}>
-            <div style={summaryLabelStyle}>Open / Active</div>
-            <div style={summaryValueStyle}>{audits.filter((x) => x.status !== "closed").length}</div>
-          </div>
-          <div style={summaryCardStyle}>
-            <div style={summaryLabelStyle}>Total Findings</div>
-            <div style={summaryValueStyle}>{findings.length}</div>
-          </div>
-          <div style={summaryCardStyle}>
-            <div style={summaryLabelStyle}>Open Findings</div>
-            <div style={summaryValueStyle}>{totalOpenFindings}</div>
-          </div>
-          <div style={summaryCardStyle}>
-            <div style={summaryLabelStyle}>Findings Requiring CAPA</div>
-            <div style={summaryValueStyle}>{totalCapaRequiredFindings}</div>
-          </div>
-        </div>
 
         <div
           style={{
