@@ -91,24 +91,6 @@ export default function OosOotPage() {
     marginBottom: "12px",
   };
 
-  const summaryCardStyle: React.CSSProperties = {
-    border: "1px solid #d1d5db",
-    borderRadius: "10px",
-    padding: "14px",
-    background: "#f9fafb",
-  };
-
-  const summaryLabelStyle: React.CSSProperties = {
-    fontSize: "13px",
-    color: "#4b5563",
-    marginBottom: "4px",
-  };
-
-  const summaryValueStyle: React.CSSProperties = {
-    fontSize: "24px",
-    fontWeight: "bold",
-  };
-
   const badgeBaseStyle: React.CSSProperties = {
     color: "white",
     padding: "4px 8px",
@@ -260,107 +242,6 @@ export default function OosOotPage() {
     fetchData();
   }, []);
 
-  const buildMonthlyTrend = () => {
-    const months: { key: string; label: string; count: number }[] = [];
-    const now = new Date();
-
-    for (let i = 5; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-
-      months.push({
-        key,
-        label: d.toLocaleString("en-US", { month: "short", year: "2-digit" }),
-        count: 0,
-      });
-    }
-
-    records.forEach((item) => {
-      if (!item.created_at) return;
-
-      const d = new Date(item.created_at);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-      const match = months.find((m) => m.key === key);
-
-      if (match) match.count += 1;
-    });
-
-    return months;
-  };
-
-  const countByField = (field: keyof Investigation) => {
-    const map = new Map<string, number>();
-
-    records.forEach((item) => {
-      const value = String(item[field] || "Unknown");
-      map.set(value, (map.get(value) || 0) + 1);
-    });
-
-    return Array.from(map.entries())
-      .map(([label, count]) => ({ label, count }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 8);
-  };
-
-  const monthlyTrend = buildMonthlyTrend();
-  const sourceTrend = countByField("investigation_source");
-  const eventTypeTrend = countByField("event_type");
-  const areaTrend = countByField("area_room_equipment");
-
-  const productImpactCount = records.filter((x) => x.product_impact).length;
-  const ncmrRequiredCount = records.filter((x) => x.ncmr_required).length;
-  const systemicIssueCount = records.filter((x) => x.systemic_issue).length;
-  const escalationRequiredCount = records.filter((x) => x.escalation_required).length;
-
-  const maxMonthly = Math.max(...monthlyTrend.map((x) => x.count), 1);
-  const maxSource = Math.max(...sourceTrend.map((x) => x.count), 1);
-  const maxEvent = Math.max(...eventTypeTrend.map((x) => x.count), 1);
-  const maxArea = Math.max(...areaTrend.map((x) => x.count), 1);
-  const maxRisk = Math.max(
-    productImpactCount,
-    ncmrRequiredCount,
-    systemicIssueCount,
-    escalationRequiredCount,
-    1
-  );
-
-  const Bar = ({
-    label,
-    value,
-    max,
-  }: {
-    label: string;
-    value: number;
-    max: number;
-  }) => {
-    const percent = max > 0 ? (value / max) * 100 : 0;
-
-    return (
-      <div style={{ marginBottom: "10px" }}>
-        <div>{label}: {value}</div>
-        <div
-          style={{
-            background: "#ddd",
-            width: "100%",
-            maxWidth: "550px",
-            height: "18px",
-            borderRadius: "4px",
-            overflow: "hidden",
-            border: "1px solid #bbb",
-          }}
-        >
-          <div
-            style={{
-              background: "#2563eb",
-              width: `${value > 0 ? Math.max(percent, 5) : 0}%`,
-              height: "100%",
-            }}
-          />
-        </div>
-      </div>
-    );
-  };
-
   const filteredRecords = records.filter((item) => {
     const searchableText = [
       item.investigation_number,
@@ -417,7 +298,56 @@ export default function OosOotPage() {
 
   return (
     <main style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
-      <h1>OOS / OOT / Environmental Monitoring Investigation</h1>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          flexWrap: "wrap",
+          gap: "12px",
+          marginBottom: "20px",
+        }}
+      >
+        <h1 style={{ margin: 0 }}>
+          OOS / OOT / Environmental Monitoring Investigation
+        </h1>
+
+        <div
+          style={{
+            display: "flex",
+            gap: "10px",
+            flexWrap: "wrap",
+          }}
+        >
+          <a
+            href="/oos-oot/dashboard"
+            style={{
+              background: "#111827",
+              color: "white",
+              padding: "10px 16px",
+              borderRadius: "8px",
+              textDecoration: "none",
+              fontWeight: 700,
+            }}
+          >
+            OOS/OOT Intelligence Dashboard
+          </a>
+
+          <a
+            href="/dashboard"
+            style={{
+              background: "#2563eb",
+              color: "white",
+              padding: "10px 16px",
+              borderRadius: "8px",
+              textDecoration: "none",
+              fontWeight: 700,
+            }}
+          >
+            Executive Dashboard
+          </a>
+        </div>
+      </div>
 
       <section style={sectionStyle}>
         <h2>1. Initiation</h2>
@@ -655,75 +585,7 @@ export default function OosOotPage() {
         Create Investigation
       </button>
 
-      <section style={sectionStyle}>
-        <h2>OOS / OOT / EM Trend Charts</h2>
-
-        <h3>Monthly Investigation Trend</h3>
-        {monthlyTrend.map((item) => (
-          <Bar key={item.key} label={item.label} value={item.count} max={maxMonthly} />
-        ))}
-
-        <h3>Investigation Source Breakdown</h3>
-        {sourceTrend.length === 0 ? (
-          <p>No source data yet.</p>
-        ) : (
-          sourceTrend.map((item) => (
-            <Bar key={item.label} label={item.label} value={item.count} max={maxSource} />
-          ))
-        )}
-
-        <h3>Event Type Breakdown</h3>
-        {eventTypeTrend.length === 0 ? (
-          <p>No event type data yet.</p>
-        ) : (
-          eventTypeTrend.map((item) => (
-            <Bar key={item.label} label={item.label} value={item.count} max={maxEvent} />
-          ))
-        )}
-
-        <h3>Top Area / Room / Equipment</h3>
-        {areaTrend.length === 0 ? (
-          <p>No area / room / equipment data yet.</p>
-        ) : (
-          areaTrend.map((item) => (
-            <Bar key={item.label} label={item.label} value={item.count} max={maxArea} />
-          ))
-        )}
-
-        <h3>Impact / Escalation Summary</h3>
-        <Bar label="Product Impact" value={productImpactCount} max={maxRisk} />
-        <Bar label="NCMR Required" value={ncmrRequiredCount} max={maxRisk} />
-        <Bar label="Systemic Issue" value={systemicIssueCount} max={maxRisk} />
-        <Bar label="Escalation Required" value={escalationRequiredCount} max={maxRisk} />
-      </section>
-
       <h2>Existing OOS / OOT / EM Investigations</h2>
-
-      <section
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-          gap: "12px",
-          marginBottom: "20px",
-        }}
-      >
-        <div style={summaryCardStyle}>
-          <div style={summaryLabelStyle}>Total Investigations</div>
-          <div style={summaryValueStyle}>{records.length}</div>
-        </div>
-        <div style={summaryCardStyle}>
-          <div style={summaryLabelStyle}>Open / Active</div>
-          <div style={summaryValueStyle}>{records.filter((x) => x.status !== "closed").length}</div>
-        </div>
-        <div style={summaryCardStyle}>
-          <div style={summaryLabelStyle}>Product Impact</div>
-          <div style={summaryValueStyle}>{productImpactCount}</div>
-        </div>
-        <div style={summaryCardStyle}>
-          <div style={summaryLabelStyle}>Systemic Issues</div>
-          <div style={summaryValueStyle}>{systemicIssueCount}</div>
-        </div>
-      </section>
 
       <section style={{ marginBottom: "20px" }}>
         <h3>Filters</h3>
