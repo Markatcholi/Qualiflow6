@@ -133,7 +133,7 @@ export default function DocumentControlLandingPage() {
         .order("created_at", { ascending: false }),
       supabase
         .from("document_assigned_reviewers")
-        .select("id, document_id, reviewer_type, reviewer_email, reviewer_role, required_reviewer, review_sequence, review_status, due_date, sla_days")
+        .select("id, document_id, reviewer_type, reviewer_email, reviewer_role, required_reviewer, review_sequence, review_status")
         .order("due_date", { ascending: true }),
     ]);
 
@@ -580,15 +580,18 @@ export default function DocumentControlLandingPage() {
         </div>
       </header>
 
-      <section style={workflowSnapshotStyle}>
+      <section style={workflowNavigationStyle}>
         <div style={snapshotHeaderStyle}>
           <div>
-            <div style={eyebrowStyle}>QUALIFLOW ENTERPRISE</div>
-            <h2 style={{ margin: "6px 0" }}>Document Workflow Dashboard</h2>
+            <div style={eyebrowStyle}>DOCUMENT CONTROL COMMAND CENTER</div>
+            <h2 style={{ margin: "6px 0" }}>Document Control Dashboards</h2>
             <p style={subtleText}>
-              Real-time snapshot of controlled document workflow, review aging, release status, and SLA performance.
+              Use the operational workflow dashboard for active document workflow
+              execution, or open the intelligence dashboard for executive KPI,
+              SLA, review-aging, and management review visibility.
             </p>
           </div>
+
           <div style={buttonRowStyle}>
             <a href="/dashboard/workflow" style={primaryLinkStyle}>
               Open Full Workflow Dashboard
@@ -599,53 +602,6 @@ export default function DocumentControlLandingPage() {
             </a>
           </div>
         </div>
-
-        <div style={kpiGridStyle}>
-          <KpiCard title="Collaboration" value={workflowSnapshot.documentsInCollaboration} color="#7c3aed" />
-          <KpiCard title="Formal Review" value={workflowSnapshot.documentsInFormalReview} color="#d97706" />
-          <KpiCard title="Awaiting Release" value={workflowSnapshot.documentsAwaitingRelease} color="#2563eb" />
-          <KpiCard title="Released" value={workflowSnapshot.releasedDocuments} color="#15803d" />
-          <KpiCard title="Open Reviews" value={workflowSnapshot.openReviews} color="#d97706" />
-          <KpiCard title="Overdue Reviews" value={workflowSnapshot.overdueReviews} color="#dc2626" />
-          <KpiCard title="Workflow SLA" value={`${workflowSnapshot.workflowSla}%`} color="#2563eb" />
-        </div>
-
-        {workflowSnapshot.overdueQueue.length > 0 ? (
-          <div style={miniQueueStyle}>
-            <h3 style={{ marginTop: 0 }}>Overdue Review Queue</h3>
-            <div style={{ overflowX: "auto" }}>
-              <table style={tableStyle}>
-                <thead>
-                  <tr>
-                    <th style={thStyle}>Document</th>
-                    <th style={thStyle}>Reviewer</th>
-                    <th style={thStyle}>Role</th>
-                    <th style={thStyle}>Due Date</th>
-                    <th style={thStyle}>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {workflowSnapshot.overdueQueue.map((reviewer) => {
-                    const relatedDoc = documentMap.get(reviewer.document_id);
-                    return (
-                      <tr key={reviewer.id}>
-                        <td style={tdStyle}>
-                          {relatedDoc ? `${relatedDoc.document_number} Rev ${relatedDoc.revision}` : reviewer.document_id}
-                        </td>
-                        <td style={tdStyle}>{reviewer.reviewer_email}</td>
-                        <td style={tdStyle}>{reviewer.reviewer_role || reviewer.reviewer_type}</td>
-                        <td style={overdueCellStyle}>{formatDate(reviewer.due_date)}</td>
-                        <td style={tdStyle}>
-                          <a href={`/documents/${reviewer.document_id}`} style={smallLinkStyle}>Open Workflow</a>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        ) : null}
       </section>
 
       {myOpenReviewAssignments.length > 0 ? (
@@ -1047,6 +1003,7 @@ const eyebrowStyle: React.CSSProperties = { fontSize: "12px", letterSpacing: "0.
 const subtleText: React.CSSProperties = { color: "#6b7280" };
 const cardStyle: React.CSSProperties = { background: "white", border: "1px solid #d1d5db", borderRadius: "16px", padding: "20px", marginBottom: "20px" };
 const workflowSnapshotStyle: React.CSSProperties = { background: "white", border: "1px solid #d1d5db", borderRadius: "16px", padding: "20px", marginBottom: "20px" };
+const workflowNavigationStyle: React.CSSProperties = workflowSnapshotStyle;
 const snapshotHeaderStyle: React.CSSProperties = { display: "flex", justifyContent: "space-between", gap: "14px", alignItems: "flex-start", flexWrap: "wrap", marginBottom: "16px" };
 const sectionHeaderStyle: React.CSSProperties = { display: "flex", justifyContent: "space-between", gap: "14px", alignItems: "flex-start", flexWrap: "wrap", marginBottom: "16px" };
 const gridStyle: React.CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "14px" };
