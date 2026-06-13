@@ -41,6 +41,10 @@ type KpiTile = {
   value: number | string;
   color: string;
   suffix?: string;
+  target?: string;
+  statusLabel?: string;
+  statusIcon?: string;
+  statusColor?: string;
 };
 
 export default function NcmrIntelligenceDashboardPage() {
@@ -270,39 +274,79 @@ export default function NcmrIntelligenceDashboardPage() {
     };
   }, [ncmrs]);
 
+  const getSlaStatus = (value: number) => {
+    if (value >= 90) {
+      return {
+        label: "On Target",
+        color: "#15803d",
+        icon: "🟢",
+      };
+    }
+
+    if (value >= 75) {
+      return {
+        label: "At Risk",
+        color: "#d97706",
+        icon: "🟡",
+      };
+    }
+
+    return {
+      label: "Action Required",
+      color: "#dc2626",
+      icon: "🔴",
+    };
+  };
+
+  const containmentStatus = getSlaStatus(metrics.containmentWithin5);
+  const dispositionStatus = getSlaStatus(metrics.dispositionWithin15);
+  const closureStatus = getSlaStatus(metrics.closureWithin45);
+
+  const capaConversionRate =
+    ncmrs.length > 0
+      ? Number(((metrics.capaRequired.length / ncmrs.length) * 100).toFixed(1))
+      : 0;
+
+  const recurrenceRate =
+    ncmrs.length > 0
+      ? Number(((metrics.recurringIssues.length / ncmrs.length) * 100).toFixed(1))
+      : 0;
+
+  const supplierExposureRate =
+    ncmrs.length > 0
+      ? Number(((metrics.supplierRelated.length / ncmrs.length) * 100).toFixed(1))
+      : 0;
+
   const kpis: KpiTile[] = [
     {
       title: "Containment ≤ 5 Days",
       value: metrics.containmentWithin5,
       suffix: "%",
-      color:
-        metrics.containmentWithin5 >= 90
-          ? "#15803d"
-          : metrics.containmentWithin5 >= 75
-          ? "#d97706"
-          : "#dc2626",
+      color: containmentStatus.color,
+      target: "Target: 90%",
+      statusLabel: containmentStatus.label,
+      statusIcon: containmentStatus.icon,
+      statusColor: containmentStatus.color,
     },
     {
       title: "Disposition ≤ 15 Days",
       value: metrics.dispositionWithin15,
       suffix: "%",
-      color:
-        metrics.dispositionWithin15 >= 90
-          ? "#15803d"
-          : metrics.dispositionWithin15 >= 75
-          ? "#d97706"
-          : "#dc2626",
+      color: dispositionStatus.color,
+      target: "Target: 90%",
+      statusLabel: dispositionStatus.label,
+      statusIcon: dispositionStatus.icon,
+      statusColor: dispositionStatus.color,
     },
     {
       title: "Closure ≤ 45 Days",
       value: metrics.closureWithin45,
       suffix: "%",
-      color:
-        metrics.closureWithin45 >= 90
-          ? "#15803d"
-          : metrics.closureWithin45 >= 75
-          ? "#d97706"
-          : "#dc2626",
+      color: closureStatus.color,
+      target: "Target: 90%",
+      statusLabel: closureStatus.label,
+      statusIcon: closureStatus.icon,
+      statusColor: closureStatus.color,
     },
     { title: "Open NCMRs", value: metrics.openNcmrs.length, color: "#2563eb" },
     {
@@ -327,6 +371,24 @@ export default function NcmrIntelligenceDashboardPage() {
       value: metrics.averageClosureTime,
       suffix: " days",
       color: metrics.averageClosureTime > 45 ? "#dc2626" : "#15803d",
+    },
+    {
+      title: "CAPA Conversion Rate",
+      value: capaConversionRate,
+      suffix: "%",
+      color: capaConversionRate > 20 ? "#d97706" : "#2563eb",
+    },
+    {
+      title: "Recurrence Rate",
+      value: recurrenceRate,
+      suffix: "%",
+      color: recurrenceRate > 10 ? "#dc2626" : "#15803d",
+    },
+    {
+      title: "Supplier Exposure",
+      value: supplierExposureRate,
+      suffix: "%",
+      color: supplierExposureRate > 25 ? "#d97706" : "#2563eb",
     },
   ];
 
@@ -385,6 +447,10 @@ export default function NcmrIntelligenceDashboardPage() {
             value={kpi.value}
             suffix={kpi.suffix}
             color={kpi.color}
+            target={kpi.target}
+            statusLabel={kpi.statusLabel}
+            statusIcon={kpi.statusIcon}
+            statusColor={kpi.statusColor}
           />
         ))}
       </section>
@@ -502,6 +568,9 @@ export default function NcmrIntelligenceDashboardPage() {
           <MetricRow label="Recurring Issues" value={metrics.recurringIssues.length} />
           <MetricRow label="Supplier Related" value={metrics.supplierRelated.length} />
           <MetricRow label="SCAR / Supplier CAPA Required" value={metrics.scarRequired.length} />
+          <MetricRow label="CAPA Conversion Rate" value={capaConversionRate} suffix="%" />
+          <MetricRow label="Recurrence Rate" value={recurrenceRate} suffix="%" />
+          <MetricRow label="Supplier Exposure Rate" value={supplierExposureRate} suffix="%" />
         </section>
 
         <section style={cardStyle}>
@@ -625,28 +694,64 @@ function KpiCard({
   value,
   color,
   suffix = "",
+  target,
+  statusLabel,
+  statusIcon,
+  statusColor,
 }: {
   title: string;
   value: number | string;
   color: string;
   suffix?: string;
+  target?: string;
+  statusLabel?: string;
+  statusIcon?: string;
+  statusColor?: string;
 }) {
   return (
     <div style={{ ...kpiCardStyle, borderLeft: `8px solid ${color}` }}>
       <div style={kpiTitleStyle}>{title}</div>
+
       <div style={{ fontSize: "34px", fontWeight: 800, color }}>
         {value}
         {suffix}
       </div>
+
+      {target ? <div style={kpiTargetStyle}>{target}</div> : null}
+
+      {statusLabel ? (
+        <div
+          style={{
+            ...kpiStatusStyle,
+            color: statusColor || color,
+            borderColor: statusColor || color,
+            background: "#ffffff",
+          }}
+        >
+          <span>{statusIcon}</span>
+          <span>{statusLabel}</span>
+        </div>
+      ) : null}
     </div>
   );
 }
 
-function MetricRow({ label, value }: { label: string; value: number }) {
+function MetricRow({
+  label,
+  value,
+  suffix = "",
+}: {
+  label: string;
+  value: number;
+  suffix?: string;
+}) {
   return (
     <div style={metricRowStyle}>
       <span>{label}</span>
-      <strong>{value}</strong>
+      <strong>
+        {value}
+        {suffix}
+      </strong>
     </div>
   );
 }
@@ -720,6 +825,25 @@ const kpiCardStyle: React.CSSProperties = {
 const kpiTitleStyle: React.CSSProperties = {
   color: "#6b7280",
   marginBottom: "10px",
+};
+
+const kpiTargetStyle: React.CSSProperties = {
+  color: "#6b7280",
+  fontSize: "13px",
+  marginTop: "8px",
+  fontWeight: 700,
+};
+
+const kpiStatusStyle: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "6px",
+  border: "1px solid",
+  borderRadius: "999px",
+  padding: "4px 10px",
+  fontSize: "12px",
+  fontWeight: 800,
+  marginTop: "8px",
 };
 
 const slaPanelStyle: React.CSSProperties = {
