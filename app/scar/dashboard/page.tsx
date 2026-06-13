@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../../lib/supabaseClient";
 
 type SupplierRiskRow = {
@@ -117,6 +117,115 @@ export default function ScarSupplierGovernanceDashboardPage() {
     0
   );
 
+  const criticalSupplierRows = suppliers.filter(
+    (s) => s.supplier_risk_level === "Critical"
+  );
+
+  const highRiskSupplierRows = suppliers.filter(
+    (s) => s.supplier_risk_level === "High"
+  );
+
+  const overdueScarSuppliers = suppliers.filter(
+    (s) => Number(s.overdue_scars || 0) > 0
+  );
+
+  const notEffectiveScarSuppliers = suppliers.filter(
+    (s) => Number(s.not_effective_scars || 0) > 0
+  );
+
+  const recurringSupplierIssueRows = suppliers.filter(
+    (s) => Number(s.recurring_ncmrs || 0) > 0
+  );
+
+  const executiveReviewSuppliers = suppliers.filter(
+    (s) =>
+      Number(s.supplier_escalation_level || 1) >= 3 ||
+      s.supplier_governance_status === "executive_review" ||
+      s.supplier_governance_status === "disqualification_risk"
+  );
+
+  const suppliersWithMultipleOpenScars = suppliers.filter(
+    (s) => Number(s.open_scars || 0) >= 3
+  );
+
+  const topRiskSuppliers = [...suppliers]
+    .sort(
+      (a, b) =>
+        Number(b.supplier_risk_score || 0) - Number(a.supplier_risk_score || 0)
+    )
+    .slice(0, 10);
+
+  const topOpenScarSuppliers = [...suppliers]
+    .sort((a, b) => Number(b.open_scars || 0) - Number(a.open_scars || 0))
+    .filter((s) => Number(s.open_scars || 0) > 0)
+    .slice(0, 10);
+
+  const topOverdueScarSuppliers = [...suppliers]
+    .sort((a, b) => Number(b.overdue_scars || 0) - Number(a.overdue_scars || 0))
+    .filter((s) => Number(s.overdue_scars || 0) > 0)
+    .slice(0, 10);
+
+  const topRecurringNcmrSuppliers = [...suppliers]
+    .sort((a, b) => Number(b.recurring_ncmrs || 0) - Number(a.recurring_ncmrs || 0))
+    .filter((s) => Number(s.recurring_ncmrs || 0) > 0)
+    .slice(0, 10);
+
+  const riskDistribution = useMemo(() => {
+    const counts: Record<string, number> = {
+      Critical: 0,
+      High: 0,
+      Medium: 0,
+      Low: 0,
+    };
+
+    suppliers.forEach((supplier) => {
+      const level = supplier.supplier_risk_level || "Low";
+      counts[level] = (counts[level] || 0) + 1;
+    });
+
+    return Object.entries(counts).map(([label, value]) => ({ label, value }));
+  }, [suppliers]);
+
+  const governanceDistribution = useMemo(() => {
+    const counts: Record<string, number> = {};
+
+    suppliers.forEach((supplier) => {
+      const status = supplier.supplier_governance_status || "routine";
+      counts[status] = (counts[status] || 0) + 1;
+    });
+
+    return Object.entries(counts)
+      .map(([label, value]) => ({ label, value }))
+      .sort((a, b) => b.value - a.value);
+  }, [suppliers]);
+
+  const totalSupplierNcmrs = suppliers.reduce(
+    (sum, s) => sum + Number(s.supplier_ncmrs || 0),
+    0
+  );
+
+  const supplierScarExposureRate =
+    suppliers.length > 0
+      ? Number(
+          (
+            (suppliers.filter((s) => Number(s.open_scars || 0) > 0).length /
+              suppliers.length) *
+            100
+          ).toFixed(1)
+        )
+      : 0;
+
+  const supplierRecurrenceRate =
+    suppliers.length > 0
+      ? Number(
+          (
+            (suppliers.filter((s) => Number(s.recurring_ncmrs || 0) > 0).length /
+              suppliers.length) *
+            100
+          ).toFixed(1)
+        )
+      : 0;
+
   return (
     <main
       style={{
@@ -140,6 +249,10 @@ export default function ScarSupplierGovernanceDashboardPage() {
           <button onClick={recalculateSupplierRisks} style={buttonStyle}>
             Recalculate Supplier Risk
           </button>
+
+          <Link href="/supplier-quality">
+            <button style={darkButtonStyle}>Supplier Quality Dashboard</button>
+          </Link>
 
           <Link href="/suppliers">
             <button style={secondaryButtonStyle}>Supplier List</button>
@@ -195,6 +308,186 @@ export default function ScarSupplierGovernanceDashboardPage() {
             value={suppliers.length}
             color="#374151"
           />
+        </div>
+      </section>
+
+      <section style={sectionStyle}>
+        <div>
+          <div style={eyebrowStyle}>EXECUTIVE ESCALATION ENGINE</div>
+          <h2 style={{ margin: "6px 0" }}>Action Required</h2>
+          <p style={{ color: "#4b5563", marginTop: 0 }}>
+            Prioritized supplier signals requiring leadership attention,
+            supplier follow-up, SCAR escalation, or governance action.
+          </p>
+        </div>
+
+        <div style={escalationGridStyle}>
+          <EscalationCard
+            title="Critical Suppliers"
+            count={criticalSupplierRows.length}
+            severity={criticalSupplierRows.length > 0 ? "high" : "controlled"}
+            items={criticalSupplierRows}
+            description="Suppliers currently classified as critical risk."
+          />
+
+          <EscalationCard
+            title="High Risk Suppliers"
+            count={highRiskSupplierRows.length}
+            severity={highRiskSupplierRows.length > 0 ? "medium" : "controlled"}
+            items={highRiskSupplierRows}
+            description="Suppliers requiring increased monitoring or governance action."
+          />
+
+          <EscalationCard
+            title="Overdue SCARs"
+            count={totalOverdueScars}
+            severity={totalOverdueScars > 0 ? "high" : "controlled"}
+            items={overdueScarSuppliers}
+            description="Suppliers with overdue SCAR responses or actions."
+            metricField="overdue_scars"
+            metricLabel="Overdue SCARs"
+          />
+
+          <EscalationCard
+            title="Failed Effectiveness"
+            count={totalNotEffectiveScars}
+            severity={totalNotEffectiveScars > 0 ? "high" : "controlled"}
+            items={notEffectiveScarSuppliers}
+            description="Suppliers with SCAR effectiveness checks marked not effective."
+            metricField="not_effective_scars"
+            metricLabel="Not Effective"
+          />
+
+          <EscalationCard
+            title="Recurring Supplier Issues"
+            count={totalRecurringNcmrs}
+            severity={totalRecurringNcmrs > 0 ? "medium" : "controlled"}
+            items={recurringSupplierIssueRows}
+            description="Suppliers with recurring NCMR signals."
+            metricField="recurring_ncmrs"
+            metricLabel="Recurring NCMRs"
+          />
+
+          <EscalationCard
+            title="Executive Review Required"
+            count={executiveReviewSuppliers.length}
+            severity={executiveReviewSuppliers.length > 0 ? "high" : "controlled"}
+            items={executiveReviewSuppliers}
+            description="Suppliers with escalation level 3 or higher."
+          />
+
+          <EscalationCard
+            title="Multiple Open SCARs"
+            count={suppliersWithMultipleOpenScars.length}
+            severity={suppliersWithMultipleOpenScars.length > 0 ? "medium" : "controlled"}
+            items={suppliersWithMultipleOpenScars}
+            description="Suppliers with three or more open SCARs."
+            metricField="open_scars"
+            metricLabel="Open SCARs"
+          />
+        </div>
+      </section>
+
+      <section style={sectionStyle}>
+        <div>
+          <div style={eyebrowStyle}>SUPPLIER SLA & GOVERNANCE INTELLIGENCE</div>
+          <h2 style={{ margin: "6px 0" }}>SCAR Exposure and Supplier Risk Control</h2>
+          <p style={{ color: "#4b5563", marginTop: 0 }}>
+            Aggregated supplier governance indicators using supplier risk,
+            SCAR exposure, recurring supplier NCMRs, and effectiveness signals.
+          </p>
+        </div>
+
+        <div style={kpiGridStyle}>
+          <KpiCard
+            title="Supplier SCAR Exposure"
+            value={supplierScarExposureRate}
+            suffix="%"
+            color={supplierScarExposureRate > 25 ? "#d97706" : "#15803d"}
+          />
+
+          <KpiCard
+            title="Supplier Recurrence Rate"
+            value={supplierRecurrenceRate}
+            suffix="%"
+            color={supplierRecurrenceRate > 25 ? "#dc2626" : "#15803d"}
+          />
+
+          <KpiCard
+            title="Supplier NCMRs"
+            value={totalSupplierNcmrs}
+            color="#7c3aed"
+          />
+
+          <KpiCard
+            title="Suppliers with ≥3 Open SCARs"
+            value={suppliersWithMultipleOpenScars.length}
+            color={suppliersWithMultipleOpenScars.length > 0 ? "#d97706" : "#15803d"}
+          />
+        </div>
+      </section>
+
+      <section style={sectionStyle}>
+        <div>
+          <div style={eyebrowStyle}>SUPPLIER RANKING INTELLIGENCE</div>
+          <h2 style={{ margin: "6px 0" }}>Risk and Recurrence Ranking</h2>
+          <p style={{ color: "#4b5563", marginTop: 0 }}>
+            Supplier ranking views for management review, supplier quality
+            governance, and executive follow-up.
+          </p>
+        </div>
+
+        <div style={rankingGridStyle}>
+          <RankingCard
+            title="Top Risk Suppliers"
+            suppliers={topRiskSuppliers}
+            metricLabel="Risk Score"
+            metricField="supplier_risk_score"
+          />
+
+          <RankingCard
+            title="Top Suppliers by Open SCARs"
+            suppliers={topOpenScarSuppliers}
+            metricLabel="Open SCARs"
+            metricField="open_scars"
+          />
+
+          <RankingCard
+            title="Top Suppliers by Overdue SCARs"
+            suppliers={topOverdueScarSuppliers}
+            metricLabel="Overdue SCARs"
+            metricField="overdue_scars"
+          />
+
+          <RankingCard
+            title="Top Suppliers by Recurrence"
+            suppliers={topRecurringNcmrSuppliers}
+            metricLabel="Recurring NCMRs"
+            metricField="recurring_ncmrs"
+          />
+        </div>
+      </section>
+
+      <section style={sectionStyle}>
+        <div>
+          <div style={eyebrowStyle}>SUPPLIER TREND INTELLIGENCE</div>
+          <h2 style={{ margin: "6px 0" }}>Risk and Governance Distribution</h2>
+          <p style={{ color: "#4b5563", marginTop: 0 }}>
+            Management review view of supplier risk distribution and governance
+            status distribution.
+          </p>
+        </div>
+
+        <div style={rankingGridStyle}>
+          <section style={miniPanelStyle}>
+            <h3 style={{ marginTop: 0 }}>Supplier Risk Distribution</h3>
+            <MiniBarChart data={riskDistribution} />
+          </section>
+
+          <section style={miniPanelStyle}>
+            <h3 style={{ marginTop: 0 }}>Governance Status Distribution</h3>
+            <MiniBarChart data={governanceDistribution} />
+          </section>
         </div>
       </section>
 
@@ -349,10 +642,12 @@ function KpiCard({
   title,
   value,
   color,
+  suffix = "",
 }: {
   title: string;
   value: number;
   color: string;
+  suffix?: string;
 }) {
   return (
     <div
@@ -378,10 +673,173 @@ function KpiCard({
 
       <div style={{ fontSize: "30px", fontWeight: 800, color }}>
         {value}
+        {suffix}
       </div>
     </div>
   );
 }
+
+
+function EscalationCard({
+  title,
+  count,
+  severity,
+  items,
+  description,
+  metricField,
+  metricLabel,
+}: {
+  title: string;
+  count: number;
+  severity: "controlled" | "medium" | "high";
+  items: SupplierRiskRow[];
+  description: string;
+  metricField?: keyof SupplierRiskRow;
+  metricLabel?: string;
+}) {
+  const color =
+    severity === "high"
+      ? "#dc2626"
+      : severity === "medium"
+      ? "#d97706"
+      : "#15803d";
+
+  return (
+    <div style={{ ...escalationCardStyle, borderLeft: `8px solid ${color}` }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: "10px" }}>
+        <div>
+          <h3 style={{ margin: "0 0 4px 0" }}>{title}</h3>
+          <p style={{ color: "#6b7280", margin: 0 }}>{description}</p>
+        </div>
+
+        <div style={{ fontSize: "30px", fontWeight: 800, color }}>{count}</div>
+      </div>
+
+      <div style={{ marginTop: "14px" }}>
+        {items.length === 0 ? (
+          <div style={{ color: "#15803d", fontWeight: 700 }}>
+            No escalation required.
+          </div>
+        ) : (
+          items.slice(0, 5).map((supplier) => (
+            <div key={supplier.id} style={escalationItemStyle}>
+              <Link href={`/suppliers/${supplier.id}`} style={{ fontWeight: 700 }}>
+                {supplier.supplier_name || "Unnamed Supplier"}
+              </Link>
+              <div style={subTextStyle}>
+                Risk: {supplier.supplier_risk_level || "Low"} | Score:{" "}
+                {supplier.supplier_risk_score ?? 0} | Escalation Level:{" "}
+                {supplier.supplier_escalation_level || 1}
+              </div>
+              {metricField ? (
+                <div style={subTextStyle}>
+                  {metricLabel}: {Number(supplier[metricField] || 0)}
+                </div>
+              ) : null}
+            </div>
+          ))
+        )}
+
+        {items.length > 5 ? (
+          <div style={{ ...subTextStyle, marginTop: "8px" }}>
+            + {items.length - 5} more
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function RankingCard({
+  title,
+  suppliers,
+  metricLabel,
+  metricField,
+}: {
+  title: string;
+  suppliers: SupplierRiskRow[];
+  metricLabel: string;
+  metricField: keyof SupplierRiskRow;
+}) {
+  return (
+    <section style={miniPanelStyle}>
+      <h3 style={{ marginTop: 0 }}>{title}</h3>
+
+      {suppliers.length === 0 ? (
+        <p style={{ color: "#6b7280" }}>No supplier data available.</p>
+      ) : (
+        suppliers.map((supplier) => (
+          <div key={supplier.id} style={rankingRowStyle}>
+            <div>
+              <Link href={`/suppliers/${supplier.id}`}>
+                <strong>{supplier.supplier_name || "Unnamed Supplier"}</strong>
+              </Link>
+              <div style={subTextStyle}>
+                {supplier.supplier_number || "No supplier number"} |{" "}
+                {supplier.supplier_risk_level || "Low"}
+              </div>
+            </div>
+
+            <strong>{Number(supplier[metricField] || 0)}</strong>
+          </div>
+        ))
+      )}
+
+      <div style={{ ...subTextStyle, marginTop: "8px" }}>{metricLabel}</div>
+    </section>
+  );
+}
+
+function MiniBarChart({ data }: { data: { label: string; value: number }[] }) {
+  const max = Math.max(...data.map((item) => item.value), 1);
+
+  return (
+    <div>
+      {data.map((item) => {
+        const width = item.value > 0 ? Math.max((item.value / max) * 100, 6) : 0;
+
+        return (
+          <div key={item.label} style={{ marginBottom: "12px" }}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                fontSize: "13px",
+                marginBottom: "4px",
+              }}
+            >
+              <span>{formatLabel(item.label)}</span>
+              <strong>{item.value}</strong>
+            </div>
+
+            <div
+              style={{
+                height: "12px",
+                background: "#e5e7eb",
+                borderRadius: "999px",
+                overflow: "hidden",
+              }}
+            >
+              <div
+                style={{
+                  height: "12px",
+                  width: `${width}%`,
+                  background: "#2563eb",
+                  borderRadius: "999px",
+                }}
+              />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+const formatLabel = (value: string) =>
+  String(value || "Unspecified")
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
 
 function RiskBadge({ level }: { level: string }) {
   const normalized = level.toLowerCase();
@@ -535,6 +993,54 @@ const buttonStyle: React.CSSProperties = {
 const secondaryButtonStyle: React.CSSProperties = {
   ...buttonStyle,
   background: "#374151",
+};
+
+const darkButtonStyle: React.CSSProperties = {
+  ...buttonStyle,
+  background: "#111827",
+};
+
+
+const escalationGridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+  gap: "16px",
+  marginTop: "18px",
+};
+
+const escalationCardStyle: React.CSSProperties = {
+  border: "1px solid #d1d5db",
+  borderRadius: "14px",
+  padding: "16px",
+  background: "#f9fafb",
+};
+
+const escalationItemStyle: React.CSSProperties = {
+  borderTop: "1px solid #e5e7eb",
+  paddingTop: "10px",
+  marginTop: "10px",
+};
+
+const rankingGridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+  gap: "16px",
+  marginTop: "16px",
+};
+
+const miniPanelStyle: React.CSSProperties = {
+  border: "1px solid #d1d5db",
+  borderRadius: "14px",
+  padding: "16px",
+  background: "#f9fafb",
+};
+
+const rankingRowStyle: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: "12px",
+  borderBottom: "1px solid #e5e7eb",
+  padding: "10px 0",
 };
 
 const tableStyle: React.CSSProperties = {
