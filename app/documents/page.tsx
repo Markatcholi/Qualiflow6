@@ -589,7 +589,15 @@ export default function DocumentControlLandingPage() {
               Real-time snapshot of controlled document workflow, review aging, release status, and SLA performance.
             </p>
           </div>
-          <a href="/dashboard/workflow" style={primaryLinkStyle}>Open Full Workflow Dashboard</a>
+          <div style={buttonRowStyle}>
+            <a href="/dashboard/workflow" style={primaryLinkStyle}>
+              Open Full Workflow Dashboard
+            </a>
+
+            <a href="/documents/dashboard" style={secondaryButtonStyle}>
+              Document Intelligence Dashboard
+            </a>
+          </div>
         </div>
 
         <div style={kpiGridStyle}>
