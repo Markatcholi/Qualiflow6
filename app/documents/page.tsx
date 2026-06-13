@@ -582,15 +582,6 @@ export default function DocumentControlLandingPage() {
 
       <section style={workflowNavigationStyle}>
         <div style={snapshotHeaderStyle}>
-          <div>
-            <div style={eyebrowStyle}>DOCUMENT CONTROL COMMAND CENTER</div>
-            <h2 style={{ margin: "6px 0" }}>Document Control Dashboards</h2>
-            <p style={subtleText}>
-              Use the operational workflow dashboard for active document workflow
-              execution, or open the intelligence dashboard for executive KPI,
-              SLA, review-aging, and management review visibility.
-            </p>
-          </div>
 
           <div style={buttonRowStyle}>
             <a href="/dashboard/workflow" style={primaryLinkStyle}>
