@@ -250,7 +250,7 @@ export default function ScarSupplierGovernanceDashboardPage() {
             Recalculate Supplier Risk
           </button>
 
-          <Link href="/supplier-quality">
+          <Link href="/supplier-quality-dashboard">
             <button style={darkButtonStyle}>Supplier Quality Dashboard</button>
           </Link>
 
