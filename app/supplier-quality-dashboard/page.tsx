@@ -282,7 +282,7 @@ export default function SupplierQualityDashboardPage() {
           </Link>
 
           <Link href="/scar/dashboard">
-            <button style={darkButtonStyle}>Governance Dashboard</button>
+            <button style={darkButtonStyle}>Executive Governance Dashboard</button>
           </Link>
         </div>
       </div>
