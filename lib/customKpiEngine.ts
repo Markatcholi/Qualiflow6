@@ -25,6 +25,9 @@ export type CustomKpiDefinition = {
   last_calculation_message?: string | null;
   age_date_field?: string | null;
   close_date_field?: string | null;
+  target_days?: number | null;
+  start_date_field?: string | null;
+  end_date_field?: string | null;
 };
 
 export type ConfiguredCustomKpi = {
@@ -133,6 +136,17 @@ const getOpenAgeRecords = ({
 
     return hasAgeDate && !isClosed;
   });
+};
+
+const fieldExists = ({
+  records,
+  fieldName,
+}: {
+  records: any[];
+  fieldName: string;
+}) => {
+  if (records.length === 0) return true;
+  return fieldName in records[0];
 };
 
 const updateKpiCalculationStatus = async ({
@@ -461,6 +475,108 @@ export async function calculateCustomKpiValues({
           definition,
           status: "success",
           message: `Calculated max age from ${tableName}.`,
+        });
+
+        continue;
+      }
+
+      if (calculationType === "percentage_within_target") {
+        const startField =
+          definition.start_date_field ||
+          definition.age_date_field ||
+          "created_at";
+
+        const endField =
+          definition.end_date_field ||
+          definition.close_date_field ||
+          "closed_at";
+
+        const targetDays = Number(definition.target_days || 0);
+
+        if (!targetDays || targetDays <= 0) {
+          const message =
+            "Target days is required for percentage_within_target KPIs.";
+
+          values[definition.kpi_key] = {
+            value: 0,
+            subtitle: "Missing target",
+          };
+
+          await updateKpiCalculationStatus({
+            supabase,
+            definition,
+            status: "failed",
+            message,
+          });
+
+          continue;
+        }
+
+        if (!fieldExists({ records, fieldName: startField })) {
+          const message = `Start date field '${startField}' was not found in table '${tableName}'.`;
+
+          values[definition.kpi_key] = {
+            value: 0,
+            subtitle: "Invalid start field",
+          };
+
+          await updateKpiCalculationStatus({
+            supabase,
+            definition,
+            status: "failed",
+            message,
+          });
+
+          continue;
+        }
+
+        if (!fieldExists({ records, fieldName: endField })) {
+          const message = `End date field '${endField}' was not found in table '${tableName}'.`;
+
+          values[definition.kpi_key] = {
+            value: 0,
+            subtitle: "Invalid end field",
+          };
+
+          await updateKpiCalculationStatus({
+            supabase,
+            definition,
+            status: "failed",
+            message,
+          });
+
+          continue;
+        }
+
+        const eligibleRecords = matchingRecords.filter(
+          (record: any) => record[startField] && record[endField],
+        );
+
+        const withinTargetRecords = eligibleRecords.filter((record: any) => {
+          const duration = daysBetween(record[startField], record[endField]);
+
+          if (duration === null || duration < 0) {
+            return false;
+          }
+
+          return duration <= targetDays;
+        });
+
+        const percentage =
+          eligibleRecords.length > 0
+            ? (withinTargetRecords.length / eligibleRecords.length) * 100
+            : 0;
+
+        values[definition.kpi_key] = {
+          value: Number(percentage.toFixed(1)),
+          subtitle: `% within ${targetDays} days`,
+        };
+
+        await updateKpiCalculationStatus({
+          supabase,
+          definition,
+          status: "success",
+          message: `Calculated percentage within ${targetDays} days from ${tableName}.`,
         });
 
         continue;
