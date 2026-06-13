@@ -892,6 +892,9 @@ export default function CompanySettingsPage() {
               style={inputStyle(!canEdit)}
             >
               <option value="count">Record Count</option>
+              <option value="average_open_age">Average Open Age</option>
+<option value="average_closure_time">Average Closure Time</option>
+<option value="max_age">Oldest Open Record</option>
             </select>
           </Field>
 
