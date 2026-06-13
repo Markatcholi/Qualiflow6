@@ -668,24 +668,6 @@ export default function NcmrPage() {
       </option>
     ));
 
-  const summaryCardStyle: React.CSSProperties = {
-    border: "1px solid #d1d5db",
-    borderRadius: "10px",
-    padding: "14px",
-    background: "#f9fafb",
-  };
-
-  const summaryLabelStyle: React.CSSProperties = {
-    fontSize: "13px",
-    color: "#4b5563",
-    marginBottom: "4px",
-  };
-
-  const summaryValueStyle: React.CSSProperties = {
-    fontSize: "24px",
-    fontWeight: "bold",
-  };
-
   const badgeStyle: React.CSSProperties = {
     color: "white",
     padding: "4px 8px",
@@ -754,6 +736,17 @@ export default function NcmrPage() {
         </div>
 
         <ActionToolbar>
+          <a
+            href="/ncmrs/dashboard"
+            style={{
+              ...primaryButtonStyle,
+              textDecoration: "none",
+              display: "inline-block",
+            }}
+          >
+            NCMR Dashboard
+          </a>
+
           {!showCreateForm ? (
             <button
               type="button"
@@ -1356,32 +1349,6 @@ export default function NcmrPage() {
 
         <div style={{ marginTop: "10px", fontSize: "14px", color: "#4b5563" }}>
           Showing {filteredList.length} of {list.length} NCMR record(s)
-        </div>
-      </section>
-
-      <section
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-          gap: "12px",
-          marginBottom: "20px",
-        }}
-      >
-        <div style={summaryCardStyle}>
-          <div style={summaryLabelStyle}>Total NCMRs</div>
-          <div style={summaryValueStyle}>{list.length}</div>
-        </div>
-        <div style={summaryCardStyle}>
-          <div style={summaryLabelStyle}>Open / Active</div>
-          <div style={summaryValueStyle}>{list.filter((x) => x.status !== "closed").length}</div>
-        </div>
-        <div style={summaryCardStyle}>
-          <div style={summaryLabelStyle}>CAPA Evaluation Required</div>
-          <div style={summaryValueStyle}>{list.filter((x) => x.capa_required).length}</div>
-        </div>
-        <div style={summaryCardStyle}>
-          <div style={summaryLabelStyle}>Recurring Issues</div>
-          <div style={summaryValueStyle}>{list.filter((x) => x.recurring_issue).length}</div>
         </div>
       </section>
 
