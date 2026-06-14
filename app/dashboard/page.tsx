@@ -34,11 +34,13 @@ import {
 } from "./components/DashboardComponents";
 
 type ConfiguredKpi = {
+  module_name?: string;
   kpi_key: string;
   kpi_name: string;
   kpi_category: string | null;
   calculation_type: string | null;
   display_order: number | null;
+  source?: "standard" | "custom";
 };
 
 type KpiDisplayValue = {
@@ -134,8 +136,8 @@ export default function DashboardPage() {
   const [workflowEventCount, setWorkflowEventCount] = useState(0);
   const [workflowEscalationQueue, setWorkflowEscalationQueue] = useState<any[]>([]);
 
-  const [configuredChangeKpis, setConfiguredChangeKpis] = useState<ConfiguredKpi[]>([]);
-  const [changeKpiValues, setChangeKpiValues] = useState<Record<string, KpiDisplayValue>>({});
+  const [configuredCatalogKpis, setConfiguredCatalogKpis] = useState<ConfiguredKpi[]>([]);
+  const [catalogKpiValues, setCatalogKpiValues] = useState<Record<string, KpiDisplayValue>>({});
 
   const getLast6Months = () => {
     const months: { key: string; label: string }[] = [];
@@ -202,6 +204,121 @@ export default function DashboardPage() {
       .sort((a, b) => b.count - a.count);
   };
 
+  const formatModuleName = (moduleName?: string | null) => {
+    if (!moduleName) return "General";
+
+    return String(moduleName)
+      .replace(/_/g, " ")
+      .replace(/\b\w/g, (char) => char.toUpperCase());
+  };
+
+  const resolveCatalogTableName = (moduleName?: string | null) => {
+    const tableMap: Record<string, string> = {
+      change_control: "change_controls",
+      complaint: "complaints",
+      ncmr: "ncmrs",
+      capa: "capas",
+      audit: "audits",
+      scar: "scars",
+      document_control: "controlled_documents",
+      training: "training_assignments",
+      oos_oot: "oos_oot_investigations",
+    };
+
+    return tableMap[String(moduleName || "")] || "";
+  };
+
+  const getRecordClosed = (record: any, moduleName?: string | null) => {
+    const status = String(
+      record.status ||
+        record.finding_status ||
+        record.scar_status ||
+        record.review_status ||
+        "",
+    ).toLowerCase();
+
+    if (status === "closed" || status === "completed" || status === "effectiveness_complete") return true;
+    if (moduleName === "document_control") return status === "effective" || status === "release";
+    return false;
+  };
+
+  const getRecordOpen = (record: any, moduleName?: string | null) => {
+    const status = String(record.status || record.finding_status || record.scar_status || "").toLowerCase();
+    if (status === "cancelled" || status === "waived" || status === "obsolete" || status === "superseded") return false;
+    return !getRecordClosed(record, moduleName);
+  };
+
+  const getRecordDueDate = (record: any) =>
+    record.due_date || record.target_implementation_date || record.effectiveness_due_date ||
+    record.effectiveness_verification_due_date || record.next_review_date || record.review_due_date || record.audit_date || null;
+
+  const getClosedAt = (record: any) =>
+    record.closed_at || record.completed_at || record.released_at || record.effective_date || record.approved_at || null;
+
+  const prefixKpiValues = (moduleName: string, values: Record<string, KpiDisplayValue>) => {
+    const prefixed: Record<string, KpiDisplayValue> = {};
+    Object.entries(values).forEach(([key, value]) => {
+      prefixed[`${moduleName}:${key}`] = value;
+      prefixed[key] = value;
+    });
+    return prefixed;
+  };
+
+  const calculateGenericCatalogKpi = ({
+    moduleName,
+    kpiKey,
+    calculationType,
+    records,
+  }: {
+    moduleName?: string | null;
+    kpiKey: string;
+    calculationType?: string | null;
+    records: any[];
+  }): KpiDisplayValue => {
+    const nowIso = new Date().toISOString().slice(0, 10);
+    const key = String(kpiKey || "").toLowerCase();
+    const calculation = String(calculationType || "").toLowerCase();
+    const openRecords = records.filter((record) => getRecordOpen(record, moduleName));
+    const closedRecords = records.filter((record) => getRecordClosed(record, moduleName));
+    const overdueRecords = openRecords.filter((record) => {
+      const due = getRecordDueDate(record);
+      if (due) return String(due).slice(0, 10) < nowIso;
+      if (!record.created_at) return false;
+      return daysBetween(record.created_at) > 30;
+    });
+
+    if (calculation === "distribution" || key.includes("by_")) {
+      if (key.includes("status")) return { value: "", distribution: buildDistribution(records, "status") };
+      if (key.includes("type")) return { value: "", distribution: buildDistribution(records, moduleName === "audit" ? "audit_type" : moduleName === "document_control" ? "document_type" : moduleName === "complaint" ? "source" : "change_type") };
+      if (key.includes("risk") || key.includes("severity")) return { value: "", distribution: buildDistribution(records, moduleName === "audit" ? "finding_severity" : "severity") };
+      return { value: "", distribution: buildDistribution(records, "status") };
+    }
+
+    if (key.includes("open")) return { value: openRecords.length, subtitle: "Open records" };
+    if (key.includes("closed") || key.includes("completed")) return { value: closedRecords.length, subtitle: "Closed/completed records" };
+    if (key.includes("overdue")) return { value: overdueRecords.length, subtitle: "Overdue records" };
+
+    if (key.includes("closure_rate") || key.includes("completion_rate") || key.includes("compliance")) {
+      return { value: records.length > 0 ? ((closedRecords.length / records.length) * 100).toFixed(1) : "100.0", subtitle: "%" };
+    }
+
+    if (key.includes("average") || key.includes("avg")) {
+      const durations = closedRecords
+        .filter((record) => record.created_at && getClosedAt(record))
+        .map((record) => (new Date(getClosedAt(record)).getTime() - new Date(record.created_at).getTime()) / (1000 * 60 * 60 * 24))
+        .filter((value) => !Number.isNaN(value) && value >= 0);
+      return { value: durations.length > 0 ? (durations.reduce((s, v) => s + v, 0) / durations.length).toFixed(1) : "0.0", subtitle: "days" };
+    }
+
+    if (key.includes("critical")) return { value: records.filter((record) => String(record.severity || record.finding_severity || record.priority || "").toLowerCase() === "critical").length, subtitle: "Critical records" };
+    if (key.includes("major") || key.includes("high")) return { value: records.filter((record) => ["major", "high"].includes(String(record.severity || record.finding_severity || record.risk_level || "").toLowerCase())).length, subtitle: "Major/high risk records" };
+    if (key.includes("effectiveness")) return { value: records.filter((record) => record.effectiveness_required || record.effectiveness_status === "effectiveness_pending" || record.effectiveness_rating).length, subtitle: "Effectiveness records" };
+    if (key.includes("capa")) return { value: records.filter((record) => record.capa_required || record.capa_evaluation_outcome === "required" || record.linked_capa_id || record.capa_id).length, subtitle: "CAPA related" };
+    if (key.includes("scar") || key.includes("supplier")) return { value: records.filter((record) => record.scar_required || record.supplier_capa_required || record.linked_scar_id || record.supplier_name).length, subtitle: "Supplier/SCAR related" };
+
+    return { value: records.length, subtitle: "Total records" };
+  };
+
   const calculateChangeControlKpis = (allChanges: any[]) => {
     const activeChanges = allChanges.filter(
       (change: any) => change.status !== "closed" && change.status !== "cancelled",
@@ -252,21 +369,20 @@ export default function DashboardPage() {
     };
   };
 
-  const fetchConfiguredChangeKpis = async () => {
+  const fetchConfiguredCatalogKpis = async () => {
     const companySettings = await getCompanySettings();
     const companyName = companySettings?.company_name || "Default Company";
 
     const { data: configData, error: configError } = await supabase
       .from("company_dashboard_kpi_configuration")
-      .select("kpi_key, display_order")
+      .select("module_name, kpi_key, display_order")
       .eq("company_name", companyName)
-      .eq("module_name", "change_control")
       .eq("executive_dashboard", true)
       .order("display_order", { ascending: true });
 
     if (configError) {
       console.warn(configError.message);
-      setConfiguredChangeKpis([]);
+      setConfiguredCatalogKpis([]);
       return;
     }
 
@@ -275,40 +391,54 @@ export default function DashboardPage() {
     if (configRows.length === 0 && companyName !== "Default Company") {
       const { data: fallbackConfigData } = await supabase
         .from("company_dashboard_kpi_configuration")
-        .select("kpi_key, display_order")
+        .select("module_name, kpi_key, display_order")
         .eq("company_name", "Default Company")
-        .eq("module_name", "change_control")
         .eq("executive_dashboard", true)
         .order("display_order", { ascending: true });
 
       configRows = fallbackConfigData || [];
     }
 
-    const selectedKeys = configRows.map((item: any) => item.kpi_key);
-    let configured: ConfiguredKpi[] = [];
+    const configured: ConfiguredKpi[] = [];
 
-    if (selectedKeys.length > 0) {
-      const { data: libraryData, error: libraryError } = await supabase
-        .from("kpi_library")
-        .select("kpi_key, kpi_name, kpi_category, calculation_type")
-        .eq("module_name", "change_control")
-        .in("kpi_key", selectedKeys);
+    if (configRows.length > 0) {
+      const moduleNames = Array.from(new Set(configRows.map((item: any) => item.module_name)));
+      let libraryData: any[] = [];
 
-      if (libraryError) {
-        console.warn(libraryError.message);
+      const { data: newLibraryData, error: newLibraryError } = await supabase
+        .from("kpi_library_definitions")
+        .select("module_name, kpi_key, kpi_name, category, kpi_category, calculation_type")
+        .in("module_name", moduleNames);
+
+      if (!newLibraryError && newLibraryData && newLibraryData.length > 0) {
+        libraryData = newLibraryData;
       } else {
-        const displayOrder: Record<string, number> = {};
-        configRows.forEach((item: any) => {
-          displayOrder[item.kpi_key] = item.display_order || 1;
-        });
+        const { data: legacyLibraryData, error: legacyLibraryError } = await supabase
+          .from("kpi_library")
+          .select("module_name, kpi_key, kpi_name, kpi_category, calculation_type")
+          .in("module_name", moduleNames);
 
-        configured = (libraryData || [])
-          .map((item: any) => ({
-            ...item,
-            display_order: displayOrder[item.kpi_key] || 1,
-          }))
-          .sort((a: ConfiguredKpi, b: ConfiguredKpi) => Number(a.display_order || 1) - Number(b.display_order || 1));
+        if (legacyLibraryError) console.warn(legacyLibraryError.message);
+        else libraryData = legacyLibraryData || [];
       }
+
+      const displayOrder: Record<string, number> = {};
+      configRows.forEach((item: any) => {
+        displayOrder[`${item.module_name}:${item.kpi_key}`] = item.display_order || 1;
+      });
+
+      configRows.forEach((config: any) => {
+        const matched = libraryData.find((item: any) => item.module_name === config.module_name && item.kpi_key === config.kpi_key);
+        configured.push({
+          module_name: config.module_name,
+          kpi_key: config.kpi_key,
+          kpi_name: matched?.kpi_name || config.kpi_key,
+          kpi_category: matched?.category || matched?.kpi_category || formatModuleName(config.module_name),
+          calculation_type: matched?.calculation_type || "count",
+          display_order: displayOrder[`${config.module_name}:${config.kpi_key}`] || 1,
+          source: "standard",
+        });
+      });
     }
 
     const customDefinitions = await fetchCustomKpiDefinitions({
@@ -317,21 +447,39 @@ export default function DashboardPage() {
       target: "executive_dashboard",
     });
 
-    const customConfigured = mapCustomDefinitionsToConfiguredKpis(customDefinitions);
-    const customValues = await calculateCustomKpiValues({
-      supabase,
-      definitions: customDefinitions,
-    });
-
-    const combined: ConfiguredKpi[] = [...configured, ...customConfigured].sort(
-      (a, b) => Number(a.display_order || 100) - Number(b.display_order || 100),
-    );
-
-    setConfiguredChangeKpis(combined);
-    setChangeKpiValues((prev) => ({
-      ...prev,
-      ...customValues,
+    const customConfigured = mapCustomDefinitionsToConfiguredKpis(customDefinitions).map((item: any) => ({
+      ...item,
+      module_name: item.module_name || "custom",
+      source: "custom" as const,
     }));
+
+    const customValues = await calculateCustomKpiValues({ supabase, definitions: customDefinitions });
+    const standardValues: Record<string, KpiDisplayValue> = {};
+    const recordsByModule: Record<string, any[]> = {};
+
+    for (const kpi of configured) {
+      const moduleName = kpi.module_name || "";
+      const tableName = resolveCatalogTableName(moduleName);
+      if (!tableName) {
+        standardValues[`${moduleName}:${kpi.kpi_key}`] = { value: 0, subtitle: "No table mapping" };
+        continue;
+      }
+      if (!recordsByModule[moduleName]) {
+        const { data, error } = await supabase.from(tableName).select("*");
+        recordsByModule[moduleName] = error ? [] : data || [];
+        if (error) console.warn(`Unable to load ${tableName}: ${error.message}`);
+      }
+      standardValues[`${moduleName}:${kpi.kpi_key}`] = calculateGenericCatalogKpi({
+        moduleName,
+        kpiKey: kpi.kpi_key,
+        calculationType: kpi.calculation_type,
+        records: recordsByModule[moduleName],
+      });
+    }
+
+    const combined: ConfiguredKpi[] = [...configured, ...customConfigured].sort((a, b) => Number(a.display_order || 100) - Number(b.display_order || 100));
+    setConfiguredCatalogKpis(combined);
+    setCatalogKpiValues({ ...standardValues, ...customValues });
   };
 
   const buildSupplierCounts = (allNcmrs: any[]) => {
@@ -935,10 +1083,10 @@ export default function DashboardPage() {
       .select("*");
 
     if (!changeError) {
-      setChangeKpiValues((prev) => ({ ...prev, ...calculateChangeControlKpis(changeData || []) }));
+      setCatalogKpiValues((prev) => ({ ...prev, ...prefixKpiValues("change_control", calculateChangeControlKpis(changeData || [])) }));
     } else {
       console.warn(changeError.message);
-      setChangeKpiValues({});
+      setCatalogKpiValues({});
     }
 
     await fetchDocumentWorkflowMetrics();
@@ -947,7 +1095,7 @@ export default function DashboardPage() {
   };
 
   useEffect(() => {
-    fetchConfiguredChangeKpis();
+    fetchConfiguredCatalogKpis();
     fetchData();
   }, []);
 
@@ -1071,9 +1219,9 @@ export default function DashboardPage() {
         majorFindings={majorFindings}
       />
 
-      <ConfiguredChangeControlKpiSection
-        configuredKpis={configuredChangeKpis}
-        kpiValues={changeKpiValues}
+      <ConfiguredCatalogKpiSection
+        configuredKpis={configuredCatalogKpis}
+        kpiValues={catalogKpiValues}
       />
 
       <EffectivenessIntelligenceSection
@@ -1190,7 +1338,7 @@ export default function DashboardPage() {
   );
 }
 
-function ConfiguredChangeControlKpiSection({
+function ConfiguredCatalogKpiSection({
   configuredKpis,
   kpiValues,
 }: {
@@ -1207,11 +1355,11 @@ function ConfiguredChangeControlKpiSection({
       <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", flexWrap: "wrap", alignItems: "flex-start" }}>
         <div>
           <div style={{ fontSize: "12px", fontWeight: 800, letterSpacing: "0.08em", color: "#6b7280" }}>
-            CONFIGURED KPI ENGINE
+            QUALITY INTELLIGENCE CATALOG
           </div>
-          <h2 style={{ margin: "6px 0" }}>Change Control Performance</h2>
+          <h2 style={{ margin: "6px 0" }}>Configured Executive KPIs</h2>
           <p style={{ margin: 0, color: "#6b7280" }}>
-            These metrics are controlled by Company Settings → Dashboard & KPI Configuration.
+            These metrics are controlled by Company Settings → Quality Intelligence Catalog.
           </p>
         </div>
         <a href="/admin/company-settings" style={{ background: "#111827", color: "white", borderRadius: "8px", padding: "10px 14px", textDecoration: "none", fontWeight: 700 }}>
@@ -1222,10 +1370,10 @@ function ConfiguredChangeControlKpiSection({
       {cardKpis.length > 0 ? (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "14px", marginTop: "16px" }}>
           {cardKpis.map((kpi) => {
-            const value = kpiValues[kpi.kpi_key];
+            const value = kpiValues[`${kpi.module_name}:${kpi.kpi_key}`] || kpiValues[kpi.kpi_key];
             return (
               <div key={kpi.kpi_key} style={{ border: "1px solid #e5e7eb", borderLeft: "6px solid #2563eb", borderRadius: "14px", padding: "14px", background: "#f9fafb" }}>
-                <div style={{ color: "#4b5563", fontSize: "13px" }}>{kpi.kpi_name}</div>
+                <div style={{ color: "#4b5563", fontSize: "13px" }}>{kpi.kpi_name}</div><div style={{ color: "#6b7280", fontSize: "11px", marginTop: "2px" }}>{String(kpi.module_name || "").replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase())}</div>
                 <div style={{ fontSize: "28px", fontWeight: 800, marginTop: "8px", color: "#111827" }}>{value?.value ?? 0}</div>
                 {value?.subtitle ? <div style={{ fontSize: "12px", color: "#6b7280", marginTop: "4px" }}>{value.subtitle}</div> : null}
               </div>
@@ -1237,7 +1385,7 @@ function ConfiguredChangeControlKpiSection({
       {distributionKpis.length > 0 ? (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "16px", marginTop: "16px" }}>
           {distributionKpis.map((kpi) => {
-            const rows = kpiValues[kpi.kpi_key]?.distribution || [];
+            const rows = (kpiValues[`${kpi.module_name}:${kpi.kpi_key}`] || kpiValues[kpi.kpi_key])?.distribution || [];
             return (
               <div key={kpi.kpi_key} style={{ border: "1px solid #e5e7eb", borderRadius: "14px", padding: "14px", background: "#ffffff" }}>
                 <h3 style={{ marginTop: 0 }}>{kpi.kpi_name}</h3>
