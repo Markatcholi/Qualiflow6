@@ -253,25 +253,51 @@ export default function ManagementReviewPage() {
       return daysBetween(change.created_at) > 30;
     });
 
+    const pendingApprovalCount = allChanges.filter((change: any) => change.status === "pending_approval").length;
+    const implementationCount = allChanges.filter((change: any) => change.status === "implementation").length;
+    const verificationCount = allChanges.filter((change: any) => change.status === "verification").length;
+    const closureApprovalCount = allChanges.filter((change: any) => change.status === "closure_approval").length;
+    const cancelledCount = allChanges.filter((change: any) => change.status === "cancelled").length;
+    const highRiskCount = activeChanges.filter((change: any) => String(change.risk_level || "").toLowerCase() === "high").length;
+    const criticalRiskCount = activeChanges.filter((change: any) => String(change.risk_level || "").toLowerCase() === "critical").length;
+
     return {
       total_changes: { value: allChanges.length },
+      total_change_controls: { value: allChanges.length },
       open_changes: { value: activeChanges.length },
+      active_changes: { value: activeChanges.length },
+      open_change_controls: { value: activeChanges.length },
       closed_changes: { value: closedChanges.length },
-      cancelled_changes: { value: allChanges.filter((change: any) => change.status === "cancelled").length },
-      pending_approval: { value: allChanges.filter((change: any) => change.status === "pending_approval").length },
-      implementation: { value: allChanges.filter((change: any) => change.status === "implementation").length },
-      verification: { value: allChanges.filter((change: any) => change.status === "verification").length },
-      closure_approval: { value: allChanges.filter((change: any) => change.status === "closure_approval").length },
+      closed_change_controls: { value: closedChanges.length },
+      cancelled_changes: { value: cancelledCount },
+      canceled_changes: { value: cancelledCount },
+      pending_approval: { value: pendingApprovalCount },
+      pending_approval_changes: { value: pendingApprovalCount },
+      changes_pending_approval: { value: pendingApprovalCount },
+      implementation: { value: implementationCount },
+      implementation_changes: { value: implementationCount },
+      changes_in_implementation: { value: implementationCount },
+      verification: { value: verificationCount },
+      verification_changes: { value: verificationCount },
+      changes_in_verification: { value: verificationCount },
+      closure_approval: { value: closureApprovalCount },
+      closure_approval_changes: { value: closureApprovalCount },
+      changes_pending_closure_approval: { value: closureApprovalCount },
       overdue_changes: { value: overdueChanges.length, subtitle: "Target date past due or >30 days old" },
+      overdue_change_controls: { value: overdueChanges.length, subtitle: "Target date past due or >30 days old" },
       average_days_to_close: { value: averageDaysToClose, subtitle: "days" },
-      open_high_risk_changes: {
-        value: activeChanges.filter((change: any) => String(change.risk_level || "").toLowerCase() === "high").length,
-      },
-      open_critical_changes: {
-        value: activeChanges.filter((change: any) => String(change.risk_level || "").toLowerCase() === "critical").length,
-      },
+      average_closure_time: { value: averageDaysToClose, subtitle: "days" },
+      avg_days_to_close: { value: averageDaysToClose, subtitle: "days" },
+      open_high_risk_changes: { value: highRiskCount },
+      high_risk_changes: { value: highRiskCount },
+      open_critical_changes: { value: criticalRiskCount },
+      critical_changes: { value: criticalRiskCount },
       changes_by_type: { value: "", distribution: buildDistribution(allChanges, "change_type") },
+      change_by_type: { value: "", distribution: buildDistribution(allChanges, "change_type") },
+      change_type_distribution: { value: "", distribution: buildDistribution(allChanges, "change_type") },
       changes_by_origin: { value: "", distribution: buildDistribution(allChanges, "change_origin") },
+      change_by_origin: { value: "", distribution: buildDistribution(allChanges, "change_origin") },
+      change_origin_distribution: { value: "", distribution: buildDistribution(allChanges, "change_origin") },
     };
   };
 
@@ -314,24 +340,34 @@ export default function ManagementReviewPage() {
       const { data: libraryData, error: libraryError } = await supabase
         .from("kpi_library")
         .select("kpi_key, kpi_name, kpi_category, calculation_type")
-        .eq("module_name", "change_control")
+        .in("module_name", ["change_control", "change_controls", "change"])
         .in("kpi_key", selectedKeys);
 
       if (libraryError) {
         console.warn(libraryError.message);
-      } else {
-        const displayOrder: Record<string, number> = {};
-        configRows.forEach((item: any) => {
-          displayOrder[item.kpi_key] = item.display_order || 1;
-        });
-
-        configured = (libraryData || [])
-          .map((item: any) => ({
-            ...item,
-            display_order: displayOrder[item.kpi_key] || 1,
-          }))
-          .sort((a: ConfiguredKpi, b: ConfiguredKpi) => Number(a.display_order || 1) - Number(b.display_order || 1));
       }
+
+      const displayOrder: Record<string, number> = {};
+      configRows.forEach((item: any) => {
+        displayOrder[item.kpi_key] = item.display_order || 1;
+      });
+
+      configured = selectedKeys
+        .map((key: string) => {
+          const matched = (libraryData || []).find((item: any) => item.kpi_key === key);
+
+          return {
+            kpi_key: key,
+            kpi_name: matched?.kpi_name || formatKpiName(key),
+            kpi_category: matched?.kpi_category || "Change Control",
+            calculation_type: matched?.calculation_type || inferCalculationType(key),
+            display_order: displayOrder[key] || 1,
+          };
+        })
+        .sort(
+          (a: ConfiguredKpi, b: ConfiguredKpi) =>
+            Number(a.display_order || 1) - Number(b.display_order || 1),
+        );
     }
 
     const customDefinitions = await fetchCustomKpiDefinitions({
@@ -355,6 +391,27 @@ export default function ManagementReviewPage() {
       ...prev,
       ...customValues,
     }));
+  };
+
+  const formatKpiName = (key: string) => {
+    return String(key || "")
+      .replace(/_/g, " ")
+      .replace(/\b\w/g, (char) => char.toUpperCase());
+  };
+
+  const inferCalculationType = (key: string) => {
+    const normalized = String(key || "").toLowerCase();
+
+    if (
+      normalized.includes("by_type") ||
+      normalized.includes("by_origin") ||
+      normalized.includes("by_status") ||
+      normalized.includes("distribution")
+    ) {
+      return "distribution";
+    }
+
+    return "count";
   };
 
   const buildSupplierCounts = (allNcmrs: any[]) => {
@@ -1585,6 +1642,8 @@ export default function ManagementReviewPage() {
           <button onClick={loadFullQualityPreset} style={buttonStyle}>Full Quality Review Preset</button>
           <button onClick={() => window.print()} style={darkButtonStyle}>Print Selected Report</button>
           <button onClick={() => window.open("/management-review/print", "_blank")} style={buttonStyle}>Open Legacy Print Report</button>
+          <a href="/dashboard/kpi-catalog" style={purpleLinkButtonStyle}>Dashboard KPI Catalog</a>
+          <a href="/dashboard" style={blackLinkButtonStyle}>Executive Dashboard</a>
         </div>
       </div>
 
@@ -2836,6 +2895,26 @@ const getStatusColor = (value: number, riskType: "risk" | "warning" = "risk") =>
   return "#b91c1c";
 };
 
+const purpleLinkButtonStyle: React.CSSProperties = {
+  padding: "10px 14px",
+  background: "#7c3aed",
+  color: "white",
+  borderRadius: "8px",
+  textDecoration: "none",
+  fontWeight: 700,
+  display: "inline-block",
+};
+
+const blackLinkButtonStyle: React.CSSProperties = {
+  padding: "10px 14px",
+  background: "#111827",
+  color: "white",
+  borderRadius: "8px",
+  textDecoration: "none",
+  fontWeight: 700,
+  display: "inline-block",
+};
+
 const buttonStyle: React.CSSProperties = {
   padding: "10px 14px",
   background: "#2563eb",
@@ -3109,7 +3188,10 @@ function ConfiguredChangeControlKpiSection({
       {cardKpis.length > 0 ? (
         <div style={gridStyle}>
           {cardKpis.map((kpi) => {
-            const value = kpiValues[kpi.kpi_key];
+            const value =
+              kpiValues[kpi.kpi_key] ||
+              kpiValues[String(kpi.kpi_key || "").replace(/^change_control_/, "")] ||
+              { value: 0, subtitle: "No calculated value" };
             return (
               <KpiCard
                 key={kpi.kpi_key}
