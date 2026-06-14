@@ -48,6 +48,10 @@ type ReportConfig = {
   supplierQuality: boolean;
   auditPerformance: boolean;
   oosPerformance: boolean;
+  complaintPerformance: boolean;
+  changeControlPerformance: boolean;
+  documentControlPerformance: boolean;
+  trainingPerformance: boolean;
   escalationQueues: boolean;
   trendCharts: boolean;
   executiveNotifications: boolean;
@@ -65,6 +69,10 @@ export default function ManagementReviewPage() {
     supplierQuality: true,
     auditPerformance: true,
     oosPerformance: true,
+    complaintPerformance: true,
+    changeControlPerformance: true,
+    documentControlPerformance: true,
+    trainingPerformance: true,
     escalationQueues: true,
     trendCharts: true,
     executiveNotifications: true,
@@ -1367,6 +1375,10 @@ export default function ManagementReviewPage() {
       supplierQuality: false,
       auditPerformance: true,
       oosPerformance: false,
+      complaintPerformance: true,
+      changeControlPerformance: true,
+      documentControlPerformance: false,
+      trainingPerformance: false,
       escalationQueues: false,
       trendCharts: true,
       executiveNotifications: true,
@@ -1385,6 +1397,10 @@ export default function ManagementReviewPage() {
       supplierQuality: true,
       auditPerformance: true,
       oosPerformance: true,
+      complaintPerformance: true,
+      changeControlPerformance: true,
+      documentControlPerformance: true,
+      trainingPerformance: true,
       escalationQueues: true,
       trendCharts: true,
       executiveNotifications: true,
@@ -1478,6 +1494,15 @@ export default function ManagementReviewPage() {
         ncmr_required: oosNcmrRequired,
         systemic_issues: oosSystemicIssues,
         escalations: oosEscalations,
+      },
+      complaint: {
+        included: reportConfig.complaintPerformance,
+      },
+      document_control: {
+        included: reportConfig.documentControlPerformance,
+      },
+      training: {
+        included: reportConfig.trainingPerformance,
       },
       audits: {
         total: auditTotal,
@@ -1766,191 +1791,6 @@ export default function ManagementReviewPage() {
             Auto-Generate Report
           </button>
         </div>
-      </Section>
-
-      <Section title="Recent Management Review Records" className="no-print">
-        {managementReviews.length === 0 ? (
-          <p>No management review records created yet.</p>
-        ) : (
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr>
-                <th style={thStyle}>Review Number</th>
-                <th style={thStyle}>Title</th>
-                <th style={thStyle}>Review Date</th>
-                <th style={thStyle}>Status</th>
-                <th style={thStyle}>Approval</th>
-                <th style={thStyle}>Quality Health</th>
-                <th style={thStyle}>Prepared By</th>
-                <th style={thStyle}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {managementReviews.map((review) => (
-                <tr key={review.id}>
-                  <td style={tdStyle}>{review.review_number || "N/A"}</td>
-                  <td style={tdStyle}>{review.review_title}</td>
-                  <td style={tdStyle}>{review.review_date || "N/A"}</td>
-                  <td style={tdStyle}>{review.status || "draft"}</td>
-                  <td style={tdStyle}>
-                    {review.approval_status || "draft"}
-                    {review.is_locked ? (
-                      <div style={{ color: "#15803d", fontSize: "12px", marginTop: "4px" }}>
-                        Locked: {review.locked_at || "N/A"}
-                      </div>
-                    ) : null}
-                  </td>
-                  <td style={tdStyle}>{review.quality_health || "N/A"}</td>
-                  <td style={tdStyle}>{review.prepared_by || "N/A"}</td>
-                  <td style={tdStyle}>
-                    <button type="button" onClick={() => setSelectedReviewId(review.id)}>
-                      Manage Approvals
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </Section>
-
-      <Section title="Flexible Approval Routing" className="no-print">
-        <p style={{ color: "#4b5563", marginTop: 0 }}>
-          Add approvers as needed for the selected management review. The record locks when all listed approvers have signed.
-        </p>
-
-        <label>
-          <strong>Select Management Review Record</strong>
-          <select
-            value={selectedReviewId}
-            onChange={(e) => setSelectedReviewId(e.target.value)}
-            style={inputStyle}
-          >
-            <option value="">Select review</option>
-            {managementReviews.map((review) => (
-              <option key={review.id} value={review.id}>
-                {review.review_number || "MR"} - {review.review_title || "Untitled"} ({review.approval_status || review.status || "draft"})
-              </option>
-            ))}
-          </select>
-        </label>
-
-        {selectedReview ? (
-          <div
-            style={{
-              border: "1px solid #d1d5db",
-              borderRadius: "10px",
-              padding: "12px",
-              marginTop: "14px",
-              background: selectedReviewLocked ? "#f3f4f6" : "white",
-            }}
-          >
-            <h3 style={{ marginTop: 0 }}>{selectedReview.review_title}</h3>
-            <p><strong>Review Number:</strong> {selectedReview.review_number || "N/A"}</p>
-            <p><strong>Approval Status:</strong> {selectedReview.approval_status || "draft"}</p>
-            <p><strong>Locked:</strong> {selectedReviewLocked ? `Yes — ${selectedReview.locked_at || "N/A"}` : "No"}</p>
-
-            {!selectedReviewLocked ? (
-              <>
-                <h3>Add Approver</h3>
-
-                <div style={builderGridStyle}>
-                  <label>
-                    <strong>Approver Name</strong>
-                    <input
-                      value={approverName}
-                      onChange={(e) => setApproverName(e.target.value)}
-                      style={inputStyle}
-                    />
-                  </label>
-
-                  <label>
-                    <strong>Approver Email</strong>
-                    <input
-                      value={approverEmail}
-                      onChange={(e) => setApproverEmail(e.target.value)}
-                      style={inputStyle}
-                    />
-                  </label>
-
-                  <label>
-                    <strong>Role / Title</strong>
-                    <input
-                      value={approverRole}
-                      onChange={(e) => setApproverRole(e.target.value)}
-                      placeholder="Example: VP Quality, Operations Leader"
-                      style={inputStyle}
-                    />
-                  </label>
-                </div>
-
-                <label>
-                  <strong>Signature Meaning</strong>
-                  <textarea
-                    value={signatureMeaning}
-                    onChange={(e) => setSignatureMeaning(e.target.value)}
-                    rows={3}
-                    style={textareaStyle}
-                  />
-                </label>
-
-                <button type="button" onClick={addApprover} style={buttonStyle}>
-                  Add Approver
-                </button>
-              </>
-            ) : null}
-
-            <h3>Approvers</h3>
-
-            {selectedApprovers.length === 0 ? (
-              <p>No approvers added yet.</p>
-            ) : (
-              <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                <thead>
-                  <tr>
-                    <th style={thStyle}>Name</th>
-                    <th style={thStyle}>Email</th>
-                    <th style={thStyle}>Role</th>
-                    <th style={thStyle}>Status</th>
-                    <th style={thStyle}>Signed By</th>
-                    <th style={thStyle}>Signed At</th>
-                    <th style={thStyle}>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {selectedApprovers.map((approver: any) => (
-                    <tr key={approver.id}>
-                      <td style={tdStyle}>{approver.approver_name || "N/A"}</td>
-                      <td style={tdStyle}>{approver.approver_email || "N/A"}</td>
-                      <td style={tdStyle}>{approver.approver_role || "N/A"}</td>
-                      <td style={tdStyle}>{approver.approval_status || "pending"}</td>
-                      <td style={tdStyle}>{approver.signed_by || "N/A"}</td>
-                      <td style={tdStyle}>{approver.signed_at || "N/A"}</td>
-                      <td style={tdStyle}>
-                        {approver.approval_status !== "approved" && !selectedReviewLocked ? (
-                          <button type="button" onClick={() => approveReviewApprover(approver)}>
-                            Approve / Sign
-                          </button>
-                        ) : null}
-                        {approver.approval_status !== "approved" && !selectedReviewLocked ? (
-                          <button
-                            type="button"
-                            onClick={() => removeApprover(approver)}
-                            style={{ marginLeft: "8px" }}
-                          >
-                            Remove
-                          </button>
-                        ) : null}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-        ) : (
-          <p>Select a management review record to manage approvals.</p>
-        )}
       </Section>
 
       <Section title="Management Review Action Tracker" className="no-print">
@@ -2698,6 +2538,202 @@ export default function ManagementReviewPage() {
       <div className="print-only" style={footerStyle}>
         QualiFlow Management Review Report | Generated {reportGeneratedAt}
       </div>
+
+
+      <Section title="Review Approvals & Signatures" className="no-print">
+        <p style={{ color: "#4b5563", marginTop: 0 }}>
+          Add approvers as needed for the selected management review. The record locks when all listed approvers have signed.
+        </p>
+
+        <label>
+          <strong>Select Management Review Record</strong>
+          <select
+            value={selectedReviewId}
+            onChange={(e) => setSelectedReviewId(e.target.value)}
+            style={inputStyle}
+          >
+            <option value="">Select review</option>
+            {managementReviews.map((review) => (
+              <option key={review.id} value={review.id}>
+                {review.review_number || "MR"} - {review.review_title || "Untitled"} ({review.approval_status || review.status || "draft"})
+              </option>
+            ))}
+          </select>
+        </label>
+
+        {selectedReview ? (
+          <div
+            style={{
+              border: "1px solid #d1d5db",
+              borderRadius: "10px",
+              padding: "12px",
+              marginTop: "14px",
+              background: selectedReviewLocked ? "#f3f4f6" : "white",
+            }}
+          >
+            <h3 style={{ marginTop: 0 }}>{selectedReview.review_title}</h3>
+            <p><strong>Review Number:</strong> {selectedReview.review_number || "N/A"}</p>
+            <p><strong>Approval Status:</strong> {selectedReview.approval_status || "draft"}</p>
+            <p><strong>Locked:</strong> {selectedReviewLocked ? `Yes — ${selectedReview.locked_at || "N/A"}` : "No"}</p>
+
+            {!selectedReviewLocked ? (
+              <>
+                <h3>Add Approver</h3>
+
+                <div style={builderGridStyle}>
+                  <label>
+                    <strong>Approver Name</strong>
+                    <input
+                      value={approverName}
+                      onChange={(e) => setApproverName(e.target.value)}
+                      style={inputStyle}
+                    />
+                  </label>
+
+                  <label>
+                    <strong>Approver Email</strong>
+                    <input
+                      value={approverEmail}
+                      onChange={(e) => setApproverEmail(e.target.value)}
+                      style={inputStyle}
+                    />
+                  </label>
+
+                  <label>
+                    <strong>Role / Title</strong>
+                    <input
+                      value={approverRole}
+                      onChange={(e) => setApproverRole(e.target.value)}
+                      placeholder="Example: VP Quality, Operations Leader"
+                      style={inputStyle}
+                    />
+                  </label>
+                </div>
+
+                <label>
+                  <strong>Signature Meaning</strong>
+                  <textarea
+                    value={signatureMeaning}
+                    onChange={(e) => setSignatureMeaning(e.target.value)}
+                    rows={3}
+                    style={textareaStyle}
+                  />
+                </label>
+
+                <button type="button" onClick={addApprover} style={buttonStyle}>
+                  Add Approver
+                </button>
+              </>
+            ) : null}
+
+            <h3>Approvers</h3>
+
+            {selectedApprovers.length === 0 ? (
+              <p>No approvers added yet.</p>
+            ) : (
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead>
+                  <tr>
+                    <th style={thStyle}>Name</th>
+                    <th style={thStyle}>Email</th>
+                    <th style={thStyle}>Role</th>
+                    <th style={thStyle}>Status</th>
+                    <th style={thStyle}>Signed By</th>
+                    <th style={thStyle}>Signed At</th>
+                    <th style={thStyle}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {selectedApprovers.map((approver: any) => (
+                    <tr key={approver.id}>
+                      <td style={tdStyle}>{approver.approver_name || "N/A"}</td>
+                      <td style={tdStyle}>{approver.approver_email || "N/A"}</td>
+                      <td style={tdStyle}>{approver.approver_role || "N/A"}</td>
+                      <td style={tdStyle}>{approver.approval_status || "pending"}</td>
+                      <td style={tdStyle}>{approver.signed_by || "N/A"}</td>
+                      <td style={tdStyle}>{approver.signed_at || "N/A"}</td>
+                      <td style={tdStyle}>
+                        {approver.approval_status !== "approved" && !selectedReviewLocked ? (
+                          <button type="button" onClick={() => approveReviewApprover(approver)}>
+                            Approve / Sign
+                          </button>
+                        ) : null}
+                        {approver.approval_status !== "approved" && !selectedReviewLocked ? (
+                          <button
+                            type="button"
+                            onClick={() => removeApprover(approver)}
+                            style={{ marginLeft: "8px" }}
+                          >
+                            Remove
+                          </button>
+                        ) : null}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        ) : (
+          <p>Select a management review record to manage approvals.</p>
+        )}
+      </Section>
+
+
+      <Section title="Management Review History" className="no-print">
+        {managementReviews.length === 0 ? (
+          <p>No management review records created yet.</p>
+        ) : (
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr>
+                <th style={thStyle}>Review Number</th>
+                <th style={thStyle}>Title</th>
+                <th style={thStyle}>Review Date</th>
+                <th style={thStyle}>Status</th>
+                <th style={thStyle}>Quality Health</th>
+                <th style={thStyle}>Report</th>
+                <th style={thStyle}>Prepared By</th>
+                <th style={thStyle}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {managementReviews.map((review) => (
+                <tr key={review.id}>
+                  <td style={tdStyle}>{review.review_number || "N/A"}</td>
+                  <td style={tdStyle}>{review.review_title}</td>
+                  <td style={tdStyle}>{review.review_date || "N/A"}</td>
+                  <td style={tdStyle}>
+                    {review.status || review.approval_status || "draft"}
+                    {review.is_locked ? (
+                      <div style={{ color: "#15803d", fontSize: "12px", marginTop: "4px" }}>
+                        Locked: {review.locked_at || "N/A"}
+                      </div>
+                    ) : null}
+                  </td>
+                  <td style={tdStyle}>{review.quality_health || "N/A"}</td>
+                  <td style={tdStyle}>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        window.open(`/management-review/print?review_id=${review.id}`, "_blank")
+                      }
+                    >
+                      Open Report
+                    </button>
+                  </td>
+                  <td style={tdStyle}>{review.prepared_by || "N/A"}</td>
+                  <td style={tdStyle}>
+                    <button type="button" onClick={() => setSelectedReviewId(review.id)}>
+                      Manage Approvals
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </Section>
     </main>
   );
 }
