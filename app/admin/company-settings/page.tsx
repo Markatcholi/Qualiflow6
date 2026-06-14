@@ -128,7 +128,7 @@ export default function CompanySettingsPage() {
       .order("default_display_order", { ascending: true });
 
     if (moduleName !== "all") {
-      newLibraryQuery = newLibraryQuery.eq("module_name", moduleName);
+      newLibraryQuery = newLibraryQuery.in("module_name", getModuleAliases(moduleName));
     }
 
     const { data: newLibraryData, error: newLibraryError } =
@@ -145,7 +145,7 @@ export default function CompanySettingsPage() {
         .order("kpi_name", { ascending: true });
 
       if (moduleName !== "all") {
-        legacyLibraryQuery = legacyLibraryQuery.eq("module_name", moduleName);
+        legacyLibraryQuery = legacyLibraryQuery.in("module_name", getModuleAliases(moduleName));
       }
 
       const { data: legacyLibraryData, error: legacyLibraryError } =
@@ -159,6 +159,11 @@ export default function CompanySettingsPage() {
       library = (legacyLibraryData as KpiLibraryItem[]) || [];
     }
 
+    library = library.map((kpi) => ({
+      ...kpi,
+      module_name: normalizeCatalogModuleName(kpi.module_name),
+    }));
+
     setKpiLibrary(library);
 
     let companyConfigQuery = supabase
@@ -167,7 +172,7 @@ export default function CompanySettingsPage() {
       .eq("company_name", company);
 
     if (moduleName !== "all") {
-      companyConfigQuery = companyConfigQuery.eq("module_name", moduleName);
+      companyConfigQuery = companyConfigQuery.in("module_name", getModuleAliases(moduleName));
     }
 
     const { data: companyConfigData, error: companyConfigError } =
@@ -186,7 +191,7 @@ export default function CompanySettingsPage() {
         .select("*");
 
       if (moduleName !== "all") {
-        defaultConfigQuery = defaultConfigQuery.eq("module_name", moduleName);
+        defaultConfigQuery = defaultConfigQuery.in("module_name", getModuleAliases(moduleName));
       }
 
       const { data: defaultConfigData } = await defaultConfigQuery;
@@ -201,7 +206,7 @@ export default function CompanySettingsPage() {
       const matchedConfig = configurationRows.find(
         (row: any) =>
           row.kpi_key === kpi.kpi_key &&
-          row.module_name === kpi.module_name,
+          normalizeCatalogModuleName(row.module_name) === normalizeCatalogModuleName(kpi.module_name),
       );
 
       const defaultExecutiveDashboard =
@@ -232,7 +237,7 @@ export default function CompanySettingsPage() {
     setKpiConfig(nextConfig);
 
     const quickAddOptions = library.filter(
-      (kpi) => kpi.module_name === quickAddModule,
+      (kpi) => moduleMatches(kpi.module_name, quickAddModule),
     );
 
     if (quickAddOptions.length > 0) {
@@ -309,7 +314,7 @@ export default function CompanySettingsPage() {
   const addKpiFromCatalog = () => {
     const selected = kpiLibrary.find(
       (kpi) =>
-        kpi.module_name === quickAddModule &&
+        moduleMatches(kpi.module_name, quickAddModule) &&
         kpi.kpi_key === quickAddKpiKey,
     );
 
@@ -353,7 +358,7 @@ export default function CompanySettingsPage() {
 
       return {
         company_name: companyName,
-        module_name: kpi.module_name,
+        module_name: normalizeCatalogModuleName(kpi.module_name),
         kpi_key: kpi.kpi_key,
         executive_dashboard:
           kpiConfig[configKey]?.executive_dashboard ??
@@ -541,6 +546,48 @@ export default function CompanySettingsPage() {
     { value: "oos_oot", label: "OOS/OOT" },
     { value: "generic", label: "Generic / Reusable" },
   ];
+
+  const getModuleAliases = (moduleName: string) => {
+    const aliasMap: Record<string, string[]> = {
+      change_control: ["change_control", "change_controls", "change"],
+      complaint: ["complaint", "complaints"],
+      ncmr: ["ncmr", "ncmrs"],
+      capa: ["capa", "capas"],
+      audit: ["audit", "audits"],
+      scar: ["scar", "scars", "supplier_quality"],
+      document_control: ["document_control", "documents", "controlled_documents"],
+      training: ["training", "training_assignments"],
+      oos_oot: ["oos_oot", "oos_oot_investigations", "oos"],
+      generic: ["generic", "reusable"],
+    };
+
+    return aliasMap[moduleName] || [moduleName];
+  };
+
+  const normalizeCatalogModuleName = (moduleName: string | null | undefined) => {
+    const value = String(moduleName || "");
+
+    if (["change_controls", "change"].includes(value)) return "change_control";
+    if (value === "complaints") return "complaint";
+    if (value === "ncmrs") return "ncmr";
+    if (value === "capas") return "capa";
+    if (value === "audits") return "audit";
+    if (value === "scars" || value === "supplier_quality") return "scar";
+    if (value === "documents" || value === "controlled_documents") return "document_control";
+    if (value === "training_assignments") return "training";
+    if (value === "oos_oot_investigations" || value === "oos") return "oos_oot";
+
+    return value;
+  };
+
+  const moduleMatches = (
+    actualModule: string | null | undefined,
+    selectedModule: string,
+  ) => {
+    if (selectedModule === "all") return true;
+
+    return getModuleAliases(selectedModule).includes(String(actualModule || ""));
+  };
 
   const formatStatus = (status?: string | null) => {
     if (!status) return "Not Run";
@@ -813,7 +860,7 @@ export default function CompanySettingsPage() {
                 const moduleName = e.target.value;
                 setQuickAddModule(moduleName);
                 const moduleKpis = kpiLibrary.filter(
-                  (kpi) => kpi.module_name === moduleName,
+                  (kpi) => moduleMatches(kpi.module_name, moduleName),
                 );
                 setQuickAddKpiKey(moduleKpis[0]?.kpi_key || "");
               }}
@@ -838,7 +885,7 @@ export default function CompanySettingsPage() {
               style={inputStyle(!canEdit || savingKpis)}
             >
               {kpiLibrary
-                .filter((kpi) => kpi.module_name === quickAddModule)
+                .filter((kpi) => moduleMatches(kpi.module_name, quickAddModule))
                 .map((kpi) => (
                   <option key={`${kpi.module_name}:${kpi.kpi_key}`} value={kpi.kpi_key}>
                     {kpi.kpi_name}
