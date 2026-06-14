@@ -774,31 +774,16 @@ export default function TrainingManagementPage() {
           </p>
         </div>
 
-        <a href="/dashboard" style={darkButtonStyle}>
-          Dashboard
-        </a>
-      </header>
+        <div style={buttonRowStyle}>
+          <a href="/training/dashboard" style={darkButtonStyle}>
+            Training Intelligence Dashboard
+          </a>
 
-      <section style={kpiGridStyle}>
-        <KpiCard title="Total Assignments" value={metrics.total} color="#2563eb" />
-        <KpiCard title="Open Training" value={metrics.open} color="#d97706" />
-        <KpiCard title="Overdue" value={metrics.overdue} color="#dc2626" />
-        <KpiCard title="Completed" value={metrics.completed} color="#15803d" />
-        <KpiCard title="Training Signatures" value={metrics.trainingSignatures} color="#7c3aed" />
-        <KpiCard title="Awaiting Signature" value={metrics.awaitingSignature} color="#d97706" />
-        <KpiCard
-          title="Completion Rate"
-          value={metrics.completionRate}
-          color="#15803d"
-          suffix="%"
-        />
-        <KpiCard
-          title="Effectiveness Pending"
-          value={metrics.effectivenessPending}
-          color="#d97706"
-        />
-        <KpiCard title="Matrix Rows" value={metrics.matrixRows} color="#2563eb" />
-      </section>
+          <a href="/dashboard" style={secondaryButtonStyle}>
+            Enterprise Dashboard
+          </a>
+        </div>
+      </header>
 
       
       <section style={cardStyle}>
@@ -834,53 +819,6 @@ export default function TrainingManagementPage() {
         >
           Open My Training
         </button>
-      </section>
-
-      <section style={cardStyle}>
-        <h2 style={{ marginTop: 0 }}>Document Training Compliance</h2>
-        <p style={subtleText}>
-          Training completion by controlled document. This view supports management review, audit readiness, and retraining follow-up.
-        </p>
-
-        {documentCompliance.length === 0 ? (
-          <p style={subtleText}>No document-linked training assignments available yet.</p>
-        ) : (
-          <div style={{ overflowX: "auto" }}>
-            <table style={tableStyle}>
-              <thead>
-                <tr>
-                  <th style={thStyle}>Document</th>
-                  <th style={thStyle}>Assigned</th>
-                  <th style={thStyle}>Completed</th>
-                  <th style={thStyle}>Open</th>
-                  <th style={thStyle}>Overdue</th>
-                  <th style={thStyle}>Awaiting Signature</th>
-                  <th style={thStyle}>Compliance</th>
-                </tr>
-              </thead>
-              <tbody>
-                {documentCompliance.map((row) => (
-                  <tr key={row.id}>
-                    <td style={tdStyle}>
-                      <strong>
-                        {row.documentNumber} Rev {row.revision}
-                      </strong>
-                      <div style={smallTextStyle}>{row.title}</div>
-                    </td>
-                    <td style={tdStyle}>{row.assigned}</td>
-                    <td style={tdStyle}>{row.completed}</td>
-                    <td style={tdStyle}>{row.open}</td>
-                    <td style={tdStyle}>{row.overdue}</td>
-                    <td style={tdStyle}>{row.awaitingSignature}</td>
-                    <td style={tdStyle}>
-                      <ComplianceBadge value={row.compliance} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
       </section>
 
       <section style={cardStyle}>
