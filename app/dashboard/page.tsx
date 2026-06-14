@@ -1090,6 +1090,36 @@ export default function DashboardPage() {
             Generate Management Review Report
           </button>
 
+          <a
+            href="/dashboard/kpi-catalog"
+            style={{
+              padding: "10px 14px",
+              background: "#7c3aed",
+              color: "white",
+              borderRadius: "8px",
+              textDecoration: "none",
+              fontWeight: 700,
+              display: "inline-block",
+            }}
+          >
+            Dashboard KPI Catalog
+          </a>
+
+          <a
+            href="/admin/company-settings"
+            style={{
+              padding: "10px 14px",
+              background: "#111827",
+              color: "white",
+              borderRadius: "8px",
+              textDecoration: "none",
+              fontWeight: 700,
+              display: "inline-block",
+            }}
+          >
+            Configure KPIs
+          </a>
+
           <button
             onClick={() => window.print()}
             style={{
