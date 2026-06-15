@@ -2953,6 +2953,7 @@ export default function ManagementReviewPage() {
                 <th style={thStyle}>Status</th>
                 <th style={thStyle}>Quality Health</th>
                 <th style={thStyle}>Prepared By</th>
+                <th style={thStyle}>Last Updated</th>
                 <th style={thStyle}>Report</th>
                 <th style={thStyle}>Actions</th>
               </tr>
@@ -2964,15 +2965,24 @@ export default function ManagementReviewPage() {
                   <td style={tdStyle}>{review.review_title}</td>
                   <td style={tdStyle}>{review.review_date || "N/A"}</td>
                   <td style={tdStyle}>
-                    {review.status || review.approval_status || "draft"}
+                    <ReviewStatusBadge status={review.status || review.approval_status || "draft"} />
                     {review.is_locked ? (
-                      <div style={{ color: "#15803d", fontSize: "12px", marginTop: "4px" }}>
-                        Locked: {review.locked_at || "N/A"}
+                      <div style={{ color: "#15803d", fontSize: "12px", marginTop: "6px", fontWeight: 700 }}>
+                        Locked
                       </div>
                     ) : null}
                   </td>
-                  <td style={tdStyle}>{review.quality_health || "N/A"}</td>
+                  <td style={tdStyle}>
+                    <QualityHealthBadge health={review.quality_health || "N/A"} />
+                  </td>
                   <td style={tdStyle}>{review.prepared_by || "N/A"}</td>
+                  <td style={tdStyle}>
+                    {review.updated_at
+                      ? new Date(review.updated_at).toLocaleDateString()
+                      : review.created_at
+                      ? new Date(review.created_at).toLocaleDateString()
+                      : "N/A"}
+                  </td>
                   <td style={tdStyle}>
                     <button
                       type="button"
@@ -3090,6 +3100,129 @@ function KpiCard({ title, value, subtitle, color }: { title: string; value: stri
       {subtitle ? <div style={{ marginTop: "8px", fontSize: "12px", color: "#6b7280" }}>{subtitle}</div> : null}
     </div>
   );
+}
+
+function ReviewStatusBadge({ status }: { status: string | null | undefined }) {
+  const normalized = String(status || "draft")
+    .replace(/_/g, " ")
+    .trim()
+    .toLowerCase();
+
+  let display = normalized || "draft";
+
+  if (display === "pending approval") {
+    display = "Pending Approval";
+  } else {
+    display = display.replace(/\b\w/g, (char) => char.toUpperCase());
+  }
+
+  return (
+    <span style={{ ...pillBaseStyle, ...getReviewStatusStyle(normalized) }}>
+      {display}
+    </span>
+  );
+}
+
+function QualityHealthBadge({ health }: { health: string | null | undefined }) {
+  const normalized = String(health || "N/A")
+    .replace(/_/g, " ")
+    .trim()
+    .toLowerCase();
+
+  const display =
+    normalized === "n/a"
+      ? "N/A"
+      : normalized.replace(/\b\w/g, (char) => char.toUpperCase());
+
+  return (
+    <span style={{ ...pillBaseStyle, ...getQualityHealthStyle(normalized) }}>
+      {display}
+    </span>
+  );
+}
+
+function getReviewStatusStyle(status: string): React.CSSProperties {
+  const normalized = String(status || "draft").replace(/_/g, " ").toLowerCase();
+
+  if (normalized === "approved") {
+    return {
+      background: "#dcfce7",
+      color: "#166534",
+      border: "1px solid #86efac",
+    };
+  }
+
+  if (normalized === "pending approval" || normalized === "pending") {
+    return {
+      background: "#fef3c7",
+      color: "#92400e",
+      border: "1px solid #fcd34d",
+    };
+  }
+
+  if (normalized === "rejected") {
+    return {
+      background: "#fee2e2",
+      color: "#991b1b",
+      border: "1px solid #fca5a5",
+    };
+  }
+
+  if (normalized === "closed" || normalized === "locked") {
+    return {
+      background: "#f3f4f6",
+      color: "#374151",
+      border: "1px solid #d1d5db",
+    };
+  }
+
+  return {
+    background: "#dbeafe",
+    color: "#1d4ed8",
+    border: "1px solid #93c5fd",
+  };
+}
+
+function getQualityHealthStyle(health: string): React.CSSProperties {
+  const normalized = String(health || "").toLowerCase();
+
+  if (normalized === "controlled" || normalized === "excellent") {
+    return {
+      background: "#dcfce7",
+      color: "#166534",
+      border: "1px solid #86efac",
+    };
+  }
+
+  if (normalized === "good" || normalized === "watch") {
+    return {
+      background: "#dbeafe",
+      color: "#1d4ed8",
+      border: "1px solid #93c5fd",
+    };
+  }
+
+  if (normalized === "warning" || normalized === "elevated") {
+    return {
+      background: "#fef3c7",
+      color: "#92400e",
+      border: "1px solid #fcd34d",
+    };
+  }
+
+  if (normalized === "critical") {
+    return {
+      background: "#fee2e2",
+      color: "#991b1b",
+      border: "1px solid #fca5a5",
+    };
+  }
+
+  return {
+    background: "#f3f4f6",
+    color: "#374151",
+    border: "1px solid #d1d5db",
+  };
 }
 
 function StatusChip({ status }: { status: string }) {
@@ -3286,6 +3419,15 @@ const cardStyle = (borderColor: string): React.CSSProperties => ({
   boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
   minHeight: "118px",
 });
+
+const pillBaseStyle: React.CSSProperties = {
+  display: "inline-block",
+  borderRadius: "999px",
+  padding: "5px 10px",
+  fontSize: "12px",
+  fontWeight: 800,
+  whiteSpace: "nowrap",
+};
 
 const sectionStyle: React.CSSProperties = {
   border: "1px solid #e5e7eb",
