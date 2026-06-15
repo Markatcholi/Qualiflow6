@@ -160,6 +160,25 @@ export default function ManagementReviewPage() {
   const [auditTrend, setAuditTrend] = useState<TrendItem[]>([]);
   const [findingTrend, setFindingTrend] = useState<TrendItem[]>([]);
 
+  const [complaintTotal, setComplaintTotal] = useState(0);
+  const [complaintOpen, setComplaintOpen] = useState(0);
+  const [complaintClosed, setComplaintClosed] = useState(0);
+  const [complaintHighRisk, setComplaintHighRisk] = useState(0);
+  const [complaintReportable, setComplaintReportable] = useState(0);
+  const [complaintCapaTriggered, setComplaintCapaTriggered] = useState(0);
+  const [complaintNcmrTriggered, setComplaintNcmrTriggered] = useState(0);
+  const [complaintTrend, setComplaintTrend] = useState<TrendItem[]>([]);
+
+  const [documentTotal, setDocumentTotal] = useState(0);
+  const [documentReleased, setDocumentReleased] = useState(0);
+  const [documentPendingReview, setDocumentPendingReview] = useState(0);
+  const [documentOverdueReview, setDocumentOverdueReview] = useState(0);
+
+  const [trainingTotal, setTrainingTotal] = useState(0);
+  const [trainingCompleted, setTrainingCompleted] = useState(0);
+  const [trainingOpen, setTrainingOpen] = useState(0);
+  const [trainingOverdue, setTrainingOverdue] = useState(0);
+
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [capaGovernanceQueue, setCapaGovernanceQueue] = useState<any[]>([]);
   const [scarGovernanceQueue, setScarGovernanceQueue] = useState<any[]>([]);
@@ -851,6 +870,104 @@ export default function ManagementReviewPage() {
     setOosEscalations(allOos.filter((item: any) => item.escalation_required).length);
     setOosTrend(buildTrend(allOos));
 
+    const { data: complaintData, error: complaintError } = await supabase
+      .from("complaints")
+      .select("*");
+
+    if (!complaintError) {
+      const allComplaints = complaintData || [];
+      const closedComplaints = allComplaints.filter((item: any) => item.status === "closed");
+      const openComplaints = allComplaints.filter((item: any) => item.status !== "closed");
+
+      setComplaintTotal(allComplaints.length);
+      setComplaintOpen(openComplaints.length);
+      setComplaintClosed(closedComplaints.length);
+      setComplaintHighRisk(
+        allComplaints.filter(
+          (item: any) =>
+            item.severity === "critical" ||
+            item.potential_patient_impact ||
+            item.potential_safety_issue,
+        ).length,
+      );
+      setComplaintReportable(
+        allComplaints.filter(
+          (item: any) =>
+            item.mdr_assessment_required ||
+            item.regulatory_assessment === "reportable" ||
+            item.regulatory_assessment === "pending",
+        ).length,
+      );
+      setComplaintCapaTriggered(allComplaints.filter((item: any) => item.capa_required).length);
+      setComplaintNcmrTriggered(allComplaints.filter((item: any) => item.ncmr_required).length);
+      setComplaintTrend(buildTrend(allComplaints));
+    } else {
+      console.warn(complaintError.message);
+    }
+
+    const { data: documentData, error: documentError } = await supabase
+      .from("controlled_documents")
+      .select("*");
+
+    if (!documentError) {
+      const allDocuments = documentData || [];
+      const todayStrForDocuments = new Date().toISOString().slice(0, 10);
+
+      setDocumentTotal(allDocuments.length);
+      setDocumentReleased(
+        allDocuments.filter((item: any) => {
+          const status = String(item.status || item.document_status || "").toLowerCase();
+          return status === "released" || status === "effective" || status === "active";
+        }).length,
+      );
+      setDocumentPendingReview(
+        allDocuments.filter((item: any) => {
+          const status = String(item.status || item.document_status || "").toLowerCase();
+          return status.includes("review") || status.includes("approval") || status.includes("draft");
+        }).length,
+      );
+      setDocumentOverdueReview(
+        allDocuments.filter((item: any) => {
+          const due = item.next_review_date || item.review_due_date || item.due_date;
+          return due && String(due).slice(0, 10) < todayStrForDocuments;
+        }).length,
+      );
+    } else {
+      console.warn(documentError.message);
+    }
+
+    const { data: trainingData, error: trainingError } = await supabase
+      .from("training_assignments")
+      .select("*");
+
+    if (!trainingError) {
+      const allTraining = trainingData || [];
+      const todayStrForTraining = new Date().toISOString().slice(0, 10);
+
+      setTrainingTotal(allTraining.length);
+      setTrainingCompleted(
+        allTraining.filter((item: any) => {
+          const status = String(item.status || item.training_status || "").toLowerCase();
+          return status === "completed" || status === "complete";
+        }).length,
+      );
+      setTrainingOpen(
+        allTraining.filter((item: any) => {
+          const status = String(item.status || item.training_status || "").toLowerCase();
+          return status !== "completed" && status !== "complete" && status !== "waived";
+        }).length,
+      );
+      setTrainingOverdue(
+        allTraining.filter((item: any) => {
+          const status = String(item.status || item.training_status || "").toLowerCase();
+          const due = item.due_date || item.training_due_date;
+          return status !== "completed" && status !== "complete" && due && String(due).slice(0, 10) < todayStrForTraining;
+        }).length,
+      );
+    } else {
+      console.warn(trainingError.message);
+    }
+
     const { data: auditData, error: auditError } = await supabase
       .from("audits")
       .select("*");
@@ -931,6 +1048,9 @@ export default function ManagementReviewPage() {
   const oosClosureRate = oosTotal > 0 ? ((oosClosed / oosTotal) * 100).toFixed(1) : "0.0";
   const auditClosureRate = auditTotal > 0 ? ((auditClosed / auditTotal) * 100).toFixed(1) : "0.0";
   const findingClosureRate = findingTotal > 0 ? ((findingClosed / findingTotal) * 100).toFixed(1) : "0.0";
+  const complaintClosureRate = complaintTotal > 0 ? ((complaintClosed / complaintTotal) * 100).toFixed(1) : "0.0";
+  const documentReleaseRate = documentTotal > 0 ? ((documentReleased / documentTotal) * 100).toFixed(1) : "0.0";
+  const trainingCompletionRate = trainingTotal > 0 ? ((trainingCompleted / trainingTotal) * 100).toFixed(1) : "0.0";
 
   const totalHighPriorityAlerts = notifications.length;
   const totalOpenQualityItems = ncmrOpen + ncmrInvestigation + capaOpen + oosOpen + auditOpen + findingOpen + openScars;
@@ -943,7 +1063,11 @@ export default function ManagementReviewPage() {
     oosSystemicIssues +
     auditOverdue +
     criticalFindings +
-    majorFindings;
+    majorFindings +
+    complaintHighRisk +
+    complaintReportable +
+    documentOverdueReview +
+    trainingOverdue;
 
   const overallClosureRate =
     ncmrTotal + capaTotal + oosTotal + auditTotal + findingTotal > 0
@@ -1495,8 +1619,16 @@ export default function ManagementReviewPage() {
         systemic_issues: oosSystemicIssues,
         escalations: oosEscalations,
       },
-      complaint: {
+      complaints: {
         included: reportConfig.complaintPerformance,
+        total: complaintTotal,
+        open: complaintOpen,
+        closed: complaintClosed,
+        closure_rate: complaintClosureRate,
+        high_risk: complaintHighRisk,
+        reportable_or_pending: complaintReportable,
+        capa_triggered: complaintCapaTriggered,
+        ncmr_triggered: complaintNcmrTriggered,
       },
       change_control: {
         included: reportConfig.changeControlPerformance,
@@ -1505,9 +1637,19 @@ export default function ManagementReviewPage() {
       },
       document_control: {
         included: reportConfig.documentControlPerformance,
+        total: documentTotal,
+        released: documentReleased,
+        pending_review: documentPendingReview,
+        overdue_review: documentOverdueReview,
+        release_rate: documentReleaseRate,
       },
       training: {
         included: reportConfig.trainingPerformance,
+        total: trainingTotal,
+        completed: trainingCompleted,
+        open: trainingOpen,
+        overdue: trainingOverdue,
+        completion_rate: trainingCompletionRate,
       },
       audits: {
         total: auditTotal,
@@ -1522,6 +1664,10 @@ export default function ManagementReviewPage() {
         major_findings: majorFindings,
         critical_findings: criticalFindings,
         findings_requiring_capa: findingsRequiringCapa,
+      },
+      change_control: {
+        configured_kpis: configuredChangeKpis,
+        kpi_values: changeKpiValues,
       },
       queues: {
         capa_governance: capaGovernanceQueue,
@@ -1792,191 +1938,6 @@ export default function ManagementReviewPage() {
             Auto-Generate Report
           </button>
         </div>
-      </Section>
-
-      <Section title="Recent Management Review Records" className="no-print">
-        {managementReviews.length === 0 ? (
-          <p>No management review records created yet.</p>
-        ) : (
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr>
-                <th style={thStyle}>Review Number</th>
-                <th style={thStyle}>Title</th>
-                <th style={thStyle}>Review Date</th>
-                <th style={thStyle}>Status</th>
-                <th style={thStyle}>Approval</th>
-                <th style={thStyle}>Quality Health</th>
-                <th style={thStyle}>Prepared By</th>
-                <th style={thStyle}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {managementReviews.map((review) => (
-                <tr key={review.id}>
-                  <td style={tdStyle}>{review.review_number || "N/A"}</td>
-                  <td style={tdStyle}>{review.review_title}</td>
-                  <td style={tdStyle}>{review.review_date || "N/A"}</td>
-                  <td style={tdStyle}>{review.status || "draft"}</td>
-                  <td style={tdStyle}>
-                    {review.approval_status || "draft"}
-                    {review.is_locked ? (
-                      <div style={{ color: "#15803d", fontSize: "12px", marginTop: "4px" }}>
-                        Locked: {review.locked_at || "N/A"}
-                      </div>
-                    ) : null}
-                  </td>
-                  <td style={tdStyle}>{review.quality_health || "N/A"}</td>
-                  <td style={tdStyle}>{review.prepared_by || "N/A"}</td>
-                  <td style={tdStyle}>
-                    <button type="button" onClick={() => setSelectedReviewId(review.id)}>
-                      Manage Approvals
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </Section>
-
-      <Section title="Flexible Approval Routing" className="no-print">
-        <p style={{ color: "#4b5563", marginTop: 0 }}>
-          Add approvers as needed for the selected management review. The record locks when all listed approvers have signed.
-        </p>
-
-        <label>
-          <strong>Select Management Review Record</strong>
-          <select
-            value={selectedReviewId}
-            onChange={(e) => setSelectedReviewId(e.target.value)}
-            style={inputStyle}
-          >
-            <option value="">Select review</option>
-            {managementReviews.map((review) => (
-              <option key={review.id} value={review.id}>
-                {review.review_number || "MR"} - {review.review_title || "Untitled"} ({review.approval_status || review.status || "draft"})
-              </option>
-            ))}
-          </select>
-        </label>
-
-        {selectedReview ? (
-          <div
-            style={{
-              border: "1px solid #d1d5db",
-              borderRadius: "10px",
-              padding: "12px",
-              marginTop: "14px",
-              background: selectedReviewLocked ? "#f3f4f6" : "white",
-            }}
-          >
-            <h3 style={{ marginTop: 0 }}>{selectedReview.review_title}</h3>
-            <p><strong>Review Number:</strong> {selectedReview.review_number || "N/A"}</p>
-            <p><strong>Approval Status:</strong> {selectedReview.approval_status || "draft"}</p>
-            <p><strong>Locked:</strong> {selectedReviewLocked ? `Yes — ${selectedReview.locked_at || "N/A"}` : "No"}</p>
-
-            {!selectedReviewLocked ? (
-              <>
-                <h3>Add Approver</h3>
-
-                <div style={builderGridStyle}>
-                  <label>
-                    <strong>Approver Name</strong>
-                    <input
-                      value={approverName}
-                      onChange={(e) => setApproverName(e.target.value)}
-                      style={inputStyle}
-                    />
-                  </label>
-
-                  <label>
-                    <strong>Approver Email</strong>
-                    <input
-                      value={approverEmail}
-                      onChange={(e) => setApproverEmail(e.target.value)}
-                      style={inputStyle}
-                    />
-                  </label>
-
-                  <label>
-                    <strong>Role / Title</strong>
-                    <input
-                      value={approverRole}
-                      onChange={(e) => setApproverRole(e.target.value)}
-                      placeholder="Example: VP Quality, Operations Leader"
-                      style={inputStyle}
-                    />
-                  </label>
-                </div>
-
-                <label>
-                  <strong>Signature Meaning</strong>
-                  <textarea
-                    value={signatureMeaning}
-                    onChange={(e) => setSignatureMeaning(e.target.value)}
-                    rows={3}
-                    style={textareaStyle}
-                  />
-                </label>
-
-                <button type="button" onClick={addApprover} style={buttonStyle}>
-                  Add Approver
-                </button>
-              </>
-            ) : null}
-
-            <h3>Approvers</h3>
-
-            {selectedApprovers.length === 0 ? (
-              <p>No approvers added yet.</p>
-            ) : (
-              <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                <thead>
-                  <tr>
-                    <th style={thStyle}>Name</th>
-                    <th style={thStyle}>Email</th>
-                    <th style={thStyle}>Role</th>
-                    <th style={thStyle}>Status</th>
-                    <th style={thStyle}>Signed By</th>
-                    <th style={thStyle}>Signed At</th>
-                    <th style={thStyle}>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {selectedApprovers.map((approver: any) => (
-                    <tr key={approver.id}>
-                      <td style={tdStyle}>{approver.approver_name || "N/A"}</td>
-                      <td style={tdStyle}>{approver.approver_email || "N/A"}</td>
-                      <td style={tdStyle}>{approver.approver_role || "N/A"}</td>
-                      <td style={tdStyle}>{approver.approval_status || "pending"}</td>
-                      <td style={tdStyle}>{approver.signed_by || "N/A"}</td>
-                      <td style={tdStyle}>{approver.signed_at || "N/A"}</td>
-                      <td style={tdStyle}>
-                        {approver.approval_status !== "approved" && !selectedReviewLocked ? (
-                          <button type="button" onClick={() => approveReviewApprover(approver)}>
-                            Approve / Sign
-                          </button>
-                        ) : null}
-                        {approver.approval_status !== "approved" && !selectedReviewLocked ? (
-                          <button
-                            type="button"
-                            onClick={() => removeApprover(approver)}
-                            style={{ marginLeft: "8px" }}
-                          >
-                            Remove
-                          </button>
-                        ) : null}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-        ) : (
-          <p>Select a management review record to manage approvals.</p>
-        )}
       </Section>
 
       <Section title="Management Review Action Tracker" className="no-print">
@@ -2562,6 +2523,123 @@ export default function ManagementReviewPage() {
         </Section>
       )}
 
+      {reportConfig.complaintPerformance && (
+        <Section
+          title="Complaint Performance"
+          label="CUSTOMER AND POST-MARKET QUALITY"
+          description="Complaint volume, high-risk events, reportability indicators, and linked quality action triggers."
+        >
+          <div style={gridStyle}>
+            <KpiCard title="Total Complaints" value={complaintTotal} color="#2563eb" />
+            <KpiCard title="Open Complaints" value={complaintOpen} color={getStatusColor(complaintOpen, "warning")} />
+            <KpiCard title="Closed Complaints" value={complaintClosed} color="#15803d" />
+            <KpiCard title="Complaint Closure Rate" value={`${complaintClosureRate}%`} color="#2563eb" />
+            <KpiCard title="High-Risk Complaints" value={complaintHighRisk} color={getStatusColor(complaintHighRisk)} />
+            <KpiCard title="Reportable / Pending" value={complaintReportable} color={getStatusColor(complaintReportable)} />
+            <KpiCard title="CAPA Triggered" value={complaintCapaTriggered} color="#7c3aed" />
+            <KpiCard title="NCMR Triggered" value={complaintNcmrTriggered} color="#7c3aed" />
+          </div>
+
+          {reportConfig.trendCharts && <TrendChart title="Complaint Monthly Trend" data={complaintTrend} />}
+        </Section>
+      )}
+
+      {reportConfig.changeControlPerformance && (
+        <Section
+          title="Change Control Performance"
+          label="QUALITY SYSTEM GOVERNANCE"
+          description="Configured Management Review KPIs from the Quality Intelligence Catalog for change control performance."
+        >
+          {configuredChangeKpis.length === 0 ? (
+            <p style={{ color: "#6b7280" }}>
+              No Change Control KPIs are currently enabled for Management Review in the KPI Catalog.
+            </p>
+          ) : (
+            <div style={gridStyle}>
+              {configuredChangeKpis
+                .filter((kpi) => kpi.calculation_type !== "distribution")
+                .map((kpi) => {
+                  const value = changeKpiValues[kpi.kpi_key] || { value: 0 };
+
+                  return (
+                    <KpiCard
+                      key={kpi.kpi_key}
+                      title={kpi.kpi_name}
+                      value={value.value}
+                      subtitle={value.subtitle}
+                      color="#7c3aed"
+                    />
+                  );
+                })}
+            </div>
+          )}
+
+          {configuredChangeKpis
+            .filter((kpi) => kpi.calculation_type === "distribution")
+            .map((kpi) => {
+              const rows = changeKpiValues[kpi.kpi_key]?.distribution || [];
+
+              return (
+                <div key={kpi.kpi_key} style={{ marginTop: "16px" }}>
+                  <h3>{kpi.kpi_name}</h3>
+                  {rows.length === 0 ? (
+                    <p style={{ color: "#6b7280" }}>No distribution data available.</p>
+                  ) : (
+                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                      <thead>
+                        <tr>
+                          <th style={thStyle}>Category</th>
+                          <th style={thStyle}>Count</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rows.map((row) => (
+                          <tr key={row.label}>
+                            <td style={tdStyle}>{row.label}</td>
+                            <td style={tdStyle}>{row.count}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              );
+            })}
+        </Section>
+      )}
+
+      {reportConfig.documentControlPerformance && (
+        <Section
+          title="Document Control Performance"
+          label="DOCUMENT GOVERNANCE"
+          description="Controlled document release status, review backlog, and overdue review performance."
+        >
+          <div style={gridStyle}>
+            <KpiCard title="Total Controlled Documents" value={documentTotal} color="#2563eb" />
+            <KpiCard title="Released / Effective" value={documentReleased} color="#15803d" />
+            <KpiCard title="Pending Review" value={documentPendingReview} color={getStatusColor(documentPendingReview, "warning")} />
+            <KpiCard title="Overdue Reviews" value={documentOverdueReview} color={getStatusColor(documentOverdueReview)} />
+            <KpiCard title="Release Rate" value={`${documentReleaseRate}%`} color="#2563eb" />
+          </div>
+        </Section>
+      )}
+
+      {reportConfig.trainingPerformance && (
+        <Section
+          title="Training Performance"
+          label="TRAINING COMPLIANCE"
+          description="Training assignment completion, open training load, and overdue training status."
+        >
+          <div style={gridStyle}>
+            <KpiCard title="Total Training Assignments" value={trainingTotal} color="#2563eb" />
+            <KpiCard title="Completed Training" value={trainingCompleted} color="#15803d" />
+            <KpiCard title="Open Training" value={trainingOpen} color={getStatusColor(trainingOpen, "warning")} />
+            <KpiCard title="Overdue Training" value={trainingOverdue} color={getStatusColor(trainingOverdue)} />
+            <KpiCard title="Training Completion Rate" value={`${trainingCompletionRate}%`} color="#2563eb" />
+          </div>
+        </Section>
+      )}
+
       {reportConfig.recurrenceAnalysis && (
         <Section title="Recurrence Analysis">
           <div style={gridStyle}>
@@ -2724,6 +2802,202 @@ export default function ManagementReviewPage() {
       <div className="print-only" style={footerStyle}>
         QualiFlow Management Review Report | Generated {reportGeneratedAt}
       </div>
+
+
+      <Section title="Review Approvals & Signatures" className="no-print">
+        <p style={{ color: "#4b5563", marginTop: 0 }}>
+          Add approvers as needed for the selected management review. The record locks when all listed approvers have signed.
+        </p>
+
+        <label>
+          <strong>Select Management Review Record</strong>
+          <select
+            value={selectedReviewId}
+            onChange={(e) => setSelectedReviewId(e.target.value)}
+            style={inputStyle}
+          >
+            <option value="">Select review</option>
+            {managementReviews.map((review) => (
+              <option key={review.id} value={review.id}>
+                {review.review_number || "MR"} - {review.review_title || "Untitled"} ({review.approval_status || review.status || "draft"})
+              </option>
+            ))}
+          </select>
+        </label>
+
+        {selectedReview ? (
+          <div
+            style={{
+              border: "1px solid #d1d5db",
+              borderRadius: "10px",
+              padding: "12px",
+              marginTop: "14px",
+              background: selectedReviewLocked ? "#f3f4f6" : "white",
+            }}
+          >
+            <h3 style={{ marginTop: 0 }}>{selectedReview.review_title}</h3>
+            <p><strong>Review Number:</strong> {selectedReview.review_number || "N/A"}</p>
+            <p><strong>Approval Status:</strong> {selectedReview.approval_status || "draft"}</p>
+            <p><strong>Locked:</strong> {selectedReviewLocked ? `Yes — ${selectedReview.locked_at || "N/A"}` : "No"}</p>
+
+            {!selectedReviewLocked ? (
+              <>
+                <h3>Add Approver</h3>
+
+                <div style={builderGridStyle}>
+                  <label>
+                    <strong>Approver Name</strong>
+                    <input
+                      value={approverName}
+                      onChange={(e) => setApproverName(e.target.value)}
+                      style={inputStyle}
+                    />
+                  </label>
+
+                  <label>
+                    <strong>Approver Email</strong>
+                    <input
+                      value={approverEmail}
+                      onChange={(e) => setApproverEmail(e.target.value)}
+                      style={inputStyle}
+                    />
+                  </label>
+
+                  <label>
+                    <strong>Role / Title</strong>
+                    <input
+                      value={approverRole}
+                      onChange={(e) => setApproverRole(e.target.value)}
+                      placeholder="Example: VP Quality, Operations Leader"
+                      style={inputStyle}
+                    />
+                  </label>
+                </div>
+
+                <label>
+                  <strong>Signature Meaning</strong>
+                  <textarea
+                    value={signatureMeaning}
+                    onChange={(e) => setSignatureMeaning(e.target.value)}
+                    rows={3}
+                    style={textareaStyle}
+                  />
+                </label>
+
+                <button type="button" onClick={addApprover} style={buttonStyle}>
+                  Add Approver
+                </button>
+              </>
+            ) : null}
+
+            <h3>Approvers</h3>
+
+            {selectedApprovers.length === 0 ? (
+              <p>No approvers added yet.</p>
+            ) : (
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead>
+                  <tr>
+                    <th style={thStyle}>Name</th>
+                    <th style={thStyle}>Email</th>
+                    <th style={thStyle}>Role</th>
+                    <th style={thStyle}>Status</th>
+                    <th style={thStyle}>Signed By</th>
+                    <th style={thStyle}>Signed At</th>
+                    <th style={thStyle}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {selectedApprovers.map((approver: any) => (
+                    <tr key={approver.id}>
+                      <td style={tdStyle}>{approver.approver_name || "N/A"}</td>
+                      <td style={tdStyle}>{approver.approver_email || "N/A"}</td>
+                      <td style={tdStyle}>{approver.approver_role || "N/A"}</td>
+                      <td style={tdStyle}>{approver.approval_status || "pending"}</td>
+                      <td style={tdStyle}>{approver.signed_by || "N/A"}</td>
+                      <td style={tdStyle}>{approver.signed_at || "N/A"}</td>
+                      <td style={tdStyle}>
+                        {approver.approval_status !== "approved" && !selectedReviewLocked ? (
+                          <button type="button" onClick={() => approveReviewApprover(approver)}>
+                            Approve / Sign
+                          </button>
+                        ) : null}
+                        {approver.approval_status !== "approved" && !selectedReviewLocked ? (
+                          <button
+                            type="button"
+                            onClick={() => removeApprover(approver)}
+                            style={{ marginLeft: "8px" }}
+                          >
+                            Remove
+                          </button>
+                        ) : null}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        ) : (
+          <p>Select a management review record to manage approvals.</p>
+        )}
+      </Section>
+
+
+      <Section title="Management Review History" className="no-print">
+        {managementReviews.length === 0 ? (
+          <p>No management review records created yet.</p>
+        ) : (
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr>
+                <th style={thStyle}>Review Number</th>
+                <th style={thStyle}>Title</th>
+                <th style={thStyle}>Review Date</th>
+                <th style={thStyle}>Status</th>
+                <th style={thStyle}>Quality Health</th>
+                <th style={thStyle}>Prepared By</th>
+                <th style={thStyle}>Report</th>
+                <th style={thStyle}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {managementReviews.map((review) => (
+                <tr key={review.id}>
+                  <td style={tdStyle}>{review.review_number || "N/A"}</td>
+                  <td style={tdStyle}>{review.review_title}</td>
+                  <td style={tdStyle}>{review.review_date || "N/A"}</td>
+                  <td style={tdStyle}>
+                    {review.status || review.approval_status || "draft"}
+                    {review.is_locked ? (
+                      <div style={{ color: "#15803d", fontSize: "12px", marginTop: "4px" }}>
+                        Locked: {review.locked_at || "N/A"}
+                      </div>
+                    ) : null}
+                  </td>
+                  <td style={tdStyle}>{review.quality_health || "N/A"}</td>
+                  <td style={tdStyle}>{review.prepared_by || "N/A"}</td>
+                  <td style={tdStyle}>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        window.open(`/management-review/print?review_id=${review.id}`, "_blank")
+                      }
+                    >
+                      Open Report
+                    </button>
+                  </td>
+                  <td style={tdStyle}>
+                    <button type="button" onClick={() => setSelectedReviewId(review.id)}>
+                      Manage Approvals
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </Section>
     </main>
   );
 }
