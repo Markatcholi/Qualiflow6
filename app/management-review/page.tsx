@@ -1523,10 +1523,6 @@ export default function ManagementReviewPage() {
         critical_findings: criticalFindings,
         findings_requiring_capa: findingsRequiringCapa,
       },
-      change_control: {
-        configured_kpis: configuredChangeKpis,
-        kpi_values: changeKpiValues,
-      },
       queues: {
         capa_governance: capaGovernanceQueue,
         scar_governance: scarGovernanceQueue,
