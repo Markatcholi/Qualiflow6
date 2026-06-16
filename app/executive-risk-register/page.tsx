@@ -383,6 +383,54 @@ async function loadComplaintRisks(collectedRisks: EnterpriseRisk[]) {
 }
 
 async function loadAuditRisks(collectedRisks: EnterpriseRisk[]) {
+  // ==========================
+  // OPEN AUDITS
+  // ==========================
+  const { data: audits, error: auditError } = await supabase
+    .from("audits")
+    .select("*");
+
+  if (auditError) {
+    console.warn(auditError.message);
+  }
+
+  (audits || []).forEach((audit: any) => {
+    const status = String(audit.status || "open").toLowerCase();
+    const dueDate = audit.due_date || audit.target_date || audit.audit_date || null;
+
+    const isRisk =
+      !isClosedStatus(status) ||
+      isOverdue(dueDate, status);
+
+    if (!isRisk) return;
+
+    const reasons = [
+      !isClosedStatus(status) ? "Audit remains open" : "",
+      isOverdue(dueDate, status) ? "Audit overdue or past due" : "",
+    ].filter(Boolean);
+
+    collectedRisks.push({
+      id: `audit-${audit.id}`,
+      source: "Audit",
+      sourceTable: "audits",
+      recordId: audit.id,
+      recordNumber: audit.audit_number || audit.record_number || "Audit",
+      title: audit.audit_title || audit.title || "Open Audit",
+      riskDescription: reasons.join("; ") || "Open audit requires attention",
+      severity: isOverdue(dueDate, status) ? "high" : "medium",
+      status,
+      owner: audit.audit_owner || audit.auditor || audit.owner || audit.created_by || "Unassigned",
+      dueDate,
+      createdAt: audit.created_at || audit.audit_date || null,
+      ageDays: getAgeDays(audit.created_at || audit.audit_date),
+      escalationReason: reasons.join("; "),
+      link: `/audits/${audit.id}`,
+    });
+  });
+
+  // ==========================
+  // AUDIT FINDINGS
+  // ==========================
   const { data: findings, error: findingError } = await supabase
     .from("audit_findings")
     .select("*");
@@ -395,23 +443,26 @@ async function loadAuditRisks(collectedRisks: EnterpriseRisk[]) {
   (findings || []).forEach((item: any) => {
     const status = String(item.finding_status || item.status || "open").toLowerCase();
     const severity = normalizeSeverity(item.finding_severity || item.severity);
+    const dueDate = item.due_date || item.target_date || null;
+
     const isRisk =
-      status !== "closed" ||
+      !isClosedStatus(status) ||
       severity === "critical" ||
       severity === "high" ||
       item.capa_required ||
       item.scar_required ||
       item.linked_capa_id ||
-      item.linked_scar_id;
+      item.linked_scar_id ||
+      isOverdue(dueDate, status);
 
     if (!isRisk) return;
 
     const reasons = [
-      status !== "closed" ? "Audit finding remains open" : "",
+      !isClosedStatus(status) ? "Audit finding remains open" : "",
       severity === "critical" || severity === "high" ? "Major/Critical audit finding" : "",
       item.capa_required ? "CAPA required" : "",
       item.scar_required ? "SCAR required" : "",
-      isOverdue(item.due_date || item.target_date, status) ? "Audit finding overdue" : "",
+      isOverdue(dueDate, status) ? "Audit finding overdue" : "",
     ].filter(Boolean);
 
     collectedRisks.push({
@@ -421,11 +472,11 @@ async function loadAuditRisks(collectedRisks: EnterpriseRisk[]) {
       recordId: item.id,
       recordNumber: item.finding_number || item.audit_number || "Audit Finding",
       title: item.finding_title || item.title || "Audit finding risk",
-      riskDescription: reasons.join("; ") || "Audit risk item",
+      riskDescription: reasons.join("; ") || "Audit finding risk item",
       severity,
       status,
       owner: item.owner || item.assigned_to || item.created_by || "Unassigned",
-      dueDate: item.due_date || item.target_date || null,
+      dueDate,
       createdAt: item.created_at || null,
       ageDays: getAgeDays(item.created_at),
       escalationReason: reasons.join("; "),
