@@ -545,9 +545,11 @@ async function loadChangeControlRisks(collectedRisks: EnterpriseRisk[]) {
     const severity = normalizeSeverity(item.risk_level || item.severity);
     const dueDate = item.target_implementation_date || item.due_date || null;
 
+    const verificationFailed = String(item.status || "").toLowerCase() === "verification_failed";
+
     const isRisk =
-      status !== "closed" ||
-      status === "verification_failed" ||
+      !isClosedStatus(status) ||
+      verificationFailed ||
       isOverdue(dueDate, status) ||
       severity === "critical" ||
       severity === "high";
@@ -556,7 +558,7 @@ async function loadChangeControlRisks(collectedRisks: EnterpriseRisk[]) {
 
     const reasons = [
       status !== "closed" ? "Change control remains open" : "",
-      status === "verification_failed" ? "Verification failed" : "",
+      verificationFailed ? "Verification failed" : "",
       isOverdue(dueDate, status) ? "Implementation overdue" : "",
       severity === "critical" || severity === "high" ? "High-risk change" : "",
     ].filter(Boolean);
