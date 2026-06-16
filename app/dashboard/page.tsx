@@ -1106,6 +1106,21 @@ export default function DashboardPage() {
           </a>
 
           <a
+            href="/executive-risk-register"
+            style={{
+              padding: "10px 14px",
+              background: "#b91c1c",
+              color: "white",
+              borderRadius: "8px",
+              textDecoration: "none",
+              fontWeight: 700,
+              display: "inline-block",
+            }}
+          >
+            Executive Risk Register
+          </a>
+
+          <a
             href="/admin/company-settings"
             style={{
               padding: "10px 14px",
