@@ -21,6 +21,7 @@ type EnterpriseRisk = {
   createdAt: string | null;
   ageDays: number;
   escalationReason: string;
+  riskScore?: number;
   link: string;
 };
 
@@ -28,6 +29,21 @@ type DistributionItem = {
   label: string;
   count: number;
 };
+
+function calculateRiskScore(risk: EnterpriseRisk) {
+  let score = 0;
+  switch (risk.severity) {
+    case "critical": score += 10; break;
+    case "high": score += 7; break;
+    case "medium": score += 4; break;
+    default: score += 1;
+  }
+  if (risk.escalationReason?.trim()) score += 2;
+  if (isOverdue(risk.dueDate, risk.status)) score += 3;
+  if (risk.ageDays > 90) score += 2;
+  return score;
+}
+
 
 export default function ExecutiveRiskRegisterPage() {
   const [loading, setLoading] = useState(true);
@@ -50,12 +66,11 @@ export default function ExecutiveRiskRegisterPage() {
       loadChangeControlRisks(collectedRisks),
     ]);
 
-    collectedRisks.sort((a, b) => {
-      const severityScore = getSeverityScore(b.severity) - getSeverityScore(a.severity);
-      if (severityScore !== 0) return severityScore;
-
-      return b.ageDays - a.ageDays;
+    collectedRisks.forEach((risk) => {
+      risk.riskScore = calculateRiskScore(risk);
     });
+
+    collectedRisks.sort((a, b) => (b.riskScore || 0) - (a.riskScore || 0));
 
     setRisks(collectedRisks);
     setLoading(false);
@@ -91,6 +106,8 @@ export default function ExecutiveRiskRegisterPage() {
   const highRisks = risks.filter((risk) => risk.severity === "high");
   const overdueRisks = risks.filter((risk) => isOverdue(risk.dueDate, risk.status));
   const escalatedRisks = risks.filter((risk) => risk.escalationReason.trim().length > 0);
+
+  const enterpriseRiskIndex = risks.reduce((sum, risk) => sum + calculateRiskScore(risk), 0);
 
   const sourceDistribution = buildDistribution(risks, "source");
   const severityDistribution = buildDistribution(risks, "severity");
@@ -139,6 +156,7 @@ export default function ExecutiveRiskRegisterPage() {
             <RiskKpiCard label="High Risks" value={highRisks.length} tone="orange" />
             <RiskKpiCard label="Overdue Risks" value={overdueRisks.length} tone="red" />
             <RiskKpiCard label="Executive Escalations" value={escalatedRisks.length} tone="purple" />
+            <RiskKpiCard label="Enterprise Risk Index" value={enterpriseRiskIndex} tone="green" />
           </section>
 
           <section style={gridTwoColumnStyle}>
@@ -654,6 +672,7 @@ function RiskTable({
             <th style={thStyle}>Record</th>
             <th style={thStyle}>Risk</th>
             <th style={thStyle}>Severity</th>
+            <th style={thStyle}>Risk Score</th>
             {!compact ? <th style={thStyle}>Owner</th> : null}
             <th style={thStyle}>Age</th>
             <th style={thStyle}>Due Date</th>
@@ -675,6 +694,7 @@ function RiskTable({
               <td style={tdStyle}>
                 <SeverityBadge severity={risk.severity} />
               </td>
+              <td style={tdStyle}><strong>{risk.riskScore || calculateRiskScore(risk)}</strong></td>
               {!compact ? <td style={tdStyle}>{risk.owner}</td> : null}
               <td style={tdStyle}>{risk.ageDays} days</td>
               <td style={tdStyle}>{risk.dueDate || "N/A"}</td>
