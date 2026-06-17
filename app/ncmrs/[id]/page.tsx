@@ -324,6 +324,73 @@ export default function NcmrDetailPage() {
     fetchAuditTimeline();
   };
 
+  const toQuantityNumber = (value: any) => {
+    if (value === null || value === undefined || value === "") return 0;
+    const numericValue = Number(value);
+    return Number.isFinite(numericValue) ? numericValue : 0;
+  };
+
+  const buildQuantityReconciliationErrors = (item: any, label: string) => {
+    const errors: string[] = [];
+
+    const affectedQty = toQuantityNumber(item?.quantity_affected);
+    const quarantinedQty = toQuantityNumber(item?.quarantined_quantity);
+    const acceptedQty = toQuantityNumber(item?.quantity_accepted);
+    const rejectedQty = toQuantityNumber(item?.quantity_rejected);
+
+    if (affectedQty <= 0) {
+      errors.push(`${label}: affected quantity must be greater than zero.`);
+    }
+
+    if (quarantinedQty > affectedQty) {
+      errors.push(`${label}: quarantined quantity (${quarantinedQty}) cannot exceed affected quantity (${affectedQty}).`);
+    }
+
+    if (acceptedQty + rejectedQty > affectedQty) {
+      errors.push(`${label}: accepted + rejected quantity (${acceptedQty + rejectedQty}) cannot exceed affected quantity (${affectedQty}).`);
+    }
+
+    if (acceptedQty + rejectedQty < affectedQty) {
+      errors.push(`${label}: accepted + rejected quantity (${acceptedQty + rejectedQty}) must reconcile to affected quantity (${affectedQty}) before MRB approval or closure.`);
+    }
+
+    if (item?.product_disposition === "rework") {
+      const finalAcceptedQty = toQuantityNumber(item?.final_rework_quantity_accepted);
+      const finalRejectedQty = toQuantityNumber(item?.final_rework_quantity_rejected);
+
+      if (finalAcceptedQty + finalRejectedQty > affectedQty) {
+        errors.push(`${label}: final rework accepted + rejected quantity (${finalAcceptedQty + finalRejectedQty}) cannot exceed affected quantity (${affectedQty}).`);
+      }
+
+      if (item?.final_disposition_after_rework && finalAcceptedQty + finalRejectedQty < affectedQty) {
+        errors.push(`${label}: final rework accepted + rejected quantity (${finalAcceptedQty + finalRejectedQty}) must reconcile to affected quantity (${affectedQty}) before closure.`);
+      }
+    }
+
+    return errors;
+  };
+
+  const getAffectedItemReconciliationSummary = (item: any) => {
+    const affectedQty = toQuantityNumber(item?.quantity_affected);
+    const quarantinedQty = toQuantityNumber(item?.quarantined_quantity);
+    const acceptedQty = toQuantityNumber(item?.quantity_accepted);
+    const rejectedQty = toQuantityNumber(item?.quantity_rejected);
+    const dispositionedQty = acceptedQty + rejectedQty;
+    const remainingQty = affectedQty - dispositionedQty;
+    const errors = buildQuantityReconciliationErrors(item, "Affected item");
+
+    return {
+      affectedQty,
+      quarantinedQty,
+      acceptedQty,
+      rejectedQty,
+      dispositionedQty,
+      remainingQty,
+      reconciled: errors.length === 0,
+      errors,
+    };
+  };
+
   const saveRecordSummary = async () => {
     if (record?.is_locked || record?.mrb_approved_by) {
       alert("Record summary cannot be edited after MRB approval or record lock.");
@@ -367,6 +434,19 @@ export default function NcmrDetailPage() {
   ) => {
     if (record?.is_locked || record?.mrb_approved_by) {
       alert("Affected materials cannot be edited after MRB approval or record lock.");
+      return;
+    }
+
+    const numericAffectedQty = toQuantityNumber(quantityAffected);
+    const numericQuarantinedQty = toQuantityNumber(quarantinedQuantity);
+
+    if (numericAffectedQty <= 0) {
+      alert("Affected quantity must be greater than zero.");
+      return;
+    }
+
+    if (numericQuarantinedQty > numericAffectedQty) {
+      alert(`Quantity validation failed.\n\nAffected Quantity: ${numericAffectedQty}\nQuarantined Quantity: ${numericQuarantinedQty}\n\nQuarantined quantity cannot exceed affected quantity.`);
       return;
     }
 
@@ -475,6 +555,39 @@ export default function NcmrDetailPage() {
     if (!dispositionJustification) {
       alert("Disposition justification is required.");
       return;
+    }
+
+    const currentItem = affectedItems.find((item) => item.id === itemId);
+    const quantityAffected = toQuantityNumber(currentItem?.quantity_affected);
+    const quantityQuarantined = toQuantityNumber(currentItem?.quarantined_quantity);
+    const acceptedQty = toQuantityNumber(quantityAccepted);
+    const rejectedQty = toQuantityNumber(quantityRejected);
+    const dispositionedQty = acceptedQty + rejectedQty;
+
+    if (quantityAffected <= 0) {
+      alert("Affected quantity must be entered and must be greater than zero before disposition can be saved.");
+      return;
+    }
+
+    if (quantityQuarantined > quantityAffected) {
+      alert(`Quantity reconciliation failed.\n\nAffected Quantity: ${quantityAffected}\nQuarantined Quantity: ${quantityQuarantined}\n\nQuarantined quantity cannot exceed affected quantity.`);
+      return;
+    }
+
+    if (dispositionedQty > quantityAffected) {
+      alert(`Quantity reconciliation failed.\n\nAffected Quantity: ${quantityAffected}\nAccepted + Rejected Quantity: ${dispositionedQty}\nOverage: ${dispositionedQty - quantityAffected}\n\nDisposition quantity cannot exceed affected quantity.`);
+      return;
+    }
+
+    if (productDisposition === "rework") {
+      const finalAcceptedQty = toQuantityNumber(finalReworkQuantityAccepted);
+      const finalRejectedQty = toQuantityNumber(finalReworkQuantityRejected);
+      const finalDispositionedQty = finalAcceptedQty + finalRejectedQty;
+
+      if (finalDispositionedQty > quantityAffected) {
+        alert(`Final rework quantity reconciliation failed.\n\nAffected Quantity: ${quantityAffected}\nFinal Accepted + Final Rejected Quantity: ${finalDispositionedQty}\nOverage: ${finalDispositionedQty - quantityAffected}\n\nFinal rework quantities cannot exceed affected quantity.`);
+        return;
+      }
     }
 
     const { error } = await supabase
@@ -612,6 +725,9 @@ export default function NcmrDetailPage() {
         errors.push(`${label}: quantity rejected is required.`);
       }
 
+      const quantityReconciliationErrors = buildQuantityReconciliationErrors(item, label);
+      errors.push(...quantityReconciliationErrors);
+
     });
 
     const mrbGovernanceErrors = requiredMrbApprovalsComplete();
@@ -641,6 +757,12 @@ export default function NcmrDetailPage() {
     ) {
       errors.push("CAPA recommendation requires either a linked CAPA or a documented No-CAPA decision with justification before closure.");
     }
+
+    affectedItems.forEach((item, index) => {
+      const label = `Affected Item ${index + 1}`;
+      const quantityReconciliationErrors = buildQuantityReconciliationErrors(item, label);
+      errors.push(...quantityReconciliationErrors);
+    });
 
     const reworkItemsMissingFinalDisposition = affectedItems.filter(
       (item) =>
@@ -1539,6 +1661,15 @@ This approval becomes part of the official electronic quality record.`,
         return;
       }
 
+      const quantityErrors = affectedItems.flatMap((item, index) =>
+        buildQuantityReconciliationErrors(item, `Affected Item ${index + 1}`)
+      );
+
+      if (quantityErrors.length > 0) {
+        alert(`Quantity reconciliation failed before MRB approval:\n\n${quantityErrors.join("\n")}`);
+        return;
+      }
+
     }
 
     const confirmed = window.confirm(
@@ -1844,6 +1975,14 @@ This approval becomes part of the official electronic quality record.`,
 
     if (!record?.correction_implemented_by) {
       return alert("Correction implementation must be formally recorded before closure.");
+    }
+
+    const closureQuantityErrors = affectedItems.flatMap((item, index) =>
+      buildQuantityReconciliationErrors(item, `Affected Item ${index + 1}`)
+    );
+
+    if (closureQuantityErrors.length > 0) {
+      return alert(`Quantity reconciliation failed before NCMR closure:\n\n${closureQuantityErrors.join("\n")}`);
     }
 
     if (!closureSignatureEmail) {
@@ -2165,6 +2304,51 @@ This approval becomes part of the official electronic quality record.`,
             <div>{isMrbComplete ? "✓" : "○"} MRB approval complete</div>
             <div>{isImplementationComplete ? "✓" : "○"} Correction implementation complete</div>
             <div>{isClosureComplete ? "✓" : "○"} NCMR closure complete</div>
+          </div>
+        </div>
+
+        <div
+          style={{
+            marginTop: "14px",
+            border: "1px solid #cbd5e1",
+            borderRadius: "8px",
+            padding: "12px",
+            background: "white",
+          }}
+        >
+          <strong>Quantity Reconciliation</strong>
+          <div style={{ marginTop: "8px", display: "grid", gap: "8px" }}>
+            {affectedItems.length === 0 ? (
+              <div style={{ color: "#991b1b" }}>No affected material items have been entered.</div>
+            ) : (
+              affectedItems.map((item, index) => {
+                const summary = getAffectedItemReconciliationSummary(item);
+                return (
+                  <div
+                    key={item.id || index}
+                    style={{
+                      border: summary.reconciled ? "1px solid #86efac" : "1px solid #fca5a5",
+                      background: summary.reconciled ? "#f0fdf4" : "#fef2f2",
+                      color: summary.reconciled ? "#166534" : "#991b1b",
+                      borderRadius: "8px",
+                      padding: "10px",
+                    }}
+                  >
+                    <strong>{summary.reconciled ? "✓" : "⚠"} Affected Item {index + 1}</strong>
+                    <div style={{ fontSize: "13px", marginTop: "4px" }}>
+                      Affected: {summary.affectedQty} | Quarantined: {summary.quarantinedQty} | Accepted: {summary.acceptedQty} | Rejected: {summary.rejectedQty} | Remaining: {summary.remainingQty}
+                    </div>
+                    {!summary.reconciled ? (
+                      <ul style={{ margin: "6px 0 0 18px", padding: 0 }}>
+                        {summary.errors.map((error) => (
+                          <li key={error}>{error}</li>
+                        ))}
+                      </ul>
+                    ) : null}
+                  </div>
+                );
+              })
+            )}
           </div>
         </div>
       </SectionCard>
