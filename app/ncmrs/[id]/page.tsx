@@ -579,6 +579,35 @@ export default function NcmrDetailPage() {
       return;
     }
 
+    const normalizedDisposition = String(productDisposition || "").toLowerCase();
+
+    if (
+      normalizedDisposition === "scrap" ||
+      normalizedDisposition === "return_to_supplier"
+    ) {
+      if (acceptedQty !== 0) {
+        alert("For Scrap or Return to Supplier disposition, Accepted Quantity must equal 0.");
+        return;
+      }
+
+      if (rejectedQty !== quantityAffected) {
+        alert(`For Scrap or Return to Supplier disposition, Rejected Quantity must equal the affected quantity (${quantityAffected}).`);
+        return;
+      }
+    }
+
+    if (
+      normalizedDisposition === "use_as_is" ||
+      normalizedDisposition === "accept_per_specification" ||
+      normalizedDisposition === "accept_per_spec" ||
+      normalizedDisposition === "release"
+    ) {
+      if (acceptedQty + rejectedQty !== quantityAffected) {
+        alert(`Accepted Quantity + Rejected Quantity must equal the affected quantity (${quantityAffected}).`);
+        return;
+      }
+    }
+
     if (productDisposition === "rework") {
       const finalAcceptedQty = toQuantityNumber(finalReworkQuantityAccepted);
       const finalRejectedQty = toQuantityNumber(finalReworkQuantityRejected);
