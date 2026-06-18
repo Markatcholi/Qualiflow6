@@ -517,23 +517,39 @@ export default function NcmrPage() {
     const supplierLotForInsert = isSupplierSource ? supplierLot : "";
     const supplierIdForInsert = isSupplierSource ? supplierId || null : null;
 
+    const primaryAffectedItem =
+      affectedItems.find(
+        (item) =>
+          item.product_part_number ||
+          item.lot_number ||
+          item.workorder_number ||
+          item.quantity_affected ||
+          item.quarantined_quantity
+      ) || null;
+
 
     const { data, error } = await supabase
       .from("ncmrs")
       .insert({
         title,
         issue_description: issueDescription,
-        product_part_number: null,
-        lot_number: null,
-        workorder_number: null,
+        product_part_number: primaryAffectedItem?.product_part_number || null,
+        lot_number: primaryAffectedItem?.lot_number || null,
+        workorder_number: primaryAffectedItem?.workorder_number || null,
         source_of_detection: sourceOfDetection,
         department,
         date_detected: dateDetected || null,
-        quantity_affected: null,
+        quantity_affected: primaryAffectedItem?.quantity_affected
+          ? Number(primaryAffectedItem.quantity_affected)
+          : null,
         containment_action: containmentAction,
         containment_owner: containmentOwner,
         material_status: materialStatus,
-        quarantined_quantity: quarantinedQuantity ? Number(quarantinedQuantity) : null,
+        quarantined_quantity: primaryAffectedItem?.quarantined_quantity
+          ? Number(primaryAffectedItem.quarantined_quantity)
+          : quarantinedQuantity
+          ? Number(quarantinedQuantity)
+          : null,
         defect_category: defectCategory,
         defect_subcategory: defectSubcategory,
         supplier_id: supplierIdForInsert,
