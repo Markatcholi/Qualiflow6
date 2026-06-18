@@ -205,7 +205,84 @@ export default function NcmrPage() {
       return;
     }
 
-    setList((data as Ncmr[]) || []);
+    const ncmrRows = (data as Ncmr[]) || [];
+    const ncmrIds = ncmrRows.map((item) => item.id).filter(Boolean);
+
+    if (ncmrIds.length === 0) {
+      setList([]);
+      return;
+    }
+
+    const { data: affectedRows, error: affectedError } = await supabase
+      .from("ncmr_affected_items")
+      .select("*")
+      .in("ncmr_id", ncmrIds)
+      .order("created_at", { ascending: true });
+
+    if (affectedError) {
+      alert(affectedError.message);
+      setList(ncmrRows);
+      return;
+    }
+
+    const affectedByNcmrId: Record<string, any[]> = {};
+
+    (affectedRows || []).forEach((affectedItem: any) => {
+      if (!affectedItem.ncmr_id) return;
+
+      if (!affectedByNcmrId[affectedItem.ncmr_id]) {
+        affectedByNcmrId[affectedItem.ncmr_id] = [];
+      }
+
+      affectedByNcmrId[affectedItem.ncmr_id].push(affectedItem);
+    });
+
+    const enrichedRows = ncmrRows.map((ncmr) => {
+      const affectedItemsForRecord = affectedByNcmrId[ncmr.id] || [];
+      const primaryAffectedItem =
+        affectedItemsForRecord.find(
+          (item) =>
+            item.product_part_number ||
+            item.lot_number ||
+            item.workorder_number ||
+            item.quantity_affected ||
+            item.quarantined_quantity
+        ) || null;
+
+      const totalAffectedQuantity = affectedItemsForRecord.reduce(
+        (sum, item) => sum + (Number(item.quantity_affected) || 0),
+        0
+      );
+
+      const totalQuarantinedQuantity = affectedItemsForRecord.reduce(
+        (sum, item) => sum + (Number(item.quarantined_quantity) || 0),
+        0
+      );
+
+      return {
+        ...ncmr,
+        product_part_number:
+          ncmr.product_part_number ||
+          primaryAffectedItem?.product_part_number ||
+          null,
+        lot_number:
+          ncmr.lot_number ||
+          primaryAffectedItem?.lot_number ||
+          null,
+        workorder_number:
+          ncmr.workorder_number ||
+          primaryAffectedItem?.workorder_number ||
+          null,
+        quantity_affected:
+          ncmr.quantity_affected ??
+          (affectedItemsForRecord.length > 0 ? totalAffectedQuantity : null),
+        quarantined_quantity:
+          ncmr.quarantined_quantity ??
+          (affectedItemsForRecord.length > 0 ? totalQuarantinedQuantity : null),
+      };
+    });
+
+    setList(enrichedRows as Ncmr[]);
   };
 
   const addAuditLog = async (
