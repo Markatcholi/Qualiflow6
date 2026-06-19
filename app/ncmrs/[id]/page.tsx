@@ -330,6 +330,55 @@ export default function NcmrDetailPage() {
     return Number.isFinite(numericValue) ? numericValue : 0;
   };
 
+  const normalizeDispositionValue = (value: any) => {
+    return String(value || "")
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, "_")
+      .replace(/-/g, "_");
+  };
+
+  const isUseAsIsDisposition = (value: any) => {
+    const disposition = normalizeDispositionValue(value);
+    return (
+      disposition === "use_as_is" ||
+      disposition === "useasis" ||
+      disposition.includes("use_as_is")
+    );
+  };
+
+  const isAcceptPerSpecDisposition = (value: any) => {
+    const disposition = normalizeDispositionValue(value);
+    return (
+      disposition === "accept_per_specification" ||
+      disposition === "accept_per_spec" ||
+      disposition === "accept_per_specs" ||
+      disposition === "acceptance_per_specification" ||
+      disposition.includes("accept_per_spec")
+    );
+  };
+
+  const isScrapDisposition = (value: any) => {
+    const disposition = normalizeDispositionValue(value);
+    return disposition === "scrap" || disposition.includes("scrap");
+  };
+
+  const isReturnToSupplierDisposition = (value: any) => {
+    const disposition = normalizeDispositionValue(value);
+    return (
+      disposition === "return_to_supplier" ||
+      disposition === "return_to_vendor" ||
+      disposition === "rts" ||
+      disposition.includes("return_to_supplier") ||
+      disposition.includes("return_to_vendor")
+    );
+  };
+
+  const isReworkDisposition = (value: any) => {
+    const disposition = normalizeDispositionValue(value);
+    return disposition === "rework" || disposition.includes("rework");
+  };
+
   const buildQuantityReconciliationErrors = (item: any, label: string) => {
     const errors: string[] = [];
 
@@ -337,6 +386,7 @@ export default function NcmrDetailPage() {
     const quarantinedQty = toQuantityNumber(item?.quarantined_quantity);
     const acceptedQty = toQuantityNumber(item?.quantity_accepted);
     const rejectedQty = toQuantityNumber(item?.quantity_rejected);
+    const disposition = item?.product_disposition;
 
     if (affectedQty <= 0) {
       errors.push(`${label}: affected quantity must be greater than zero.`);
@@ -346,15 +396,29 @@ export default function NcmrDetailPage() {
       errors.push(`${label}: quarantined quantity (${quarantinedQty}) cannot exceed affected quantity (${affectedQty}).`);
     }
 
-    if (acceptedQty + rejectedQty > affectedQty) {
-      errors.push(`${label}: accepted + rejected quantity (${acceptedQty + rejectedQty}) cannot exceed affected quantity (${affectedQty}).`);
+    if (acceptedQty + rejectedQty !== affectedQty) {
+      errors.push(`${label}: accepted + rejected quantity (${acceptedQty + rejectedQty}) must equal affected quantity (${affectedQty}).`);
     }
 
-    if (acceptedQty + rejectedQty < affectedQty) {
-      errors.push(`${label}: accepted + rejected quantity (${acceptedQty + rejectedQty}) must reconcile to affected quantity (${affectedQty}) before MRB approval or closure.`);
+    if (isUseAsIsDisposition(disposition)) {
+      if (acceptedQty !== affectedQty || rejectedQty !== 0) {
+        errors.push(`${label}: Use As Is requires accepted quantity to equal affected quantity (${affectedQty}) and rejected quantity to equal 0.`);
+      }
     }
 
-    if (item?.product_disposition === "rework") {
+    if (isScrapDisposition(disposition) || isReturnToSupplierDisposition(disposition)) {
+      if (acceptedQty !== 0 || rejectedQty !== affectedQty) {
+        errors.push(`${label}: ${isScrapDisposition(disposition) ? "Scrap" : "Return to Supplier"} requires accepted quantity to equal 0 and rejected quantity to equal affected quantity (${affectedQty}).`);
+      }
+    }
+
+    if (isAcceptPerSpecDisposition(disposition)) {
+      if (acceptedQty + rejectedQty !== affectedQty) {
+        errors.push(`${label}: Accept Per Specification requires accepted + rejected quantity to equal affected quantity (${affectedQty}).`);
+      }
+    }
+
+    if (isReworkDisposition(disposition)) {
       const finalAcceptedQty = toQuantityNumber(item?.final_rework_quantity_accepted);
       const finalRejectedQty = toQuantityNumber(item?.final_rework_quantity_rejected);
 
@@ -362,8 +426,8 @@ export default function NcmrDetailPage() {
         errors.push(`${label}: final rework accepted + rejected quantity (${finalAcceptedQty + finalRejectedQty}) cannot exceed affected quantity (${affectedQty}).`);
       }
 
-      if (item?.final_disposition_after_rework && finalAcceptedQty + finalRejectedQty < affectedQty) {
-        errors.push(`${label}: final rework accepted + rejected quantity (${finalAcceptedQty + finalRejectedQty}) must reconcile to affected quantity (${affectedQty}) before closure.`);
+      if (item?.final_disposition_after_rework && finalAcceptedQty + finalRejectedQty !== affectedQty) {
+        errors.push(`${label}: final rework accepted + rejected quantity (${finalAcceptedQty + finalRejectedQty}) must equal affected quantity (${affectedQty}) before closure.`);
       }
     }
 
@@ -617,6 +681,26 @@ export default function NcmrDetailPage() {
         alert(`Final rework quantity reconciliation failed.\n\nAffected Quantity: ${quantityAffected}\nFinal Accepted + Final Rejected Quantity: ${finalDispositionedQty}\nOverage: ${finalDispositionedQty - quantityAffected}\n\nFinal rework quantities cannot exceed affected quantity.`);
         return;
       }
+    }
+
+    const proposedDispositionItem = {
+      ...(currentItem || {}),
+      product_disposition: productDisposition,
+      quantity_accepted: acceptedQty,
+      quantity_rejected: rejectedQty,
+      final_disposition_after_rework: finalDispositionAfterRework,
+      final_rework_quantity_accepted: finalReworkQuantityAccepted,
+      final_rework_quantity_rejected: finalReworkQuantityRejected,
+    };
+
+    const dispositionValidationErrors = buildQuantityReconciliationErrors(
+      proposedDispositionItem,
+      "Affected item"
+    );
+
+    if (dispositionValidationErrors.length > 0) {
+      alert(`Disposition quantity validation failed:\n\n${dispositionValidationErrors.join("\n")}`);
+      return;
     }
 
     const { error } = await supabase
