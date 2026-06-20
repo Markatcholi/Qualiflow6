@@ -33,6 +33,7 @@ export default function NcmrDetailPage() {
   const [rootCause, setRootCause] = useState("");
   const [rootCauseCategory, setRootCauseCategory] = useState("");
   const [rootCauseOptions, setRootCauseOptions] = useState<any[]>([]);
+  const [dispositionOptions, setDispositionOptions] = useState<any[]>([]);
   const [correctionActionProposal, setCorrectionActionProposal] = useState("");
   const [correctiveAction, setCorrectiveAction] = useState("");
   const [riskAssessment, setRiskAssessment] = useState("");
@@ -120,6 +121,28 @@ export default function NcmrDetailPage() {
     }
 
     setRootCauseOptions(data || []);
+  };
+
+  const fetchDispositionOptions = async () => {
+    const { data, error } = await supabase
+      .from("md_dispositions")
+      .select("*")
+      .eq("is_active", true)
+      .order("label");
+
+    if (error) {
+      console.warn("Unable to load md_dispositions:", error.message);
+      setDispositionOptions([
+        { code: "accept_per_specification", label: "Accept Per Specification" },
+        { code: "use_as_is", label: "Use As Is" },
+        { code: "rework", label: "Rework" },
+        { code: "scrap", label: "Scrap" },
+        { code: "return_to_supplier", label: "Return to Supplier" },
+      ]);
+      return;
+    }
+
+    setDispositionOptions(data || []);
   };
 
   const fetchLinkedCapa = async (capaId: string | null) => {
@@ -1529,6 +1552,63 @@ This approval becomes part of the official electronic quality record.`,
     alert("Evidence uploaded. Click Save Workflow to store it.");
   };
 
+  const saveRiskAssessmentSection = async () => {
+    if (record?.is_locked) {
+      alert("This record is locked after electronic signature and cannot be edited.");
+      return;
+    }
+
+    const { error } = await supabase
+      .from("ncmrs")
+      .update({
+        risk_assessment: riskAssessment,
+        severity,
+      })
+      .eq("id", id);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    await addAuditLog(
+      "risk_assessment_saved",
+      "Risk assessment and severity were saved from the Risk Assessment section."
+    );
+
+    alert("Risk assessment saved.");
+    fetchRecord();
+  };
+
+  const saveMrbDispositionSection = async () => {
+    if (record?.is_locked) {
+      alert("This record is locked after electronic signature and cannot be edited.");
+      return;
+    }
+
+    const { error } = await supabase
+      .from("ncmrs")
+      .update({
+        product_disposition: productDisposition,
+        disposition: productDisposition,
+        disposition_justification: dispositionJustification,
+      })
+      .eq("id", id);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    await addAuditLog(
+      "mrb_disposition_saved",
+      "Overall product disposition and disposition justification were saved from the MRB disposition section."
+    );
+
+    alert("MRB disposition saved.");
+    fetchRecord();
+  };
+
   const saveWorkflow = async () => {
     if (record?.is_locked) {
       alert("This record is locked after electronic signature and cannot be edited.");
@@ -2151,6 +2231,7 @@ This approval becomes part of the official electronic quality record.`,
       fetchUserRole();
       fetchRecord();
       fetchRootCauseOptions();
+      fetchDispositionOptions();
     }
   }, [id]);
 
@@ -2302,7 +2383,11 @@ This approval becomes part of the official electronic quality record.`,
     alert("Unsaved changes were reverted to the last saved record.");
   };
 
-  const SectionSaveCancelActions = () => (
+  const SectionSaveCancelActions = ({
+    onSave,
+  }: {
+    onSave?: () => void;
+  }) => (
     <div
       style={{
         display: "flex",
@@ -2313,7 +2398,7 @@ This approval becomes part of the official electronic quality record.`,
         paddingTop: "12px",
       }}
     >
-      <button type="button" onClick={saveWorkflow} disabled={isLocked}>
+      <button type="button" onClick={onSave || saveWorkflow} disabled={isLocked}>
         Save Section
       </button>
       <button type="button" onClick={cancelCurrentFormChanges} disabled={isLocked}>
@@ -3021,7 +3106,7 @@ This approval becomes part of the official electronic quality record.`,
           </div>
         ) : null}
 
-        <SectionSaveCancelActions />
+        <SectionSaveCancelActions onSave={saveRiskAssessmentSection} />
       </SectionCard>
 
       <SectionCard
@@ -3260,7 +3345,7 @@ This approval becomes part of the official electronic quality record.`,
           </div>
         ) : null}
 
-        <SectionSaveCancelActions />
+        <SectionSaveCancelActions onSave={saveMrbDispositionSection} />
       </SectionCard>
 
       <SectionCard
