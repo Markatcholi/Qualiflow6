@@ -124,25 +124,35 @@ export default function NcmrDetailPage() {
   };
 
   const fetchDispositionOptions = async () => {
+    const fallbackDispositions = [
+      { code: "accept_per_specification", label: "Accept Per Specification" },
+      { code: "use_as_is", label: "Use As Is" },
+      { code: "rework", label: "Rework" },
+      { code: "repair", label: "Repair" },
+      { code: "scrap", label: "Scrap" },
+      { code: "return_to_supplier", label: "Return to Supplier" },
+      { code: "sort_screen", label: "Sort / Screen" },
+      { code: "hold_pending_decision", label: "Hold Pending Decision" },
+    ];
+
     const { data, error } = await supabase
       .from("md_dispositions")
       .select("*")
-      .eq("is_active", true)
       .order("label");
 
     if (error) {
       console.warn("Unable to load md_dispositions:", error.message);
-      setDispositionOptions([
-        { code: "accept_per_specification", label: "Accept Per Specification" },
-        { code: "use_as_is", label: "Use As Is" },
-        { code: "rework", label: "Rework" },
-        { code: "scrap", label: "Scrap" },
-        { code: "return_to_supplier", label: "Return to Supplier" },
-      ]);
+      setDispositionOptions(fallbackDispositions);
       return;
     }
 
-    setDispositionOptions(data || []);
+    const activeDispositions = (data || []).filter((item: any) => {
+      if (item.is_active === false) return false;
+      if (String(item.status || "").toLowerCase() === "inactive") return false;
+      return true;
+    });
+
+    setDispositionOptions(activeDispositions.length > 0 ? activeDispositions : fallbackDispositions);
   };
 
   const fetchLinkedCapa = async (capaId: string | null) => {
@@ -477,6 +487,20 @@ export default function NcmrDetailPage() {
       errors,
     };
   };
+
+  const renderDispositionOptions = () => (
+    <>
+      <option value="">Select disposition</option>
+      {dispositionOptions.map((option: any) => (
+        <option
+          key={option.code || option.value || option.id || option.label}
+          value={option.code || option.value || option.label}
+        >
+          {option.label || option.name || option.code || option.value}
+        </option>
+      ))}
+    </>
+  );
 
   const saveRecordSummary = async () => {
     if (record?.is_locked || record?.mrb_approved_by) {
@@ -3122,14 +3146,7 @@ This approval becomes part of the official electronic quality record.`,
           onChange={(e) => setProductDisposition(e.target.value)}
           style={{ padding: "8px", minWidth: "240px", marginBottom: "12px" }}
         >
-          <option value="">Select disposition</option>
-          <option value="use_as_is">Use As Is</option>
-          <option value="rework">Rework</option>
-          <option value="repair">Repair</option>
-          <option value="scrap">Scrap</option>
-          <option value="return_to_supplier">Return to Supplier</option>
-          <option value="sort_screen">Sort / Screen</option>
-          <option value="hold_pending_decision">Hold Pending Decision</option>
+          {renderDispositionOptions()}
         </select>
 
         <br />
@@ -4303,14 +4320,7 @@ function AffectedItemCard({
             disabled={isLocked}
             style={{ padding: "8px", width: "100%" }}
           >
-            <option value="">Select disposition</option>
-            <option value="use_as_is">Use As Is</option>
-            <option value="rework">Rework</option>
-            <option value="repair">Repair</option>
-            <option value="scrap">Scrap</option>
-            <option value="return_to_supplier">Return to Supplier</option>
-            <option value="sort_screen">Sort / Screen</option>
-            <option value="hold_pending_decision">Hold Pending Decision</option>
+            {renderDispositionOptions()}
           </select>
         </div>
 
