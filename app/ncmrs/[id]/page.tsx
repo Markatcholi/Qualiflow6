@@ -3146,7 +3146,15 @@ This approval becomes part of the official electronic quality record.`,
           onChange={(e) => setProductDisposition(e.target.value)}
           style={{ padding: "8px", minWidth: "240px", marginBottom: "12px" }}
         >
-          {renderDispositionOptions()}
+          <option value="">Select disposition</option>
+            {dispositionOptions.map((option: any) => (
+              <option
+                key={option.code || option.value || option.id || option.label}
+                value={option.code || option.value || option.label}
+              >
+                {option.label || option.name || option.code || option.value}
+              </option>
+            ))}
         </select>
 
         <br />
@@ -4320,7 +4328,15 @@ function AffectedItemCard({
             disabled={isLocked}
             style={{ padding: "8px", width: "100%" }}
           >
-            {renderDispositionOptions()}
+            <option value="">Select disposition</option>
+            {dispositionOptions.map((option: any) => (
+              <option
+                key={option.code || option.value || option.id || option.label}
+                value={option.code || option.value || option.label}
+              >
+                {option.label || option.name || option.code || option.value}
+              </option>
+            ))}
           </select>
         </div>
 
