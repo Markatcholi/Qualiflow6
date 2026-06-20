@@ -124,7 +124,7 @@ export default function NcmrDetailPage() {
   };
 
   const fetchDispositionOptions = async () => {
-    const fallbackDispositions = [
+    const defaultDispositions = [
       { code: "accept_per_specification", label: "Accept Per Specification" },
       { code: "use_as_is", label: "Use As Is" },
       { code: "rework", label: "Rework" },
@@ -135,24 +135,87 @@ export default function NcmrDetailPage() {
       { code: "hold_pending_decision", label: "Hold Pending Decision" },
     ];
 
-    const { data, error } = await supabase
-      .from("md_dispositions")
-      .select("*")
-      .order("label");
+    const normalizeOption = (item: any) => {
+      const rawLabel =
+        item?.label ||
+        item?.name ||
+        item?.disposition_label ||
+        item?.disposition_name ||
+        item?.title ||
+        item?.code ||
+        item?.value ||
+        "";
 
-    if (error) {
-      console.warn("Unable to load md_dispositions:", error.message);
-      setDispositionOptions(fallbackDispositions);
-      return;
+      const rawCode =
+        item?.code ||
+        item?.value ||
+        item?.disposition_code ||
+        item?.disposition_value ||
+        String(rawLabel)
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "_")
+          .replace(/^_+|_+$/g, "");
+
+      return {
+        id: item?.id || rawCode,
+        code: rawCode,
+        label: rawLabel || rawCode,
+        is_active: item?.is_active,
+        status: item?.status,
+      };
+    };
+
+    const isActiveOption = (item: any) => {
+      if (item?.is_active === false) return false;
+      if (String(item?.status || "").toLowerCase() === "inactive") return false;
+      return true;
+    };
+
+    const candidateTables = [
+      "md_dispositions",
+      "md_ncmr_dispositions",
+      "md_product_dispositions",
+      "md_disposition_types",
+    ];
+
+    let loadedOptions: any[] = [];
+
+    for (const tableName of candidateTables) {
+      const { data, error } = await supabase
+        .from(tableName)
+        .select("*");
+
+      if (error) {
+        console.warn(`Unable to load ${tableName}:`, error.message);
+        continue;
+      }
+
+      if (data && data.length > 0) {
+        loadedOptions = data
+          .filter(isActiveOption)
+          .map(normalizeOption)
+          .filter((item: any) => item.code && item.label);
+
+        if (loadedOptions.length > 0) {
+          break;
+        }
+      }
     }
 
-    const activeDispositions = (data || []).filter((item: any) => {
-      if (item.is_active === false) return false;
-      if (String(item.status || "").toLowerCase() === "inactive") return false;
-      return true;
+    const mergedByCode: Record<string, any> = {};
+
+    [...defaultDispositions, ...loadedOptions].forEach((option: any) => {
+      const normalized = normalizeOption(option);
+      if (!normalized.code) return;
+      mergedByCode[normalized.code] = normalized;
     });
 
-    setDispositionOptions(activeDispositions.length > 0 ? activeDispositions : fallbackDispositions);
+    const mergedOptions = Object.values(mergedByCode).sort((a: any, b: any) =>
+      String(a.label || "").localeCompare(String(b.label || ""))
+    );
+
+    setDispositionOptions(mergedOptions);
   };
 
   const fetchLinkedCapa = async (capaId: string | null) => {
@@ -3149,10 +3212,10 @@ This approval becomes part of the official electronic quality record.`,
           <option value="">Select disposition</option>
             {dispositionOptions.map((option: any) => (
               <option
-                key={option.code || option.value || option.id || option.label}
-                value={option.code || option.value || option.label}
+                key={option.code || option.value || option.id || option.label || option.name}
+                value={option.code || option.value || option.label || option.name}
               >
-                {option.label || option.name || option.code || option.value}
+                {option.label || option.name || option.disposition_label || option.disposition_name || option.code || option.value}
               </option>
             ))}
         </select>
@@ -4331,10 +4394,10 @@ function AffectedItemCard({
             <option value="">Select disposition</option>
             {dispositionOptions.map((option: any) => (
               <option
-                key={option.code || option.value || option.id || option.label}
-                value={option.code || option.value || option.label}
+                key={option.code || option.value || option.id || option.label || option.name}
+                value={option.code || option.value || option.label || option.name}
               >
-                {option.label || option.name || option.code || option.value}
+                {option.label || option.name || option.disposition_label || option.disposition_name || option.code || option.value}
               </option>
             ))}
           </select>
