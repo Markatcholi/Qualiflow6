@@ -3248,6 +3248,7 @@ This approval becomes part of the official electronic quality record.`,
                   item={item}
                   isLocked={isLocked}
                   mrbApproved={!!record.mrb_approved_by}
+                  dispositionOptions={dispositionOptions}
                   onSave={updateAffectedItemDisposition}
                 />
               ))}
@@ -4283,11 +4284,13 @@ function AffectedItemCard({
   item,
   isLocked,
   mrbApproved,
+  dispositionOptions,
   onSave,
 }: {
   item: any;
   isLocked: boolean;
   mrbApproved: boolean;
+  dispositionOptions: any[];
   onSave: (
     itemId: string,
     productDisposition: string,
