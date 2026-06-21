@@ -965,10 +965,18 @@ export default function NcmrDetailPage() {
     const errors: string[] = [];
 
     if (!record?.mrb_approved_by) errors.push("MRB approval is required before closure.");
-    if (!correctionImplementation) errors.push("Correction implementation is required before closure.");
-    if (!record?.correction_implemented_by) {
-      errors.push("Correction implementation must be formally recorded before closure.");
+
+    if (isCorrectionNotRequired()) {
+      if (!correctiveAction.trim()) {
+        errors.push("Correction not required requires documented justification before closure.");
+      }
+    } else {
+      if (!correctionImplementation) errors.push("Correction implementation is required before closure.");
+      if (!record?.correction_implemented_by) {
+        errors.push("Correction implementation must be formally recorded before closure.");
+      }
     }
+
     if (!investigationSummary) errors.push("Investigation summary is required before closure.");
     if (!riskAssessment) errors.push("Risk assessment is required before closure.");
     const closureCapaRecommendation = getCapaRecommendation();
@@ -2149,14 +2157,30 @@ This approval becomes part of the official electronic quality record.`,
     );
   };
 
+  const getCompletedReworkTask = () => {
+    return reworkTasks.find((task) => task.status === "completed") || null;
+  };
+
+  const hasCompletedReworkTask = () => {
+    return !!getCompletedReworkTask();
+  };
+
+  const getReworkAffectedItems = () => {
+    return affectedItems.filter((item) => isReworkDisposition(item.product_disposition));
+  };
+
+  const isCorrectionNotRequired = () => {
+    return correctionActionProposal === "no_correction_required";
+  };
+
+  const isCorrectionTaskRequired = () => {
+    return !!correctionActionProposal && correctionActionProposal !== "no_correction_required";
+  };
+
   const requiredExecutionTasksComplete = () => {
     const errors: string[] = [];
 
-    const hasCorrectionAction =
-      correctionActionProposal &&
-      correctionActionProposal !== "no_correction_required";
-
-    if (hasCorrectionAction) {
+    if (isCorrectionTaskRequired()) {
       const completedCorrectionTask = correctionTasks.find(
         (task) => task.status === "completed"
       );
@@ -2167,9 +2191,7 @@ This approval becomes part of the official electronic quality record.`,
     }
 
     if (hasReworkDisposition()) {
-      const completedReworkTask = reworkTasks.find(
-        (task) => task.status === "completed"
-      );
+      const completedReworkTask = getCompletedReworkTask();
 
       if (!completedReworkTask) {
         errors.push("At least one rework task must be completed before closure when rework is applicable.");
@@ -2251,10 +2273,16 @@ This approval becomes part of the official electronic quality record.`,
     if (!productDisposition) return alert("Product disposition is required.");
     if (!dispositionJustification) return alert("Disposition justification is required.");
     if (!record?.mrb_approved_by) return alert("MRB approval is required before closure.");
-    if (!correctionImplementation) return alert("Correction implementation is required.");
+    if (!isCorrectionNotRequired() && !correctionImplementation) return alert("Correction implementation is required.");
 
-    if (!record?.correction_implemented_by) {
-      return alert("Correction implementation must be formally recorded before closure.");
+    if (isCorrectionNotRequired()) {
+      if (!correctiveAction.trim()) {
+        return alert("Correction not required requires documented justification before closure.");
+      }
+    } else {
+      if (!record?.correction_implemented_by) {
+        return alert("Correction implementation must be formally recorded before closure.");
+      }
     }
 
     const closureQuantityErrors = affectedItems.flatMap((item, index) =>
@@ -2340,7 +2368,7 @@ This approval becomes part of the official electronic quality record.`,
     { label: "Correction Proposal", complete: !!correctionActionProposal && !!correctiveAction },
     { label: "Risk Assessment", complete: !!riskAssessment && severity !== "not_assessed" },
     { label: "MRB Approval", complete: !!record?.mrb_approved_by },
-    { label: "Implementation", complete: !!record?.correction_implemented_by },
+    { label: "Implementation", complete: isCorrectionNotRequired() ? !!correctiveAction : !!record?.correction_implemented_by },
     { label: "Evidence", complete: !!evidenceUrl || !!record?.evidence_url },
     { label: "Closure", complete: !!record?.ncmr_closed_by || record?.status === "closed" },
   ];
@@ -2410,7 +2438,7 @@ This approval becomes part of the official electronic quality record.`,
   const isCorrectionProposalComplete = !!correctionActionProposal && !!correctiveAction;
   const isRiskAssessmentComplete = !!riskAssessment && severity !== "not_assessed";
   const isMrbComplete = !!record?.mrb_approved_by;
-  const isImplementationComplete = !!record?.correction_implemented_by;
+  const isImplementationComplete = isCorrectionNotRequired() ? !!correctiveAction : !!record?.correction_implemented_by;
   const isEvidenceComplete = !!evidenceUrl || !!record?.evidence_url;
   const isClosureComplete = !!record?.ncmr_closed_by || record?.status === "closed";
 
@@ -3234,8 +3262,8 @@ This approval becomes part of the official electronic quality record.`,
           <h3>Disposition by Affected Item</h3>
           <p style={{ color: "#4b5563", fontSize: "14px" }}>
             Add one disposition decision per affected item. Include quantity accepted and quantity rejected.
-            If disposition is Rework, document the final disposition after rework with final accepted/rejected quantities.
-            Overall MRB approval approves all saved item dispositions.
+            If disposition is Rework, enter Accepted Quantity = 0 and Rejected Quantity = Quantity Impacted.
+            Final rework disposition becomes available after MRB approval and rework task completion.
           </p>
 
           {affectedItems.length === 0 ? (
@@ -3255,76 +3283,6 @@ This approval becomes part of the official electronic quality record.`,
             </div>
           )}
         </div>
-
-        {hasReworkDisposition() && record.mrb_approved_by ? (
-          <div
-            style={{
-              marginTop: "18px",
-              border: "1px solid #bfdbfe",
-              borderRadius: "8px",
-              padding: "12px",
-              background: "#eff6ff",
-            }}
-          >
-            <h3 style={{ marginTop: 0 }}>Rework Task Assignment</h3>
-            <p style={{ color: "#1f2937", fontSize: "14px" }}>
-              Rework is applicable based on the approved MRB disposition. Assign rework execution after MRB approval.
-            </p>
-
-            <div style={{ display: "grid", gap: "12px", maxWidth: "700px" }}>
-              <div>
-                <label>Assigned To Email</label><br />
-                <input
-                  value={reworkTaskAssignee}
-                  onChange={(e) => setReworkTaskAssignee(e.target.value)}
-                  disabled={isLocked}
-                  style={{ padding: "8px", width: "100%" }}
-                />
-              </div>
-
-              <div>
-                <label>Due Date</label><br />
-                <input
-                  type="date"
-                  value={reworkTaskDueDate}
-                  onChange={(e) => setReworkTaskDueDate(e.target.value)}
-                  disabled={isLocked}
-                  style={{ padding: "8px", width: "100%" }}
-                />
-              </div>
-            </div>
-
-            <div style={{ marginTop: "10px" }}>
-              <label>Rework Task Instructions</label><br />
-              <textarea
-                value={reworkTaskInstructions}
-                onChange={(e) => setReworkTaskInstructions(e.target.value)}
-                disabled={isLocked}
-                rows={3}
-                style={{ width: "100%", maxWidth: "700px" }}
-              />
-            </div>
-
-            <button type="button" onClick={generateReworkTask} disabled={isLocked} style={{ marginTop: "10px" }}>
-              Generate Rework Task
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setReworkTaskAssignee("");
-                setReworkTaskDueDate("");
-                setReworkTaskInstructions("");
-              }}
-              disabled={isLocked}
-              style={{ marginTop: "10px", marginLeft: "8px" }}
-            >
-              Cancel Rework Task Entry
-            </button>
-
-            <h4>Rework Task Status</h4>
-            {reworkTasks.length === 0 ? <p>No rework tasks generated.</p> : <TaskStatusList tasks={reworkTasks} />}
-          </div>
-        ) : null}
 
         <div
           style={{
@@ -3431,6 +3389,121 @@ This approval becomes part of the official electronic quality record.`,
                 </li>
               ))}
             </ul>
+          </div>
+        ) : null}
+
+        {hasReworkDisposition() && record.mrb_approved_by ? (
+          <div
+            style={{
+              marginTop: "18px",
+              border: "1px solid #bfdbfe",
+              borderRadius: "8px",
+              padding: "12px",
+              background: "#eff6ff",
+            }}
+          >
+            <h3 style={{ marginTop: 0 }}>Rework Task Assignment</h3>
+            <p style={{ color: "#1f2937", fontSize: "14px" }}>
+              Rework is applicable based on the approved MRB disposition. Assign rework execution after MRB approval.
+            </p>
+
+            <div style={{ display: "grid", gap: "12px", maxWidth: "700px" }}>
+              <div>
+                <label>Assigned To Email</label><br />
+                <input
+                  value={reworkTaskAssignee}
+                  onChange={(e) => setReworkTaskAssignee(e.target.value)}
+                  disabled={isLocked}
+                  style={{ padding: "8px", width: "100%" }}
+                />
+              </div>
+
+              <div>
+                <label>Due Date</label><br />
+                <input
+                  type="date"
+                  value={reworkTaskDueDate}
+                  onChange={(e) => setReworkTaskDueDate(e.target.value)}
+                  disabled={isLocked}
+                  style={{ padding: "8px", width: "100%" }}
+                />
+              </div>
+            </div>
+
+            <div style={{ marginTop: "10px" }}>
+              <label>Rework Task Instructions</label><br />
+              <textarea
+                value={reworkTaskInstructions}
+                onChange={(e) => setReworkTaskInstructions(e.target.value)}
+                disabled={isLocked}
+                rows={3}
+                style={{ width: "100%", maxWidth: "700px" }}
+              />
+            </div>
+
+            <button type="button" onClick={generateReworkTask} disabled={isLocked} style={{ marginTop: "10px" }}>
+              Generate Rework Task
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setReworkTaskAssignee("");
+                setReworkTaskDueDate("");
+                setReworkTaskInstructions("");
+              }}
+              disabled={isLocked}
+              style={{ marginTop: "10px", marginLeft: "8px" }}
+            >
+              Cancel Rework Task Entry
+            </button>
+
+            <h4>Rework Task Status</h4>
+            {reworkTasks.length === 0 ? <p>No rework tasks generated.</p> : <TaskStatusList tasks={reworkTasks} />}
+
+            {hasCompletedReworkTask() ? (
+              <div
+                style={{
+                  marginTop: "18px",
+                  border: "1px solid #86efac",
+                  borderRadius: "8px",
+                  padding: "12px",
+                  background: "#f0fdf4",
+                }}
+              >
+                <h3 style={{ marginTop: 0 }}>Rework Verification & Final Disposition</h3>
+                <p style={{ color: "#166534", fontSize: "14px" }}>
+                  Rework task completion has been recorded. Document the final disposition and quantity outcome for each reworked item before closure.
+                </p>
+
+                {getReworkAffectedItems().length === 0 ? (
+                  <p>No rework disposition items found.</p>
+                ) : (
+                  <div style={{ display: "grid", gap: "12px" }}>
+                    {getReworkAffectedItems().map((item) => (
+                      <ReworkVerificationCard
+                        key={item.id}
+                        item={item}
+                        isLocked={isLocked}
+                        onSave={updateAffectedItemDisposition}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div
+                style={{
+                  marginTop: "14px",
+                  border: "1px solid #facc15",
+                  borderRadius: "8px",
+                  padding: "10px",
+                  background: "#fefce8",
+                  color: "#854d0e",
+                }}
+              >
+                Rework Verification & Final Disposition unlocks after a rework task is completed.
+              </div>
+            )}
           </div>
         ) : null}
 
@@ -3644,11 +3717,33 @@ This approval becomes part of the official electronic quality record.`,
 
       <SectionCard
         title="7. Correction Implementation"
-        subtitle={isImplementationComplete ? "Complete: correction implementation has been recorded." : "Pending: assign/complete correction task and document implementation."}
+        subtitle={isImplementationComplete ? "Complete: correction implementation is satisfied." : isCorrectionNotRequired() ? "Pending: document correction-not-required justification." : "Pending: assign/complete correction task and document implementation."}
         defaultOpen={false}
         rightAction={sectionStatusBadge(isImplementationComplete, "Implementation")}
       >
 
+        {isCorrectionNotRequired() ? (
+          <div
+            style={{
+              border: "1px solid #86efac",
+              borderRadius: "8px",
+              padding: "12px",
+              background: "#f0fdf4",
+              color: "#166534",
+              marginBottom: "12px",
+            }}
+          >
+            <h3 style={{ marginTop: 0 }}>Correction Not Required</h3>
+            <p style={{ marginBottom: "8px" }}>
+              Correction task assignment is skipped because the correction proposal is set to "No correction required."
+            </p>
+            <strong>Required Justification:</strong>
+            <div style={{ marginTop: "6px", color: "#14532d" }}>
+              {correctiveAction || "Document the justification in the Correction / Corrective Action Proposal section."}
+            </div>
+          </div>
+        ) : (
+<>
         <div
           style={{
             border: "1px solid #d1d5db",
@@ -3737,6 +3832,9 @@ This approval becomes part of the official electronic quality record.`,
             <strong>Implemented At:</strong> {record.correction_implemented_at}
           </div>
         ) : null}
+
+</>
+        )}
 
         <SectionSaveCancelActions />
       </SectionCard>
@@ -4280,6 +4378,161 @@ function AffectedMaterialEditCard({
   );
 }
 
+function ReworkVerificationCard({
+  item,
+  isLocked,
+  onSave,
+}: {
+  item: any;
+  isLocked: boolean;
+  onSave: (
+    itemId: string,
+    productDisposition: string,
+    dispositionJustification: string,
+    quantityAccepted: string,
+    quantityRejected: string,
+    finalDispositionAfterRework: string,
+    finalReworkQuantityAccepted: string,
+    finalReworkQuantityRejected: string
+  ) => void;
+}) {
+  const [finalDispositionAfterRework, setFinalDispositionAfterRework] = useState(
+    item.final_disposition_after_rework || ""
+  );
+  const [finalReworkQuantityAccepted, setFinalReworkQuantityAccepted] = useState(
+    item.final_rework_quantity_accepted !== null &&
+      item.final_rework_quantity_accepted !== undefined
+      ? String(item.final_rework_quantity_accepted)
+      : ""
+  );
+  const [finalReworkQuantityRejected, setFinalReworkQuantityRejected] = useState(
+    item.final_rework_quantity_rejected !== null &&
+      item.final_rework_quantity_rejected !== undefined
+      ? String(item.final_rework_quantity_rejected)
+      : ""
+  );
+
+  useEffect(() => {
+    setFinalDispositionAfterRework(item.final_disposition_after_rework || "");
+    setFinalReworkQuantityAccepted(
+      item.final_rework_quantity_accepted !== null &&
+        item.final_rework_quantity_accepted !== undefined
+        ? String(item.final_rework_quantity_accepted)
+        : ""
+    );
+    setFinalReworkQuantityRejected(
+      item.final_rework_quantity_rejected !== null &&
+        item.final_rework_quantity_rejected !== undefined
+        ? String(item.final_rework_quantity_rejected)
+        : ""
+    );
+  }, [
+    item.final_disposition_after_rework,
+    item.final_rework_quantity_accepted,
+    item.final_rework_quantity_rejected,
+  ]);
+
+  return (
+    <div
+      style={{
+        border: "1px solid #bbf7d0",
+        borderRadius: "8px",
+        padding: "12px",
+        background: "white",
+        display: "grid",
+        gap: "12px",
+      }}
+    >
+      <h4 style={{ margin: 0 }}>
+        Rework Verification — {item.product_part_number || "Part N/A"} / Lot {item.lot_number || "Lot N/A"}
+      </h4>
+
+      <div style={{ fontSize: "13px", color: "#374151" }}>
+        Original impacted quantity: {item.quantity_affected ?? "N/A"} | Initial rework rejected quantity: {item.quantity_rejected ?? "N/A"}
+      </div>
+
+      <div>
+        <label>Final Disposition After Rework</label>
+        <br />
+        <select
+          value={finalDispositionAfterRework}
+          onChange={(e) => setFinalDispositionAfterRework(e.target.value)}
+          disabled={isLocked}
+          style={{ padding: "8px", width: "100%" }}
+        >
+          <option value="">Select final disposition</option>
+          <option value="accepted_after_rework">Accepted After Rework</option>
+          <option value="scrap_after_rework">Scrap After Rework</option>
+          <option value="additional_rework_required">Additional Rework Required</option>
+          <option value="use_as_is_after_rework">Use As Is After Rework</option>
+        </select>
+      </div>
+
+      <div>
+        <label>Final Rework Quantity Accepted</label>
+        <br />
+        <input
+          type="number"
+          value={finalReworkQuantityAccepted}
+          onChange={(e) => setFinalReworkQuantityAccepted(e.target.value)}
+          disabled={isLocked}
+          style={{ padding: "8px", width: "100%" }}
+        />
+      </div>
+
+      <div>
+        <label>Final Rework Quantity Rejected</label>
+        <br />
+        <input
+          type="number"
+          value={finalReworkQuantityRejected}
+          onChange={(e) => setFinalReworkQuantityRejected(e.target.value)}
+          disabled={isLocked}
+          style={{ padding: "8px", width: "100%" }}
+        />
+      </div>
+
+      <button
+        type="button"
+        disabled={isLocked}
+        style={{ width: "fit-content" }}
+        onClick={() =>
+          onSave(
+            item.id,
+            item.product_disposition || "rework",
+            item.disposition_justification || "Rework final disposition verified.",
+            item.quantity_accepted !== null && item.quantity_accepted !== undefined
+              ? String(item.quantity_accepted)
+              : "0",
+            item.quantity_rejected !== null && item.quantity_rejected !== undefined
+              ? String(item.quantity_rejected)
+              : String(item.quantity_affected || 0),
+            finalDispositionAfterRework,
+            finalReworkQuantityAccepted,
+            finalReworkQuantityRejected
+          )
+        }
+      >
+        Save Rework Verification
+      </button>
+
+      {item.final_disposition_after_rework ? (
+        <div
+          style={{
+            border: "1px solid #86efac",
+            background: "#f0fdf4",
+            color: "#166534",
+            borderRadius: "8px",
+            padding: "10px",
+          }}
+        >
+          Final rework disposition saved.
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function AffectedItemCard({
   item,
   isLocked,
@@ -4442,65 +4695,18 @@ function AffectedItemCard({
           />
         </div>
 
-        {productDisposition === "rework" && !mrbApproved ? (
-          <p style={{ color: "#4b5563", marginTop: 0 }}>
-            Final rework disposition becomes available after MRB approval.
-          </p>
-        ) : null}
-
-        {productDisposition === "rework" && mrbApproved ? (
+        {productDisposition === "rework" ? (
           <div
             style={{
               border: "1px solid #bfdbfe",
               borderRadius: "8px",
-              padding: "12px",
+              padding: "10px",
               background: "#eff6ff",
-              display: "grid",
-              gap: "12px",
+              color: "#1e3a8a",
             }}
           >
-            <h5 style={{ margin: 0 }}>Final Disposition After Rework</h5>
-
-            <div>
-              <label>Final Disposition</label>
-              <br />
-              <select
-                value={finalDispositionAfterRework}
-                onChange={(e) => setFinalDispositionAfterRework(e.target.value)}
-                disabled={isLocked}
-                style={{ padding: "8px", width: "100%" }}
-              >
-                <option value="">Select final disposition</option>
-                <option value="accepted_after_rework">Accepted After Rework</option>
-                <option value="scrap_after_rework">Scrap After Rework</option>
-                <option value="additional_rework_required">Additional Rework Required</option>
-                <option value="use_as_is_after_rework">Use As Is After Rework</option>
-              </select>
-            </div>
-
-            <div>
-              <label>Final Rework Quantity Accepted</label>
-              <br />
-              <input
-                type="number"
-                value={finalReworkQuantityAccepted}
-                onChange={(e) => setFinalReworkQuantityAccepted(e.target.value)}
-                disabled={isLocked}
-                style={{ padding: "8px", width: "100%" }}
-              />
-            </div>
-
-            <div>
-              <label>Final Rework Quantity Rejected</label>
-              <br />
-              <input
-                type="number"
-                value={finalReworkQuantityRejected}
-                onChange={(e) => setFinalReworkQuantityRejected(e.target.value)}
-                disabled={isLocked}
-                style={{ padding: "8px", width: "100%" }}
-              />
-            </div>
+            Rework selected. Enter Accepted Quantity = 0 and Rejected Quantity = Quantity Impacted.
+            Final rework disposition becomes available after MRB approval and rework task completion.
           </div>
         ) : null}
 
