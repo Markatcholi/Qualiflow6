@@ -51,6 +51,7 @@ export default function NcmrDetailPage() {
   const [reviewStatus, setReviewStatus] = useState("draft");
 
   const [mrbSignatureEmail, setMrbSignatureEmail] = useState("");
+  const [mrbAutoApprovalInProgress, setMrbAutoApprovalInProgress] = useState(false);
   const [closureSignatureEmail, setClosureSignatureEmail] = useState("");
   const [additionalMrbApprovers, setAdditionalMrbApprovers] = useState("");
 
@@ -1130,7 +1131,7 @@ Review and verify:
 
 Approve only if the MRB decision is technically justified, risk-assessed, and compliant with procedure requirements.
 
-This approval becomes part of the official electronic quality record.`,
+This approval becomes part of the official electronic quality record. MRB will auto-approve after all required parallel approval tasks are approved.`,
     }));
 
     const { data: insertedTasks, error } = await supabase
@@ -1157,22 +1158,58 @@ This approval becomes part of the official electronic quality record.`,
       await supabase.from("notification_queue").insert(notifications);
     }
 
-    await addAuditLog("mrb_approval_tasks_generated", `Generated ${taskRows.length} MRB approval task(s).`);
+    await addAuditLog("mrb_approval_tasks_generated", `Generated ${taskRows.length} parallel MRB approval task(s).`);
 
-    alert("MRB approval tasks generated.");
+    alert("Parallel MRB approval tasks generated. MRB will auto-approve after all required approvers approve.");
     fetchRecord();
   };
 
-  const requiredMrbApprovalsComplete = () => {
-    const errors: string[] = [];
-
-    const requiredFunctions = [
+  const getRequiredMrbApprovalFunctions = () => {
+    return [
       { required: requireQualityApproval, functionName: "Quality" },
       { required: requireOperationsApproval, functionName: "Operations" },
       { required: requireRegulatoryApproval, functionName: "Regulatory" },
       { required: requireSupplyChainApproval, functionName: "Supply Chain" },
       { required: requireEngineeringApproval, functionName: "Engineering" },
     ].filter((item) => item.required);
+  };
+
+  const hasRejectedMrbApprovalTask = () => {
+    return approvalTasks.some(
+      (approvalTask) =>
+        approvalTask.task_type === "mrb_approval" &&
+        approvalTask.status === "rejected"
+    );
+  };
+
+  const allRequiredMrbApprovalTasksApproved = () => {
+    const requiredFunctions = getRequiredMrbApprovalFunctions();
+
+    if (requiredFunctions.length === 0) {
+      return false;
+    }
+
+    if (approvalTasks.length === 0) {
+      return false;
+    }
+
+    if (hasRejectedMrbApprovalTask()) {
+      return false;
+    }
+
+    return requiredFunctions.every((item) =>
+      approvalTasks.some(
+        (approvalTask) =>
+          approvalTask.required_function === item.functionName &&
+          approvalTask.status === "approved"
+      )
+    );
+  };
+
+  const requiredMrbApprovalsComplete = () => {
+    const errors: string[] = [];
+
+    const requiredFunctions = getRequiredMrbApprovalFunctions();
 
     requiredFunctions.forEach((item) => {
       const task = approvalTasks.find(
@@ -1187,6 +1224,57 @@ This approval becomes part of the official electronic quality record.`,
     });
 
     return errors;
+  };
+
+  const autoApproveMrbIfReady = async () => {
+    if (mrbAutoApprovalInProgress) return;
+    if (!record) return;
+    if (record?.is_locked || record?.mrb_approved_by) return;
+    if (!allRequiredMrbApprovalTasksApproved()) return;
+
+    const workflowReady = validateWorkflowForMrbApproval();
+
+    if (!workflowReady) {
+      return;
+    }
+
+    setMrbAutoApprovalInProgress(true);
+
+    const now = new Date().toISOString();
+    const meaning =
+      "MRB Auto Approval: all required MRB approval tasks were approved in parallel with electronic approval records.";
+
+    const { error } = await supabase
+      .from("ncmrs")
+      .update({
+        risk_assessment: riskAssessment,
+        severity,
+        capa_justification: capaJustification,
+        product_disposition: productDisposition,
+        disposition: productDisposition,
+        disposition_justification: dispositionJustification,
+        mrb_approved_by: "System Auto Approval",
+        mrb_approved_at: now,
+        mrb_signature_meaning: meaning,
+        mrb_signature_email_entered: "system_auto_approval",
+        mrb_additional_approvers: additionalMrbApprovers,
+      })
+      .eq("id", id);
+
+    if (error) {
+      setMrbAutoApprovalInProgress(false);
+      alert(error.message);
+      return;
+    }
+
+    await addAuditLog(
+      "mrb_auto_approved",
+      "MRB automatically approved after all required parallel MRB approval tasks were approved."
+    );
+
+    alert("MRB automatically approved. All required MRB approval tasks are complete.");
+    setMrbAutoApprovalInProgress(false);
+    fetchRecord();
   };
 
   const createCapaFromNcmr = async () => {
@@ -2350,6 +2438,28 @@ This approval becomes part of the official electronic quality record.`,
     }
   }, [id]);
 
+  useEffect(() => {
+    if (
+      id &&
+      record &&
+      !record?.mrb_approved_by &&
+      approvalTasks.length > 0 &&
+      allRequiredMrbApprovalTasksApproved()
+    ) {
+      autoApproveMrbIfReady();
+    }
+  }, [
+    id,
+    record?.id,
+    record?.mrb_approved_by,
+    approvalTasks,
+    requireQualityApproval,
+    requireOperationsApproval,
+    requireRegulatoryApproval,
+    requireSupplyChainApproval,
+    requireEngineeringApproval,
+  ]);
+
   if (loading) {
     return <main style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>Loading...</main>;
   }
@@ -2763,7 +2873,7 @@ This approval becomes part of the official electronic quality record.`,
               Validate for MRB
             </button>
 
-            <button onClick={approveMrb} disabled={isLocked || !!record?.mrb_approved_by}>
+            <button onClick={() => alert("MRB approval is now completed automatically after all required parallel approval tasks are approved.")} disabled={isLocked || !!record?.mrb_approved_by}>
               Approve MRB
             </button>
 
@@ -3367,7 +3477,7 @@ This approval becomes part of the official electronic quality record.`,
         </div>
 
         <div style={{ marginTop: "12px" }}>
-          <button onClick={approveMrb} disabled={isLocked}>Approve MRB Decision</button>
+          <button onClick={() => alert("MRB approval is now completed automatically after all required parallel approval tasks are approved.")} disabled={isLocked}>Approve MRB Decision</button>
         </div>
 
         {record.mrb_approved_by ? (
@@ -3506,6 +3616,35 @@ This approval becomes part of the official electronic quality record.`,
             )}
           </div>
         ) : null}
+
+        <div
+          style={{
+            marginTop: "18px",
+            border: record?.mrb_approved_by ? "1px solid #86efac" : hasRejectedMrbApprovalTask() ? "1px solid #fca5a5" : "1px solid #bfdbfe",
+            borderRadius: "8px",
+            padding: "12px",
+            background: record?.mrb_approved_by ? "#f0fdf4" : hasRejectedMrbApprovalTask() ? "#fef2f2" : "#eff6ff",
+          }}
+        >
+          <h3 style={{ marginTop: 0 }}>MRB Auto Approval Status</h3>
+          {record?.mrb_approved_by ? (
+            <p style={{ color: "#166534" }}>
+              MRB approved automatically after all required parallel approval tasks were approved.
+            </p>
+          ) : hasRejectedMrbApprovalTask() ? (
+            <p style={{ color: "#991b1b" }}>
+              One or more MRB approval tasks have been rejected. Resolve the rejection before MRB can be approved.
+            </p>
+          ) : (
+            <p style={{ color: "#1e3a8a" }}>
+              MRB will auto-approve when all required approval tasks are approved. No separate final MRB approval signature is required.
+            </p>
+          )}
+
+          <div style={{ fontSize: "13px", color: "#374151" }}>
+            Required approvals complete: {requiredMrbApprovalsComplete().length === 0 && approvalTasks.length > 0 ? "Yes" : "No"}
+          </div>
+        </div>
 
         <SectionSaveCancelActions onSave={saveMrbDispositionSection} />
       </SectionCard>
