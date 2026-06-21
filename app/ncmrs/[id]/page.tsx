@@ -1053,9 +1053,65 @@ export default function NcmrDetailPage() {
     fetchRecord();
   };
 
+  const validateWorkflowBeforeGeneratingMrbTasks = () => {
+    const errors: string[] = [];
+
+    if (!riskAssessment) errors.push("Risk assessment is required before generating MRB approval tasks.");
+    if (severity === "not_assessed") errors.push("Severity must be assessed before generating MRB approval tasks.");
+    if (!productDisposition) errors.push("Overall product disposition is required before generating MRB approval tasks.");
+    if (!dispositionJustification) errors.push("Overall disposition justification is required before generating MRB approval tasks.");
+
+    if (affectedItems.length === 0) {
+      errors.push("At least one affected item is required before generating MRB approval tasks.");
+    }
+
+    affectedItems.forEach((item, index) => {
+      const label = `Affected Item ${index + 1}`;
+
+      if (!item.product_disposition) errors.push(`${label}: item disposition is required before generating MRB approval tasks.`);
+      if (!item.disposition_justification) errors.push(`${label}: item disposition justification is required before generating MRB approval tasks.`);
+      if (item.quantity_accepted === null || item.quantity_accepted === undefined) {
+        errors.push(`${label}: quantity accepted is required before generating MRB approval tasks.`);
+      }
+      if (item.quantity_rejected === null || item.quantity_rejected === undefined) {
+        errors.push(`${label}: quantity rejected is required before generating MRB approval tasks.`);
+      }
+
+      errors.push(...buildQuantityReconciliationErrors(item, label));
+    });
+
+    setValidationErrors(errors);
+    setValidationAttempted(true);
+
+    return errors;
+  };
+
   const generateMrbApprovalTasks = async () => {
     if (record?.is_locked || record?.mrb_approved_by) {
       alert("Approval tasks cannot be generated after MRB approval or record lock.");
+      return;
+    }
+
+    const preTaskValidationErrors = validateWorkflowBeforeGeneratingMrbTasks();
+
+    if (preTaskValidationErrors.length > 0) {
+      alert(`MRB approval tasks cannot be generated yet:\n\n${preTaskValidationErrors.join("\n")}`);
+      return;
+    }
+
+    const { error: workflowSaveError } = await supabase
+      .from("ncmrs")
+      .update({
+        risk_assessment: riskAssessment,
+        severity,
+        product_disposition: productDisposition || record?.product_disposition || record?.disposition || null,
+        disposition: productDisposition || record?.product_disposition || record?.disposition || null,
+        disposition_justification: dispositionJustification || record?.disposition_justification || null,
+      })
+      .eq("id", id);
+
+    if (workflowSaveError) {
+      alert(workflowSaveError.message);
       return;
     }
 
@@ -1247,12 +1303,12 @@ This approval becomes part of the official electronic quality record. MRB will a
     const { error } = await supabase
       .from("ncmrs")
       .update({
-        risk_assessment: riskAssessment,
-        severity,
-        capa_justification: capaJustification,
-        product_disposition: productDisposition,
-        disposition: productDisposition,
-        disposition_justification: dispositionJustification,
+        risk_assessment: riskAssessment || record?.risk_assessment || null,
+        severity: severity || record?.severity || "not_assessed",
+        capa_justification: capaJustification || record?.capa_justification || null,
+        product_disposition: productDisposition || record?.product_disposition || record?.disposition || null,
+        disposition: productDisposition || record?.product_disposition || record?.disposition || null,
+        disposition_justification: dispositionJustification || record?.disposition_justification || null,
         mrb_approved_by: "System Auto Approval",
         mrb_approved_at: now,
         mrb_signature_meaning: meaning,
