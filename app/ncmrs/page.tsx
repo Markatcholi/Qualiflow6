@@ -1557,7 +1557,11 @@ export default function NcmrPage() {
                   <div><strong>Department:</strong> {item.department || "N/A"}</div>
                   <div><strong>Detected:</strong> {item.date_detected || "N/A"}</div>
                   <div><strong>Qty Affected:</strong> {item.quantity_affected ?? "N/A"}</div>
-                  <div><strong>Material Status:</strong> {item.material_status || "N/A"}</div>
+                  <div><strong>Material Status:</strong> {item.material_status || "N/A"}<br />
+                    <strong>Containment Completed:</strong>{" "}
+                    {item.containment_completed_at
+                      ? new Date(item.containment_completed_at).toLocaleDateString()
+                      : "Pending"}</div>
                   <div><strong>Defect:</strong> {item.defect_category || "N/A"}</div>
                   <div><strong>Subcategory:</strong> {item.defect_subcategory || "N/A"}</div>
                   <div><strong>Supplier:</strong> {item.supplier_name || "N/A"}</div>
