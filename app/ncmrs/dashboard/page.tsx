@@ -12,6 +12,8 @@ type NcmrRecord = {
   status: string | null;
   severity: string | null;
   created_at: string | null;
+  mrb_approved_at?: string | null;
+  mrb_approved_by?: string | null;
   closed_at?: string | null;
   date_detected?: string | null;
   containment_completed_at?: string | null;
@@ -220,6 +222,7 @@ export default function NcmrIntelligenceDashboardPage() {
       records: ncmrs,
       startFields: ["created_at", "date_detected"],
       endFields: [
+        "mrb_approved_at",
         "disposition_at",
         "disposition_date",
         "disposition_completed_at",
@@ -247,6 +250,7 @@ export default function NcmrIntelligenceDashboardPage() {
       records: ncmrs,
       startFields: ["created_at", "date_detected"],
       endFields: [
+        "mrb_approved_at",
         "disposition_at",
         "disposition_date",
         "disposition_completed_at",
