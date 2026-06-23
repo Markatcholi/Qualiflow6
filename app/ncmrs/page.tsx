@@ -55,6 +55,8 @@ type Ncmr = {
   quantity_affected: number | null;
   containment_action: string | null;
   containment_owner: string | null;
+  containment_completed_at?: string | null;
+  containment_completed_by?: string | null;
   material_status: string | null;
   quarantined_quantity: number | null;
   defect_category: string | null;
@@ -604,6 +606,12 @@ export default function NcmrPage() {
           item.quarantined_quantity
       ) || null;
 
+    const { data: currentUserData } = await supabase.auth.getUser();
+    const currentUserEmail = currentUserData?.user?.email || "unknown";
+    const containmentCompletedAt = containmentAction.trim()
+      ? new Date().toISOString()
+      : null;
+
 
     const { data, error } = await supabase
       .from("ncmrs")
@@ -621,6 +629,8 @@ export default function NcmrPage() {
           : null,
         containment_action: containmentAction,
         containment_owner: containmentOwner,
+        containment_completed_at: containmentCompletedAt,
+        containment_completed_by: containmentCompletedAt ? currentUserEmail : null,
         material_status: materialStatus,
         quarantined_quantity: primaryAffectedItem?.quarantined_quantity
           ? Number(primaryAffectedItem.quarantined_quantity)
@@ -659,6 +669,15 @@ export default function NcmrPage() {
     }
 
     await addAuditLog("ncmr", data.id, "created", `Created NCMR: ${title}`);
+
+    if (containmentCompletedAt) {
+      await addAuditLog(
+        "ncmr",
+        data.id,
+        "containment_completed_at_initiation",
+        `Containment completed during NCMR initiation by ${currentUserEmail}.`
+      );
+    }
 
     const validAffectedItems = affectedItems.filter(
       (item) =>
@@ -725,9 +744,6 @@ export default function NcmrPage() {
         `CAPA evaluation required due to recurrence. Risk-based decision required before CAPA creation. Reason: ${recurrence.reason}`
       );
     }
-
-    const { data: currentUserData } = await supabase.auth.getUser();
-    const currentUserEmail = currentUserData?.user?.email || "unknown";
 
     await createScarFromInitiatedNcmr(data, currentUserEmail);
 
