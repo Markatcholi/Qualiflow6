@@ -1517,6 +1517,24 @@ export default function NcmrPage() {
                     <div style={{ color: "#4b5563", fontSize: "14px" }}>
                       {item.issue_description || "No issue description provided."}
                     </div>
+
+                    <div
+                      style={{
+                        marginTop: "8px",
+                        display: "inline-block",
+                        border: item.containment_completed_at ? "1px solid #86efac" : "1px solid #facc15",
+                        background: item.containment_completed_at ? "#f0fdf4" : "#fefce8",
+                        color: item.containment_completed_at ? "#166534" : "#854d0e",
+                        borderRadius: "999px",
+                        padding: "5px 10px",
+                        fontSize: "12px",
+                        fontWeight: 700,
+                      }}
+                    >
+                      Containment: {item.containment_completed_at
+                        ? `Completed ${new Date(item.containment_completed_at).toLocaleDateString()}`
+                        : "Pending"}
+                    </div>
                   </div>
 
                   <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
