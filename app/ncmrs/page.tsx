@@ -1568,27 +1568,6 @@ export default function NcmrPage() {
                   <div><strong>Owner:</strong> {item.owner || "N/A"}</div>
                 </div>
 
-                <div
-                  style={{
-                    marginTop: "12px",
-                    border: item.containment_completed_at ? "1px solid #86efac" : "1px solid #facc15",
-                    background: item.containment_completed_at ? "#f0fdf4" : "#fefce8",
-                    color: item.containment_completed_at ? "#166534" : "#854d0e",
-                    borderRadius: "8px",
-                    padding: "10px 12px",
-                    fontSize: "14px",
-                  }}
-                >
-                  <strong>Containment Status:</strong>{" "}
-                  {item.containment_completed_at ? "Completed" : "Pending"}
-                  {item.containment_completed_at ? (
-                    <>
-                      {" "}on {new Date(item.containment_completed_at).toLocaleString()}
-                      {item.containment_completed_by ? ` by ${item.containment_completed_by}` : ""}
-                    </>
-                  ) : null}
-                </div>
-
                 {(item.recurrence_reason || item.supplier_capa_reason) ? (
                   <div
                     style={{
