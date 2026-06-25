@@ -368,6 +368,8 @@ export default function NcmrDetailPage() {
     }
 
     setRecord(data);
+    setValidationErrors([]);
+    setValidationAttempted(false);
     setSummaryIssueDescription(data.issue_description || "");
     setSummaryProductPartNumber(data.product_part_number || "");
     setSummaryLotNumber(data.lot_number || "");
@@ -565,6 +567,49 @@ export default function NcmrDetailPage() {
       ))}
     </>
   );
+
+  const getCurrentMrbDispositionValue = () => {
+    return (
+      productDisposition ||
+      record?.product_disposition ||
+      record?.disposition ||
+      affectedItems.find((item) => item.product_disposition)?.product_disposition ||
+      ""
+    );
+  };
+
+  const getCurrentMrbDispositionJustification = () => {
+    return (
+      dispositionJustification ||
+      record?.disposition_justification ||
+      affectedItems.find((item) => item.disposition_justification)?.disposition_justification ||
+      ""
+    );
+  };
+
+  const getPersistedMrbDispositionPayload = () => {
+    const preservedDisposition = getCurrentMrbDispositionValue() || null;
+    const preservedJustification = getCurrentMrbDispositionJustification() || null;
+
+    return {
+      product_disposition: preservedDisposition,
+      disposition: preservedDisposition,
+      disposition_justification: preservedJustification,
+    };
+  };
+
+  const getCurrentWorkflowValue = (stateValue: any, recordField: string) => {
+    const recordValue = record ? record[recordField] : null;
+    return stateValue || recordValue || "";
+  };
+
+  const getCurrentInvestigator = () => getCurrentWorkflowValue(investigator, "investigator");
+  const getCurrentProblemDescription = () => getCurrentWorkflowValue(problemDescription, "problem_description");
+  const getCurrentInvestigationSummary = () => getCurrentWorkflowValue(investigationSummary, "investigation_summary");
+  const getCurrentRootCauseCategory = () => getCurrentWorkflowValue(rootCauseCategory, "root_cause_category");
+  const getCurrentRootCause = () => getCurrentWorkflowValue(rootCause, "root_cause");
+  const getCurrentRiskAssessment = () => getCurrentWorkflowValue(riskAssessment, "risk_assessment");
+  const getCurrentSeverity = () => severity || record?.severity || "not_assessed";
 
   const saveRecordSummary = async () => {
     if (record?.is_locked || record?.mrb_approved_by) {
@@ -898,13 +943,13 @@ export default function NcmrDetailPage() {
     setValidationAttempted(true);
     const errors: string[] = [];
 
-    if (!investigator) errors.push("Investigator is required before MRB approval.");
-    if (!problemDescription) errors.push("Problem description is required before MRB approval.");
-    if (!investigationSummary) errors.push("Investigation summary is required before MRB approval.");
-    if (!rootCauseCategory) errors.push("Root cause category is required before MRB approval.");
-    if (!rootCause) errors.push("Root cause is required before MRB approval.");
-    if (!riskAssessment) errors.push("Risk assessment is required before MRB approval.");
-    if (severity === "not_assessed") errors.push("Severity must be assessed before MRB approval.");
+    if (!getCurrentInvestigator()) errors.push("Investigator is required before MRB approval.");
+    if (!getCurrentProblemDescription()) errors.push("Problem description is required before MRB approval.");
+    if (!getCurrentInvestigationSummary()) errors.push("Investigation summary is required before MRB approval.");
+    if (!getCurrentRootCauseCategory()) errors.push("Root cause category is required before MRB approval.");
+    if (!getCurrentRootCause()) errors.push("Root cause is required before MRB approval.");
+    if (!getCurrentRiskAssessment()) errors.push("Risk assessment is required before MRB approval.");
+    if (getCurrentSeverity() === "not_assessed") errors.push("Severity must be assessed before MRB approval.");
 
     const capaRecommendation = getCapaRecommendation();
 
@@ -916,8 +961,8 @@ export default function NcmrDetailPage() {
       errors.push("CAPA recommendation requires either a linked CAPA or a documented No-CAPA decision with justification before MRB approval.");
     }
 
-    if (!productDisposition) errors.push("Overall product disposition is required before MRB approval.");
-    if (!dispositionJustification) errors.push("Overall disposition justification is required before MRB approval.");
+    if (!getCurrentMrbDispositionValue()) errors.push("Overall product disposition is required before MRB approval.");
+    if (!getCurrentMrbDispositionJustification()) errors.push("Overall disposition justification is required before MRB approval.");
 
     if (affectedItems.length === 0) {
       errors.push("At least one affected material item is required before MRB approval.");
@@ -1036,6 +1081,9 @@ export default function NcmrDetailPage() {
         regulatory_approver_email: regulatoryApproverEmail || null,
         supply_chain_approver_email: supplyChainApproverEmail || null,
         engineering_approver_email: engineeringApproverEmail || null,
+        risk_assessment: getCurrentRiskAssessment() || null,
+        severity: getCurrentSeverity(),
+        ...getPersistedMrbDispositionPayload(),
       })
       .eq("id", id);
 
@@ -1056,10 +1104,10 @@ export default function NcmrDetailPage() {
   const validateWorkflowBeforeGeneratingMrbTasks = () => {
     const errors: string[] = [];
 
-    if (!riskAssessment) errors.push("Risk assessment is required before generating MRB approval tasks.");
-    if (severity === "not_assessed") errors.push("Severity must be assessed before generating MRB approval tasks.");
-    if (!productDisposition) errors.push("Overall product disposition is required before generating MRB approval tasks.");
-    if (!dispositionJustification) errors.push("Overall disposition justification is required before generating MRB approval tasks.");
+    if (!getCurrentRiskAssessment()) errors.push("Risk assessment is required before generating MRB approval tasks.");
+    if (getCurrentSeverity() === "not_assessed") errors.push("Severity must be assessed before generating MRB approval tasks.");
+    if (!getCurrentMrbDispositionValue()) errors.push("Overall product disposition is required before generating MRB approval tasks.");
+    if (!getCurrentMrbDispositionJustification()) errors.push("Overall disposition justification is required before generating MRB approval tasks.");
 
     if (affectedItems.length === 0) {
       errors.push("At least one affected item is required before generating MRB approval tasks.");
@@ -1102,11 +1150,9 @@ export default function NcmrDetailPage() {
     const { error: workflowSaveError } = await supabase
       .from("ncmrs")
       .update({
-        risk_assessment: riskAssessment,
-        severity,
-        product_disposition: productDisposition || record?.product_disposition || record?.disposition || null,
-        disposition: productDisposition || record?.product_disposition || record?.disposition || null,
-        disposition_justification: dispositionJustification || record?.disposition_justification || null,
+        risk_assessment: getCurrentRiskAssessment() || null,
+        severity: getCurrentSeverity(),
+        ...getPersistedMrbDispositionPayload(),
       })
       .eq("id", id);
 
@@ -1147,6 +1193,9 @@ export default function NcmrDetailPage() {
         regulatory_approver_email: regulatoryApproverEmail || null,
         supply_chain_approver_email: supplyChainApproverEmail || null,
         engineering_approver_email: engineeringApproverEmail || null,
+        risk_assessment: getCurrentRiskAssessment() || null,
+        severity: getCurrentSeverity(),
+        ...getPersistedMrbDispositionPayload(),
       })
       .eq("id", id);
 
@@ -1303,12 +1352,10 @@ This approval becomes part of the official electronic quality record. MRB will a
     const { error } = await supabase
       .from("ncmrs")
       .update({
-        risk_assessment: riskAssessment || record?.risk_assessment || null,
-        severity: severity || record?.severity || "not_assessed",
+        risk_assessment: getCurrentRiskAssessment() || null,
+        severity: getCurrentSeverity(),
         capa_justification: capaJustification || record?.capa_justification || null,
-        product_disposition: productDisposition || record?.product_disposition || record?.disposition || null,
-        disposition: productDisposition || record?.product_disposition || record?.disposition || null,
-        disposition_justification: dispositionJustification || record?.disposition_justification || null,
+        ...getPersistedMrbDispositionPayload(),
         mrb_approved_by: "System Auto Approval",
         mrb_approved_at: now,
         mrb_signature_meaning: meaning,
@@ -1842,8 +1889,8 @@ This approval becomes part of the official electronic quality record. MRB will a
     const { error } = await supabase
       .from("ncmrs")
       .update({
-        risk_assessment: riskAssessment,
-        severity,
+        risk_assessment: getCurrentRiskAssessment() || null,
+        severity: getCurrentSeverity(),
       })
       .eq("id", id);
 
@@ -1867,12 +1914,20 @@ This approval becomes part of the official electronic quality record. MRB will a
       return;
     }
 
+    if (!getCurrentMrbDispositionValue()) {
+      alert("Overall product disposition is required before saving MRB disposition.");
+      return;
+    }
+
+    if (!getCurrentMrbDispositionJustification()) {
+      alert("Overall disposition justification is required before saving MRB disposition.");
+      return;
+    }
+
     const { error } = await supabase
       .from("ncmrs")
       .update({
-        product_disposition: productDisposition,
-        disposition: productDisposition,
-        disposition_justification: dispositionJustification,
+        ...getPersistedMrbDispositionPayload(),
       })
       .eq("id", id);
 
@@ -1933,9 +1988,7 @@ This approval becomes part of the official electronic quality record. MRB will a
         capaRecommendation.recommended && capaDecision === "no"
           ? capaDecisionJustification
           : capaJustification,
-      product_disposition: productDisposition,
-      disposition: productDisposition,
-      disposition_justification: dispositionJustification,
+      ...getPersistedMrbDispositionPayload(),
       correction_implementation: correctionImplementation,
       review_status: reviewStatus,
       evidence_url: evidenceUrl,
@@ -2076,8 +2129,8 @@ This approval becomes part of the official electronic quality record. MRB will a
       return;
     }
 
-    if (!riskAssessment) return alert("Risk assessment is required before MRB approval.");
-    if (severity === "not_assessed") return alert("Severity must be assessed before MRB approval.");
+    if (!getCurrentRiskAssessment()) return alert("Risk assessment is required before MRB approval.");
+    if (getCurrentSeverity() === "not_assessed") return alert("Severity must be assessed before MRB approval.");
 
     const mrbCapaRecommendation = getCapaRecommendation();
 
@@ -2089,12 +2142,12 @@ This approval becomes part of the official electronic quality record. MRB will a
       return alert("CAPA recommendation requires either a linked CAPA or a documented No-CAPA decision with justification before MRB approval.");
     }
 
-    if (!productDisposition) return alert("Product disposition is required before MRB approval.");
-    if (!dispositionJustification) return alert("Disposition justification is required before MRB approval.");
+    if (!getCurrentMrbDispositionValue()) return alert("Product disposition is required before MRB approval.");
+    if (!getCurrentMrbDispositionJustification()) return alert("Disposition justification is required before MRB approval.");
 
     if (
       (severity === "critical" || severity === "major") &&
-      productDisposition === "use_as_is" &&
+      getCurrentMrbDispositionValue() === "use_as_is" &&
       !isVpQuality
     ) {
       alert("MRB rule: Use As Is disposition for Major or Critical severity requires VP Quality approval.");
@@ -2103,7 +2156,7 @@ This approval becomes part of the official electronic quality record. MRB will a
 
     if (
       severity === "major" &&
-      productDisposition === "use_as_is" &&
+      getCurrentMrbDispositionValue() === "use_as_is" &&
       dispositionJustification.trim().length < 50
     ) {
       alert("MRB rule: Major severity with Use As Is requires a stronger disposition justification.");
@@ -2112,7 +2165,7 @@ This approval becomes part of the official electronic quality record. MRB will a
 
     if (
       severity === "critical" &&
-      productDisposition === "use_as_is" &&
+      getCurrentMrbDispositionValue() === "use_as_is" &&
       dispositionJustification.trim().length < 75
     ) {
       alert("MRB rule: Critical severity with Use As Is requires a detailed VP Quality justification.");
@@ -2160,8 +2213,8 @@ This approval becomes part of the official electronic quality record. MRB will a
     const { error } = await supabase
       .from("ncmrs")
       .update({
-        risk_assessment: riskAssessment,
-        severity,
+        risk_assessment: getCurrentRiskAssessment() || null,
+        severity: getCurrentSeverity(),
         capa_justification: capaJustification,
         product_disposition: productDisposition,
         disposition: productDisposition,
@@ -3388,7 +3441,7 @@ This approval becomes part of the official electronic quality record. MRB will a
         {getCapaRecommendation().recommended && !linkedCapa ? (
           <div
             style={{
-              border: "1px solid #2563eb",
+              border: "1px solid #bfdbfe",
               background: "#eff6ff",
               padding: "12px",
               borderRadius: "8px",
@@ -3397,55 +3450,10 @@ This approval becomes part of the official electronic quality record. MRB will a
               maxWidth: "850px",
             }}
           >
-            <strong>CAPA Recommended</strong>
-            <p style={{ marginTop: "8px" }}>
-              {getCapaRecommendation().reason}
+            <strong>CAPA Governance Signal</strong>
+            <p style={{ marginTop: "8px", marginBottom: 0 }}>
+              {getCapaRecommendation().reason} CAPA decision is managed in the CAPA Governance section.
             </p>
-            <p style={{ marginTop: "8px" }}>
-              Use risk-based decision making to determine whether CAPA should be initiated.
-              If No is selected, justification is required.
-            </p>
-
-            <div style={{ marginBottom: "10px" }}>
-              <button
-                type="button"
-                onClick={() => setCapaDecision("yes")}
-                style={{
-                  marginRight: "8px",
-                  background: capaDecision === "yes" ? "#16a34a" : undefined,
-                  color: capaDecision === "yes" ? "white" : undefined,
-                }}
-              >
-                Yes - Initiate CAPA
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setCapaDecision("no")}
-                style={{
-                  background: capaDecision === "no" ? "#dc2626" : undefined,
-                  color: capaDecision === "no" ? "white" : undefined,
-                }}
-              >
-                No - Do Not Initiate CAPA
-              </button>
-            </div>
-
-            {capaDecision === "no" ? (
-              <div>
-                <label>Justification for Not Initiating CAPA</label>
-                <br />
-                <textarea
-                  value={capaDecisionJustification}
-                  onChange={(e) => {
-                    setCapaDecisionJustification(e.target.value);
-                    setCapaJustification(e.target.value);
-                  }}
-                  rows={4}
-                  style={{ width: "100%", maxWidth: "800px", padding: "8px" }}
-                />
-              </div>
-            ) : null}
           </div>
         ) : null}
 
@@ -3476,7 +3484,7 @@ This approval becomes part of the official electronic quality record. MRB will a
 
         <label>Product Disposition</label><br />
         <select
-          value={productDisposition}
+          value={getCurrentMrbDispositionValue()}
           onChange={(e) => setProductDisposition(e.target.value)}
           style={{ padding: "8px", minWidth: "240px", marginBottom: "12px" }}
         >
@@ -3494,7 +3502,7 @@ This approval becomes part of the official electronic quality record. MRB will a
         <br />
         <label>Disposition Justification</label><br />
         <textarea
-          value={dispositionJustification}
+          value={getCurrentMrbDispositionJustification()}
           onChange={(e) => setDispositionJustification(e.target.value)}
           placeholder="Justify disposition based on risk assessment and investigation."
           rows={4}
@@ -3635,6 +3643,35 @@ This approval becomes part of the official electronic quality record. MRB will a
           </div>
         ) : null}
 
+        <div
+          style={{
+            marginTop: "18px",
+            border: record?.mrb_approved_by ? "1px solid #86efac" : hasRejectedMrbApprovalTask() ? "1px solid #fca5a5" : "1px solid #bfdbfe",
+            borderRadius: "8px",
+            padding: "12px",
+            background: record?.mrb_approved_by ? "#f0fdf4" : hasRejectedMrbApprovalTask() ? "#fef2f2" : "#eff6ff",
+          }}
+        >
+          <h3 style={{ marginTop: 0 }}>MRB Auto Approval Status</h3>
+          {record?.mrb_approved_by ? (
+            <p style={{ color: "#166534" }}>
+              MRB approved automatically after all required parallel approval tasks were approved.
+            </p>
+          ) : hasRejectedMrbApprovalTask() ? (
+            <p style={{ color: "#991b1b" }}>
+              One or more MRB approval tasks have been rejected. Resolve the rejection before MRB can be approved.
+            </p>
+          ) : (
+            <p style={{ color: "#1e3a8a" }}>
+              MRB will auto-approve when all required approval tasks are approved. No separate final MRB approval signature is required.
+            </p>
+          )}
+
+          <div style={{ fontSize: "13px", color: "#374151" }}>
+            Required approvals complete: {requiredMrbApprovalsComplete().length === 0 && approvalTasks.length > 0 ? "Yes" : "No"}
+          </div>
+        </div>
+
         {hasReworkDisposition() && record.mrb_approved_by ? (
           <div
             style={{
@@ -3749,35 +3786,6 @@ This approval becomes part of the official electronic quality record. MRB will a
             )}
           </div>
         ) : null}
-
-        <div
-          style={{
-            marginTop: "18px",
-            border: record?.mrb_approved_by ? "1px solid #86efac" : hasRejectedMrbApprovalTask() ? "1px solid #fca5a5" : "1px solid #bfdbfe",
-            borderRadius: "8px",
-            padding: "12px",
-            background: record?.mrb_approved_by ? "#f0fdf4" : hasRejectedMrbApprovalTask() ? "#fef2f2" : "#eff6ff",
-          }}
-        >
-          <h3 style={{ marginTop: 0 }}>MRB Auto Approval Status</h3>
-          {record?.mrb_approved_by ? (
-            <p style={{ color: "#166534" }}>
-              MRB approved automatically after all required parallel approval tasks were approved.
-            </p>
-          ) : hasRejectedMrbApprovalTask() ? (
-            <p style={{ color: "#991b1b" }}>
-              One or more MRB approval tasks have been rejected. Resolve the rejection before MRB can be approved.
-            </p>
-          ) : (
-            <p style={{ color: "#1e3a8a" }}>
-              MRB will auto-approve when all required approval tasks are approved. No separate final MRB approval signature is required.
-            </p>
-          )}
-
-          <div style={{ fontSize: "13px", color: "#374151" }}>
-            Required approvals complete: {requiredMrbApprovalsComplete().length === 0 && approvalTasks.length > 0 ? "Yes" : "No"}
-          </div>
-        </div>
 
         <SectionSaveCancelActions onSave={saveMrbDispositionSection} />
       </SectionCard>
