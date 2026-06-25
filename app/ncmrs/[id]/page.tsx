@@ -368,6 +368,8 @@ export default function NcmrDetailPage() {
     }
 
     setRecord(data);
+    setValidationErrors([]);
+    setValidationAttempted(false);
     setSummaryIssueDescription(data.issue_description || "");
     setSummaryProductPartNumber(data.product_part_number || "");
     setSummaryLotNumber(data.lot_number || "");
@@ -595,6 +597,19 @@ export default function NcmrDetailPage() {
       disposition_justification: preservedJustification,
     };
   };
+
+  const getCurrentWorkflowValue = (stateValue: any, recordField: string) => {
+    const recordValue = record ? record[recordField] : null;
+    return stateValue || recordValue || "";
+  };
+
+  const getCurrentInvestigator = () => getCurrentWorkflowValue(investigator, "investigator");
+  const getCurrentProblemDescription = () => getCurrentWorkflowValue(problemDescription, "problem_description");
+  const getCurrentInvestigationSummary = () => getCurrentWorkflowValue(investigationSummary, "investigation_summary");
+  const getCurrentRootCauseCategory = () => getCurrentWorkflowValue(rootCauseCategory, "root_cause_category");
+  const getCurrentRootCause = () => getCurrentWorkflowValue(rootCause, "root_cause");
+  const getCurrentRiskAssessment = () => getCurrentWorkflowValue(riskAssessment, "risk_assessment");
+  const getCurrentSeverity = () => severity || record?.severity || "not_assessed";
 
   const saveRecordSummary = async () => {
     if (record?.is_locked || record?.mrb_approved_by) {
@@ -928,13 +943,13 @@ export default function NcmrDetailPage() {
     setValidationAttempted(true);
     const errors: string[] = [];
 
-    if (!investigator) errors.push("Investigator is required before MRB approval.");
-    if (!problemDescription) errors.push("Problem description is required before MRB approval.");
-    if (!investigationSummary) errors.push("Investigation summary is required before MRB approval.");
-    if (!rootCauseCategory) errors.push("Root cause category is required before MRB approval.");
-    if (!rootCause) errors.push("Root cause is required before MRB approval.");
-    if (!riskAssessment) errors.push("Risk assessment is required before MRB approval.");
-    if (severity === "not_assessed") errors.push("Severity must be assessed before MRB approval.");
+    if (!getCurrentInvestigator()) errors.push("Investigator is required before MRB approval.");
+    if (!getCurrentProblemDescription()) errors.push("Problem description is required before MRB approval.");
+    if (!getCurrentInvestigationSummary()) errors.push("Investigation summary is required before MRB approval.");
+    if (!getCurrentRootCauseCategory()) errors.push("Root cause category is required before MRB approval.");
+    if (!getCurrentRootCause()) errors.push("Root cause is required before MRB approval.");
+    if (!getCurrentRiskAssessment()) errors.push("Risk assessment is required before MRB approval.");
+    if (getCurrentSeverity() === "not_assessed") errors.push("Severity must be assessed before MRB approval.");
 
     const capaRecommendation = getCapaRecommendation();
 
@@ -1066,8 +1081,8 @@ export default function NcmrDetailPage() {
         regulatory_approver_email: regulatoryApproverEmail || null,
         supply_chain_approver_email: supplyChainApproverEmail || null,
         engineering_approver_email: engineeringApproverEmail || null,
-        risk_assessment: riskAssessment || record?.risk_assessment || null,
-        severity: severity || record?.severity || "not_assessed",
+        risk_assessment: getCurrentRiskAssessment() || null,
+        severity: getCurrentSeverity(),
         ...getPersistedMrbDispositionPayload(),
       })
       .eq("id", id);
@@ -1089,8 +1104,8 @@ export default function NcmrDetailPage() {
   const validateWorkflowBeforeGeneratingMrbTasks = () => {
     const errors: string[] = [];
 
-    if (!riskAssessment) errors.push("Risk assessment is required before generating MRB approval tasks.");
-    if (severity === "not_assessed") errors.push("Severity must be assessed before generating MRB approval tasks.");
+    if (!getCurrentRiskAssessment()) errors.push("Risk assessment is required before generating MRB approval tasks.");
+    if (getCurrentSeverity() === "not_assessed") errors.push("Severity must be assessed before generating MRB approval tasks.");
     if (!getCurrentMrbDispositionValue()) errors.push("Overall product disposition is required before generating MRB approval tasks.");
     if (!getCurrentMrbDispositionJustification()) errors.push("Overall disposition justification is required before generating MRB approval tasks.");
 
@@ -1135,8 +1150,8 @@ export default function NcmrDetailPage() {
     const { error: workflowSaveError } = await supabase
       .from("ncmrs")
       .update({
-        risk_assessment: riskAssessment || record?.risk_assessment || null,
-        severity: severity || record?.severity || "not_assessed",
+        risk_assessment: getCurrentRiskAssessment() || null,
+        severity: getCurrentSeverity(),
         ...getPersistedMrbDispositionPayload(),
       })
       .eq("id", id);
@@ -1178,8 +1193,8 @@ export default function NcmrDetailPage() {
         regulatory_approver_email: regulatoryApproverEmail || null,
         supply_chain_approver_email: supplyChainApproverEmail || null,
         engineering_approver_email: engineeringApproverEmail || null,
-        risk_assessment: riskAssessment || record?.risk_assessment || null,
-        severity: severity || record?.severity || "not_assessed",
+        risk_assessment: getCurrentRiskAssessment() || null,
+        severity: getCurrentSeverity(),
         ...getPersistedMrbDispositionPayload(),
       })
       .eq("id", id);
@@ -1208,7 +1223,7 @@ export default function NcmrDetailPage() {
       comments: `Please review this NCMR for MRB approval.
 
 NCMR: ${record?.ncmr_number || "NCMR"}
-Severity: ${severity || "N/A"}
+Severity: ${getCurrentSeverity() || "N/A"}
 
 Review and verify:
 • Problem description
@@ -2114,8 +2129,8 @@ This approval becomes part of the official electronic quality record. MRB will a
       return;
     }
 
-    if (!riskAssessment) return alert("Risk assessment is required before MRB approval.");
-    if (severity === "not_assessed") return alert("Severity must be assessed before MRB approval.");
+    if (!getCurrentRiskAssessment()) return alert("Risk assessment is required before MRB approval.");
+    if (getCurrentSeverity() === "not_assessed") return alert("Severity must be assessed before MRB approval.");
 
     const mrbCapaRecommendation = getCapaRecommendation();
 
