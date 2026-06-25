@@ -566,6 +566,25 @@ export default function NcmrDetailPage() {
     </>
   );
 
+  const getPersistedMrbDispositionPayload = () => {
+    const preservedDisposition =
+      productDisposition ||
+      record?.product_disposition ||
+      record?.disposition ||
+      null;
+
+    const preservedJustification =
+      dispositionJustification ||
+      record?.disposition_justification ||
+      null;
+
+    return {
+      product_disposition: preservedDisposition,
+      disposition: preservedDisposition,
+      disposition_justification: preservedJustification,
+    };
+  };
+
   const saveRecordSummary = async () => {
     if (record?.is_locked || record?.mrb_approved_by) {
       alert("Record summary cannot be edited after MRB approval or record lock.");
@@ -1036,6 +1055,9 @@ export default function NcmrDetailPage() {
         regulatory_approver_email: regulatoryApproverEmail || null,
         supply_chain_approver_email: supplyChainApproverEmail || null,
         engineering_approver_email: engineeringApproverEmail || null,
+        risk_assessment: riskAssessment || record?.risk_assessment || null,
+        severity: severity || record?.severity || "not_assessed",
+        ...getPersistedMrbDispositionPayload(),
       })
       .eq("id", id);
 
@@ -1102,11 +1124,9 @@ export default function NcmrDetailPage() {
     const { error: workflowSaveError } = await supabase
       .from("ncmrs")
       .update({
-        risk_assessment: riskAssessment,
-        severity,
-        product_disposition: productDisposition || record?.product_disposition || record?.disposition || null,
-        disposition: productDisposition || record?.product_disposition || record?.disposition || null,
-        disposition_justification: dispositionJustification || record?.disposition_justification || null,
+        risk_assessment: riskAssessment || record?.risk_assessment || null,
+        severity: severity || record?.severity || "not_assessed",
+        ...getPersistedMrbDispositionPayload(),
       })
       .eq("id", id);
 
@@ -1147,6 +1167,9 @@ export default function NcmrDetailPage() {
         regulatory_approver_email: regulatoryApproverEmail || null,
         supply_chain_approver_email: supplyChainApproverEmail || null,
         engineering_approver_email: engineeringApproverEmail || null,
+        risk_assessment: riskAssessment || record?.risk_assessment || null,
+        severity: severity || record?.severity || "not_assessed",
+        ...getPersistedMrbDispositionPayload(),
       })
       .eq("id", id);
 
@@ -1306,9 +1329,7 @@ This approval becomes part of the official electronic quality record. MRB will a
         risk_assessment: riskAssessment || record?.risk_assessment || null,
         severity: severity || record?.severity || "not_assessed",
         capa_justification: capaJustification || record?.capa_justification || null,
-        product_disposition: productDisposition || record?.product_disposition || record?.disposition || null,
-        disposition: productDisposition || record?.product_disposition || record?.disposition || null,
-        disposition_justification: dispositionJustification || record?.disposition_justification || null,
+        ...getPersistedMrbDispositionPayload(),
         mrb_approved_by: "System Auto Approval",
         mrb_approved_at: now,
         mrb_signature_meaning: meaning,
@@ -1870,9 +1891,7 @@ This approval becomes part of the official electronic quality record. MRB will a
     const { error } = await supabase
       .from("ncmrs")
       .update({
-        product_disposition: productDisposition,
-        disposition: productDisposition,
-        disposition_justification: dispositionJustification,
+        ...getPersistedMrbDispositionPayload(),
       })
       .eq("id", id);
 
@@ -1933,9 +1952,7 @@ This approval becomes part of the official electronic quality record. MRB will a
         capaRecommendation.recommended && capaDecision === "no"
           ? capaDecisionJustification
           : capaJustification,
-      product_disposition: productDisposition,
-      disposition: productDisposition,
-      disposition_justification: dispositionJustification,
+      ...getPersistedMrbDispositionPayload(),
       correction_implementation: correctionImplementation,
       review_status: reviewStatus,
       evidence_url: evidenceUrl,
