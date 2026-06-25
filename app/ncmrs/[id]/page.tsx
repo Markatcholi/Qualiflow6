@@ -566,17 +566,28 @@ export default function NcmrDetailPage() {
     </>
   );
 
-  const getPersistedMrbDispositionPayload = () => {
-    const preservedDisposition =
+  const getCurrentMrbDispositionValue = () => {
+    return (
       productDisposition ||
       record?.product_disposition ||
       record?.disposition ||
-      null;
+      affectedItems.find((item) => item.product_disposition)?.product_disposition ||
+      ""
+    );
+  };
 
-    const preservedJustification =
+  const getCurrentMrbDispositionJustification = () => {
+    return (
       dispositionJustification ||
       record?.disposition_justification ||
-      null;
+      affectedItems.find((item) => item.disposition_justification)?.disposition_justification ||
+      ""
+    );
+  };
+
+  const getPersistedMrbDispositionPayload = () => {
+    const preservedDisposition = getCurrentMrbDispositionValue() || null;
+    const preservedJustification = getCurrentMrbDispositionJustification() || null;
 
     return {
       product_disposition: preservedDisposition,
@@ -935,8 +946,8 @@ export default function NcmrDetailPage() {
       errors.push("CAPA recommendation requires either a linked CAPA or a documented No-CAPA decision with justification before MRB approval.");
     }
 
-    if (!productDisposition) errors.push("Overall product disposition is required before MRB approval.");
-    if (!dispositionJustification) errors.push("Overall disposition justification is required before MRB approval.");
+    if (!getCurrentMrbDispositionValue()) errors.push("Overall product disposition is required before MRB approval.");
+    if (!getCurrentMrbDispositionJustification()) errors.push("Overall disposition justification is required before MRB approval.");
 
     if (affectedItems.length === 0) {
       errors.push("At least one affected material item is required before MRB approval.");
@@ -1080,8 +1091,8 @@ export default function NcmrDetailPage() {
 
     if (!riskAssessment) errors.push("Risk assessment is required before generating MRB approval tasks.");
     if (severity === "not_assessed") errors.push("Severity must be assessed before generating MRB approval tasks.");
-    if (!productDisposition) errors.push("Overall product disposition is required before generating MRB approval tasks.");
-    if (!dispositionJustification) errors.push("Overall disposition justification is required before generating MRB approval tasks.");
+    if (!getCurrentMrbDispositionValue()) errors.push("Overall product disposition is required before generating MRB approval tasks.");
+    if (!getCurrentMrbDispositionJustification()) errors.push("Overall disposition justification is required before generating MRB approval tasks.");
 
     if (affectedItems.length === 0) {
       errors.push("At least one affected item is required before generating MRB approval tasks.");
@@ -1888,6 +1899,16 @@ This approval becomes part of the official electronic quality record. MRB will a
       return;
     }
 
+    if (!getCurrentMrbDispositionValue()) {
+      alert("Overall product disposition is required before saving MRB disposition.");
+      return;
+    }
+
+    if (!getCurrentMrbDispositionJustification()) {
+      alert("Overall disposition justification is required before saving MRB disposition.");
+      return;
+    }
+
     const { error } = await supabase
       .from("ncmrs")
       .update({
@@ -2106,12 +2127,12 @@ This approval becomes part of the official electronic quality record. MRB will a
       return alert("CAPA recommendation requires either a linked CAPA or a documented No-CAPA decision with justification before MRB approval.");
     }
 
-    if (!productDisposition) return alert("Product disposition is required before MRB approval.");
-    if (!dispositionJustification) return alert("Disposition justification is required before MRB approval.");
+    if (!getCurrentMrbDispositionValue()) return alert("Product disposition is required before MRB approval.");
+    if (!getCurrentMrbDispositionJustification()) return alert("Disposition justification is required before MRB approval.");
 
     if (
       (severity === "critical" || severity === "major") &&
-      productDisposition === "use_as_is" &&
+      getCurrentMrbDispositionValue() === "use_as_is" &&
       !isVpQuality
     ) {
       alert("MRB rule: Use As Is disposition for Major or Critical severity requires VP Quality approval.");
@@ -2120,7 +2141,7 @@ This approval becomes part of the official electronic quality record. MRB will a
 
     if (
       severity === "major" &&
-      productDisposition === "use_as_is" &&
+      getCurrentMrbDispositionValue() === "use_as_is" &&
       dispositionJustification.trim().length < 50
     ) {
       alert("MRB rule: Major severity with Use As Is requires a stronger disposition justification.");
@@ -2129,7 +2150,7 @@ This approval becomes part of the official electronic quality record. MRB will a
 
     if (
       severity === "critical" &&
-      productDisposition === "use_as_is" &&
+      getCurrentMrbDispositionValue() === "use_as_is" &&
       dispositionJustification.trim().length < 75
     ) {
       alert("MRB rule: Critical severity with Use As Is requires a detailed VP Quality justification.");
@@ -3493,7 +3514,7 @@ This approval becomes part of the official electronic quality record. MRB will a
 
         <label>Product Disposition</label><br />
         <select
-          value={productDisposition}
+          value={getCurrentMrbDispositionValue()}
           onChange={(e) => setProductDisposition(e.target.value)}
           style={{ padding: "8px", minWidth: "240px", marginBottom: "12px" }}
         >
@@ -3511,7 +3532,7 @@ This approval becomes part of the official electronic quality record. MRB will a
         <br />
         <label>Disposition Justification</label><br />
         <textarea
-          value={dispositionJustification}
+          value={getCurrentMrbDispositionJustification()}
           onChange={(e) => setDispositionJustification(e.target.value)}
           placeholder="Justify disposition based on risk assessment and investigation."
           rows={4}
