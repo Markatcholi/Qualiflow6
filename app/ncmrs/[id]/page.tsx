@@ -2550,10 +2550,6 @@ This approval becomes part of the official electronic quality record. MRB will a
     id,
     record?.id,
     record?.mrb_approved_by,
-    record?.linked_capa_id,
-    record?.capa_id,
-    record?.capa_not_required_justification,
-    record?.capa_evaluation_outcome,
     approvalTasks,
     requireQualityApproval,
     requireOperationsApproval,
@@ -3403,7 +3399,7 @@ This approval becomes part of the official electronic quality record. MRB will a
           >
             <strong>CAPA Governance Signal</strong>
             <p style={{ marginTop: "8px", marginBottom: 0 }}>
-              {getCapaRecommendation().reason} CAPA decision is managed in the CAPA Governance section below MRB Auto Approval.
+              {getCapaRecommendation().reason} CAPA decision is managed in the CAPA Governance section before MRB Approval.
             </p>
           </div>
         ) : null}
@@ -3427,8 +3423,8 @@ This approval becomes part of the official electronic quality record. MRB will a
       </SectionCard>
 
       <SectionCard
-        title="6. Product Disposition / MRB Approval"
-        subtitle={isMrbComplete ? "Complete: MRB approval has been signed." : "Pending: complete disposition, approval tasks, and MRB approval."}
+        title="6. Product Disposition"
+        subtitle={isMrbComplete ? "Complete: product disposition package is approved." : "Pending: complete overall and affected product disposition."}
         defaultOpen={true}
         rightAction={sectionStatusBadge(isMrbComplete, "MRB")}
       >
@@ -3485,6 +3481,222 @@ This approval becomes part of the official electronic quality record. MRB will a
             </div>
           )}
         </div>
+
+
+        <SectionSaveCancelActions onSave={saveMrbDispositionSection} />
+      </SectionCard>
+
+      <SectionCard
+        title="CAPA Governance / Evaluation"
+        subtitle={linkedCapa || record?.linked_capa_id || record?.capa_id ? "Complete: linked CAPA exists." : record?.capa_not_required_justification ? "Complete: CAPA not-required justification documented." : "Evaluate whether CAPA is required based on recurrence, severity, risk, or governance rules."}
+        defaultOpen={false}
+        rightAction={sectionStatusBadge(!!linkedCapa || !!record?.linked_capa_id || !!record?.capa_id || !!record?.capa_not_required_justification, "CAPA")}
+      >
+        <div
+          style={{
+            border: "1px solid #d1d5db",
+            borderRadius: "10px",
+            padding: "12px",
+            background: "#f9fafb",
+            marginBottom: "14px",
+          }}
+        >
+          <h3 style={{ marginTop: 0 }}>Governance Evaluation</h3>
+          <p style={{ color: "#4b5563", fontSize: "14px" }}>
+            CAPA should be created through risk-based decision making, not automatic recurrence alone.
+          </p>
+
+          <div style={{ display: "grid", gap: "8px", maxWidth: "900px" }}>
+            <div>
+              <strong>Current Evaluation:</strong>{" "}
+              <StatusBadge status={record?.capa_evaluation_outcome || evaluateCapaGovernance().label} />
+            </div>
+            <div>
+              <strong>Rationale:</strong>{" "}
+              {record?.capa_evaluation_rationale || evaluateCapaGovernance().rationale}
+            </div>
+            <div>
+              <strong>Severity:</strong> {severity || record?.severity || "N/A"}
+            </div>
+            <div>
+              <strong>Root Cause:</strong> {rootCause || "N/A"}
+            </div>
+            <div>
+              <strong>Risk Assessment:</strong> {riskAssessment || "N/A"}
+            </div>
+          </div>
+        </div>
+
+        {linkedCapa || record?.linked_capa_id || record?.capa_id ? (
+          <div
+            style={{
+              border: "1px solid #86efac",
+              background: "#f0fdf4",
+              borderRadius: "10px",
+              padding: "12px",
+              marginBottom: "14px",
+            }}
+          >
+            <strong>Linked CAPA:</strong>{" "}
+            <Link href={`/capa/${linkedCapa?.id || record?.linked_capa_id || record?.capa_id}`}>
+              {linkedCapa?.title || "Open Linked CAPA"}
+            </Link>
+          </div>
+        ) : (
+          <>
+            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "14px" }}>
+              <button type="button" onClick={saveCapaGovernanceEvaluation} disabled={isLocked}>
+                Save CAPA Evaluation
+              </button>
+
+              <button type="button" onClick={createGovernedCapaFromNcmr} disabled={isLocked}>
+                Create Linked CAPA
+              </button>
+            </div>
+
+            <div>
+              <label>Risk-Based Justification if CAPA is Not Opened</label>
+              <br />
+              <textarea
+                value={capaNotRequiredJustification}
+                onChange={(e) => setCapaNotRequiredJustification(e.target.value)}
+                rows={4}
+                disabled={isLocked}
+                placeholder="Document rationale if CAPA is not required after evaluation."
+                style={{ width: "100%", maxWidth: "900px", padding: "8px" }}
+              />
+            </div>
+
+            <button
+              type="button"
+              onClick={saveCapaNotRequiredJustification}
+              disabled={isLocked}
+              style={{ marginTop: "10px" }}
+            >
+              Save No-CAPA Justification
+            </button>
+          </>
+        )}
+
+        {record?.capa_not_required_justification ? (
+          <div style={{ marginTop: "12px", color: "#374151" }}>
+            <strong>Saved No-CAPA Justification:</strong> {record.capa_not_required_justification}
+          </div>
+        ) : null}
+      </SectionCard>
+
+      <SectionCard
+        title="Supplier Escalation / SCAR"
+        subtitle={linkedScar ? "Complete: linked SCAR exists for supplier escalation." : scarJustification ? "Complete: no-SCAR justification documented." : "Evaluate whether supplier corrective action is needed."}
+        defaultOpen={false}
+        rightAction={sectionStatusBadge(!!linkedScar || !!scarJustification, "SCAR")}
+      >
+        <div
+          style={{
+            border: "1px solid #d1d5db",
+            borderRadius: "10px",
+            padding: "12px",
+            background: "#f9fafb",
+            marginBottom: "14px",
+          }}
+        >
+          <h3 style={{ marginTop: 0 }}>SCAR Evaluation</h3>
+          <p style={{ color: "#4b5563", fontSize: "14px" }}>
+            Use this section when the NCMR is supplier-related, recurring, major/critical, or requires supplier corrective action.
+          </p>
+
+          <div style={{ display: "grid", gap: "8px", maxWidth: "800px" }}>
+            <div>
+              <strong>Supplier Related:</strong>{" "}
+              {isSupplierRelatedNcmr() ? "Yes" : "Not identified"}
+            </div>
+            <div>
+              <strong>Severity:</strong> {severity || "N/A"}
+            </div>
+            <div>
+              <strong>Part:</strong> {summaryProductPartNumber || record?.product_part_number || "N/A"}
+            </div>
+            <div>
+              <strong>Lot:</strong> {summaryLotNumber || record?.lot_number || "N/A"}
+            </div>
+          </div>
+        </div>
+
+        {linkedScar ? (
+          <div
+            style={{
+              border: "1px solid #86efac",
+              background: "#f0fdf4",
+              borderRadius: "10px",
+              padding: "12px",
+              marginBottom: "14px",
+            }}
+          >
+            <strong>Linked SCAR:</strong>{" "}
+            <Link href={`/supplier-quality/scars/${linkedScar.id}`}>
+              {linkedScar.scar_title || linkedScar.title || "Open Linked SCAR"}
+            </Link>
+          </div>
+        ) : record?.linked_scar_id ? (
+          <div
+            style={{
+              border: "1px solid #86efac",
+              background: "#f0fdf4",
+              borderRadius: "10px",
+              padding: "12px",
+              marginBottom: "14px",
+            }}
+          >
+            <strong>Linked SCAR:</strong>{" "}
+            <Link href={`/supplier-quality/scars/${record.linked_scar_id}`}>
+              Open Linked SCAR
+            </Link>
+          </div>
+        ) : (
+          <>
+            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "14px" }}>
+              <button type="button" onClick={createScarFromNcmr} disabled={isLocked}>
+                Create Linked SCAR
+              </button>
+            </div>
+
+            <div>
+              <label>Justification if SCAR is Not Opened</label>
+              <br />
+              <textarea
+                value={scarJustification}
+                onChange={(e) => setScarJustification(e.target.value)}
+                rows={4}
+                disabled={isLocked}
+                placeholder="Document the risk-based rationale if supplier corrective action is not required."
+                style={{ width: "100%", maxWidth: "800px", padding: "8px" }}
+              />
+            </div>
+
+            <button
+              type="button"
+              onClick={saveScarJustification}
+              disabled={isLocked}
+              style={{ marginTop: "10px" }}
+            >
+              Save SCAR Justification
+            </button>
+          </>
+        )}
+
+        {record?.scar_justification ? (
+          <div style={{ marginTop: "12px", color: "#374151" }}>
+            <strong>Saved SCAR Justification:</strong> {record.scar_justification}
+          </div>
+        ) : null}
+      </SectionCard>
+
+      <SectionCard
+        title="9. MRB Approval"
+        subtitle={isMrbComplete ? "Complete: all required MRB approvals are complete." : "Pending: generate approval tasks and complete MRB approval."}
+        defaultOpen={true}
+        rightAction={sectionStatusBadge(isMrbComplete, "MRB")}
+      >
 
         <div
           style={{
@@ -3736,231 +3948,13 @@ This approval becomes part of the official electronic quality record. MRB will a
           <div style={{ fontSize: "13px", color: "#374151" }}>
             Required approvals complete: {requiredMrbApprovalsComplete().length === 0 && approvalTasks.length > 0 ? "Yes" : "No"}
           </div>
-
-          {!record?.mrb_approved_by &&
-          requiredMrbApprovalsComplete().length === 0 &&
-          approvalTasks.length > 0 ? (
-            <button
-              type="button"
-              onClick={autoApproveMrbIfReady}
-              disabled={mrbAutoApprovalInProgress}
-              style={{ marginTop: "10px" }}
-            >
-              {mrbAutoApprovalInProgress ? "Checking MRB Auto Approval..." : "Run MRB Auto Approval Check"}
-            </button>
-          ) : null}
         </div>
 
-        <SectionSaveCancelActions onSave={saveMrbDispositionSection} />
+
       </SectionCard>
 
       <SectionCard
-        title="CAPA Governance / Evaluation"
-        subtitle={linkedCapa || record?.linked_capa_id || record?.capa_id ? "Complete: linked CAPA exists." : record?.capa_not_required_justification ? "Complete: CAPA not-required justification documented." : "Evaluate whether CAPA is required based on recurrence, severity, risk, or governance rules."}
-        defaultOpen={false}
-        rightAction={sectionStatusBadge(!!linkedCapa || !!record?.linked_capa_id || !!record?.capa_id || !!record?.capa_not_required_justification, "CAPA")}
-      >
-        <div
-          style={{
-            border: "1px solid #d1d5db",
-            borderRadius: "10px",
-            padding: "12px",
-            background: "#f9fafb",
-            marginBottom: "14px",
-          }}
-        >
-          <h3 style={{ marginTop: 0 }}>Governance Evaluation</h3>
-          <p style={{ color: "#4b5563", fontSize: "14px" }}>
-            CAPA should be created through risk-based decision making, not automatic recurrence alone.
-          </p>
-
-          <div style={{ display: "grid", gap: "8px", maxWidth: "900px" }}>
-            <div>
-              <strong>Current Evaluation:</strong>{" "}
-              <StatusBadge status={record?.capa_evaluation_outcome || evaluateCapaGovernance().label} />
-            </div>
-            <div>
-              <strong>Rationale:</strong>{" "}
-              {record?.capa_evaluation_rationale || evaluateCapaGovernance().rationale}
-            </div>
-            <div>
-              <strong>Severity:</strong> {severity || record?.severity || "N/A"}
-            </div>
-            <div>
-              <strong>Root Cause:</strong> {rootCause || "N/A"}
-            </div>
-            <div>
-              <strong>Risk Assessment:</strong> {riskAssessment || "N/A"}
-            </div>
-          </div>
-        </div>
-
-        {linkedCapa || record?.linked_capa_id || record?.capa_id ? (
-          <div
-            style={{
-              border: "1px solid #86efac",
-              background: "#f0fdf4",
-              borderRadius: "10px",
-              padding: "12px",
-              marginBottom: "14px",
-            }}
-          >
-            <strong>Linked CAPA:</strong>{" "}
-            <Link href={`/capa/${linkedCapa?.id || record?.linked_capa_id || record?.capa_id}`}>
-              {linkedCapa?.title || "Open Linked CAPA"}
-            </Link>
-          </div>
-        ) : (
-          <>
-            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "14px" }}>
-              <button type="button" onClick={saveCapaGovernanceEvaluation} disabled={isLocked}>
-                Save CAPA Evaluation
-              </button>
-
-              <button type="button" onClick={createGovernedCapaFromNcmr} disabled={isLocked}>
-                Create Linked CAPA
-              </button>
-            </div>
-
-            <div>
-              <label>Risk-Based Justification if CAPA is Not Opened</label>
-              <br />
-              <textarea
-                value={capaNotRequiredJustification}
-                onChange={(e) => setCapaNotRequiredJustification(e.target.value)}
-                rows={4}
-                disabled={isLocked}
-                placeholder="Document rationale if CAPA is not required after evaluation."
-                style={{ width: "100%", maxWidth: "900px", padding: "8px" }}
-              />
-            </div>
-
-            <button
-              type="button"
-              onClick={saveCapaNotRequiredJustification}
-              disabled={isLocked}
-              style={{ marginTop: "10px" }}
-            >
-              Save No-CAPA Justification
-            </button>
-          </>
-        )}
-
-        {record?.capa_not_required_justification ? (
-          <div style={{ marginTop: "12px", color: "#374151" }}>
-            <strong>Saved No-CAPA Justification:</strong> {record.capa_not_required_justification}
-          </div>
-        ) : null}
-      </SectionCard>
-
-      <SectionCard
-        title="Supplier Escalation / SCAR"
-        subtitle={linkedScar ? "Complete: linked SCAR exists for supplier escalation." : scarJustification ? "Complete: no-SCAR justification documented." : "Evaluate whether supplier corrective action is needed."}
-        defaultOpen={false}
-        rightAction={sectionStatusBadge(!!linkedScar || !!scarJustification, "SCAR")}
-      >
-        <div
-          style={{
-            border: "1px solid #d1d5db",
-            borderRadius: "10px",
-            padding: "12px",
-            background: "#f9fafb",
-            marginBottom: "14px",
-          }}
-        >
-          <h3 style={{ marginTop: 0 }}>SCAR Evaluation</h3>
-          <p style={{ color: "#4b5563", fontSize: "14px" }}>
-            Use this section when the NCMR is supplier-related, recurring, major/critical, or requires supplier corrective action.
-          </p>
-
-          <div style={{ display: "grid", gap: "8px", maxWidth: "800px" }}>
-            <div>
-              <strong>Supplier Related:</strong>{" "}
-              {isSupplierRelatedNcmr() ? "Yes" : "Not identified"}
-            </div>
-            <div>
-              <strong>Severity:</strong> {severity || "N/A"}
-            </div>
-            <div>
-              <strong>Part:</strong> {summaryProductPartNumber || record?.product_part_number || "N/A"}
-            </div>
-            <div>
-              <strong>Lot:</strong> {summaryLotNumber || record?.lot_number || "N/A"}
-            </div>
-          </div>
-        </div>
-
-        {linkedScar ? (
-          <div
-            style={{
-              border: "1px solid #86efac",
-              background: "#f0fdf4",
-              borderRadius: "10px",
-              padding: "12px",
-              marginBottom: "14px",
-            }}
-          >
-            <strong>Linked SCAR:</strong>{" "}
-            <Link href={`/supplier-quality/scars/${linkedScar.id}`}>
-              {linkedScar.scar_title || linkedScar.title || "Open Linked SCAR"}
-            </Link>
-          </div>
-        ) : record?.linked_scar_id ? (
-          <div
-            style={{
-              border: "1px solid #86efac",
-              background: "#f0fdf4",
-              borderRadius: "10px",
-              padding: "12px",
-              marginBottom: "14px",
-            }}
-          >
-            <strong>Linked SCAR:</strong>{" "}
-            <Link href={`/supplier-quality/scars/${record.linked_scar_id}`}>
-              Open Linked SCAR
-            </Link>
-          </div>
-        ) : (
-          <>
-            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "14px" }}>
-              <button type="button" onClick={createScarFromNcmr} disabled={isLocked}>
-                Create Linked SCAR
-              </button>
-            </div>
-
-            <div>
-              <label>Justification if SCAR is Not Opened</label>
-              <br />
-              <textarea
-                value={scarJustification}
-                onChange={(e) => setScarJustification(e.target.value)}
-                rows={4}
-                disabled={isLocked}
-                placeholder="Document the risk-based rationale if supplier corrective action is not required."
-                style={{ width: "100%", maxWidth: "800px", padding: "8px" }}
-              />
-            </div>
-
-            <button
-              type="button"
-              onClick={saveScarJustification}
-              disabled={isLocked}
-              style={{ marginTop: "10px" }}
-            >
-              Save SCAR Justification
-            </button>
-          </>
-        )}
-
-        {record?.scar_justification ? (
-          <div style={{ marginTop: "12px", color: "#374151" }}>
-            <strong>Saved SCAR Justification:</strong> {record.scar_justification}
-          </div>
-        ) : null}
-      </SectionCard>
-
-      <SectionCard
-        title="7. Correction Implementation"
+        title="10. Correction Implementation"
         subtitle={isImplementationComplete ? "Complete: correction implementation is satisfied." : isCorrectionNotRequired() ? "Pending: document correction-not-required justification." : "Pending: assign/complete correction task and document implementation."}
         defaultOpen={false}
         rightAction={sectionStatusBadge(isImplementationComplete, "Implementation")}
@@ -4277,7 +4271,7 @@ This approval becomes part of the official electronic quality record. MRB will a
       </SectionCard>
 
       <SectionCard
-        title="9. Closure"
+        title="12. Closure"
         subtitle={isClosureComplete ? "Complete: NCMR is closed and locked." : "Pending: complete closure review and e-signature."}
         defaultOpen={false}
         rightAction={sectionStatusBadge(isClosureComplete, "Closure")}
