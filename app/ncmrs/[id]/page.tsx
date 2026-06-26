@@ -787,7 +787,7 @@ export default function NcmrDetailPage() {
       }
     }
 
-    if (isReworkDisposition(productDisposition)) {
+    if (productDisposition === "rework") {
       if (acceptedQty !== 0 || rejectedQty !== quantityAffected) {
         alert(
           `Rework initial disposition validation failed.\n\nAffected Quantity: ${quantityAffected}\nAccepted Quantity: ${acceptedQty}\nRejected Quantity: ${rejectedQty}\n\nFor initial Rework disposition, Accepted Quantity must equal 0 and Rejected Quantity must equal the affected quantity (${quantityAffected}). Final accepted/rejected quantities are entered after the rework task is completed.`
@@ -890,18 +890,15 @@ export default function NcmrDetailPage() {
       return true;
     }
 
-    if (record?.linked_capa_id || record?.capa_id || linkedCapa) {
+    if (record?.capa_id) {
       return true;
     }
 
-    if (record?.capa_not_required_justification || capaNotRequiredJustification.trim()) {
-      return true;
+    if (capaDecision === "yes") {
+      return false;
     }
 
-    if (
-      record?.capa_evaluation_outcome === "not_required" ||
-      record?.capa_evaluation_outcome === "not_opened_with_justification"
-    ) {
+    if (capaDecision === "no" && capaDecisionJustification.trim()) {
       return true;
     }
 
@@ -927,7 +924,7 @@ export default function NcmrDetailPage() {
       !record?.capa_id &&
       !isNoCapaDecisionAccepted()
     ) {
-      errors.push("CAPA recommendation requires either a linked CAPA or a documented No-CAPA justification in CAPA Governance before MRB approval.");
+      errors.push("CAPA recommendation requires either a linked CAPA or a documented No-CAPA decision with justification before MRB approval.");
     }
 
     if (!productDisposition) errors.push("Overall product disposition is required before MRB approval.");
@@ -1001,7 +998,7 @@ export default function NcmrDetailPage() {
       !record?.capa_id &&
       !isNoCapaDecisionAccepted()
     ) {
-      errors.push("CAPA recommendation requires either a linked CAPA or a documented No-CAPA justification in CAPA Governance before closure.");
+      errors.push("CAPA recommendation requires either a linked CAPA or a documented No-CAPA decision with justification before closure.");
     }
 
     affectedItems.forEach((item, index) => {
@@ -1924,7 +1921,15 @@ This approval becomes part of the official electronic quality record. MRB will a
       risk_assessment: riskAssessment,
       severity,
       capa_recommended: capaRecommendation.recommended,
-      capa_justification: capaJustification || record?.capa_justification || null,
+      capa_decision: capaRecommendation.recommended ? capaDecision || null : null,
+      capa_decision_justification:
+        capaRecommendation.recommended && capaDecision === "no"
+          ? capaDecisionJustification
+          : null,
+      capa_justification:
+        capaRecommendation.recommended && capaDecision === "no"
+          ? capaDecisionJustification
+          : capaJustification,
       product_disposition: productDisposition,
       disposition: productDisposition,
       disposition_justification: dispositionJustification,
@@ -1946,6 +1951,85 @@ This approval becomes part of the official electronic quality record. MRB will a
     }
 
     await addAuditLog("workflow_saved", "NCMR workflow fields saved.");
+
+    if (
+      capaRecommendation.recommended &&
+      capaDecision === "yes" &&
+      !record?.capa_id
+    ) {
+      const { data: capaData, error: capaError } = await supabase
+        .from("capas")
+        .insert({
+          title: `CAPA for ${record.title}`,
+          status: "open",
+          source_type: "ncmr",
+          capa_source: "NCMR risk-based CAPA escalation decision",
+          ncmr_id: id,
+          linked_ncmr_title: record.title,
+          problem_description:
+            problemDescription || record.issue_description || record.title,
+          investigation_summary: investigationSummary,
+          root_cause: rootCause,
+          root_cause_category: rootCauseCategory,
+          corrective_action_plan: correctiveAction,
+          action_plan: correctiveAction,
+        })
+        .select()
+        .single();
+
+      if (capaError) {
+        alert(capaError.message);
+        return;
+      }
+
+      const { error: ncmrUpdateError } = await supabase
+        .from("ncmrs")
+        .update({
+          capa_id: capaData.id,
+          capa_required: true,
+          capa_recommended: true,
+          capa_decision: "yes",
+          capa_decision_justification: null,
+          capa_justification: null,
+        })
+        .eq("id", id);
+
+      if (ncmrUpdateError) {
+        alert(ncmrUpdateError.message);
+        return;
+      }
+
+      await addAuditLog(
+        "risk_based_capa_created",
+        "CAPA automatically created because CAPA recommendation was accepted."
+      );
+
+      alert("NCMR saved. CAPA created and linked based on risk-based CAPA decision.");
+      fetchRecord();
+      return;
+    }
+
+    if (
+      capaRecommendation.recommended &&
+      capaDecision === "no" &&
+      !record?.capa_id
+    ) {
+      await supabase
+        .from("ncmrs")
+        .update({
+          capa_required: false,
+          capa_recommended: true,
+          capa_decision: "no",
+          capa_decision_justification: capaDecisionJustification,
+          capa_justification: capaDecisionJustification,
+        })
+        .eq("id", id);
+
+      await addAuditLog(
+        "risk_based_no_capa_decision",
+        `CAPA recommendation rejected with justification: ${capaDecisionJustification}`
+      );
+    }
 
     if (severity === "major" && record?.capa_id) {
       await supabase
@@ -1999,7 +2083,7 @@ This approval becomes part of the official electronic quality record. MRB will a
       !record?.capa_id &&
       !isNoCapaDecisionAccepted()
     ) {
-      return alert("CAPA recommendation requires either a linked CAPA or a documented No-CAPA justification in CAPA Governance before MRB approval.");
+      return alert("CAPA recommendation requires either a linked CAPA or a documented No-CAPA decision with justification before MRB approval.");
     }
 
     if (!productDisposition) return alert("Product disposition is required before MRB approval.");
@@ -2366,7 +2450,7 @@ This approval becomes part of the official electronic quality record. MRB will a
       !record?.capa_id &&
       !isNoCapaDecisionAccepted()
     ) {
-      return alert("CAPA recommendation requires either a linked CAPA or a documented No-CAPA justification in CAPA Governance before closure.");
+      return alert("CAPA recommendation requires either a linked CAPA or a documented No-CAPA decision with justification before closure.");
     }
 
     if (!productDisposition) return alert("Product disposition is required.");
