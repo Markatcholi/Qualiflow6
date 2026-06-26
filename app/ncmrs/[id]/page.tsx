@@ -890,15 +890,18 @@ export default function NcmrDetailPage() {
       return true;
     }
 
-    if (record?.capa_id) {
+    if (record?.linked_capa_id || record?.capa_id || linkedCapa) {
       return true;
     }
 
-    if (capaDecision === "yes") {
-      return false;
+    if (record?.capa_not_required_justification || capaNotRequiredJustification.trim()) {
+      return true;
     }
 
-    if (capaDecision === "no" && capaDecisionJustification.trim()) {
+    if (
+      record?.capa_evaluation_outcome === "not_required" ||
+      record?.capa_evaluation_outcome === "not_opened_with_justification"
+    ) {
       return true;
     }
 
@@ -924,7 +927,7 @@ export default function NcmrDetailPage() {
       !record?.capa_id &&
       !isNoCapaDecisionAccepted()
     ) {
-      errors.push("CAPA recommendation requires either a linked CAPA or a documented No-CAPA decision with justification before MRB approval.");
+      errors.push("CAPA recommendation requires either a linked CAPA or a documented No-CAPA justification in CAPA Governance before MRB approval.");
     }
 
     if (!productDisposition) errors.push("Overall product disposition is required before MRB approval.");
@@ -998,7 +1001,7 @@ export default function NcmrDetailPage() {
       !record?.capa_id &&
       !isNoCapaDecisionAccepted()
     ) {
-      errors.push("CAPA recommendation requires either a linked CAPA or a documented No-CAPA decision with justification before closure.");
+      errors.push("CAPA recommendation requires either a linked CAPA or a documented No-CAPA justification in CAPA Governance before closure.");
     }
 
     affectedItems.forEach((item, index) => {
@@ -2083,7 +2086,7 @@ This approval becomes part of the official electronic quality record. MRB will a
       !record?.capa_id &&
       !isNoCapaDecisionAccepted()
     ) {
-      return alert("CAPA recommendation requires either a linked CAPA or a documented No-CAPA decision with justification before MRB approval.");
+      return alert("CAPA recommendation requires either a linked CAPA or a documented No-CAPA justification in CAPA Governance before MRB approval.");
     }
 
     if (!productDisposition) return alert("Product disposition is required before MRB approval.");
@@ -2450,7 +2453,7 @@ This approval becomes part of the official electronic quality record. MRB will a
       !record?.capa_id &&
       !isNoCapaDecisionAccepted()
     ) {
-      return alert("CAPA recommendation requires either a linked CAPA or a documented No-CAPA decision with justification before closure.");
+      return alert("CAPA recommendation requires either a linked CAPA or a documented No-CAPA justification in CAPA Governance before closure.");
     }
 
     if (!productDisposition) return alert("Product disposition is required.");
@@ -2547,6 +2550,10 @@ This approval becomes part of the official electronic quality record. MRB will a
     id,
     record?.id,
     record?.mrb_approved_by,
+    record?.linked_capa_id,
+    record?.capa_id,
+    record?.capa_not_required_justification,
+    record?.capa_evaluation_outcome,
     approvalTasks,
     requireQualityApproval,
     requireOperationsApproval,
@@ -3729,6 +3736,19 @@ This approval becomes part of the official electronic quality record. MRB will a
           <div style={{ fontSize: "13px", color: "#374151" }}>
             Required approvals complete: {requiredMrbApprovalsComplete().length === 0 && approvalTasks.length > 0 ? "Yes" : "No"}
           </div>
+
+          {!record?.mrb_approved_by &&
+          requiredMrbApprovalsComplete().length === 0 &&
+          approvalTasks.length > 0 ? (
+            <button
+              type="button"
+              onClick={autoApproveMrbIfReady}
+              disabled={mrbAutoApprovalInProgress}
+              style={{ marginTop: "10px" }}
+            >
+              {mrbAutoApprovalInProgress ? "Checking MRB Auto Approval..." : "Run MRB Auto Approval Check"}
+            </button>
+          ) : null}
         </div>
 
         <SectionSaveCancelActions onSave={saveMrbDispositionSection} />
