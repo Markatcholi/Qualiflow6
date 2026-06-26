@@ -3487,7 +3487,7 @@ This approval becomes part of the official electronic quality record. MRB will a
       </SectionCard>
 
       <SectionCard
-        title="CAPA Governance / Evaluation"
+        title="7. CAPA Governance / Evaluation"
         subtitle={linkedCapa || record?.linked_capa_id || record?.capa_id ? "Complete: linked CAPA exists." : record?.capa_not_required_justification ? "Complete: CAPA not-required justification documented." : "Evaluate whether CAPA is required based on recurrence, severity, risk, or governance rules."}
         defaultOpen={false}
         rightAction={sectionStatusBadge(!!linkedCapa || !!record?.linked_capa_id || !!record?.capa_id || !!record?.capa_not_required_justification, "CAPA")}
@@ -3586,7 +3586,7 @@ This approval becomes part of the official electronic quality record. MRB will a
       </SectionCard>
 
       <SectionCard
-        title="Supplier Escalation / SCAR"
+        title="8. Supplier Escalation / SCAR"
         subtitle={linkedScar ? "Complete: linked SCAR exists for supplier escalation." : scarJustification ? "Complete: no-SCAR justification documented." : "Evaluate whether supplier corrective action is needed."}
         defaultOpen={false}
         rightAction={sectionStatusBadge(!!linkedScar || !!scarJustification, "SCAR")}
@@ -4078,7 +4078,7 @@ This approval becomes part of the official electronic quality record. MRB will a
       </SectionCard>
 
       <SectionCard
-        title="8. Evidence"
+        title="11. Evidence"
         subtitle={isEvidenceComplete ? "Complete: evidence is linked." : "Optional/Pending: upload or link supporting evidence."}
         defaultOpen={false}
         rightAction={sectionStatusBadge(isEvidenceComplete, "Evidence")}
