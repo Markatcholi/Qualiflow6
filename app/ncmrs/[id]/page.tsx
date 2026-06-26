@@ -516,6 +516,10 @@ export default function NcmrDetailPage() {
     }
 
     if (isReworkDisposition(disposition)) {
+      if (acceptedQty !== 0 || rejectedQty !== affectedQty) {
+        errors.push(`${label}: initial Rework disposition requires accepted quantity to equal 0 and rejected quantity to equal affected quantity (${affectedQty}). Final accepted/rejected quantities are entered after rework completion.`);
+      }
+
       const finalAcceptedQty = toQuantityNumber(item?.final_rework_quantity_accepted);
       const finalRejectedQty = toQuantityNumber(item?.final_rework_quantity_rejected);
 
@@ -783,7 +787,14 @@ export default function NcmrDetailPage() {
       }
     }
 
-    if (productDisposition === "rework") {
+    if (isReworkDisposition(productDisposition)) {
+      if (acceptedQty !== 0 || rejectedQty !== quantityAffected) {
+        alert(
+          `Rework initial disposition validation failed.\n\nAffected Quantity: ${quantityAffected}\nAccepted Quantity: ${acceptedQty}\nRejected Quantity: ${rejectedQty}\n\nFor initial Rework disposition, Accepted Quantity must equal 0 and Rejected Quantity must equal the affected quantity (${quantityAffected}). Final accepted/rejected quantities are entered after the rework task is completed.`
+        );
+        return;
+      }
+
       const finalAcceptedQty = toQuantityNumber(finalReworkQuantityAccepted);
       const finalRejectedQty = toQuantityNumber(finalReworkQuantityRejected);
       const finalDispositionedQty = finalAcceptedQty + finalRejectedQty;
