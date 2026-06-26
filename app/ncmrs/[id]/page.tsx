@@ -3388,7 +3388,7 @@ This approval becomes part of the official electronic quality record. MRB will a
         {getCapaRecommendation().recommended && !linkedCapa ? (
           <div
             style={{
-              border: "1px solid #2563eb",
+              border: "1px solid #bfdbfe",
               background: "#eff6ff",
               padding: "12px",
               borderRadius: "8px",
@@ -3397,55 +3397,10 @@ This approval becomes part of the official electronic quality record. MRB will a
               maxWidth: "850px",
             }}
           >
-            <strong>CAPA Recommended</strong>
-            <p style={{ marginTop: "8px" }}>
-              {getCapaRecommendation().reason}
+            <strong>CAPA Governance Signal</strong>
+            <p style={{ marginTop: "8px", marginBottom: 0 }}>
+              {getCapaRecommendation().reason} CAPA decision is managed in the CAPA Governance section below MRB Auto Approval.
             </p>
-            <p style={{ marginTop: "8px" }}>
-              Use risk-based decision making to determine whether CAPA should be initiated.
-              If No is selected, justification is required.
-            </p>
-
-            <div style={{ marginBottom: "10px" }}>
-              <button
-                type="button"
-                onClick={() => setCapaDecision("yes")}
-                style={{
-                  marginRight: "8px",
-                  background: capaDecision === "yes" ? "#16a34a" : undefined,
-                  color: capaDecision === "yes" ? "white" : undefined,
-                }}
-              >
-                Yes - Initiate CAPA
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setCapaDecision("no")}
-                style={{
-                  background: capaDecision === "no" ? "#dc2626" : undefined,
-                  color: capaDecision === "no" ? "white" : undefined,
-                }}
-              >
-                No - Do Not Initiate CAPA
-              </button>
-            </div>
-
-            {capaDecision === "no" ? (
-              <div>
-                <label>Justification for Not Initiating CAPA</label>
-                <br />
-                <textarea
-                  value={capaDecisionJustification}
-                  onChange={(e) => {
-                    setCapaDecisionJustification(e.target.value);
-                    setCapaJustification(e.target.value);
-                  }}
-                  rows={4}
-                  style={{ width: "100%", maxWidth: "800px", padding: "8px" }}
-                />
-              </div>
-            ) : null}
           </div>
         ) : null}
 
