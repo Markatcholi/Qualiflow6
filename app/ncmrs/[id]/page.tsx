@@ -1276,7 +1276,7 @@ export default function NcmrDetailPage() {
   };
 
   const loadMrbApproversFromMatrix = async () => {
-    if (record?.is_locked || record?.mrb_approved_by || approvalTasks.length > 0) {
+    if (record?.is_locked || record?.mrb_approved_by || hasActiveMrbApprovalWorkflow()) {
       alert("MRB approval configuration cannot be changed after approval tasks are generated or MRB is approved.");
       return;
     }
@@ -1340,7 +1340,7 @@ export default function NcmrDetailPage() {
   };
 
   const addManualMrbApprover = async () => {
-    if (record?.is_locked || record?.mrb_approved_by || approvalTasks.length > 0) {
+    if (record?.is_locked || record?.mrb_approved_by || hasActiveMrbApprovalWorkflow()) {
       alert("MRB approval configuration cannot be changed after approval tasks are generated or MRB is approved.");
       return;
     }
@@ -1396,7 +1396,7 @@ export default function NcmrDetailPage() {
   };
 
   const removeMrbApprover = async (approverId: string) => {
-    if (record?.is_locked || record?.mrb_approved_by || approvalTasks.length > 0) {
+    if (record?.is_locked || record?.mrb_approved_by || hasActiveMrbApprovalWorkflow()) {
       alert("MRB approval configuration cannot be changed after approval tasks are generated or MRB is approved.");
       return;
     }
@@ -1419,7 +1419,7 @@ export default function NcmrDetailPage() {
   };
 
   const saveMrbGovernance = async () => {
-    if (record?.is_locked || record?.mrb_approved_by || approvalTasks.length > 0) {
+    if (record?.is_locked || record?.mrb_approved_by || hasActiveMrbApprovalWorkflow()) {
       alert("MRB governance cannot be changed after approval tasks are generated, MRB approval, or record lock.");
       return;
     }
@@ -1583,6 +1583,49 @@ This approval becomes part of the official electronic quality record. MRB will a
     fetchRecord();
   };
 
+  const isAuthorizedToResetMrbApprovalWorkflow = () => {
+    const normalizedRole = String(userRole || "").trim().toLowerCase();
+
+    return (
+      normalizedRole === "administrator" ||
+      normalizedRole === "admin" ||
+      normalizedRole === "vp quality" ||
+      normalizedRole === "vp of quality" ||
+      normalizedRole === "quality manager"
+    );
+  };
+
+  const getLatestMrbApprovalResetAt = () => {
+    const resetEvents = auditTimeline
+      .filter((item: any) => item.action === "mrb_approval_workflow_reset")
+      .map((item: any) => item.created_at)
+      .filter(Boolean)
+      .sort();
+
+    return resetEvents.length > 0 ? resetEvents[resetEvents.length - 1] : null;
+  };
+
+  const getActiveMrbApprovalTasks = () => {
+    const latestResetAt = getLatestMrbApprovalResetAt();
+
+    return approvalTasks
+      .filter((approvalTask: any) => approvalTask.task_type === "mrb_approval")
+      .filter(
+        (approvalTask: any) =>
+          approvalTask.status !== "cancelled" &&
+          approvalTask.status !== "obsolete"
+      )
+      .filter((approvalTask: any) => {
+        if (!latestResetAt) return true;
+        if (!approvalTask.created_at) return false;
+        return new Date(approvalTask.created_at).getTime() > new Date(latestResetAt).getTime();
+      });
+  };
+
+  const hasActiveMrbApprovalWorkflow = () => {
+    return getActiveMrbApprovalTasks().length > 0;
+  };
+
   const fixMrbApprovalTaskIssues = async () => {
     if (record?.is_locked || record?.mrb_approved_by) {
       alert("Approval task issues cannot be fixed after MRB approval or record lock.");
@@ -1649,7 +1692,7 @@ This approval becomes part of the official electronic quality record. MRB will a
 
     if (activeRequiredApprovers.length === 0) {
       alert(
-        "No valid required MRB approvers remain after removing invalid or duplicate approver rows. Add at least one valid approver before continuing."
+        "No valid required MRB approvers remain after removing invalid or duplicate approver rows. Use Reset MRB Approval Workflow, then configure at least one valid approver."
       );
       return;
     }
@@ -1667,9 +1710,7 @@ This approval becomes part of the official electronic quality record. MRB will a
     );
 
     const existingActiveTaskKeys = new Set(
-      approvalTasks
-        .filter((task: any) => task.task_type === "mrb_approval")
-        .filter((task: any) => task.status !== "cancelled" && task.status !== "obsolete")
+      getActiveMrbApprovalTasks()
         .map((task: any) => `${task.required_function}||${normalizeApproverEmail(task.assigned_to_email)}`)
     );
 
@@ -1678,8 +1719,7 @@ This approval becomes part of the official electronic quality record. MRB will a
       return !existingActiveTaskKeys.has(key);
     });
 
-    const obsoletePendingTasks = approvalTasks
-      .filter((task: any) => task.task_type === "mrb_approval")
+    const obsoletePendingTasks = getActiveMrbApprovalTasks()
       .filter((task: any) => task.status === "pending")
       .filter((task: any) => {
         const taskEmail = normalizeApproverEmail(task.assigned_to_email);
@@ -1819,6 +1859,69 @@ This approval task was created by the MRB approval task issue recovery action. E
     fetchApprovalTasks();
   };
 
+  const resetMrbApprovalWorkflow = async () => {
+    if (record?.is_locked || record?.mrb_approved_by) {
+      alert("MRB approval workflow cannot be reset after MRB approval or record lock.");
+      return;
+    }
+
+    if (!isAuthorizedToResetMrbApprovalWorkflow()) {
+      alert("You are not authorized to reset the MRB approval workflow.");
+      return;
+    }
+
+    const justification = window.prompt(
+      "Reason for resetting the MRB approval workflow"
+    );
+
+    if (!justification || !justification.trim()) {
+      alert("Reset justification is required.");
+      return;
+    }
+
+    const activeTasks = getActiveMrbApprovalTasks();
+    const pendingTasks = activeTasks.filter((task: any) => task.status === "pending");
+
+    const confirmed = window.confirm(
+      `Reset MRB approval workflow?\n\nPending approval tasks to cancel: ${pendingTasks.length}\nApproved/rejected approval history will be preserved.\n\nReason:\n${justification.trim()}`
+    );
+
+    if (!confirmed) return;
+
+    if (pendingTasks.length > 0) {
+      const pendingTaskIds = pendingTasks.map((task: any) => task.id).filter(Boolean);
+
+      const { error: cancelError } = await supabase
+        .from("approval_tasks")
+        .update({
+          status: "cancelled",
+          comments:
+            "Cancelled by authorized MRB approval workflow reset. Approval history was preserved.",
+        })
+        .in("id", pendingTaskIds);
+
+      if (cancelError) {
+        alert(cancelError.message);
+        return;
+      }
+    }
+
+    await addAuditLog(
+      "mrb_approval_workflow_reset",
+      `MRB approval workflow reset by ${userEmail || "unknown"} (${userRole || "unknown role"}). Reason: ${justification.trim()}. Pending tasks cancelled: ${pendingTasks.length}. Approved/rejected approval history preserved.`
+    );
+
+    alert(
+      `MRB approval workflow reset complete.\n\nPending tasks cancelled: ${pendingTasks.length}\nApproved/rejected approval history preserved.\n\nYou may now update the MRB approval configuration and generate a new approval task package.`
+    );
+
+    fetchMrbApprovers();
+    fetchApprovalTasks();
+    fetchAuditTimeline();
+  };
+
+
+
   const getRequiredMrbApprovalFunctions = () => {
     return mrbApprovers
       .filter((approver: any) => approver.is_required !== false)
@@ -1830,21 +1933,11 @@ This approval task was created by the MRB approval task issue recovery action. E
   };
 
   const hasRejectedMrbApprovalTask = () => {
-    return approvalTasks.some(
+    return getActiveMrbApprovalTasks().some(
       (approvalTask) =>
         approvalTask.task_type === "mrb_approval" &&
         approvalTask.status === "rejected"
     );
-  };
-
-  const getActiveMrbApprovalTasks = () => {
-    return approvalTasks
-      .filter((approvalTask: any) => approvalTask.task_type === "mrb_approval")
-      .filter(
-        (approvalTask: any) =>
-          approvalTask.status !== "cancelled" &&
-          approvalTask.status !== "obsolete"
-      );
   };
 
   const allRequiredMrbApprovalTasksApproved = () => {
@@ -4608,11 +4701,14 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
             <button type="button" onClick={saveMrbGovernance} disabled={isLocked || !!record.mrb_approved_by || approvalTasks.length > 0}>
               Save Configuration
             </button>
-            <button type="button" onClick={generateMrbApprovalTasks} disabled={isLocked || !!record.mrb_approved_by || approvalTasks.length > 0 || mrbApprovers.length === 0}>
+            <button type="button" onClick={generateMrbApprovalTasks} disabled={isLocked || !!record.mrb_approved_by || hasActiveMrbApprovalWorkflow() || mrbApprovers.length === 0}>
               Generate Approval Tasks
             </button>
-            <button type="button" onClick={fixMrbApprovalTaskIssues} disabled={isLocked || !!record.mrb_approved_by || approvalTasks.length === 0 || mrbApprovers.length === 0}>
+            <button type="button" onClick={fixMrbApprovalTaskIssues} disabled={isLocked || !!record.mrb_approved_by || mrbApprovers.length === 0}>
               Fix Approval Task Issues
+            </button>
+            <button type="button" onClick={resetMrbApprovalWorkflow} disabled={isLocked || !!record.mrb_approved_by || !isAuthorizedToResetMrbApprovalWorkflow()}>
+              Reset MRB Approval Workflow
             </button>
           </div>
 
