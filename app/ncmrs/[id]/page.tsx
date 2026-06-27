@@ -1142,6 +1142,101 @@ export default function NcmrDetailPage() {
     return `${role} - ${email}`;
   };
 
+  const normalizeApproverEmail = (email: any) =>
+    String(email || "").trim().toLowerCase();
+
+  const isValidEmailFormat = (email: string) =>
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
+  const findDuplicateEmails = (emails: string[]) => {
+    const seen = new Set<string>();
+    const duplicates = new Set<string>();
+
+    emails.forEach((email) => {
+      const normalized = normalizeApproverEmail(email);
+      if (!normalized) return;
+      if (seen.has(normalized)) {
+        duplicates.add(normalized);
+      }
+      seen.add(normalized);
+    });
+
+    return Array.from(duplicates);
+  };
+
+  const validateApproverEmails = async (emails: string[]) => {
+    const normalizedEmails = Array.from(
+      new Set(emails.map((email) => normalizeApproverEmail(email)).filter(Boolean))
+    );
+
+    if (normalizedEmails.length === 0) {
+      return {
+        valid: false,
+        message: "At least one approver email is required.",
+      };
+    }
+
+    const invalidFormatEmails = normalizedEmails.filter(
+      (email) => !isValidEmailFormat(email)
+    );
+
+    if (invalidFormatEmails.length > 0) {
+      return {
+        valid: false,
+        message: `The following approver email(s) are not valid email addresses:\n\n${invalidFormatEmails.join("\n")}`,
+      };
+    }
+
+    const { data, error } = await supabase
+      .from("user_roles")
+      .select("user_email")
+      .in("user_email", normalizedEmails);
+
+    if (error) {
+      return {
+        valid: false,
+        message: `Unable to validate approver emails against system users: ${error.message}`,
+      };
+    }
+
+    const validSystemUsers = new Set(
+      (data || []).map((item: any) => normalizeApproverEmail(item.user_email))
+    );
+
+    const unknownUsers = normalizedEmails.filter(
+      (email) => !validSystemUsers.has(email)
+    );
+
+    if (unknownUsers.length > 0) {
+      return {
+        valid: false,
+        message: `The following approver email(s) are not valid QualiSphere users:\n\n${unknownUsers.join("\n")}\n\nPlease correct the approver list before generating MRB approval tasks.`,
+      };
+    }
+
+    return {
+      valid: true,
+      message: "",
+    };
+  };
+
+  const validateConfiguredApproverRows = async (approvers: any[]) => {
+    const emails = approvers
+      .map((approver: any) => normalizeApproverEmail(approver.approver_email))
+      .filter(Boolean);
+
+    const duplicateEmails = findDuplicateEmails(emails);
+
+    if (duplicateEmails.length > 0) {
+      return {
+        valid: false,
+        message: `Duplicate MRB approver email(s) are not allowed:\n\n${duplicateEmails.join("\n")}`,
+      };
+    }
+
+    return validateApproverEmails(emails);
+  };
+
   const loadMrbApproversFromMatrix = async () => {
     if (record?.is_locked || record?.mrb_approved_by || approvalTasks.length > 0) {
       alert("MRB approval configuration cannot be changed after approval tasks are generated or MRB is approved.");
@@ -1157,6 +1252,13 @@ export default function NcmrDetailPage() {
 
     if (matrixRows.length === 0) {
       alert("No approver rows were found for the selected approval matrix.");
+      return;
+    }
+
+    const matrixValidation = await validateConfiguredApproverRows(matrixRows);
+
+    if (!matrixValidation.valid) {
+      alert(`Approval matrix cannot be loaded.\n\n${matrixValidation.message}`);
       return;
     }
 
@@ -1210,6 +1312,20 @@ export default function NcmrDetailPage() {
       return;
     }
 
+    const normalizedManualEmail = normalizeApproverEmail(manualMrbApproverEmail);
+
+    if (mrbApprovers.some((approver: any) => normalizeApproverEmail(approver.approver_email) === normalizedManualEmail)) {
+      alert("This approver is already configured for this MRB approval.");
+      return;
+    }
+
+    const manualValidation = await validateApproverEmails([normalizedManualEmail]);
+
+    if (!manualValidation.valid) {
+      alert(`Manual approver cannot be added.\n\n${manualValidation.message}`);
+      return;
+    }
+
     const nextOrder =
       mrbApprovers.length > 0
         ? Math.max(...mrbApprovers.map((item: any) => Number(item.approval_order) || 0)) + 1
@@ -1217,7 +1333,7 @@ export default function NcmrDetailPage() {
 
     const { error } = await supabase.from("ncmr_mrb_approvers").insert({
       ncmr_id: id,
-      approver_email: manualMrbApproverEmail.trim().toLowerCase(),
+      approver_email: normalizedManualEmail,
       approver_role: manualMrbApproverRole.trim() || "MRB Approver",
       approval_status: "pending",
       approval_order: nextOrder,
@@ -1232,7 +1348,7 @@ export default function NcmrDetailPage() {
 
     await addAuditLog(
       "mrb_manual_approver_added",
-      `Manual MRB approver added: ${manualMrbApproverEmail.trim().toLowerCase()}`
+      `Manual MRB approver added: ${normalizedManualEmail}`
     );
 
     setManualMrbApproverEmail("");
@@ -1350,6 +1466,13 @@ export default function NcmrDetailPage() {
       return;
     }
 
+    const approverValidation = await validateConfiguredApproverRows(requiredApprovers);
+
+    if (!approverValidation.valid) {
+      alert(`Cannot generate MRB approval tasks.\n\n${approverValidation.message}`);
+      return;
+    }
+
     const requiredTasks = requiredApprovers.map((approver: any, index: number) => ({
       required: true,
       functionName: getMrbApproverFunctionName(approver, index),
@@ -1420,6 +1543,99 @@ This approval becomes part of the official electronic quality record. MRB will a
 
     alert("Parallel MRB approval tasks generated. MRB will auto-approve after all required approvers approve.");
     fetchRecord();
+  };
+
+  const fixMissingMrbApprovalTasks = async () => {
+    if (record?.is_locked || record?.mrb_approved_by) {
+      alert("Missing approval tasks cannot be created after MRB approval or record lock.");
+      return;
+    }
+
+    const requiredApprovers = mrbApprovers
+      .filter((approver: any) => approver.is_required !== false)
+      .filter((approver: any) => approver.approver_email);
+
+    if (requiredApprovers.length === 0) {
+      alert("No required MRB approvers are configured.");
+      return;
+    }
+
+    const approverValidation = await validateConfiguredApproverRows(requiredApprovers);
+
+    if (!approverValidation.valid) {
+      alert(`Cannot fix missing MRB approval tasks.\n\n${approverValidation.message}`);
+      return;
+    }
+
+    const existingTaskEmails = new Set(
+      approvalTasks
+        .filter((task: any) => task.task_type === "mrb_approval")
+        .map((task: any) => normalizeApproverEmail(task.assigned_to_email))
+        .filter(Boolean)
+    );
+
+    const missingApprovers = requiredApprovers.filter(
+      (approver: any) => !existingTaskEmails.has(normalizeApproverEmail(approver.approver_email))
+    );
+
+    if (missingApprovers.length === 0) {
+      alert("All configured required MRB approvers already have approval tasks.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Create ${missingApprovers.length} missing MRB approval task(s)? Existing approval tasks will not be modified.`
+    );
+
+    if (!confirmed) return;
+
+    const taskRows = missingApprovers.map((approver: any, index: number) => ({
+      entity_type: "ncmr",
+      entity_id: id,
+      task_type: "mrb_approval",
+      required_function: getMrbApproverFunctionName(approver, index),
+      assigned_to_email: normalizeApproverEmail(approver.approver_email),
+      assigned_by_email: userEmail,
+      status: "pending",
+      comments: `Please review this NCMR for MRB approval.
+
+NCMR: ${record?.ncmr_number || "NCMR"}
+Severity: ${severity || "N/A"}
+
+This approval task was created by the missing-task recovery action. Existing approval tasks were not modified.`,
+    }));
+
+    const { data: insertedTasks, error } = await supabase
+      .from("approval_tasks")
+      .insert(taskRows)
+      .select();
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    if (insertedTasks && insertedTasks.length > 0) {
+      const notifications = insertedTasks.map((task: any) => ({
+        recipient_email: task.assigned_to_email,
+        subject: `MRB approval task assigned: ${record?.ncmr_number || "NCMR"}`,
+        body: `You have been assigned an MRB approval task for ${record?.ncmr_number || "this NCMR"}. Please log in to QualiSphere and open My Approval Tasks.`,
+        entity_type: "ncmr",
+        entity_id: id,
+        task_id: task.id,
+        status: "pending",
+      }));
+
+      await supabase.from("notification_queue").insert(notifications);
+    }
+
+    await addAuditLog(
+      "mrb_missing_approval_tasks_created",
+      `Created ${taskRows.length} missing MRB approval task(s): ${taskRows.map((task) => task.assigned_to_email).join(", ")}`
+    );
+
+    alert(`Created ${taskRows.length} missing MRB approval task(s). Existing approval tasks were not modified.`);
+    fetchApprovalTasks();
   };
 
   const getRequiredMrbApprovalFunctions = () => {
@@ -4201,6 +4417,9 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
             </button>
             <button type="button" onClick={generateMrbApprovalTasks} disabled={isLocked || !!record.mrb_approved_by || approvalTasks.length > 0 || mrbApprovers.length === 0}>
               Generate Approval Tasks
+            </button>
+            <button type="button" onClick={fixMissingMrbApprovalTasks} disabled={isLocked || !!record.mrb_approved_by || approvalTasks.length === 0 || mrbApprovers.length === 0}>
+              Fix Missing Tasks
             </button>
           </div>
 
