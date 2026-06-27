@@ -1348,7 +1348,65 @@ This approval becomes part of the official electronic quality record. MRB will a
   };
 
   const createCapaFromNcmr = async () => {
-    await createGovernedCapaFromNcmr();
+    if (record?.is_locked) {
+      alert("This record is locked after electronic signature and cannot be edited.");
+      return;
+    }
+
+    if (record?.capa_id) {
+      alert("This NCMR already has a linked CAPA.");
+      return;
+    }
+
+    const { data: capaData, error: capaError } = await supabase
+      .from("capas")
+      .insert({
+        title: `CAPA for ${record.title}`,
+        status: "open",
+        source_type: "ncmr",
+        capa_source: "NCMR",
+        ncmr_id: id,
+        linked_ncmr_title: record.title,
+        problem_description:
+          problemDescription || record.issue_description || record.title,
+        investigation_summary: investigationSummary,
+        root_cause: rootCause,
+        root_cause_category: rootCauseCategory,
+        corrective_action_plan: correctiveAction,
+        action_plan: correctiveAction,
+      })
+      .select()
+      .single();
+
+    if (capaError) {
+      alert(capaError.message);
+      return;
+    }
+
+    const { error: ncmrError } = await supabase
+      .from("ncmrs")
+      .update({
+        capa_id: capaData.id,
+        capa_required: true,
+        capa_recommended: true,
+        capa_decision: "yes",
+        capa_decision_justification: null,
+        capa_justification: null,
+      })
+      .eq("id", id);
+
+    if (ncmrError) {
+      alert(ncmrError.message);
+      return;
+    }
+
+    await addAuditLog(
+      "capa_created_from_ncmr",
+      `CAPA created and linked: ${capaData.title}`
+    );
+
+    alert("CAPA created and linked to this NCMR.");
+    fetchRecord();
   };
 
   const isSupplierRelatedNcmr = () => {
@@ -1533,67 +1591,63 @@ This approval becomes part of the official electronic quality record. MRB will a
     if (isCritical || (isMajor && hasRecurrence) || hasCustomerImpact || hasSystemicSignal) {
       return {
         outcome: "required",
-        label: "CAPA Evaluation Required",
+        label: "CAPA Required",
         rationale:
-          "CAPA evaluation is required based on severity, recurrence, customer impact, systemic signal, or existing governance trigger. If CAPA is not opened, a risk-based justification is required.",
+          "CAPA is required based on severity, recurrence, customer impact, systemic signal, or an applicable governance rule. If CAPA is not opened, a risk-based justification is required.",
       };
     }
 
     if (isMajor || hasRecurrence) {
       return {
         outcome: "recommended",
-        label: "CAPA Evaluation Recommended",
+        label: "CAPA Recommended",
         rationale:
-          "CAPA evaluation is recommended based on recurrence or major severity. Quality judgment should determine whether a CAPA is needed.",
+          "CAPA is recommended based on recurrence and applicable governance rules. Quality judgment should determine whether a CAPA should be initiated.",
       };
     }
 
     return {
       outcome: "not_required",
-      label: "CAPA Not Automatically Required",
+      label: "CAPA Not Required",
       rationale:
-        "No automatic CAPA trigger identified from the available NCMR data. Document rationale if CAPA is not opened.",
+        "CAPA is not required based on the available NCMR data and applicable governance rules. If CAPA is opened, document the business or quality justification for the governance override.",
     };
+  };
+
+  const formatCapaEvaluationOutcome = (outcome: string | null | undefined) => {
+    switch (outcome) {
+      case "required":
+        return "CAPA Required";
+      case "recommended":
+        return "CAPA Recommended";
+      case "not_required":
+        return "CAPA Not Required";
+      case "capa_opened":
+        return "CAPA Opened";
+      case "not_opened_with_justification":
+        return "CAPA Not Opened - Justification Documented";
+      default:
+        return outcome || evaluateCapaGovernance().label;
+    }
   };
 
   const getCapaGovernanceSignal = () => {
     const recommendation = getCapaRecommendation();
-    const evaluation = evaluateCapaGovernance();
-    const hasLinkedCapa = !!linkedCapa || !!record?.linked_capa_id || !!record?.capa_id;
+    const signals: string[] = [];
 
-    if (hasLinkedCapa) {
-      return {
-        title: "CAPA Linked",
-        message: "A linked CAPA exists for this NCMR. CAPA governance is being managed through the linked CAPA record.",
-        border: "#86efac",
-        background: "#f0fdf4",
-      };
+    if (recommendation.reason) {
+      signals.push(recommendation.reason);
     }
 
-    if (recommendation.recommended) {
-      return {
-        title: "CAPA Governance Signal",
-        message: `${recommendation.reason} CAPA decision is managed in the CAPA Governance section before MRB Approval.`,
-        border: "#bfdbfe",
-        background: "#eff6ff",
-      };
+    if (record?.capa_evaluation_rationale) {
+      signals.push(record.capa_evaluation_rationale);
     }
 
-    if (evaluation.outcome === "required") {
-      return {
-        title: "CAPA Governance Signal",
-        message: evaluation.rationale,
-        border: "#fecaca",
-        background: "#fef2f2",
-      };
+    if (signals.length === 0) {
+      signals.push(evaluateCapaGovernance().rationale);
     }
 
-    return {
-      title: "No CAPA Governance Signal",
-      message: "No automatic CAPA trigger is currently identified from recurrence, severity, risk, or governance rules. Document the evaluation outcome before MRB approval.",
-      border: "#d1d5db",
-      background: "#f9fafb",
-    };
+    return signals.join(" ");
   };
 
   const saveCapaGovernanceEvaluation = async () => {
@@ -1638,49 +1692,70 @@ This approval becomes part of the official electronic quality record. MRB will a
       return;
     }
 
+    const evaluation = evaluateCapaGovernance();
+    let governanceOverrideJustification = "";
+
+    if (evaluation.outcome === "not_required") {
+      const enteredJustification = window.prompt(
+        "Governance Override\n\nThe governance engine determined that a CAPA is not required. Please provide the business or quality justification for opening a CAPA."
+      );
+
+      if (!enteredJustification || !enteredJustification.trim()) {
+        alert("Governance override justification is required when opening a CAPA that is not recommended by the governance engine.");
+        return;
+      }
+
+      governanceOverrideJustification = enteredJustification.trim();
+    }
+
     const confirmed = window.confirm(
-      "Create a linked CAPA from this NCMR? This will auto-populate the CAPA with the NCMR issue, risk, root cause, containment, and investigation information where available."
+      governanceOverrideJustification
+        ? "Create a linked CAPA from this NCMR with the documented governance override justification?"
+        : "Create a linked CAPA from this NCMR? This will auto-populate the CAPA with the NCMR issue, risk, root cause, containment, and investigation information where available."
     );
 
     if (!confirmed) return;
 
-    const evaluation = evaluateCapaGovernance();
     const capaTitle = `CAPA for ${record?.ncmr_number || record?.title || "NCMR"}`;
-
     const capaProblemDescription = [
       `CAPA initiated from NCMR: ${record?.ncmr_number || record?.title || id}.`,
-      problemDescription || record?.problem_description || record?.issue_description || "",
+      problemDescription || record?.issue_description || "",
+      rootCause ? `Root Cause: ${rootCause}` : "",
       containmentAction ? `Containment: ${containmentAction}` : "",
+      investigationSummary ? `Investigation: ${investigationSummary}` : "",
       riskAssessment ? `Risk Assessment: ${riskAssessment}` : "",
       severity ? `Severity: ${severity}` : "",
       productDisposition ? `Disposition: ${productDisposition}` : "",
-      evaluation?.label ? `CAPA Governance Evaluation: ${evaluation.label}` : "",
-      evaluation?.rationale ? `Governance Rationale: ${evaluation.rationale}` : "",
+      governanceOverrideJustification
+        ? `Governance Override Justification: ${governanceOverrideJustification}`
+        : "",
     ]
       .filter(Boolean)
-      .join("\n");
-
-    const capaPayload: any = {
-      title: capaTitle,
-      status: "open",
-      source_type: "ncmr",
-      capa_source: record?.recurring_issue ? "Recurring NCMR" : "NCMR risk-based CAPA escalation decision",
-      ncmr_id: id,
-      linked_ncmr_title: record?.ncmr_number || record?.title || "NCMR",
-      problem_description: capaProblemDescription,
-      investigation_summary: investigationSummary || null,
-      root_cause: rootCause || null,
-      root_cause_category: rootCauseCategory || null,
-      corrective_action_plan: correctiveAction || null,
-      action_plan: correctiveAction || null,
-      owner: summaryOwner || record?.owner || userEmail || null,
-      created_by: userEmail || "unknown",
-      capa_type: "internal_capa",
-    };
+      .join("
+");
 
     const { data: capaData, error: capaError } = await supabase
       .from("capas")
-      .insert(capaPayload)
+      .insert({
+        title: capaTitle,
+        status: "open",
+        source_type: "ncmr",
+        capa_source: governanceOverrideJustification
+          ? "NCMR governance override"
+          : "NCMR governance",
+        ncmr_id: id,
+        linked_ncmr_title: record?.title || record?.ncmr_number || null,
+        problem_description:
+          problemDescription || record?.issue_description || capaProblemDescription,
+        investigation_summary: investigationSummary || null,
+        root_cause: rootCause || null,
+        root_cause_category: rootCauseCategory || null,
+        corrective_action_plan: correctiveAction || null,
+        action_plan: correctiveAction || null,
+        owner: summaryOwner || record?.owner || null,
+        created_by: userEmail || "unknown",
+        capa_type: "internal_capa",
+      })
       .select()
       .single();
 
@@ -1689,18 +1764,20 @@ This approval becomes part of the official electronic quality record. MRB will a
       return;
     }
 
+    const evaluationRationale = governanceOverrideJustification
+      ? `${evaluation.rationale}
+
+Governance override justification for opening CAPA: ${governanceOverrideJustification}`
+      : evaluation.rationale;
+
     const { error: ncmrUpdateError } = await supabase
       .from("ncmrs")
       .update({
         linked_capa_id: capaData.id,
         capa_id: capaData.id,
         capa_required: true,
-        capa_recommended: true,
-        capa_decision: "yes",
-        capa_decision_justification: null,
-        capa_justification: null,
         capa_evaluation_outcome: "capa_opened",
-        capa_evaluation_rationale: evaluation.rationale,
+        capa_evaluation_rationale: evaluationRationale,
         capa_not_required_justification: null,
       })
       .eq("id", id);
@@ -1712,14 +1789,18 @@ This approval becomes part of the official electronic quality record. MRB will a
 
     await addAuditLog(
       "capa_created_from_ncmr",
-      `CAPA created and linked from NCMR. CAPA title: ${capaTitle}.`
+      governanceOverrideJustification
+        ? `CAPA created and linked from NCMR with governance override. CAPA title: ${capaTitle}. Override justification: ${governanceOverrideJustification}`
+        : `CAPA created and linked from NCMR. CAPA title: ${capaTitle}.`
     );
 
     await supabase.from("audit_logs").insert({
       entity_type: "capa",
       entity_id: capaData.id,
       action: "capa_created_from_ncmr",
-      details: `CAPA created from NCMR ${record?.ncmr_number || record?.title || id}.`,
+      details: governanceOverrideJustification
+        ? `CAPA created from NCMR ${record?.ncmr_number || record?.title || id} with governance override. Override justification: ${governanceOverrideJustification}`
+        : `CAPA created from NCMR ${record?.ncmr_number || record?.title || id}.`,
       user_email: userEmail || "unknown",
     });
 
@@ -3101,7 +3182,6 @@ This approval becomes part of the official electronic quality record. MRB will a
         ) : null}
 
         <p><strong>Severity:</strong> {record.severity || "not_assessed"}</p>
-        <p><strong>CAPA Signal:</strong> {getCapaGovernanceSignal().title}</p>
         <p><strong>CAPA Required:</strong> {record.capa_required ? "Yes" : "No"}</p>
         <p><strong>CAPA Recommended:</strong> {record.capa_recommended ? "Yes" : "No"}</p>
         <p><strong>CAPA Decision:</strong> {record.capa_decision || "N/A"}</p>
@@ -3480,7 +3560,7 @@ This approval becomes part of the official electronic quality record. MRB will a
       </SectionCard>
 
       <SectionCard
-        title="7. CAPA Governance / Evaluation"
+        title="7. CAPA Governance"
         subtitle={linkedCapa || record?.linked_capa_id || record?.capa_id ? "Complete: linked CAPA exists." : record?.capa_not_required_justification ? "Complete: CAPA not-required justification documented." : "Evaluate whether CAPA is required based on recurrence, severity, risk, or governance rules."}
         defaultOpen={false}
         rightAction={sectionStatusBadge(!!linkedCapa || !!record?.linked_capa_id || !!record?.capa_id || !!record?.capa_not_required_justification, "CAPA")}
@@ -3494,32 +3574,23 @@ This approval becomes part of the official electronic quality record. MRB will a
             marginBottom: "14px",
           }}
         >
-          <h3 style={{ marginTop: 0 }}>Governance Evaluation</h3>
+          <h3 style={{ marginTop: 0 }}>Governance Decision Support</h3>
           <p style={{ color: "#4b5563", fontSize: "14px" }}>
-            CAPA should be created through risk-based decision making, not automatic recurrence alone.
+            CAPA decisions are supported by the governance signal and documented quality judgment.
           </p>
 
           <div style={{ display: "grid", gap: "8px", maxWidth: "900px" }}>
             <div>
               <strong>Current Evaluation:</strong>{" "}
-              <StatusBadge status={record?.capa_evaluation_outcome || evaluateCapaGovernance().label} />
+              <StatusBadge status={formatCapaEvaluationOutcome(record?.capa_evaluation_outcome)} />
             </div>
             <div>
               <strong>Rationale:</strong>{" "}
               {record?.capa_evaluation_rationale || evaluateCapaGovernance().rationale}
             </div>
-            <div
-              style={{
-                border: `1px solid ${getCapaGovernanceSignal().border}`,
-                background: getCapaGovernanceSignal().background,
-                borderRadius: "8px",
-                padding: "12px",
-              }}
-            >
-              <strong>{getCapaGovernanceSignal().title}</strong>
-              <p style={{ marginTop: "8px", marginBottom: 0 }}>
-                {getCapaGovernanceSignal().message}
-              </p>
+            <div>
+              <strong>CAPA Governance Signal:</strong>{" "}
+              {getCapaGovernanceSignal() || "No CAPA governance signal identified."}
             </div>
           </div>
         </div>
@@ -3559,7 +3630,7 @@ This approval becomes part of the official electronic quality record. MRB will a
                 onChange={(e) => setCapaNotRequiredJustification(e.target.value)}
                 rows={4}
                 disabled={isLocked}
-                placeholder="Document rationale if CAPA is not required after evaluation."
+                placeholder="Document rationale if CAPA is recommended or required but not opened."
                 style={{ width: "100%", maxWidth: "900px", padding: "8px" }}
               />
             </div>
