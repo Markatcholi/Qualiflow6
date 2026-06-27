@@ -1276,8 +1276,8 @@ export default function NcmrDetailPage() {
   };
 
   const loadMrbApproversFromMatrix = async () => {
-    if (record?.is_locked || record?.mrb_approved_by || hasActiveMrbApprovalWorkflow()) {
-      alert("MRB approval configuration cannot be changed after approval tasks are generated or MRB is approved.");
+    if (isMrbApprovalConfigurationLocked()) {
+      alert("MRB approval configuration cannot be changed while an active MRB approval package exists. Use Reset MRB Approval Workflow first if configuration changes are needed.");
       return;
     }
 
@@ -1340,8 +1340,8 @@ export default function NcmrDetailPage() {
   };
 
   const addManualMrbApprover = async () => {
-    if (record?.is_locked || record?.mrb_approved_by || hasActiveMrbApprovalWorkflow()) {
-      alert("MRB approval configuration cannot be changed after approval tasks are generated or MRB is approved.");
+    if (isMrbApprovalConfigurationLocked()) {
+      alert("MRB approval configuration cannot be changed while an active MRB approval package exists. Use Reset MRB Approval Workflow first if configuration changes are needed.");
       return;
     }
 
@@ -1396,8 +1396,8 @@ export default function NcmrDetailPage() {
   };
 
   const removeMrbApprover = async (approverId: string) => {
-    if (record?.is_locked || record?.mrb_approved_by || hasActiveMrbApprovalWorkflow()) {
-      alert("MRB approval configuration cannot be changed after approval tasks are generated or MRB is approved.");
+    if (isMrbApprovalConfigurationLocked()) {
+      alert("MRB approval configuration cannot be changed while an active MRB approval package exists. Use Reset MRB Approval Workflow first if configuration changes are needed.");
       return;
     }
 
@@ -1414,13 +1414,13 @@ export default function NcmrDetailPage() {
       return;
     }
 
-    await addAuditLog("mrb_approver_removed", "MRB approver removed from configuration.");
+    await addAuditLog("mrb_approver_removed", "MRB approver removed from configuration after approval workflow reset or before approval task generation.");
     fetchMrbApprovers();
   };
 
   const saveMrbGovernance = async () => {
-    if (record?.is_locked || record?.mrb_approved_by || hasActiveMrbApprovalWorkflow()) {
-      alert("MRB governance cannot be changed after approval tasks are generated, MRB approval, or record lock.");
+    if (isMrbApprovalConfigurationLocked()) {
+      alert("MRB governance cannot be changed while an active MRB approval package exists. Use Reset MRB Approval Workflow first if configuration changes are needed.");
       return;
     }
 
@@ -1638,6 +1638,19 @@ This approval becomes part of the official electronic quality record. MRB will a
 
   const hasActiveMrbApprovalWorkflow = () => {
     return getActiveMrbApprovalTasks().length > 0;
+  };
+
+  const isMrbApprovalConfigurationLocked = () => {
+    if (record?.is_locked || record?.mrb_approved_by) return true;
+
+    // Configuration is locked only when there are active non-cancelled MRB approval tasks
+    // in the current approval package. Cancelled/obsolete/history tasks must not lock config.
+    return getActiveMrbApprovalTasks().some(
+      (task: any) =>
+        task.status === "pending" ||
+        task.status === "approved" ||
+        task.status === "rejected"
+    );
   };
 
   const fixMrbApprovalTaskIssues = async () => {
@@ -4593,7 +4606,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
               <select
                 value={selectedApprovalMatrixId}
                 onChange={(e) => setSelectedApprovalMatrixId(e.target.value)}
-                disabled={isLocked || !!record.mrb_approved_by || hasActiveMrbApprovalWorkflow()}
+                disabled={isMrbApprovalConfigurationLocked()}
                 style={{ padding: "8px", width: "100%", maxWidth: "600px" }}
               >
                 <option value="">Select NCMR approval matrix</option>
@@ -4606,7 +4619,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
               <button
                 type="button"
                 onClick={loadMrbApproversFromMatrix}
-                disabled={isLocked || !!record.mrb_approved_by || hasActiveMrbApprovalWorkflow() || !selectedApprovalMatrixId}
+                disabled={isMrbApprovalConfigurationLocked() || !selectedApprovalMatrixId}
                 style={{ marginTop: "8px" }}
               >
                 Load Approvers from Matrix
@@ -4636,7 +4649,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
                   <input
                     value={manualMrbApproverEmail}
                     onChange={(e) => setManualMrbApproverEmail(e.target.value)}
-                    disabled={isLocked || !!record.mrb_approved_by || hasActiveMrbApprovalWorkflow()}
+                    disabled={isMrbApprovalConfigurationLocked()}
                     placeholder="approver@company.com"
                     style={{ padding: "8px", width: "100%" }}
                   />
@@ -4647,7 +4660,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
                   <input
                     value={manualMrbApproverRole}
                     onChange={(e) => setManualMrbApproverRole(e.target.value)}
-                    disabled={isLocked || !!record.mrb_approved_by || hasActiveMrbApprovalWorkflow()}
+                    disabled={isMrbApprovalConfigurationLocked()}
                     placeholder="Quality / Operations / VP Quality"
                     style={{ padding: "8px", width: "100%" }}
                   />
@@ -4657,7 +4670,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
                     type="checkbox"
                     checked={manualMrbApproverRequired}
                     onChange={(e) => setManualMrbApproverRequired(e.target.checked)}
-                    disabled={isLocked || !!record.mrb_approved_by || hasActiveMrbApprovalWorkflow()}
+                    disabled={isMrbApprovalConfigurationLocked()}
                   />{" "}
                   Required approval
                 </label>
@@ -4665,7 +4678,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
               <button
                 type="button"
                 onClick={addManualMrbApprover}
-                disabled={isLocked || !!record.mrb_approved_by || hasActiveMrbApprovalWorkflow()}
+                disabled={isMrbApprovalConfigurationLocked()}
                 style={{ marginTop: "10px" }}
               >
                 + Add Approver
@@ -4700,7 +4713,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
                       <button
                         type="button"
                         onClick={() => removeMrbApprover(approver.id)}
-                        disabled={isLocked || !!record.mrb_approved_by || hasActiveMrbApprovalWorkflow()}
+                        disabled={isMrbApprovalConfigurationLocked()}
                       >
                         Remove
                       </button>
@@ -4712,13 +4725,13 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
           )}
 
           <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginTop: "12px" }}>
-            <button type="button" onClick={saveMrbGovernance} disabled={isLocked || !!record.mrb_approved_by || hasActiveMrbApprovalWorkflow()}>
+            <button type="button" onClick={saveMrbGovernance} disabled={isMrbApprovalConfigurationLocked()}>
               Save Configuration
             </button>
-            <button type="button" onClick={generateMrbApprovalTasks} disabled={isLocked || !!record.mrb_approved_by || hasActiveMrbApprovalWorkflow() || mrbApprovers.length === 0}>
+            <button type="button" onClick={generateMrbApprovalTasks} disabled={isMrbApprovalConfigurationLocked() || mrbApprovers.length === 0}>
               Generate Approval Tasks
             </button>
-            <button type="button" onClick={fixMrbApprovalTaskIssues} disabled={isLocked || !!record.mrb_approved_by || mrbApprovers.length === 0}>
+            <button type="button" onClick={fixMrbApprovalTaskIssues} disabled={isMrbApprovalConfigurationLocked() || mrbApprovers.length === 0}>
               Fix Approval Task Issues
             </button>
             <button type="button" onClick={resetMrbApprovalWorkflow} disabled={isLocked || !!record.mrb_approved_by || !isAuthorizedToResetMrbApprovalWorkflow()}>
