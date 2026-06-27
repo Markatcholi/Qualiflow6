@@ -1127,8 +1127,6 @@ export default function NcmrPage() {
               style={fieldStyle}
             />
           </div>
-            </div>
-          ) : null}
         </div>
 
         <div style={rowStyle}>
