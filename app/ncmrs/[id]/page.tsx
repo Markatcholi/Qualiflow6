@@ -1545,9 +1545,9 @@ This approval becomes part of the official electronic quality record. MRB will a
     fetchRecord();
   };
 
-  const fixMissingMrbApprovalTasks = async () => {
+  const fixMrbApprovalTaskIssues = async () => {
     if (record?.is_locked || record?.mrb_approved_by) {
-      alert("Missing approval tasks cannot be created after MRB approval or record lock.");
+      alert("Approval task issues cannot be fixed after MRB approval or record lock.");
       return;
     }
 
@@ -1560,113 +1560,6 @@ This approval becomes part of the official electronic quality record. MRB will a
       return;
     }
 
-    const existingTaskEmails = new Set(
-      approvalTasks
-        .filter((task: any) => task.task_type === "mrb_approval")
-        .map((task: any) => normalizeApproverEmail(task.assigned_to_email))
-        .filter(Boolean)
-    );
-
-    const uniqueMissingApproversByEmail = new Map<string, any>();
-
-    requiredApprovers.forEach((approver: any) => {
-      const email = normalizeApproverEmail(approver.approver_email);
-      if (!email) return;
-      if (existingTaskEmails.has(email)) return;
-
-      // For recovery, duplicate configured approver rows should not block task creation.
-      // One approval task per unique missing approver email is the controlled recovery behavior.
-      if (!uniqueMissingApproversByEmail.has(email)) {
-        uniqueMissingApproversByEmail.set(email, approver);
-      }
-    });
-
-    const missingApprovers = Array.from(uniqueMissingApproversByEmail.values());
-
-    if (missingApprovers.length === 0) {
-      alert("All configured required MRB approvers already have approval tasks.");
-      return;
-    }
-
-    const missingEmailValidation = await validateApproverEmails(
-      missingApprovers.map((approver: any) => approver.approver_email)
-    );
-
-    if (!missingEmailValidation.valid) {
-      alert(`Cannot fix missing MRB approval tasks.\n\n${missingEmailValidation.message}`);
-      return;
-    }
-
-    const duplicateConfiguredEmails = findDuplicateEmails(
-      requiredApprovers.map((approver: any) => approver.approver_email)
-    );
-
-    const duplicateWarning =
-      duplicateConfiguredEmails.length > 0
-        ? `\n\nNote: duplicate configured approver row(s) were detected and ignored for recovery:\n${duplicateConfiguredEmails.join("\n")}`
-        : "";
-
-    const confirmed = window.confirm(
-      `Create ${missingApprovers.length} missing MRB approval task(s)? Existing approval tasks will not be modified.${duplicateWarning}`
-    );
-
-    if (!confirmed) return;
-
-    const taskRows = missingApprovers.map((approver: any, index: number) => ({
-      entity_type: "ncmr",
-      entity_id: id,
-      task_type: "mrb_approval",
-      required_function: getMrbApproverFunctionName(approver, index),
-      assigned_to_email: normalizeApproverEmail(approver.approver_email),
-      assigned_by_email: userEmail,
-      status: "pending",
-      comments: `Please review this NCMR for MRB approval.
-
-NCMR: ${record?.ncmr_number || "NCMR"}
-Severity: ${severity || "N/A"}
-
-This approval task was created by the missing-task recovery action. Existing approval tasks were not modified.`,
-    }));
-
-    const { data: insertedTasks, error } = await supabase
-      .from("approval_tasks")
-      .insert(taskRows)
-      .select();
-
-    if (error) {
-      alert(error.message);
-      return;
-    }
-
-    if (insertedTasks && insertedTasks.length > 0) {
-      const notifications = insertedTasks.map((task: any) => ({
-        recipient_email: task.assigned_to_email,
-        subject: `MRB approval task assigned: ${record?.ncmr_number || "NCMR"}`,
-        body: `You have been assigned an MRB approval task for ${record?.ncmr_number || "this NCMR"}. Please log in to QualiSphere and open My Approval Tasks.`,
-        entity_type: "ncmr",
-        entity_id: id,
-        task_id: task.id,
-        status: "pending",
-      }));
-
-      await supabase.from("notification_queue").insert(notifications);
-    }
-
-    await addAuditLog(
-      "mrb_missing_approval_tasks_created",
-      `Created ${taskRows.length} missing MRB approval task(s): ${taskRows.map((task) => task.assigned_to_email).join(", ")}`
-    );
-
-    alert(`Created ${taskRows.length} missing MRB approval task(s). Existing approval tasks were not modified.${duplicateWarning}`);
-    fetchApprovalTasks();
-  };
-
-  const cleanDuplicateMrbApprovers = async () => {
-    if (record?.is_locked || record?.mrb_approved_by) {
-      alert("Duplicate approver cleanup cannot be performed after MRB approval or record lock.");
-      return;
-    }
-
     const rowsWithEmail = mrbApprovers
       .filter((approver: any) => approver.approver_email)
       .sort((a: any, b: any) => {
@@ -1676,63 +1569,182 @@ This approval task was created by the missing-task recovery action. Existing app
         return String(a.created_at || "").localeCompare(String(b.created_at || ""));
       });
 
-    const seen = new Set<string>();
-    const duplicateRows: any[] = [];
+    const seenConfiguredEmails = new Set<string>();
+    const duplicateConfiguredRows: any[] = [];
+    const activeConfiguredApprovers: any[] = [];
 
     rowsWithEmail.forEach((approver: any) => {
       const email = normalizeApproverEmail(approver.approver_email);
       if (!email) return;
 
-      if (seen.has(email)) {
-        duplicateRows.push(approver);
+      if (seenConfiguredEmails.has(email)) {
+        if (!approver.approval_status || approver.approval_status === "pending") {
+          duplicateConfiguredRows.push(approver);
+        }
         return;
       }
 
-      seen.add(email);
+      seenConfiguredEmails.add(email);
+      activeConfiguredApprovers.push(approver);
     });
 
-    if (duplicateRows.length === 0) {
-      alert("No duplicate configured MRB approvers were found.");
+    const activeRequiredApprovers = activeConfiguredApprovers.filter(
+      (approver: any) => approver.is_required !== false
+    );
+
+    const emailValidation = await validateApproverEmails(
+      activeRequiredApprovers.map((approver: any) => approver.approver_email)
+    );
+
+    if (!emailValidation.valid) {
+      alert(`Cannot fix MRB approval task issues.\n\n${emailValidation.message}`);
       return;
     }
 
-    const lockedDuplicateRows = duplicateRows.filter(
-      (approver: any) => approver.approval_status && approver.approval_status !== "pending"
+    const configuredTaskKeys = new Set(
+      activeRequiredApprovers.map((approver: any, index: number) =>
+        `${getMrbApproverFunctionName(approver, index)}||${normalizeApproverEmail(approver.approver_email)}`
+      )
     );
 
-    if (lockedDuplicateRows.length > 0) {
-      alert(
-        `Duplicate cleanup stopped because one or more duplicate approver configuration rows are no longer pending:\n\n${lockedDuplicateRows
-          .map((approver: any) => `${approver.approver_email} (${approver.approval_status})`)
-          .join("\n")}\n\nOnly pending duplicate configuration rows can be removed. Approval tasks and approval history are never deleted by this cleanup.`
-      );
+    const existingActiveTaskKeys = new Set(
+      approvalTasks
+        .filter((task: any) => task.task_type === "mrb_approval")
+        .filter((task: any) => task.status !== "cancelled" && task.status !== "obsolete")
+        .map((task: any) => `${task.required_function}||${normalizeApproverEmail(task.assigned_to_email)}`)
+    );
+
+    const missingApprovers = activeRequiredApprovers.filter((approver: any, index: number) => {
+      const key = `${getMrbApproverFunctionName(approver, index)}||${normalizeApproverEmail(approver.approver_email)}`;
+      return !existingActiveTaskKeys.has(key);
+    });
+
+    const obsoletePendingTasks = approvalTasks
+      .filter((task: any) => task.task_type === "mrb_approval")
+      .filter((task: any) => task.status === "pending")
+      .filter((task: any) => {
+        const key = `${task.required_function}||${normalizeApproverEmail(task.assigned_to_email)}`;
+        return !configuredTaskKeys.has(key);
+      });
+
+    if (
+      missingApprovers.length === 0 &&
+      duplicateConfiguredRows.length === 0 &&
+      obsoletePendingTasks.length === 0
+    ) {
+      alert("No MRB approval task issues were found.");
       return;
     }
 
-    const confirmed = window.confirm(
-      `Remove ${duplicateRows.length} duplicate pending MRB approver configuration row(s)?\n\nThis will keep the first configured row for each email. Approval tasks and approval history will not be deleted.`
-    );
+    const summaryLines = [
+      missingApprovers.length > 0
+        ? `${missingApprovers.length} missing approval task(s) will be created.`
+        : "",
+      duplicateConfiguredRows.length > 0
+        ? `${duplicateConfiguredRows.length} duplicate pending approver configuration row(s) will be removed.`
+        : "",
+      obsoletePendingTasks.length > 0
+        ? `${obsoletePendingTasks.length} obsolete pending approval task(s) will be cancelled.`
+        : "",
+      "",
+      "Approved/rejected approval history will not be deleted or modified.",
+    ].filter(Boolean);
+
+    const confirmed = window.confirm(`Fix MRB approval task issues?\n\n${summaryLines.join("\n")}`);
 
     if (!confirmed) return;
 
-    const duplicateIds = duplicateRows.map((approver: any) => approver.id).filter(Boolean);
+    if (duplicateConfiguredRows.length > 0) {
+      const duplicateIds = duplicateConfiguredRows
+        .map((approver: any) => approver.id)
+        .filter(Boolean);
 
-    const { error } = await supabase
-      .from("ncmr_mrb_approvers")
-      .delete()
-      .in("id", duplicateIds);
+      const { error: duplicateDeleteError } = await supabase
+        .from("ncmr_mrb_approvers")
+        .delete()
+        .in("id", duplicateIds);
 
-    if (error) {
-      alert(error.message);
-      return;
+      if (duplicateDeleteError) {
+        alert(duplicateDeleteError.message);
+        return;
+      }
+    }
+
+    if (obsoletePendingTasks.length > 0) {
+      const obsoleteTaskIds = obsoletePendingTasks
+        .map((task: any) => task.id)
+        .filter(Boolean);
+
+      const { error: obsoleteTaskError } = await supabase
+        .from("approval_tasks")
+        .update({
+          status: "cancelled",
+          comments:
+            "Cancelled by MRB approval task issue recovery. The approver is no longer part of the configured MRB approver list. Approval history was preserved.",
+        })
+        .in("id", obsoleteTaskIds);
+
+      if (obsoleteTaskError) {
+        alert(obsoleteTaskError.message);
+        return;
+      }
+    }
+
+    let insertedCount = 0;
+
+    if (missingApprovers.length > 0) {
+      const taskRows = missingApprovers.map((approver: any, index: number) => ({
+        entity_type: "ncmr",
+        entity_id: id,
+        task_type: "mrb_approval",
+        required_function: getMrbApproverFunctionName(approver, index),
+        assigned_to_email: normalizeApproverEmail(approver.approver_email),
+        assigned_by_email: userEmail,
+        status: "pending",
+        comments: `Please review this NCMR for MRB approval.
+
+NCMR: ${record?.ncmr_number || "NCMR"}
+Severity: ${severity || "N/A"}
+
+This approval task was created by the MRB approval task issue recovery action. Existing approval history was not modified.`,
+      }));
+
+      const { data: insertedTasks, error } = await supabase
+        .from("approval_tasks")
+        .insert(taskRows)
+        .select();
+
+      if (error) {
+        alert(error.message);
+        return;
+      }
+
+      insertedCount = insertedTasks?.length || 0;
+
+      if (insertedTasks && insertedTasks.length > 0) {
+        const notifications = insertedTasks.map((task: any) => ({
+          recipient_email: task.assigned_to_email,
+          subject: `MRB approval task assigned: ${record?.ncmr_number || "NCMR"}`,
+          body: `You have been assigned an MRB approval task for ${record?.ncmr_number || "this NCMR"}. Please log in to QualiSphere and open My Approval Tasks.`,
+          entity_type: "ncmr",
+          entity_id: id,
+          task_id: task.id,
+          status: "pending",
+        }));
+
+        await supabase.from("notification_queue").insert(notifications);
+      }
     }
 
     await addAuditLog(
-      "mrb_duplicate_approvers_cleaned",
-      `Removed ${duplicateIds.length} duplicate pending MRB approver configuration row(s). Approval tasks and approval history were not modified.`
+      "mrb_approval_task_issues_fixed",
+      `MRB approval task issue recovery completed. Missing tasks created: ${insertedCount}. Duplicate approver configuration rows removed: ${duplicateConfiguredRows.length}. Obsolete pending tasks cancelled: ${obsoletePendingTasks.length}. Approval history was preserved.`
     );
 
-    alert(`Removed ${duplicateIds.length} duplicate pending MRB approver configuration row(s). Approval tasks and approval history were not modified.`);
+    alert(
+      `MRB approval task issue recovery complete.\n\nMissing tasks created: ${insertedCount}\nDuplicate configuration rows removed: ${duplicateConfiguredRows.length}\nObsolete pending tasks cancelled: ${obsoletePendingTasks.length}\n\nApproval history was preserved.`
+    );
+
     fetchMrbApprovers();
     fetchApprovalTasks();
   };
@@ -4518,11 +4530,8 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
             <button type="button" onClick={generateMrbApprovalTasks} disabled={isLocked || !!record.mrb_approved_by || approvalTasks.length > 0 || mrbApprovers.length === 0}>
               Generate Approval Tasks
             </button>
-            <button type="button" onClick={fixMissingMrbApprovalTasks} disabled={isLocked || !!record.mrb_approved_by || approvalTasks.length === 0 || mrbApprovers.length === 0}>
-              Fix Missing Tasks
-            </button>
-            <button type="button" onClick={cleanDuplicateMrbApprovers} disabled={isLocked || !!record.mrb_approved_by || approvalTasks.length === 0 || mrbApprovers.length === 0}>
-              Clean Duplicate Approvers
+            <button type="button" onClick={fixMrbApprovalTaskIssues} disabled={isLocked || !!record.mrb_approved_by || approvalTasks.length === 0 || mrbApprovers.length === 0}>
+              Fix Approval Task Issues
             </button>
           </div>
 
