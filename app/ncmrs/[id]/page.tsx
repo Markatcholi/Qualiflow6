@@ -4571,7 +4571,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
             Configure MRB approvers using an approval matrix or manually add named approvers. Approvers complete their tasks from My Approval Tasks. MRB auto-approves after all required approval tasks are approved.
           </p>
 
-          {approvalTasks.length > 0 || record.mrb_approved_by ? (
+          {hasActiveMrbApprovalWorkflow() || record.mrb_approved_by ? (
             <div
               style={{
                 border: "1px solid #bfdbfe",
@@ -4593,7 +4593,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
               <select
                 value={selectedApprovalMatrixId}
                 onChange={(e) => setSelectedApprovalMatrixId(e.target.value)}
-                disabled={isLocked || !!record.mrb_approved_by || approvalTasks.length > 0}
+                disabled={isLocked || !!record.mrb_approved_by || hasActiveMrbApprovalWorkflow()}
                 style={{ padding: "8px", width: "100%", maxWidth: "600px" }}
               >
                 <option value="">Select NCMR approval matrix</option>
@@ -4606,7 +4606,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
               <button
                 type="button"
                 onClick={loadMrbApproversFromMatrix}
-                disabled={isLocked || !!record.mrb_approved_by || approvalTasks.length > 0 || !selectedApprovalMatrixId}
+                disabled={isLocked || !!record.mrb_approved_by || hasActiveMrbApprovalWorkflow() || !selectedApprovalMatrixId}
                 style={{ marginTop: "8px" }}
               >
                 Load Approvers from Matrix
@@ -4636,7 +4636,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
                   <input
                     value={manualMrbApproverEmail}
                     onChange={(e) => setManualMrbApproverEmail(e.target.value)}
-                    disabled={isLocked || !!record.mrb_approved_by || approvalTasks.length > 0}
+                    disabled={isLocked || !!record.mrb_approved_by || hasActiveMrbApprovalWorkflow()}
                     placeholder="approver@company.com"
                     style={{ padding: "8px", width: "100%" }}
                   />
@@ -4647,7 +4647,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
                   <input
                     value={manualMrbApproverRole}
                     onChange={(e) => setManualMrbApproverRole(e.target.value)}
-                    disabled={isLocked || !!record.mrb_approved_by || approvalTasks.length > 0}
+                    disabled={isLocked || !!record.mrb_approved_by || hasActiveMrbApprovalWorkflow()}
                     placeholder="Quality / Operations / VP Quality"
                     style={{ padding: "8px", width: "100%" }}
                   />
@@ -4657,7 +4657,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
                     type="checkbox"
                     checked={manualMrbApproverRequired}
                     onChange={(e) => setManualMrbApproverRequired(e.target.checked)}
-                    disabled={isLocked || !!record.mrb_approved_by || approvalTasks.length > 0}
+                    disabled={isLocked || !!record.mrb_approved_by || hasActiveMrbApprovalWorkflow()}
                   />{" "}
                   Required approval
                 </label>
@@ -4665,7 +4665,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
               <button
                 type="button"
                 onClick={addManualMrbApprover}
-                disabled={isLocked || !!record.mrb_approved_by || approvalTasks.length > 0}
+                disabled={isLocked || !!record.mrb_approved_by || hasActiveMrbApprovalWorkflow()}
                 style={{ marginTop: "10px" }}
               >
                 + Add Approver
@@ -4700,7 +4700,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
                       <button
                         type="button"
                         onClick={() => removeMrbApprover(approver.id)}
-                        disabled={isLocked || !!record.mrb_approved_by || approvalTasks.length > 0}
+                        disabled={isLocked || !!record.mrb_approved_by || hasActiveMrbApprovalWorkflow()}
                       >
                         Remove
                       </button>
@@ -4712,7 +4712,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
           )}
 
           <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginTop: "12px" }}>
-            <button type="button" onClick={saveMrbGovernance} disabled={isLocked || !!record.mrb_approved_by || approvalTasks.length > 0}>
+            <button type="button" onClick={saveMrbGovernance} disabled={isLocked || !!record.mrb_approved_by || hasActiveMrbApprovalWorkflow()}>
               Save Configuration
             </button>
             <button type="button" onClick={generateMrbApprovalTasks} disabled={isLocked || !!record.mrb_approved_by || hasActiveMrbApprovalWorkflow() || mrbApprovers.length === 0}>
@@ -4909,7 +4909,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
           )}
 
           <div style={{ fontSize: "13px", color: "#374151" }}>
-            Required approvals complete: {requiredMrbApprovalsComplete().length === 0 && approvalTasks.length > 0 ? "Yes" : "No"}
+            Required approvals complete: {requiredMrbApprovalsComplete().length === 0 && hasActiveMrbApprovalWorkflow() ? "Yes" : "No"}
           </div>
         </div>
 
