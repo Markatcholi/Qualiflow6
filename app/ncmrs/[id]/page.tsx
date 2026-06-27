@@ -1731,8 +1731,7 @@ This approval becomes part of the official electronic quality record. MRB will a
         : "",
     ]
       .filter(Boolean)
-      .join("
-");
+      .join("\n");
 
     const { data: capaData, error: capaError } = await supabase
       .from("capas")
