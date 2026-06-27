@@ -1418,8 +1418,10 @@ This approval becomes part of the official electronic quality record. MRB will a
       !!summaryProductPartNumber || !!record?.product_part_number;
 
     const supplierRecurrence =
+      record?.recurring_issue === true ||
       record?.supplier_capa_required === true ||
       record?.supplier_scar_required === true ||
+      String(record?.recurrence_reason || "").toLowerCase().includes("recurr") ||
       String(record?.supplier_capa_reason || "").toLowerCase().includes("recurr") ||
       String(record?.supplier_scar_reason || "").toLowerCase().includes("recurr") ||
       String(record?.scar_reason || "").toLowerCase().includes("recurr");
