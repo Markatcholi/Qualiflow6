@@ -1560,13 +1560,6 @@ This approval becomes part of the official electronic quality record. MRB will a
       return;
     }
 
-    const approverValidation = await validateConfiguredApproverRows(requiredApprovers);
-
-    if (!approverValidation.valid) {
-      alert(`Cannot fix missing MRB approval tasks.\n\n${approverValidation.message}`);
-      return;
-    }
-
     const existingTaskEmails = new Set(
       approvalTasks
         .filter((task: any) => task.task_type === "mrb_approval")
@@ -1574,17 +1567,47 @@ This approval becomes part of the official electronic quality record. MRB will a
         .filter(Boolean)
     );
 
-    const missingApprovers = requiredApprovers.filter(
-      (approver: any) => !existingTaskEmails.has(normalizeApproverEmail(approver.approver_email))
-    );
+    const uniqueMissingApproversByEmail = new Map<string, any>();
+
+    requiredApprovers.forEach((approver: any) => {
+      const email = normalizeApproverEmail(approver.approver_email);
+      if (!email) return;
+      if (existingTaskEmails.has(email)) return;
+
+      // For recovery, duplicate configured approver rows should not block task creation.
+      // One approval task per unique missing approver email is the controlled recovery behavior.
+      if (!uniqueMissingApproversByEmail.has(email)) {
+        uniqueMissingApproversByEmail.set(email, approver);
+      }
+    });
+
+    const missingApprovers = Array.from(uniqueMissingApproversByEmail.values());
 
     if (missingApprovers.length === 0) {
       alert("All configured required MRB approvers already have approval tasks.");
       return;
     }
 
+    const missingEmailValidation = await validateApproverEmails(
+      missingApprovers.map((approver: any) => approver.approver_email)
+    );
+
+    if (!missingEmailValidation.valid) {
+      alert(`Cannot fix missing MRB approval tasks.\n\n${missingEmailValidation.message}`);
+      return;
+    }
+
+    const duplicateConfiguredEmails = findDuplicateEmails(
+      requiredApprovers.map((approver: any) => approver.approver_email)
+    );
+
+    const duplicateWarning =
+      duplicateConfiguredEmails.length > 0
+        ? `\n\nNote: duplicate configured approver row(s) were detected and ignored for recovery:\n${duplicateConfiguredEmails.join("\n")}`
+        : "";
+
     const confirmed = window.confirm(
-      `Create ${missingApprovers.length} missing MRB approval task(s)? Existing approval tasks will not be modified.`
+      `Create ${missingApprovers.length} missing MRB approval task(s)? Existing approval tasks will not be modified.${duplicateWarning}`
     );
 
     if (!confirmed) return;
@@ -1634,7 +1657,7 @@ This approval task was created by the missing-task recovery action. Existing app
       `Created ${taskRows.length} missing MRB approval task(s): ${taskRows.map((task) => task.assigned_to_email).join(", ")}`
     );
 
-    alert(`Created ${taskRows.length} missing MRB approval task(s). Existing approval tasks were not modified.`);
+    alert(`Created ${taskRows.length} missing MRB approval task(s). Existing approval tasks were not modified.${duplicateWarning}`);
     fetchApprovalTasks();
   };
 
