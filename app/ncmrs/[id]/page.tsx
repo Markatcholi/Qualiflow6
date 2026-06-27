@@ -1474,7 +1474,7 @@ This approval becomes part of the official electronic quality record. MRB will a
     }
 
     const confirmed = window.confirm(
-      "Create a linked SCAR from this NCMR? This will auto-populate supplier, issue, part, lot, severity, containment, investigation, and disposition information where available."
+      "Create a linked SCAR from this NCMR? This will auto-populate supplier, issue, part, lot, severity, root cause, corrective action, and governance information where available."
     );
 
     if (!confirmed) return;
@@ -1494,21 +1494,38 @@ This approval becomes part of the official electronic quality record. MRB will a
     const scarPayload: any = {
       title: scarTitle,
       scar_title: scarTitle,
-      status: "open",
-      scar_status: "open",
-      source_type: "ncmr",
-      source_ncmr_id: id,
-      linked_supplier_id: record?.linked_supplier_id || record?.supplier_id || null,
-      supplier_id: record?.linked_supplier_id || record?.supplier_id || null,
+      description: scarProblemDescription,
+      issue_summary: record?.title || scarTitle,
       problem_description: scarProblemDescription,
       issue_description: scarProblemDescription,
-      containment_action: containmentAction || null,
-      investigation_summary: investigationSummary || null,
+
+      status: "open",
+      scar_status: "open",
+
+      source_type: "ncmr",
+      created_from_module: "ncmr",
+      created_by: userEmail || "unknown",
+      initiated_by: userEmail || "unknown",
+      initiated_at: new Date().toISOString(),
+
+      linked_ncmr_id: id,
+      source_ncmr_id: id,
+      linked_ncmr_number: record?.ncmr_number || null,
+
+      linked_supplier_id: record?.linked_supplier_id || record?.supplier_id || null,
+      supplier_id: record?.linked_supplier_id || record?.supplier_id || null,
+      supplier_name: record?.supplier_name || null,
+      supplier_lot: record?.supplier_lot || null,
+
       root_cause: rootCause || null,
+      corrective_action: correctiveAction || null,
       severity: severity || null,
+      risk_level: evaluateScarGovernance().outcome,
+
       part_number: summaryProductPartNumber || record?.product_part_number || null,
       lot_number: summaryLotNumber || record?.lot_number || null,
-      created_from_module: "ncmr",
+
+      recurrence_flag: record?.recurring_issue === true,
     };
 
     const { data: scarData, error: scarError } = await supabase
