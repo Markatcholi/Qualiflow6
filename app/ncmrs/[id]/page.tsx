@@ -1414,91 +1414,32 @@ This approval becomes part of the official electronic quality record. MRB will a
   };
 
   const evaluateScarGovernance = () => {
-    const severityValue = String(severity || record?.severity || "").toLowerCase();
-    const supplierRelated = isSupplierRelatedNcmr();
-    const supplierSignalText = [
-      record?.supplier_capa_reason,
-      record?.supplier_scar_reason,
-      record?.scar_reason,
-      record?.supplier_name,
-      record?.supplier_lot,
-      record?.defect_category,
-      record?.defect_subcategory,
-      problemDescription,
-      investigationSummary,
-      rootCause,
-      riskAssessment,
-    ]
-      .filter(Boolean)
-      .join(" ")
-      .toLowerCase();
+    const supplierPartRecorded =
+      !!summaryProductPartNumber || !!record?.product_part_number;
+
+    const supplierRecurrence =
+      record?.supplier_capa_required === true ||
+      record?.supplier_scar_required === true ||
+      String(record?.supplier_capa_reason || "").toLowerCase().includes("recurr") ||
+      String(record?.supplier_scar_reason || "").toLowerCase().includes("recurr") ||
+      String(record?.scar_reason || "").toLowerCase().includes("recurr");
 
     const triggers: string[] = [];
 
-    if (supplierRelated) {
-      triggers.push("Supplier identified.");
+    if (supplierPartRecorded) {
+      triggers.push("Supplier part recorded.");
     }
 
-    if (record?.supplier_lot) {
-      triggers.push("Supplier lot recorded.");
+    if (supplierRecurrence) {
+      triggers.push("Supplier recurrence identified.");
     }
 
-    if (summaryProductPartNumber || record?.product_part_number) {
-      triggers.push("Affected part recorded.");
-    }
-
-    if (
-      supplierSignalText.includes("material") ||
-      supplierSignalText.includes("contamination") ||
-      supplierSignalText.includes("supplier") ||
-      supplierSignalText.includes("incoming")
-    ) {
-      triggers.push("Supplier/material quality signal identified.");
-    }
-
-    if (
-      supplierSignalText.includes("recurr") ||
-      supplierSignalText.includes("trend") ||
-      record?.supplier_capa_required === true ||
-      record?.supplier_scar_required === true
-    ) {
-      triggers.push("Supplier recurrence or supplier governance signal identified.");
-    }
-
-    if (severityValue.includes("critical")) {
-      triggers.push("Critical severity detected.");
-    }
-
-    if (severityValue.includes("major")) {
-      triggers.push("Major severity detected.");
-    }
-
-    const hasSupplierTrend =
-      supplierSignalText.includes("recurr") ||
-      supplierSignalText.includes("trend") ||
-      record?.supplier_capa_required === true ||
-      record?.supplier_scar_required === true;
-
-    const hasSupplierQualitySignal = triggers.some((trigger) =>
-      trigger.toLowerCase().includes("supplier/material")
-    );
-
-    if (supplierRelated && (severityValue.includes("critical") || hasSupplierTrend)) {
-      return {
-        outcome: "required",
-        label: "SCAR Required",
-        rationale:
-          "SCAR is required based on supplier involvement and applicable supplier governance rules. If SCAR is not opened, a risk-based justification is required.",
-        triggers,
-      };
-    }
-
-    if (supplierRelated && (severityValue.includes("major") || hasSupplierQualitySignal || record?.supplier_lot)) {
+    if (supplierPartRecorded && supplierRecurrence) {
       return {
         outcome: "recommended",
         label: "SCAR Recommended",
         rationale:
-          "SCAR is recommended based on supplier involvement and applicable supplier governance rules. Quality judgment should determine whether supplier corrective action is required.",
+          "SCAR is recommended because supplier part information is recorded and supplier recurrence has been identified. Quality judgment should determine whether supplier corrective action is required.",
         triggers,
       };
     }
@@ -1507,8 +1448,8 @@ This approval becomes part of the official electronic quality record. MRB will a
       outcome: "not_required",
       label: "SCAR Not Required",
       rationale:
-        "SCAR is not automatically required based on the available NCMR supplier information. Document rationale if supplier corrective action is not opened when quality judgment determines additional supplier follow-up is needed.",
-      triggers: triggers.length > 0 ? triggers : ["No automatic supplier escalation trigger identified."],
+        "SCAR is not automatically required because the supplier governance criteria were not both met. Supplier part recorded and supplier recurrence are required for an automatic SCAR recommendation.",
+      triggers: triggers.length > 0 ? triggers : ["No supplier governance signal identified."],
     };
   };
 
