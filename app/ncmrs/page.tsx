@@ -92,9 +92,6 @@ export default function NcmrPage() {
   const [supplierId, setSupplierId] = useState("");
   const [supplierName, setSupplierName] = useState("");
   const [supplierLot, setSupplierLot] = useState("");
-  const [supplierScarRecommended, setSupplierScarRecommended] = useState(false);
-  const [supplierScarDecision, setSupplierScarDecision] = useState("");
-  const [supplierScarDecisionJustification, setSupplierScarDecisionJustification] = useState("");
   const [siteLocation, setSiteLocation] = useState("");
   const [immediateCorrection, setImmediateCorrection] = useState("");
   const [owner, setOwner] = useState("");
@@ -438,9 +435,6 @@ export default function NcmrPage() {
     setSupplierId("");
     setSupplierName("");
     setSupplierLot("");
-    setSupplierScarRecommended(false);
-    setSupplierScarDecision("");
-    setSupplierScarDecisionJustification("");
     setSiteLocation("");
     setImmediateCorrection("");
     setOwner("");
@@ -453,131 +447,6 @@ export default function NcmrPage() {
         quarantined_quantity: "",
       },
     ]);
-  };
-
-  const createScarFromInitiatedNcmr = async (ncmrRecord: any, createdByEmail: string) => {
-    if (supplierScarDecision !== "yes") {
-      return null;
-    }
-
-    if (!supplierId) {
-      alert("SCAR was selected, but no supplier was selected. NCMR was created, but SCAR was not created.");
-      return null;
-    }
-
-    const selectedSupplierForScar = null;
-
-    const scarTitle = `SCAR from ${ncmrRecord?.ncmr_number || ncmrRecord?.title || "NCMR"}`;
-    const firstAffectedItem: any = affectedItems?.[0] || {};
-
-    const scarProblemDescription = [
-      "SCAR initiated from NCMR initiation.",
-      title ? `NCMR Title: ${title}` : "",
-      issueDescription ? `Issue: ${issueDescription}` : "",
-      defectCategory ? `Defect Category: ${defectCategory}` : "",
-      defectSubcategory ? `Defect Subcategory: ${defectSubcategory}` : "",
-      firstAffectedItem.product_part_number ? `Part Number: ${firstAffectedItem.product_part_number}` : "",
-      firstAffectedItem.lot_number ? `Lot Number: ${firstAffectedItem.lot_number}` : "",
-      supplierLot ? `Supplier Lot: ${supplierLot}` : "",
-      supplierScarDecision ? `Initial SCAR Decision: ${supplierScarDecision}` : "",
-      supplierScarDecisionJustification ? `Initial SCAR Justification: ${supplierScarDecisionJustification}` : "",
-    ]
-      .filter(Boolean)
-      .join("\n");
-
-    const scarPayload: any = {
-      title: scarTitle,
-      scar_title: scarTitle,
-
-      status: "open",
-      scar_status: "open",
-
-      // NCMR linkage used by the SCAR detail page
-      linked_ncmr_id: ncmrRecord.id,
-      linked_ncmr_number:
-        ncmrRecord?.ncmr_number || ncmrRecord?.title || null,
-
-      // Source traceability
-      source_ncmr_id: ncmrRecord.id,
-      source_type: "ncmr",
-
-      // Supplier linkage used by the SCAR detail page
-      linked_supplier_id: supplierId,
-      supplier_id: supplierId,
-      supplier_name: supplierName || null,
-
-      // Supplier issue fields used by the SCAR detail page
-      description: issueDescription || scarProblemDescription || null,
-      issue_summary:
-        title ||
-        defectCategory ||
-        "Supplier related nonconformance",
-
-      // Keep legacy/alternate fields populated for future compatibility
-      issue_description: scarProblemDescription,
-      problem_description: scarProblemDescription,
-
-      // Traceability fields
-      part_number: firstAffectedItem.product_part_number || null,
-      lot_number: firstAffectedItem.lot_number || null,
-      supplier_lot: supplierLot || null,
-
-      // Risk/governance fields displayed by SCAR detail page
-      severity: null,
-      risk_level: null,
-
-      // Ownership/timestamps displayed by SCAR detail page
-      initiated_by: createdByEmail,
-      initiated_at: new Date().toISOString(),
-
-      // Created metadata
-      created_by: createdByEmail,
-      created_from_module: "ncmr",
-    };
-
-    const { data: scarData, error: scarError } = await supabase
-      .from("scars")
-      .insert(scarPayload)
-      .select()
-      .single();
-
-    if (scarError) {
-      alert(`NCMR was created, but SCAR creation failed: ${scarError.message}`);
-      return null;
-    }
-
-    const { error: ncmrUpdateError } = await supabase
-      .from("ncmrs")
-      .update({
-        linked_scar_id: scarData.id,
-        scar_required: true,
-        scar_justification: supplierScarDecisionJustification || null,
-      })
-      .eq("id", ncmrRecord.id);
-
-    if (ncmrUpdateError) {
-      alert(`SCAR was created, but NCMR link update failed: ${ncmrUpdateError.message}`);
-      return scarData;
-    }
-
-    await supabase.from("audit_logs").insert([
-      {
-        entity_type: "ncmr",
-        entity_id: ncmrRecord.id,
-        action: "scar_created_from_ncmr_initiation",
-        details: `SCAR created during NCMR initiation. SCAR title: ${scarTitle}.`,
-        user_email: createdByEmail,
-      },
-      {
-        entity_type: "scar",
-        entity_id: scarData.id,
-        action: "scar_created_from_ncmr_initiation",
-        details: `SCAR created from NCMR initiation: ${ncmrRecord?.ncmr_number || ncmrRecord?.title || ncmrRecord.id}.`,
-        user_email: createdByEmail,
-      },
-    ]);
-
-    return scarData;
   };
 
   const addNcmr = async () => {
@@ -642,12 +511,6 @@ export default function NcmrPage() {
         supplier_id: supplierIdForInsert,
         supplier_name: supplierNameForInsert,
         supplier_lot: supplierLotForInsert,
-        supplier_scar_recommended: supplierScar.required,
-        supplier_scar_decision: supplierScar.required ? supplierScarDecision || null : null,
-        supplier_scar_decision_justification:
-          supplierScar.required && supplierScarDecision === "no"
-            ? supplierScarDecisionJustification
-            : null,
         site_location: siteLocation,
         immediate_correction: immediateCorrection,
         owner,
@@ -725,15 +588,6 @@ export default function NcmrPage() {
 
     if (supplierScar.required) {
       await addAuditLog("ncmr", data.id, "supplier_scar_required", supplierScar.reason);
-
-      if (supplierScarDecision === "no") {
-        await addAuditLog(
-          "ncmr",
-          data.id,
-          "supplier_scar_not_initiated",
-          supplierScarDecisionJustification || "SCAR was not initiated based on risk-based decision."
-        );
-      }
     }
 
     if (recurrence.recurring) {
@@ -744,8 +598,6 @@ export default function NcmrPage() {
         `CAPA evaluation required due to recurrence. Risk-based decision required before CAPA creation. Reason: ${recurrence.reason}`
       );
     }
-
-    await createScarFromInitiatedNcmr(data, currentUserEmail);
 
     resetNcmrForm();
     fetchData();
@@ -1165,7 +1017,7 @@ export default function NcmrPage() {
 
             <SectionCard
               title="3. Defect / Supplier Information"
-              subtitle="Capture defect category, supplier linkage when applicable, site, immediate correction, and owner."
+              subtitle="Capture defect category, supplier linkage when applicable, site, immediate correction, and owner. SCAR decisions are handled later in Supplier / SCAR Governance."
               defaultOpen={false}
             >
 
@@ -1275,64 +1127,6 @@ export default function NcmrPage() {
               style={fieldStyle}
             />
           </div>
-
-          {isSupplierSource ? (
-            <div
-              style={{
-                border: "1px solid #f59e0b",
-                background: "#fffbeb",
-                padding: "12px",
-                borderRadius: "8px",
-                marginTop: "12px",
-                marginBottom: "12px",
-              }}
-            >
-              <strong>Supplier SCAR Risk-Based Decision</strong>
-              <p style={{ marginTop: "8px" }}>
-                If supplier escalation criteria are met when this NCMR is created, decide whether to initiate a SCAR.
-              </p>
-
-              <div style={{ marginBottom: "10px" }}>
-                <button
-                  type="button"
-                  onClick={() => setSupplierScarDecision("yes")}
-                  style={{
-                    marginRight: "8px",
-                    background: supplierScarDecision === "yes" ? "#16a34a" : undefined,
-                    color: supplierScarDecision === "yes" ? "white" : undefined,
-                  }}
-                >
-                  Yes - Initiate SCAR if recommended
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setSupplierScarDecision("no")}
-                  style={{
-                    background: supplierScarDecision === "no" ? "#dc2626" : undefined,
-                    color: supplierScarDecision === "no" ? "white" : undefined,
-                  }}
-                >
-                  No - Do Not Initiate SCAR
-                </button>
-              </div>
-
-              {supplierScarDecision === "no" ? (
-                <div>
-                  <label>Justification for not initiating SCAR</label>
-                  <br />
-                  <textarea
-                    value={supplierScarDecisionJustification}
-                    onChange={(e) => setSupplierScarDecisionJustification(e.target.value)}
-                    rows={4}
-                    style={{
-                      width: "100%",
-                      maxWidth: "800px",
-                      padding: "8px",
-                    }}
-                  />
-                </div>
-              ) : null}
             </div>
           ) : null}
         </div>
