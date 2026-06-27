@@ -1661,6 +1661,83 @@ This approval task was created by the missing-task recovery action. Existing app
     fetchApprovalTasks();
   };
 
+  const cleanDuplicateMrbApprovers = async () => {
+    if (record?.is_locked || record?.mrb_approved_by) {
+      alert("Duplicate approver cleanup cannot be performed after MRB approval or record lock.");
+      return;
+    }
+
+    const rowsWithEmail = mrbApprovers
+      .filter((approver: any) => approver.approver_email)
+      .sort((a: any, b: any) => {
+        const orderA = Number(a.approval_order || 9999);
+        const orderB = Number(b.approval_order || 9999);
+        if (orderA !== orderB) return orderA - orderB;
+        return String(a.created_at || "").localeCompare(String(b.created_at || ""));
+      });
+
+    const seen = new Set<string>();
+    const duplicateRows: any[] = [];
+
+    rowsWithEmail.forEach((approver: any) => {
+      const email = normalizeApproverEmail(approver.approver_email);
+      if (!email) return;
+
+      if (seen.has(email)) {
+        duplicateRows.push(approver);
+        return;
+      }
+
+      seen.add(email);
+    });
+
+    if (duplicateRows.length === 0) {
+      alert("No duplicate configured MRB approvers were found.");
+      return;
+    }
+
+    const lockedDuplicateRows = duplicateRows.filter(
+      (approver: any) => approver.approval_status && approver.approval_status !== "pending"
+    );
+
+    if (lockedDuplicateRows.length > 0) {
+      alert(
+        `Duplicate cleanup stopped because one or more duplicate approver configuration rows are no longer pending:\n\n${lockedDuplicateRows
+          .map((approver: any) => `${approver.approver_email} (${approver.approval_status})`)
+          .join("\n")}\n\nOnly pending duplicate configuration rows can be removed. Approval tasks and approval history are never deleted by this cleanup.`
+      );
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Remove ${duplicateRows.length} duplicate pending MRB approver configuration row(s)?\n\nThis will keep the first configured row for each email. Approval tasks and approval history will not be deleted.`
+    );
+
+    if (!confirmed) return;
+
+    const duplicateIds = duplicateRows.map((approver: any) => approver.id).filter(Boolean);
+
+    const { error } = await supabase
+      .from("ncmr_mrb_approvers")
+      .delete()
+      .in("id", duplicateIds);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    await addAuditLog(
+      "mrb_duplicate_approvers_cleaned",
+      `Removed ${duplicateIds.length} duplicate pending MRB approver configuration row(s). Approval tasks and approval history were not modified.`
+    );
+
+    alert(`Removed ${duplicateIds.length} duplicate pending MRB approver configuration row(s). Approval tasks and approval history were not modified.`);
+    fetchMrbApprovers();
+    fetchApprovalTasks();
+  };
+
+
   const getRequiredMrbApprovalFunctions = () => {
     return mrbApprovers
       .filter((approver: any) => approver.is_required !== false)
@@ -4443,6 +4520,9 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
             </button>
             <button type="button" onClick={fixMissingMrbApprovalTasks} disabled={isLocked || !!record.mrb_approved_by || approvalTasks.length === 0 || mrbApprovers.length === 0}>
               Fix Missing Tasks
+            </button>
+            <button type="button" onClick={cleanDuplicateMrbApprovers} disabled={isLocked || !!record.mrb_approved_by || approvalTasks.length === 0 || mrbApprovers.length === 0}>
+              Clean Duplicate Approvers
             </button>
           </div>
 
