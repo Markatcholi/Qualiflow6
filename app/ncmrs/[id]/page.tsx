@@ -1413,6 +1413,105 @@ This approval becomes part of the official electronic quality record. MRB will a
     return !!record?.linked_supplier_id || !!record?.supplier_id || !!record?.supplier_name;
   };
 
+  const evaluateScarGovernance = () => {
+    const severityValue = String(severity || record?.severity || "").toLowerCase();
+    const supplierRelated = isSupplierRelatedNcmr();
+    const supplierSignalText = [
+      record?.supplier_capa_reason,
+      record?.supplier_scar_reason,
+      record?.scar_reason,
+      record?.supplier_name,
+      record?.supplier_lot,
+      defectCategory,
+      defectSubcategory,
+      problemDescription,
+      investigationSummary,
+      rootCause,
+      riskAssessment,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+
+    const triggers: string[] = [];
+
+    if (supplierRelated) {
+      triggers.push("Supplier identified.");
+    }
+
+    if (record?.supplier_lot) {
+      triggers.push("Supplier lot recorded.");
+    }
+
+    if (summaryProductPartNumber || record?.product_part_number) {
+      triggers.push("Affected part recorded.");
+    }
+
+    if (
+      supplierSignalText.includes("material") ||
+      supplierSignalText.includes("contamination") ||
+      supplierSignalText.includes("supplier") ||
+      supplierSignalText.includes("incoming")
+    ) {
+      triggers.push("Supplier/material quality signal identified.");
+    }
+
+    if (
+      supplierSignalText.includes("recurr") ||
+      supplierSignalText.includes("trend") ||
+      record?.supplier_capa_required === true ||
+      record?.supplier_scar_required === true
+    ) {
+      triggers.push("Supplier recurrence or supplier governance signal identified.");
+    }
+
+    if (severityValue.includes("critical")) {
+      triggers.push("Critical severity detected.");
+    }
+
+    if (severityValue.includes("major")) {
+      triggers.push("Major severity detected.");
+    }
+
+    const hasSupplierTrend =
+      supplierSignalText.includes("recurr") ||
+      supplierSignalText.includes("trend") ||
+      record?.supplier_capa_required === true ||
+      record?.supplier_scar_required === true;
+
+    const hasSupplierQualitySignal = triggers.some((trigger) =>
+      trigger.toLowerCase().includes("supplier/material")
+    );
+
+    if (supplierRelated && (severityValue.includes("critical") || hasSupplierTrend)) {
+      return {
+        outcome: "required",
+        label: "SCAR Required",
+        rationale:
+          "SCAR is required based on supplier involvement and applicable supplier governance rules. If SCAR is not opened, a risk-based justification is required.",
+        triggers,
+      };
+    }
+
+    if (supplierRelated && (severityValue.includes("major") || hasSupplierQualitySignal || record?.supplier_lot)) {
+      return {
+        outcome: "recommended",
+        label: "SCAR Recommended",
+        rationale:
+          "SCAR is recommended based on supplier involvement and applicable supplier governance rules. Quality judgment should determine whether supplier corrective action is required.",
+        triggers,
+      };
+    }
+
+    return {
+      outcome: "not_required",
+      label: "SCAR Not Required",
+      rationale:
+        "SCAR is not automatically required based on the available NCMR supplier information. Document rationale if supplier corrective action is not opened when quality judgment determines additional supplier follow-up is needed.",
+      triggers: triggers.length > 0 ? triggers : ["No automatic supplier escalation trigger identified."],
+    };
+  };
+
   const createScarFromNcmr = async () => {
     if (record?.is_locked) {
       alert("This record is locked and cannot be edited.");
@@ -3653,41 +3752,71 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
       </SectionCard>
 
       <SectionCard
-        title="8. Supplier Escalation / SCAR"
-        subtitle={linkedScar ? "Complete: linked SCAR exists for supplier escalation." : scarJustification ? "Complete: no-SCAR justification documented." : "Evaluate whether supplier corrective action is needed."}
+        title="8. Supplier / SCAR Governance"
+        subtitle={linkedScar ? "Complete: linked SCAR exists for supplier governance." : scarJustification ? "Complete: no-SCAR justification documented." : "Evaluate whether supplier corrective action is required based on supplier involvement, recurrence, severity, and risk."}
         defaultOpen={false}
         rightAction={sectionStatusBadge(!!linkedScar || !!scarJustification, "SCAR")}
       >
-        <div
-          style={{
-            border: "1px solid #d1d5db",
-            borderRadius: "10px",
-            padding: "12px",
-            background: "#f9fafb",
-            marginBottom: "14px",
-          }}
-        >
-          <h3 style={{ marginTop: 0 }}>SCAR Evaluation</h3>
-          <p style={{ color: "#4b5563", fontSize: "14px" }}>
-            Use this section when the NCMR is supplier-related, recurring, major/critical, or requires supplier corrective action.
-          </p>
+        {(() => {
+          const scarEvaluation = evaluateScarGovernance();
 
-          <div style={{ display: "grid", gap: "8px", maxWidth: "800px" }}>
-            <div>
-              <strong>Supplier Related:</strong>{" "}
-              {isSupplierRelatedNcmr() ? "Yes" : "Not identified"}
+          return (
+            <div
+              style={{
+                border: "1px solid #d1d5db",
+                borderRadius: "10px",
+                padding: "12px",
+                background: "#f9fafb",
+                marginBottom: "14px",
+              }}
+            >
+              <h3 style={{ marginTop: 0 }}>Supplier Governance</h3>
+              <p style={{ color: "#4b5563", fontSize: "14px" }}>
+                SCAR should be created through supplier risk-based decision making, not automatic supplier linkage alone.
+              </p>
+
+              <div style={{ display: "grid", gap: "8px", maxWidth: "900px" }}>
+                <div>
+                  <strong>Current Evaluation:</strong>{" "}
+                  <span
+                    style={{
+                      display: "inline-block",
+                      border: "1px solid #d1d5db",
+                      borderRadius: "999px",
+                      padding: "3px 10px",
+                      fontSize: "12px",
+                      fontWeight: 700,
+                      background: "white",
+                    }}
+                  >
+                    {scarEvaluation.label}
+                  </span>
+                </div>
+
+                <div>
+                  <strong>Rationale:</strong> {scarEvaluation.rationale}
+                </div>
+
+                <div
+                  style={{
+                    border: "1px solid #bfdbfe",
+                    background: "#eff6ff",
+                    padding: "12px",
+                    borderRadius: "8px",
+                    marginTop: "4px",
+                  }}
+                >
+                  <strong>SCAR Governance Signal</strong>
+                  <ul style={{ marginBottom: 0 }}>
+                    {scarEvaluation.triggers.map((trigger: string, index: number) => (
+                      <li key={index}>{trigger}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
             </div>
-            <div>
-              <strong>Severity:</strong> {severity || "N/A"}
-            </div>
-            <div>
-              <strong>Part:</strong> {summaryProductPartNumber || record?.product_part_number || "N/A"}
-            </div>
-            <div>
-              <strong>Lot:</strong> {summaryLotNumber || record?.lot_number || "N/A"}
-            </div>
-          </div>
-        </div>
+          );
+        })()}
 
         {linkedScar ? (
           <div
@@ -3728,7 +3857,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
             </div>
 
             <div>
-              <label>Justification if SCAR is Not Opened</label>
+              <label>Risk-Based Justification if SCAR is Not Opened</label>
               <br />
               <textarea
                 value={scarJustification}
