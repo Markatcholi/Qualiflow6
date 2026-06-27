@@ -1220,6 +1220,44 @@ export default function NcmrDetailPage() {
     };
   };
 
+
+  const getInvalidApproverEmails = async (emails: string[]) => {
+    const normalizedEmails = Array.from(
+      new Set(emails.map((email) => normalizeApproverEmail(email)).filter(Boolean))
+    );
+
+    const invalidFormatEmails = normalizedEmails.filter(
+      (email) => !isValidEmailFormat(email)
+    );
+
+    const formatValidEmails = normalizedEmails.filter((email) =>
+      isValidEmailFormat(email)
+    );
+
+    let unknownUsers: string[] = [];
+
+    if (formatValidEmails.length > 0) {
+      const { data, error } = await supabase
+        .from("user_roles")
+        .select("user_email")
+        .in("user_email", formatValidEmails);
+
+      if (error) {
+        throw new Error(`Unable to validate approver emails against system users: ${error.message}`);
+      }
+
+      const validSystemUsers = new Set(
+        (data || []).map((item: any) => normalizeApproverEmail(item.user_email))
+      );
+
+      unknownUsers = formatValidEmails.filter(
+        (email) => !validSystemUsers.has(email)
+      );
+    }
+
+    return Array.from(new Set([...invalidFormatEmails, ...unknownUsers]));
+  };
+
   const validateConfiguredApproverRows = async (approvers: any[]) => {
     const emails = approvers
       .map((approver: any) => normalizeApproverEmail(approver.approver_email))
@@ -1551,15 +1589,6 @@ This approval becomes part of the official electronic quality record. MRB will a
       return;
     }
 
-    const requiredApprovers = mrbApprovers
-      .filter((approver: any) => approver.is_required !== false)
-      .filter((approver: any) => approver.approver_email);
-
-    if (requiredApprovers.length === 0) {
-      alert("No required MRB approvers are configured.");
-      return;
-    }
-
     const rowsWithEmail = mrbApprovers
       .filter((approver: any) => approver.approver_email)
       .sort((a: any, b: any) => {
@@ -1569,13 +1598,39 @@ This approval becomes part of the official electronic quality record. MRB will a
         return String(a.created_at || "").localeCompare(String(b.created_at || ""));
       });
 
+    if (rowsWithEmail.length === 0) {
+      alert("No MRB approvers are configured.");
+      return;
+    }
+
+    let invalidConfiguredEmails: string[] = [];
+
+    try {
+      invalidConfiguredEmails = await getInvalidApproverEmails(
+        rowsWithEmail.map((approver: any) => approver.approver_email)
+      );
+    } catch (error: any) {
+      alert(`Cannot fix MRB approval task issues.\n\n${error.message}`);
+      return;
+    }
+
+    const invalidConfiguredEmailSet = new Set(invalidConfiguredEmails);
+
     const seenConfiguredEmails = new Set<string>();
     const duplicateConfiguredRows: any[] = [];
+    const invalidConfiguredRows: any[] = [];
     const activeConfiguredApprovers: any[] = [];
 
     rowsWithEmail.forEach((approver: any) => {
       const email = normalizeApproverEmail(approver.approver_email);
       if (!email) return;
+
+      if (invalidConfiguredEmailSet.has(email)) {
+        if (!approver.approval_status || approver.approval_status === "pending") {
+          invalidConfiguredRows.push(approver);
+        }
+        return;
+      }
 
       if (seenConfiguredEmails.has(email)) {
         if (!approver.approval_status || approver.approval_status === "pending") {
@@ -1592,18 +1647,22 @@ This approval becomes part of the official electronic quality record. MRB will a
       (approver: any) => approver.is_required !== false
     );
 
-    const emailValidation = await validateApproverEmails(
-      activeRequiredApprovers.map((approver: any) => approver.approver_email)
-    );
-
-    if (!emailValidation.valid) {
-      alert(`Cannot fix MRB approval task issues.\n\n${emailValidation.message}`);
+    if (activeRequiredApprovers.length === 0) {
+      alert(
+        "No valid required MRB approvers remain after removing invalid or duplicate approver rows. Add at least one valid approver before continuing."
+      );
       return;
     }
 
     const configuredTaskKeys = new Set(
       activeRequiredApprovers.map((approver: any, index: number) =>
         `${getMrbApproverFunctionName(approver, index)}||${normalizeApproverEmail(approver.approver_email)}`
+      )
+    );
+
+    const validConfiguredEmails = new Set(
+      activeRequiredApprovers.map((approver: any) =>
+        normalizeApproverEmail(approver.approver_email)
       )
     );
 
@@ -1623,13 +1682,20 @@ This approval becomes part of the official electronic quality record. MRB will a
       .filter((task: any) => task.task_type === "mrb_approval")
       .filter((task: any) => task.status === "pending")
       .filter((task: any) => {
-        const key = `${task.required_function}||${normalizeApproverEmail(task.assigned_to_email)}`;
-        return !configuredTaskKeys.has(key);
+        const taskEmail = normalizeApproverEmail(task.assigned_to_email);
+        const taskKey = `${task.required_function}||${taskEmail}`;
+
+        return (
+          invalidConfiguredEmailSet.has(taskEmail) ||
+          !validConfiguredEmails.has(taskEmail) ||
+          !configuredTaskKeys.has(taskKey)
+        );
       });
 
     if (
       missingApprovers.length === 0 &&
       duplicateConfiguredRows.length === 0 &&
+      invalidConfiguredRows.length === 0 &&
       obsoletePendingTasks.length === 0
     ) {
       alert("No MRB approval task issues were found.");
@@ -1637,14 +1703,17 @@ This approval becomes part of the official electronic quality record. MRB will a
     }
 
     const summaryLines = [
-      missingApprovers.length > 0
-        ? `${missingApprovers.length} missing approval task(s) will be created.`
+      invalidConfiguredRows.length > 0
+        ? `${invalidConfiguredRows.length} invalid or unregistered pending approver configuration row(s) will be removed.`
         : "",
       duplicateConfiguredRows.length > 0
         ? `${duplicateConfiguredRows.length} duplicate pending approver configuration row(s) will be removed.`
         : "",
       obsoletePendingTasks.length > 0
-        ? `${obsoletePendingTasks.length} obsolete pending approval task(s) will be cancelled.`
+        ? `${obsoletePendingTasks.length} obsolete or invalid pending approval task(s) will be cancelled.`
+        : "",
+      missingApprovers.length > 0
+        ? `${missingApprovers.length} missing approval task(s) will be created.`
         : "",
       "",
       "Approved/rejected approval history will not be deleted or modified.",
@@ -1654,18 +1723,19 @@ This approval becomes part of the official electronic quality record. MRB will a
 
     if (!confirmed) return;
 
-    if (duplicateConfiguredRows.length > 0) {
-      const duplicateIds = duplicateConfiguredRows
-        .map((approver: any) => approver.id)
-        .filter(Boolean);
+    const approverRowsToRemove = [...invalidConfiguredRows, ...duplicateConfiguredRows];
+    const approverRowIdsToRemove = Array.from(
+      new Set(approverRowsToRemove.map((approver: any) => approver.id).filter(Boolean))
+    );
 
-      const { error: duplicateDeleteError } = await supabase
+    if (approverRowIdsToRemove.length > 0) {
+      const { error: approverCleanupError } = await supabase
         .from("ncmr_mrb_approvers")
         .delete()
-        .in("id", duplicateIds);
+        .in("id", approverRowIdsToRemove);
 
-      if (duplicateDeleteError) {
-        alert(duplicateDeleteError.message);
+      if (approverCleanupError) {
+        alert(approverCleanupError.message);
         return;
       }
     }
@@ -1680,7 +1750,7 @@ This approval becomes part of the official electronic quality record. MRB will a
         .update({
           status: "cancelled",
           comments:
-            "Cancelled by MRB approval task issue recovery. The approver is no longer part of the configured MRB approver list. Approval history was preserved.",
+            "Cancelled by MRB approval task issue recovery. The approver is invalid, unregistered, duplicated, or no longer part of the configured MRB approver list. Approval history was preserved.",
         })
         .in("id", obsoleteTaskIds);
 
@@ -1738,17 +1808,16 @@ This approval task was created by the MRB approval task issue recovery action. E
 
     await addAuditLog(
       "mrb_approval_task_issues_fixed",
-      `MRB approval task issue recovery completed. Missing tasks created: ${insertedCount}. Duplicate approver configuration rows removed: ${duplicateConfiguredRows.length}. Obsolete pending tasks cancelled: ${obsoletePendingTasks.length}. Approval history was preserved.`
+      `MRB approval task issue recovery completed. Missing tasks created: ${insertedCount}. Invalid/unregistered approver rows removed: ${invalidConfiguredRows.length}. Duplicate approver configuration rows removed: ${duplicateConfiguredRows.length}. Obsolete/invalid pending tasks cancelled: ${obsoletePendingTasks.length}. Approval history was preserved.`
     );
 
     alert(
-      `MRB approval task issue recovery complete.\n\nMissing tasks created: ${insertedCount}\nDuplicate configuration rows removed: ${duplicateConfiguredRows.length}\nObsolete pending tasks cancelled: ${obsoletePendingTasks.length}\n\nApproval history was preserved.`
+      `MRB approval task issue recovery complete.\n\nMissing tasks created: ${insertedCount}\nInvalid/unregistered configuration rows removed: ${invalidConfiguredRows.length}\nDuplicate configuration rows removed: ${duplicateConfiguredRows.length}\nObsolete/invalid pending tasks cancelled: ${obsoletePendingTasks.length}\n\nApproval history was preserved.`
     );
 
     fetchMrbApprovers();
     fetchApprovalTasks();
   };
-
 
   const getRequiredMrbApprovalFunctions = () => {
     return mrbApprovers
@@ -1768,14 +1837,25 @@ This approval task was created by the MRB approval task issue recovery action. E
     );
   };
 
+  const getActiveMrbApprovalTasks = () => {
+    return approvalTasks
+      .filter((approvalTask: any) => approvalTask.task_type === "mrb_approval")
+      .filter(
+        (approvalTask: any) =>
+          approvalTask.status !== "cancelled" &&
+          approvalTask.status !== "obsolete"
+      );
+  };
+
   const allRequiredMrbApprovalTasksApproved = () => {
     const requiredFunctions = getRequiredMrbApprovalFunctions();
+    const activeApprovalTasks = getActiveMrbApprovalTasks();
 
     if (requiredFunctions.length === 0) {
       return false;
     }
 
-    if (approvalTasks.length === 0) {
+    if (activeApprovalTasks.length === 0) {
       return false;
     }
 
@@ -1784,7 +1864,7 @@ This approval task was created by the MRB approval task issue recovery action. E
     }
 
     return requiredFunctions.every((item) =>
-      approvalTasks.some(
+      activeApprovalTasks.some(
         (approvalTask) =>
           approvalTask.required_function === item.functionName &&
           approvalTask.status === "approved"
@@ -1796,9 +1876,10 @@ This approval task was created by the MRB approval task issue recovery action. E
     const errors: string[] = [];
 
     const requiredFunctions = getRequiredMrbApprovalFunctions();
+    const activeApprovalTasks = getActiveMrbApprovalTasks();
 
     requiredFunctions.forEach((item) => {
-      const task = approvalTasks.find(
+      const task = activeApprovalTasks.find(
         (approvalTask) =>
           approvalTask.required_function === item.functionName &&
           approvalTask.status === "approved"
