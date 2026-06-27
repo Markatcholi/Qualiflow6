@@ -1584,14 +1584,28 @@ This approval becomes part of the official electronic quality record. MRB will a
   };
 
   const isAuthorizedToResetMrbApprovalWorkflow = () => {
-    const normalizedRole = String(userRole || "").trim().toLowerCase();
+    const normalizedRole = String(userRole || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[_-]+/g, " ")
+      .replace(/\s+/g, " ");
+
+    const compactRole = normalizedRole.replace(/\s+/g, "");
 
     return (
       normalizedRole === "administrator" ||
       normalizedRole === "admin" ||
+      normalizedRole === "quality manager" ||
+      normalizedRole === "manager quality" ||
       normalizedRole === "vp quality" ||
       normalizedRole === "vp of quality" ||
-      normalizedRole === "quality manager"
+      normalizedRole === "vice president quality" ||
+      normalizedRole === "vice president of quality" ||
+      compactRole === "vpquality" ||
+      compactRole === "vpofquality" ||
+      compactRole === "vicepresidentquality" ||
+      compactRole === "vicepresidentofquality" ||
+      compactRole === "qualitymanager"
     );
   };
 
