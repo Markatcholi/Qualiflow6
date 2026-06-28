@@ -657,6 +657,8 @@ export default function NcmrDetailPage() {
   const updateAffectedMaterial = async (
     itemId: string,
     productPartNumber: string,
+    partDescription: string,
+    partRevision: string,
     lotNumber: string,
     workorderNumber: string,
     quantityAffected: string,
@@ -684,6 +686,8 @@ export default function NcmrDetailPage() {
       .from("ncmr_affected_items")
       .update({
         product_part_number: productPartNumber || null,
+        part_description: partDescription || null,
+        part_revision: partRevision || null,
         lot_number: lotNumber || null,
         workorder_number: workorderNumber || null,
         quantity_affected: quantityAffected ? Number(quantityAffected) : null,
@@ -713,6 +717,8 @@ export default function NcmrDetailPage() {
     const { error } = await supabase.from("ncmr_affected_items").insert({
       ncmr_id: id,
       product_part_number: null,
+      part_description: null,
+      part_revision: null,
       lot_number: null,
       workorder_number: null,
       quantity_affected: null,
@@ -2202,7 +2208,9 @@ This approval task was created by the MRB approval task issue recovery action. E
 
   const evaluateScarGovernance = () => {
     const supplierPartRecorded =
-      !!summaryProductPartNumber || !!record?.product_part_number;
+      !!summaryProductPartNumber ||
+      !!record?.product_part_number ||
+      affectedItems.some((item: any) => !!item.product_part_number);
 
     const supplierRecurrence =
       record?.recurring_issue === true ||
@@ -2213,22 +2221,17 @@ This approval task was created by the MRB approval task issue recovery action. E
       String(record?.supplier_scar_reason || "").toLowerCase().includes("recurr") ||
       String(record?.scar_reason || "").toLowerCase().includes("recurr");
 
-    const triggers: string[] = [];
-
-    if (supplierPartRecorded) {
-      triggers.push("Supplier part recorded.");
-    }
-
-    if (supplierRecurrence) {
-      triggers.push("Supplier recurrence identified.");
-    }
+    const triggers = [
+      `${supplierPartRecorded ? "✓" : "✗"} Supplier Part Recorded`,
+      `${supplierRecurrence ? "✓" : "✗"} Supplier Recurrence Detected`,
+    ];
 
     if (supplierPartRecorded && supplierRecurrence) {
       return {
         outcome: "recommended",
         label: "SCAR Recommended",
         rationale:
-          "SCAR is recommended because supplier part information is recorded and supplier recurrence has been identified. Quality judgment should determine whether supplier corrective action is required.",
+          "SCAR is recommended because supplier part has been recorded and supplier recurrence has been detected.",
         triggers,
       };
     }
@@ -2237,8 +2240,8 @@ This approval task was created by the MRB approval task issue recovery action. E
       outcome: "not_required",
       label: "SCAR Not Required",
       rationale:
-        "SCAR is not automatically required because the supplier governance criteria were not both met. Supplier part recorded and supplier recurrence are required for an automatic SCAR recommendation.",
-      triggers: triggers.length > 0 ? triggers : ["No supplier governance signal identified."],
+        "SCAR is not automatically required because both supplier governance criteria have not been met. Supplier Part Recorded and Supplier Recurrence Detected are required for an automatic SCAR recommendation.",
+      triggers,
     };
   };
 
@@ -4508,7 +4511,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
 
       <SectionCard
         title="8. Supplier / SCAR Governance"
-        subtitle={linkedScar ? "Complete: linked SCAR exists for supplier governance." : scarJustification ? "Complete: no-SCAR justification documented." : "Evaluate whether supplier corrective action is required based on supplier involvement, recurrence, severity, and risk."}
+        subtitle={linkedScar ? "Complete: linked SCAR exists for supplier governance." : scarJustification ? "Complete: no-SCAR justification documented." : "Evaluate SCAR using supplier part recorded and supplier recurrence detected."}
         defaultOpen={false}
         rightAction={sectionStatusBadge(!!linkedScar || !!scarJustification, "SCAR")}
       >
@@ -5551,6 +5554,8 @@ function AffectedMaterialEditCard({
   onSave: (
     itemId: string,
     productPartNumber: string,
+    partDescription: string,
+    partRevision: string,
     lotNumber: string,
     workorderNumber: string,
     quantityAffected: string,
@@ -5561,6 +5566,8 @@ function AffectedMaterialEditCard({
   const [productPartNumber, setProductPartNumber] = useState(
     item.product_part_number || ""
   );
+  const [partDescription, setPartDescription] = useState(item.part_description || "");
+  const [partRevision, setPartRevision] = useState(item.part_revision || "");
   const [lotNumber, setLotNumber] = useState(item.lot_number || "");
   const [workorderNumber, setWorkorderNumber] = useState(
     item.workorder_number || ""
@@ -5578,6 +5585,8 @@ function AffectedMaterialEditCard({
 
   useEffect(() => {
     setProductPartNumber(item.product_part_number || "");
+    setPartDescription(item.part_description || "");
+    setPartRevision(item.part_revision || "");
     setLotNumber(item.lot_number || "");
     setWorkorderNumber(item.workorder_number || "");
     setQuantityAffected(
@@ -5592,6 +5601,8 @@ function AffectedMaterialEditCard({
     );
   }, [
     item.product_part_number,
+    item.part_description,
+    item.part_revision,
     item.lot_number,
     item.workorder_number,
     item.quantity_affected,
@@ -5607,6 +5618,12 @@ function AffectedMaterialEditCard({
         background: "#f9fafb",
       }}
     >
+      <div style={{ marginBottom: "10px" }}>
+        <strong>
+          {[productPartNumber, partDescription, partRevision].filter(Boolean).join(" • ") || "Affected Material"}
+        </strong>
+      </div>
+
       <div style={{ display: "grid", gap: "12px", maxWidth: "700px" }}>
         <div>
           <label>Part Number</label>
@@ -5614,6 +5631,28 @@ function AffectedMaterialEditCard({
           <input
             value={productPartNumber}
             onChange={(e) => setProductPartNumber(e.target.value)}
+            disabled={!canEdit}
+            style={{ padding: "8px", width: "100%" }}
+          />
+        </div>
+
+        <div>
+          <label>Part Description</label>
+          <br />
+          <input
+            value={partDescription}
+            onChange={(e) => setPartDescription(e.target.value)}
+            disabled={!canEdit}
+            style={{ padding: "8px", width: "100%" }}
+          />
+        </div>
+
+        <div>
+          <label>Part Revision</label>
+          <br />
+          <input
+            value={partRevision}
+            onChange={(e) => setPartRevision(e.target.value)}
             disabled={!canEdit}
             style={{ padding: "8px", width: "100%" }}
           />
@@ -5674,6 +5713,8 @@ function AffectedMaterialEditCard({
               onSave(
                 item.id,
                 productPartNumber,
+                partDescription,
+                partRevision,
                 lotNumber,
                 workorderNumber,
                 quantityAffected,
