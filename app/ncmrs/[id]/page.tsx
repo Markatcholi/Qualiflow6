@@ -1395,26 +1395,52 @@ export default function NcmrDetailPage() {
     fetchMrbApprovers();
   };
 
-  const removeMrbApprover = async (approverId: string) => {
+  const removeMrbApprover = async (approver: any) => {
     if (isMrbApprovalConfigurationLocked()) {
       alert("MRB approval configuration cannot be changed while an active MRB approval package exists. Use Reset MRB Approval Workflow first if configuration changes are needed.");
       return;
     }
 
-    const confirmed = window.confirm("Remove this MRB approver from the configuration?");
+    const approverEmail = normalizeApproverEmail(approver?.approver_email);
+    const approverRole = approver?.approver_role || "MRB Approver";
+
+    const confirmed = window.confirm(
+      `Remove this MRB approver from the configuration?\n\n${approverEmail || "Selected approver"}`
+    );
     if (!confirmed) return;
 
-    const { error } = await supabase
+    let deleteQuery = supabase
       .from("ncmr_mrb_approvers")
       .delete()
-      .eq("id", approverId);
+      .eq("ncmr_id", id);
+
+    if (approver?.id) {
+      deleteQuery = deleteQuery.eq("id", approver.id);
+    } else {
+      deleteQuery = deleteQuery
+        .eq("approver_email", approverEmail)
+        .eq("approval_order", approver?.approval_order || 1);
+    }
+
+    const { data, error } = await deleteQuery.select();
 
     if (error) {
       alert(error.message);
       return;
     }
 
-    await addAuditLog("mrb_approver_removed", "MRB approver removed from configuration after approval workflow reset or before approval task generation.");
+    if (!data || data.length === 0) {
+      alert("No MRB approver row was removed. The configuration row may already have been removed or could not be matched.");
+      fetchMrbApprovers();
+      return;
+    }
+
+    await addAuditLog(
+      "mrb_approver_removed",
+      `MRB approver removed from configuration after approval workflow reset or before approval task generation. Approver: ${approverEmail || "unknown"}; Role: ${approverRole}.`
+    );
+
+    alert("MRB approver removed from configuration.");
     fetchMrbApprovers();
   };
 
@@ -4712,7 +4738,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
                     <td style={{ borderBottom: "1px solid #e5e7eb", padding: "8px" }}>
                       <button
                         type="button"
-                        onClick={() => removeMrbApprover(approver.id)}
+                        onClick={() => removeMrbApprover(approver)}
                         disabled={isMrbApprovalConfigurationLocked()}
                       >
                         Remove
