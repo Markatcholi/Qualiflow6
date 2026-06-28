@@ -473,6 +473,8 @@ export default function NcmrPage() {
     setAffectedItems([
       {
         product_part_number: "",
+        part_description: "",
+        part_revision: "",
         lot_number: "",
         workorder_number: "",
         quantity_affected: "",
