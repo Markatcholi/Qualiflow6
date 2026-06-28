@@ -460,6 +460,18 @@ export default function NcmrDetailPage() {
     fetchAuditTimeline();
   };
 
+  const isMrbApproved = () => {
+    return !!record?.mrb_approved_by;
+  };
+
+  const isPostMrbSectionLocked = () => {
+    return !!record?.is_locked || !isMrbApproved();
+  };
+
+  const alertMrbApprovalRequired = () => {
+    alert("MRB approval is required before implementation, evidence, rework execution, or closure activities can begin.");
+  };
+
   const toQuantityNumber = (value: any) => {
     if (value === null || value === undefined || value === "") return 0;
     const numericValue = Number(value);
@@ -2380,63 +2392,60 @@ This approval task was created by the MRB approval task issue recovery action. E
 
   const evaluateCapaGovernance = () => {
     const severityValue = String(severity || record?.severity || "").toLowerCase();
-    const riskText = [
-      riskAssessment,
-      record?.risk_assessment,
-      problemDescription,
-      investigationSummary,
-      rootCause,
-    ]
-      .filter(Boolean)
-      .join(" ")
-      .toLowerCase();
-
-    const recurrenceText = [
-      record?.recurrence_reason,
-      record?.recurrence_analysis,
-      record?.recurrence_summary,
-      record?.capa_trigger_reason,
-      capaJustification,
-    ]
-      .filter(Boolean)
-      .join(" ")
-      .toLowerCase();
 
     const isCritical = severityValue.includes("critical");
     const isMajor = severityValue.includes("major");
+    const isMinor = severityValue.includes("minor");
+
     const hasRecurrence =
-      recurrenceText.includes("recurr") ||
-      recurrenceText.includes("third") ||
-      recurrenceText.includes("3") ||
-      record?.capa_required === true;
+      record?.recurring_issue === true ||
+      String(record?.recurrence_reason || "").toLowerCase().includes("recurr");
 
-    const hasCustomerImpact =
-      riskText.includes("customer") ||
-      riskText.includes("field") ||
-      riskText.includes("complaint") ||
-      riskText.includes("patient");
+    const signals: string[] = [];
 
-    const hasSystemicSignal =
-      riskText.includes("systemic") ||
-      riskText.includes("trend") ||
-      riskText.includes("repeat") ||
-      recurrenceText.includes("trend");
+    if (isCritical) {
+      signals.push("Critical severity identified.");
+    } else if (isMajor) {
+      signals.push("Major severity identified.");
+    } else if (isMinor) {
+      signals.push("Minor severity identified.");
+    } else {
+      signals.push("Severity not assessed.");
+    }
 
-    if (isCritical || (isMajor && hasRecurrence) || hasCustomerImpact || hasSystemicSignal) {
+    if (hasRecurrence) {
+      signals.push("Recurring NCMR detected.");
+    } else {
+      signals.push("No recurrence detected.");
+    }
+
+    if (isCritical) {
       return {
         outcome: "required",
         label: "CAPA Required",
         rationale:
-          "CAPA is required based on severity, recurrence, customer impact, systemic signal, or an applicable governance rule. If CAPA is not opened, a risk-based justification is required.",
+          "CAPA is required because critical severity was identified. If CAPA is not initiated, a documented risk-based justification is required.",
+        signals,
       };
     }
 
-    if (isMajor || hasRecurrence) {
+    if (isMajor) {
       return {
         outcome: "recommended",
         label: "CAPA Recommended",
         rationale:
-          "CAPA is recommended based on recurrence and applicable governance rules. Quality judgment should determine whether a CAPA should be initiated.",
+          "CAPA is recommended because major severity was identified. If CAPA is not initiated, a documented risk-based justification is required.",
+        signals,
+      };
+    }
+
+    if (hasRecurrence) {
+      return {
+        outcome: "recommended",
+        label: "CAPA Recommended",
+        rationale:
+          "CAPA is recommended because NCMR recurrence was detected. If CAPA is not initiated, a documented risk-based justification is required.",
+        signals,
       };
     }
 
@@ -2444,7 +2453,8 @@ This approval task was created by the MRB approval task issue recovery action. E
       outcome: "not_required",
       label: "CAPA Not Required",
       rationale:
-        "CAPA is not required based on the available NCMR data and applicable governance rules. If CAPA is opened, document the business or quality justification for the governance override.",
+        "CAPA is not required because the NCMR is not recurring and severity is not major or critical. If CAPA is opened, document the business or quality justification for the governance override.",
+      signals,
     };
   };
 
@@ -2466,22 +2476,7 @@ This approval task was created by the MRB approval task issue recovery action. E
   };
 
   const getCapaGovernanceSignal = () => {
-    const recommendation = getCapaRecommendation();
-    const signals: string[] = [];
-
-    if (recommendation.reason) {
-      signals.push(recommendation.reason);
-    }
-
-    if (record?.capa_evaluation_rationale) {
-      signals.push(record.capa_evaluation_rationale);
-    }
-
-    if (signals.length === 0) {
-      signals.push(evaluateCapaGovernance().rationale);
-    }
-
-    return signals.join(" ");
+    return evaluateCapaGovernance().signals.join(" ");
   };
 
   const saveCapaGovernanceEvaluation = async () => {
@@ -2508,7 +2503,7 @@ This approval task was created by the MRB approval task issue recovery action. E
 
     await addAuditLog(
       "capa_governance_evaluated",
-      `${evaluation.label}: ${evaluation.rationale}`
+      `Governance Decision: ${evaluation.label}. Signal: ${evaluation.signals.join(" ")} Rationale: ${evaluation.rationale}`
     );
 
     alert("CAPA governance evaluation saved.");
@@ -2681,6 +2676,11 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
   const uploadEvidence = async () => {
     if (record?.is_locked) {
       alert("This record is locked after electronic signature and cannot be edited.");
+      return;
+    }
+
+    if (!isMrbApproved()) {
+      alertMrbApprovalRequired();
       return;
     }
 
@@ -3124,6 +3124,11 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
       return;
     }
 
+    if (!isMrbApproved()) {
+      alertMrbApprovalRequired();
+      return;
+    }
+
     if (!correctionTaskAssignee) {
       alert("Correction task assignee email is required.");
       return;
@@ -3183,6 +3188,11 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
   const generateReworkTask = async () => {
     if (record?.is_locked) {
       alert("This record is locked after electronic signature and cannot be edited.");
+      return;
+    }
+
+    if (!isMrbApproved()) {
+      alertMrbApprovalRequired();
       return;
     }
 
@@ -3299,6 +3309,11 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
       return;
     }
 
+    if (!isMrbApproved()) {
+      alertMrbApprovalRequired();
+      return;
+    }
+
     if (!correctionImplementation) {
       alert("Correction implementation must be documented.");
       return;
@@ -3328,6 +3343,11 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
   const closeNcmr = async () => {
     if (record?.is_locked) {
       alert("This record is locked after electronic signature and cannot be edited.");
+      return;
+    }
+
+    if (!isMrbApproved()) {
+      alertMrbApprovalRequired();
       return;
     }
 
@@ -4414,7 +4434,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
 
           <div style={{ display: "grid", gap: "8px", maxWidth: "900px" }}>
             <div>
-              <strong>Current Evaluation:</strong>{" "}
+              <strong>Governance Decision:</strong>{" "}
               <StatusBadge status={formatCapaEvaluationOutcome(record?.capa_evaluation_outcome)} />
             </div>
             <div>
@@ -4512,7 +4532,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
 
               <div style={{ display: "grid", gap: "8px", maxWidth: "900px" }}>
                 <div>
-                  <strong>Current Evaluation:</strong>{" "}
+                  <strong>Governance Decision:</strong>{" "}
                   <span
                     style={{
                       display: "inline-block",
@@ -4995,6 +5015,23 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
         rightAction={sectionStatusBadge(isImplementationComplete, "Implementation")}
       >
 
+        {!isMrbApproved() ? (
+          <div
+            style={{
+              border: "1px solid #facc15",
+              background: "#fefce8",
+              color: "#854d0e",
+              padding: "12px",
+              borderRadius: "8px",
+              marginBottom: "12px",
+            }}
+          >
+            <strong>MRB approval required</strong>
+            <br />
+            Implementation, evidence, rework execution, and closure activities unlock after MRB approval.
+          </div>
+        ) : null}
+
         {isCorrectionNotRequired() ? (
           <div
             style={{
@@ -5037,7 +5074,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
               <input
                 value={correctionTaskAssignee}
                 onChange={(e) => setCorrectionTaskAssignee(e.target.value)}
-                disabled={isLocked}
+                disabled={isPostMrbSectionLocked()}
                 style={{ padding: "8px", width: "100%" }}
               />
             </div>
@@ -5048,7 +5085,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
                 type="date"
                 value={correctionTaskDueDate}
                 onChange={(e) => setCorrectionTaskDueDate(e.target.value)}
-                disabled={isLocked}
+                disabled={isPostMrbSectionLocked()}
                 style={{ padding: "8px", width: "100%" }}
               />
             </div>
@@ -5059,13 +5096,13 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
             <textarea
               value={correctionTaskInstructions}
               onChange={(e) => setCorrectionTaskInstructions(e.target.value)}
-              disabled={isLocked}
+              disabled={isPostMrbSectionLocked()}
               rows={3}
               style={{ width: "100%", maxWidth: "700px" }}
             />
           </div>
 
-          <button type="button" onClick={generateCorrectionTask} disabled={isLocked} style={{ marginTop: "10px" }}>
+          <button type="button" onClick={generateCorrectionTask} disabled={isPostMrbSectionLocked()} style={{ marginTop: "10px" }}>
             Generate Correction Task
           </button>
           <button
@@ -5075,7 +5112,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
               setCorrectionTaskDueDate("");
               setCorrectionTaskInstructions("");
             }}
-            disabled={isLocked}
+            disabled={isPostMrbSectionLocked()}
             style={{ marginTop: "10px", marginLeft: "8px" }}
           >
             Cancel Correction Task Entry
@@ -5090,11 +5127,12 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
           onChange={(e) => setCorrectionImplementation(e.target.value)}
           placeholder="Describe how the correction was implemented."
           rows={4}
+          disabled={isPostMrbSectionLocked()}
           style={{ width: "100%", maxWidth: "700px" }}
         />
 
         <div style={{ marginTop: "12px" }}>
-          <button onClick={markCorrectionImplemented} disabled={isLocked}>
+          <button onClick={markCorrectionImplemented} disabled={isPostMrbSectionLocked()}>
             Mark Correction Implemented
           </button>
         </div>
@@ -5122,10 +5160,11 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
         <input
           type="file"
           onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
+          disabled={isPostMrbSectionLocked()}
         />
         <button
           onClick={uploadEvidence}
-          disabled={uploading}
+          disabled={uploading || isPostMrbSectionLocked()}
           style={{ marginLeft: "10px" }}
         >
           {uploading ? "Uploading..." : "Upload Evidence"}
@@ -5136,6 +5175,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
           <input
             value={evidenceUrl}
             onChange={(e) => setEvidenceUrl(e.target.value)}
+            disabled={isPostMrbSectionLocked()}
             style={{ width: "100%", maxWidth: "800px", padding: "8px" }}
           />
         </div>
@@ -5146,6 +5186,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
             value={evidenceNotes}
             onChange={(e) => setEvidenceNotes(e.target.value)}
             rows={3}
+            disabled={isPostMrbSectionLocked()}
             style={{ width: "100%", maxWidth: "700px" }}
           />
         </div>
@@ -5316,6 +5357,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
         <select
           value={reviewStatus}
           onChange={(e) => setReviewStatus(e.target.value)}
+          disabled={isPostMrbSectionLocked()}
           style={{ padding: "8px", marginBottom: "12px" }}
         >
           <option value="draft">Draft</option>
@@ -5342,7 +5384,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
             value={closureSignatureEmail}
             onChange={(e) => setClosureSignatureEmail(e.target.value)}
             placeholder={userEmail || "your.email@company.com"}
-            disabled={isLocked}
+            disabled={isPostMrbSectionLocked()}
             style={{ width: "100%", maxWidth: "500px", padding: "8px" }}
           />
 
@@ -5368,11 +5410,11 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
           </p>
 
           <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-            <button onClick={saveWorkflow} disabled={isLocked}>
+            <button onClick={saveWorkflow} disabled={isPostMrbSectionLocked()}>
               Save Workflow
             </button>
 
-            <button onClick={closeNcmr} disabled={isLocked}>
+            <button onClick={closeNcmr} disabled={isPostMrbSectionLocked()}>
               Close NCMR with E-Signature
             </button>
 
@@ -5730,7 +5772,7 @@ function ReworkVerificationCard({
         <select
           value={finalDispositionAfterRework}
           onChange={(e) => setFinalDispositionAfterRework(e.target.value)}
-          disabled={isLocked}
+          disabled={isPostMrbSectionLocked()}
           style={{ padding: "8px", width: "100%" }}
         >
           <option value="">Select final disposition</option>
@@ -5748,7 +5790,7 @@ function ReworkVerificationCard({
           type="number"
           value={finalReworkQuantityAccepted}
           onChange={(e) => setFinalReworkQuantityAccepted(e.target.value)}
-          disabled={isLocked}
+          disabled={isPostMrbSectionLocked()}
           style={{ padding: "8px", width: "100%" }}
         />
       </div>
@@ -5760,14 +5802,14 @@ function ReworkVerificationCard({
           type="number"
           value={finalReworkQuantityRejected}
           onChange={(e) => setFinalReworkQuantityRejected(e.target.value)}
-          disabled={isLocked}
+          disabled={isPostMrbSectionLocked()}
           style={{ padding: "8px", width: "100%" }}
         />
       </div>
 
       <button
         type="button"
-        disabled={isLocked}
+        disabled={isPostMrbSectionLocked()}
         style={{ width: "fit-content" }}
         onClick={() =>
           onSave(
@@ -5917,7 +5959,7 @@ function AffectedItemCard({
           <select
             value={productDisposition}
             onChange={(e) => setProductDisposition(e.target.value)}
-            disabled={isLocked}
+            disabled={isPostMrbSectionLocked()}
             style={{ padding: "8px", width: "100%" }}
           >
             <option value="">Select disposition</option>
@@ -5939,7 +5981,7 @@ function AffectedItemCard({
             type="number"
             value={quantityAccepted}
             onChange={(e) => setQuantityAccepted(e.target.value)}
-            disabled={isLocked}
+            disabled={isPostMrbSectionLocked()}
             style={{ padding: "8px", width: "100%" }}
           />
         </div>
@@ -5951,7 +5993,7 @@ function AffectedItemCard({
             type="number"
             value={quantityRejected}
             onChange={(e) => setQuantityRejected(e.target.value)}
-            disabled={isLocked}
+            disabled={isPostMrbSectionLocked()}
             style={{ padding: "8px", width: "100%" }}
           />
         </div>
@@ -5962,7 +6004,7 @@ function AffectedItemCard({
           <textarea
             value={dispositionJustification}
             onChange={(e) => setDispositionJustification(e.target.value)}
-            disabled={isLocked}
+            disabled={isPostMrbSectionLocked()}
             rows={4}
             style={{ width: "100%" }}
           />
@@ -5997,7 +6039,7 @@ function AffectedItemCard({
               finalReworkQuantityRejected
             )
           }
-          disabled={isLocked}
+          disabled={isPostMrbSectionLocked()}
           style={{ width: "fit-content" }}
         >
           Save Item Disposition
