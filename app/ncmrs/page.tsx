@@ -35,6 +35,8 @@ type SupplierOption = {
 
 type AffectedItemInput = {
   product_part_number: string;
+  part_description: string;
+  part_revision: string;
   lot_number: string;
   workorder_number: string;
   quantity_affected: string;
@@ -47,6 +49,8 @@ type Ncmr = {
   title: string | null;
   issue_description: string | null;
   product_part_number: string | null;
+  part_description?: string | null;
+  part_revision?: string | null;
   lot_number: string | null;
   workorder_number: string | null;
   source_of_detection: string | null;
@@ -100,6 +104,8 @@ export default function NcmrPage() {
   const [affectedItems, setAffectedItems] = useState<AffectedItemInput[]>([
     {
       product_part_number: "",
+      part_description: "",
+      part_revision: "",
       lot_number: "",
       workorder_number: "",
       quantity_affected: "",
@@ -242,6 +248,8 @@ export default function NcmrPage() {
         affectedItemsForRecord.find(
           (item) =>
             item.product_part_number ||
+            item.part_description ||
+            item.part_revision ||
             item.lot_number ||
             item.workorder_number ||
             item.quantity_affected ||
@@ -263,6 +271,14 @@ export default function NcmrPage() {
         product_part_number:
           ncmr.product_part_number ||
           primaryAffectedItem?.product_part_number ||
+          null,
+        part_description:
+          ncmr.part_description ||
+          primaryAffectedItem?.part_description ||
+          null,
+        part_revision:
+          ncmr.part_revision ||
+          primaryAffectedItem?.part_revision ||
           null,
         lot_number:
           ncmr.lot_number ||
@@ -379,6 +395,8 @@ export default function NcmrPage() {
       ...affectedItems,
       {
         product_part_number: "",
+        part_description: "",
+        part_revision: "",
         lot_number: "",
         workorder_number: "",
         quantity_affected: "",
@@ -400,11 +418,25 @@ export default function NcmrPage() {
     setAffectedItems(updated);
   };
 
+  const updateAffectedPartNumber = (index: number, value: string) => {
+    const selectedPart = partNumberOptions.find((option) => option.code === value);
+    const updated = [...affectedItems];
+    updated[index] = {
+      ...updated[index],
+      product_part_number: value,
+      part_description:
+        updated[index].part_description || selectedPart?.label || "",
+    };
+    setAffectedItems(updated);
+  };
+
   const removeAffectedItem = (index: number) => {
     if (affectedItems.length === 1) {
       setAffectedItems([
         {
           product_part_number: "",
+          part_description: "",
+          part_revision: "",
           lot_number: "",
           workorder_number: "",
           quantity_affected: "",
@@ -469,6 +501,8 @@ export default function NcmrPage() {
       affectedItems.find(
         (item) =>
           item.product_part_number ||
+          item.part_description ||
+          item.part_revision ||
           item.lot_number ||
           item.workorder_number ||
           item.quantity_affected ||
@@ -555,6 +589,8 @@ export default function NcmrPage() {
       const itemsToInsert = validAffectedItems.map((item) => ({
         ncmr_id: data.id,
         product_part_number: item.product_part_number || null,
+        part_description: item.part_description || null,
+        part_revision: item.part_revision || null,
         lot_number: item.lot_number || null,
         workorder_number: item.workorder_number || null,
         quantity_affected: item.quantity_affected
@@ -864,7 +900,16 @@ export default function NcmrPage() {
                 background: "#f9fafb",
               }}
             >
-              <strong>Affected Item {index + 1}</strong>
+              <div>
+                <strong>Affected Item {index + 1}</strong>
+                {(item.product_part_number || item.part_description || item.part_revision) ? (
+                  <div style={{ color: "#4b5563", fontSize: "13px", marginTop: "4px" }}>
+                    {[item.product_part_number, item.part_description, item.part_revision]
+                      .filter(Boolean)
+                      .join(" • ")}
+                  </div>
+                ) : null}
+              </div>
 
               <div
                 style={{
@@ -880,13 +925,39 @@ export default function NcmrPage() {
                   <select
                     value={item.product_part_number}
                     onChange={(e) =>
-                      updateAffectedItem(index, "product_part_number", e.target.value)
+                      updateAffectedPartNumber(index, e.target.value)
                     }
                     style={{ width: "100%", padding: "8px" }}
                   >
                     <option value="">Select part number</option>
                     {renderOptions(partNumberOptions)}
                   </select>
+                </div>
+
+                <div>
+                  <label>Part Description</label>
+                  <br />
+                  <input
+                    value={item.part_description}
+                    onChange={(e) =>
+                      updateAffectedItem(index, "part_description", e.target.value)
+                    }
+                    placeholder="Part description"
+                    style={{ width: "100%", padding: "8px" }}
+                  />
+                </div>
+
+                <div>
+                  <label>Part Revision</label>
+                  <br />
+                  <input
+                    value={item.part_revision}
+                    onChange={(e) =>
+                      updateAffectedItem(index, "part_revision", e.target.value)
+                    }
+                    placeholder="Part revision"
+                    style={{ width: "100%", padding: "8px" }}
+                  />
                 </div>
 
                 <div>
