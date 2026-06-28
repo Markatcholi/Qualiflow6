@@ -5772,7 +5772,7 @@ function ReworkVerificationCard({
         <select
           value={finalDispositionAfterRework}
           onChange={(e) => setFinalDispositionAfterRework(e.target.value)}
-          disabled={isPostMrbSectionLocked()}
+          disabled={isLocked}
           style={{ padding: "8px", width: "100%" }}
         >
           <option value="">Select final disposition</option>
@@ -5790,7 +5790,7 @@ function ReworkVerificationCard({
           type="number"
           value={finalReworkQuantityAccepted}
           onChange={(e) => setFinalReworkQuantityAccepted(e.target.value)}
-          disabled={isPostMrbSectionLocked()}
+          disabled={isLocked}
           style={{ padding: "8px", width: "100%" }}
         />
       </div>
@@ -5802,14 +5802,14 @@ function ReworkVerificationCard({
           type="number"
           value={finalReworkQuantityRejected}
           onChange={(e) => setFinalReworkQuantityRejected(e.target.value)}
-          disabled={isPostMrbSectionLocked()}
+          disabled={isLocked}
           style={{ padding: "8px", width: "100%" }}
         />
       </div>
 
       <button
         type="button"
-        disabled={isPostMrbSectionLocked()}
+        disabled={isLocked}
         style={{ width: "fit-content" }}
         onClick={() =>
           onSave(
@@ -5959,7 +5959,7 @@ function AffectedItemCard({
           <select
             value={productDisposition}
             onChange={(e) => setProductDisposition(e.target.value)}
-            disabled={isPostMrbSectionLocked()}
+            disabled={isLocked}
             style={{ padding: "8px", width: "100%" }}
           >
             <option value="">Select disposition</option>
@@ -5981,7 +5981,7 @@ function AffectedItemCard({
             type="number"
             value={quantityAccepted}
             onChange={(e) => setQuantityAccepted(e.target.value)}
-            disabled={isPostMrbSectionLocked()}
+            disabled={isLocked}
             style={{ padding: "8px", width: "100%" }}
           />
         </div>
@@ -5993,7 +5993,7 @@ function AffectedItemCard({
             type="number"
             value={quantityRejected}
             onChange={(e) => setQuantityRejected(e.target.value)}
-            disabled={isPostMrbSectionLocked()}
+            disabled={isLocked}
             style={{ padding: "8px", width: "100%" }}
           />
         </div>
@@ -6004,7 +6004,7 @@ function AffectedItemCard({
           <textarea
             value={dispositionJustification}
             onChange={(e) => setDispositionJustification(e.target.value)}
-            disabled={isPostMrbSectionLocked()}
+            disabled={isLocked}
             rows={4}
             style={{ width: "100%" }}
           />
@@ -6039,7 +6039,7 @@ function AffectedItemCard({
               finalReworkQuantityRejected
             )
           }
-          disabled={isPostMrbSectionLocked()}
+          disabled={isLocked}
           style={{ width: "fit-content" }}
         >
           Save Item Disposition
