@@ -1403,45 +1403,70 @@ export default function NcmrDetailPage() {
 
     const approverEmail = normalizeApproverEmail(approver?.approver_email);
     const approverRole = approver?.approver_role || "MRB Approver";
+    const approvalOrder = Number(approver?.approval_order || 0);
 
     const confirmed = window.confirm(
       `Remove this MRB approver from the configuration?\n\n${approverEmail || "Selected approver"}`
     );
     if (!confirmed) return;
 
-    let deleteQuery = supabase
-      .from("ncmr_mrb_approvers")
-      .delete()
-      .eq("ncmr_id", id);
-
-    if (approver?.id) {
-      deleteQuery = deleteQuery.eq("id", approver.id);
-    } else {
-      deleteQuery = deleteQuery
-        .eq("approver_email", approverEmail)
-        .eq("approval_order", approver?.approval_order || 1);
-    }
-
-    const { data, error } = await deleteQuery.select();
-
-    if (error) {
-      alert(error.message);
+    if (!approverEmail && !approver?.id) {
+      alert("Unable to remove approver because the configuration row does not have an email or row id.");
       return;
     }
 
-    if (!data || data.length === 0) {
-      alert("No MRB approver row was removed. The configuration row may already have been removed or could not be matched.");
-      fetchMrbApprovers();
+    let removedCount = 0;
+
+    if (approver?.id) {
+      const { data, error } = await supabase
+        .from("ncmr_mrb_approvers")
+        .delete()
+        .eq("id", approver.id)
+        .select("id");
+
+      if (error) {
+        alert(error.message);
+        return;
+      }
+
+      removedCount = data?.length || 0;
+    }
+
+    if (removedCount === 0 && approverEmail) {
+      let deleteQuery = supabase
+        .from("ncmr_mrb_approvers")
+        .delete()
+        .eq("ncmr_id", id)
+        .eq("approver_email", approverEmail);
+
+      if (approvalOrder > 0) {
+        deleteQuery = deleteQuery.eq("approval_order", approvalOrder);
+      }
+
+      const { data, error } = await deleteQuery.select("id");
+
+      if (error) {
+        alert(error.message);
+        return;
+      }
+
+      removedCount = data?.length || 0;
+    }
+
+    if (removedCount === 0) {
+      alert("No MRB approver row was removed. Try Reset MRB Approval Workflow, then reload the page and remove the approver again.");
+      await fetchMrbApprovers();
       return;
     }
 
     await addAuditLog(
       "mrb_approver_removed",
-      `MRB approver removed from configuration after approval workflow reset or before approval task generation. Approver: ${approverEmail || "unknown"}; Role: ${approverRole}.`
+      `MRB approver removed from configuration after approval workflow reset or before approval task generation. Approver: ${approverEmail || "unknown"}; Role: ${approverRole}. Rows removed: ${removedCount}.`
     );
 
     alert("MRB approver removed from configuration.");
-    fetchMrbApprovers();
+    await fetchMrbApprovers();
+    await fetchApprovalTasks();
   };
 
   const saveMrbGovernance = async () => {
@@ -2021,8 +2046,16 @@ This approval task was created by the MRB approval task issue recovery action. E
   const requiredMrbApprovalsComplete = () => {
     const errors: string[] = [];
 
-    const requiredFunctions = getRequiredMrbApprovalFunctions();
     const activeApprovalTasks = getActiveMrbApprovalTasks();
+
+    // After an authorized reset or cancellation, historical configured approvers and
+    // cancelled tasks should not block validation. A new approval package must be
+    // generated before MRB can auto-approve.
+    if (activeApprovalTasks.length === 0) {
+      return errors;
+    }
+
+    const requiredFunctions = getRequiredMrbApprovalFunctions();
 
     requiredFunctions.forEach((item) => {
       const task = activeApprovalTasks.find(
