@@ -46,12 +46,16 @@ export default function EnterpriseCapaWorkflowPage() {
   const [userEmail, setUserEmail] = useState("");
   const [userRole, setUserRole] = useState("");
 
-  const [activeSection, setActiveSection] = useState("intake");
+  const [activeSection, setActiveSection] = useState("initiation");
   const [expandedSections, setExpandedSections] = useState<string[]>([
-    "intake",
+    "initiation",
   ]);
 
+  const [initiationApprovalComments, setInitiationApprovalComments] =
+    useState("");
   const [investigationApprovalComments, setInvestigationApprovalComments] =
+    useState("");
+  const [actionPlanApprovalComments, setActionPlanApprovalComments] =
     useState("");
   const [closureApprovalComments, setClosureApprovalComments] = useState("");
   const [cancelReason, setCancelReason] = useState("");
@@ -73,12 +77,21 @@ export default function EnterpriseCapaWorkflowPage() {
     record?.status === "closed" ||
     record?.status === "cancelled";
 
+  const initiationApproved =
+    record?.initiation_approval_status === "approved";
+
   const investigationApproved =
     record?.investigation_approval_status === "approved";
 
+  const actionPlanApproved =
+    record?.action_plan_approval_status === "approved";
+
   const closureApproved = record?.closure_approval_status === "approved";
 
-  const implementationLocked = !investigationApproved || isLocked;
+  const evaluationLocked = !initiationApproved || isLocked;
+  const investigationLocked = !initiationApproved || isLocked;
+  const actionPlanPlanningLocked = !investigationApproved || actionPlanApproved || isLocked;
+  const implementationLocked = !actionPlanApproved || isLocked;
 
   const canApprove = userRole === "approver" || userRole === "vp_quality";
 
@@ -114,9 +127,19 @@ export default function EnterpriseCapaWorkflowPage() {
     }
 
     setRecord(data || null);
+    setInitiationApprovalComments(
+      data?.initiation_approval_comments ||
+        data?.initiation_rejection_comments ||
+        ""
+    );
     setInvestigationApprovalComments(
       data?.investigation_approval_comments ||
         data?.investigation_rejection_comments ||
+        ""
+    );
+    setActionPlanApprovalComments(
+      data?.action_plan_approval_comments ||
+        data?.action_plan_rejection_comments ||
         ""
     );
     setClosureApprovalComments(
@@ -161,6 +184,70 @@ export default function EnterpriseCapaWorkflowPage() {
       details,
       user_email: userEmail || "unknown",
     });
+  };
+
+
+  const getNormalizedRiskValue = (value: any) =>
+    String(value || "").trim().toLowerCase();
+
+  const calculateCapaRiskLevel = (
+    severityValue: any,
+    occurrenceValue: any,
+    detectionValue: any
+  ) => {
+    const severityScore =
+      getNormalizedRiskValue(severityValue) === "critical"
+        ? 4
+        : getNormalizedRiskValue(severityValue) === "high"
+        ? 3
+        : getNormalizedRiskValue(severityValue) === "medium"
+        ? 2
+        : getNormalizedRiskValue(severityValue) === "low"
+        ? 1
+        : 0;
+
+    const occurrenceScore =
+      getNormalizedRiskValue(occurrenceValue) === "high"
+        ? 3
+        : getNormalizedRiskValue(occurrenceValue) === "medium"
+        ? 2
+        : getNormalizedRiskValue(occurrenceValue) === "low"
+        ? 1
+        : 0;
+
+    const detectionScore =
+      getNormalizedRiskValue(detectionValue) === "low_detection"
+        ? 3
+        : getNormalizedRiskValue(detectionValue) === "medium_detection"
+        ? 2
+        : getNormalizedRiskValue(detectionValue) === "high_detection"
+        ? 1
+        : 0;
+
+    const totalScore = severityScore + occurrenceScore + detectionScore;
+
+    if (severityScore >= 4 || totalScore >= 9) return "critical";
+    if (totalScore >= 7) return "high";
+    if (totalScore >= 4) return "medium";
+    if (totalScore > 0) return "low";
+
+    return "";
+  };
+
+  const getEffectiveRiskLevel = () => {
+    if (record?.risk_assessment_method === "manual") {
+      return record?.risk_level || "";
+    }
+
+    if (record?.risk_override_enabled && record?.risk_override_level) {
+      return record.risk_override_level;
+    }
+
+    return calculateCapaRiskLevel(
+      record?.severity,
+      record?.occurrence_rating,
+      record?.detection_rating
+    );
   };
 
 
@@ -304,8 +391,13 @@ export default function EnterpriseCapaWorkflowPage() {
     const { error } = await supabase
       .from("capas")
       .update({
-        problem_description: record.problem_description || null,
-        problem_statement: record.problem_description || null,
+        problem_description: record.problem_description || record.problem_statement || null,
+        problem_statement: record.problem_description || record.problem_statement || null,
+        capa_type: record.capa_type || null,
+        capa_source: record.capa_source || null,
+        capa_justification: record.capa_justification || null,
+        product_impact: record.product_impact || null,
+        process_impact: record.process_impact || null,
         detection_source: record.detection_source || null,
         capa_classification: record.capa_classification || null,
 
@@ -316,6 +408,9 @@ export default function EnterpriseCapaWorkflowPage() {
         affected_supplier: record.affected_supplier || null,
         potential_impact: record.potential_impact || null,
 
+        interim_controls_required: record.interim_controls_required || null,
+        no_interim_controls_justification:
+          record.no_interim_controls_justification || null,
         containment_action: record.containment_action || null,
         containment_owner: record.containment_owner || null,
         containment_complete: record.containment_complete || null,
@@ -339,7 +434,14 @@ export default function EnterpriseCapaWorkflowPage() {
         severity: record.severity || null,
         occurrence_rating: record.occurrence_rating || null,
         detection_rating: record.detection_rating || null,
-        risk_level: record.risk_level || null,
+        risk_assessment_method: record.risk_assessment_method || "automatic",
+        risk_level:
+          record.risk_assessment_method === "manual"
+            ? record.risk_level || null
+            : getEffectiveRiskLevel() || null,
+        risk_override_enabled: record.risk_override_enabled || false,
+        risk_override_level: record.risk_override_level || null,
+        risk_override_justification: record.risk_override_justification || null,
         patient_safety_impact: record.patient_safety_impact || null,
         product_quality_impact: record.product_quality_impact || null,
         regulatory_impact: record.regulatory_impact || null,
@@ -351,7 +453,15 @@ export default function EnterpriseCapaWorkflowPage() {
         corrective_action: record.corrective_action_plan || null,
         action_owner: record.action_owner || null,
         action_due_date: record.action_due_date || null,
+        required_resources: record.required_resources || null,
+        required_evidence: record.required_evidence || null,
         verification_method: record.verification_method || null,
+        effectiveness_success_criteria: record.effectiveness_success_criteria || null,
+        effectiveness_data_to_collect: record.effectiveness_data_to_collect || null,
+        effectiveness_sample_size: record.effectiveness_sample_size || null,
+        verification_owner: record.verification_owner || null,
+        verification_due_date: record.verification_due_date || null,
+        required_objective_evidence: record.required_objective_evidence || null,
 
         procedure_updated: record.procedure_updated || null,
         training_required: record.training_required || null,
@@ -391,9 +501,9 @@ export default function EnterpriseCapaWorkflowPage() {
       return;
     }
 
-    if (implementationLocked) {
+    if (actionPlanPlanningLocked) {
       alert(
-        "Task creation is locked until investigation approval is complete."
+        "Task assignment is available after investigation approval and before action plan approval."
       );
       return;
     }
@@ -498,8 +608,8 @@ export default function EnterpriseCapaWorkflowPage() {
   };
 
   const completeTask = async (task: CapaTask) => {
-    if (isLocked) {
-      alert("This CAPA record is locked and cannot be edited.");
+    if (isLocked || implementationLocked) {
+      alert("CAPA task execution is locked until the action plan is approved.");
       return;
     }
 
@@ -548,18 +658,176 @@ export default function EnterpriseCapaWorkflowPage() {
     fetchTasks();
   };
 
+  const submitInitiationApproval = async () => {
+    if (isLocked) return;
+
+    if (!record?.problem_description && !record?.problem_statement) {
+      return alert("Problem statement is required before initiation approval.");
+    }
+
+    if (!record?.capa_justification) {
+      return alert("CAPA justification is required before initiation approval.");
+    }
+
+    if (!record?.capa_type) {
+      return alert("CAPA type is required before initiation approval.");
+    }
+
+    await saveAll();
+
+    const now = new Date().toISOString();
+
+    const { error } = await supabase
+      .from("capas")
+      .update({
+        initiation_approval_status: "pending",
+        initiation_submitted_by: userEmail || "unknown",
+        initiation_submitted_at: now,
+        status: "pending_initiation_approval",
+      })
+      .eq("id", id);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    await addAuditLog(
+      "initiation_submitted_for_approval",
+      "CAPA initiation package submitted for approval."
+    );
+
+    await notifyApprovers({
+      title: "CAPA Initiation Approval Required",
+      message: `${record?.capa_number || "CAPA"} requires initiation approval.`,
+      notificationType: "initiation_approval_required",
+      severity: "medium",
+    });
+
+    alert("CAPA initiation package submitted for approval.");
+    fetchRecord();
+  };
+
+  const approveInitiation = async () => {
+    if (!canApprove) {
+      alert("Only an approver or VP Quality can approve initiation.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Approve CAPA initiation?\n\nThis confirms the CAPA is justified and may proceed to evaluation and investigation."
+    );
+
+    if (!confirmed) return;
+
+    const now = new Date().toISOString();
+
+    const { error } = await supabase
+      .from("capas")
+      .update({
+        initiation_approval_status: "approved",
+        initiation_approved_by: userEmail,
+        initiation_approved_at: now,
+        initiation_approval_comments: initiationApprovalComments || null,
+        status: "evaluation",
+      })
+      .eq("id", id);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    await addAuditLog(
+      "initiation_approved",
+      "CAPA initiation package approved. Evaluation and investigation phases unlocked."
+    );
+
+    await notifyCapaOwner({
+      title: "CAPA Initiation Approved",
+      message: `${record?.capa_number || "CAPA"} initiation was approved.`,
+      notificationType: "initiation_approved",
+      severity: "info",
+    });
+
+    alert("CAPA initiation approved.");
+    fetchRecord();
+  };
+
+  const rejectInitiation = async () => {
+    if (!canApprove) {
+      alert("Only an approver or VP Quality can reject initiation.");
+      return;
+    }
+
+    if (!initiationApprovalComments.trim()) {
+      alert("Rejection comments are required.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Reject initiation package and return for revision?"
+    );
+    if (!confirmed) return;
+
+    const now = new Date().toISOString();
+
+    const { error } = await supabase
+      .from("capas")
+      .update({
+        initiation_approval_status: "rejected",
+        initiation_rejected_by: userEmail,
+        initiation_rejected_at: now,
+        initiation_rejection_comments: initiationApprovalComments,
+        status: "initiation",
+      })
+      .eq("id", id);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    await addAuditLog(
+      "initiation_rejected",
+      `CAPA initiation package rejected. Comments: ${initiationApprovalComments}`
+    );
+
+    await notifyCapaOwner({
+      title: "CAPA Initiation Rejected",
+      message: `${record?.capa_number || "CAPA"} initiation was rejected. Comments: ${initiationApprovalComments}`,
+      notificationType: "initiation_rejected",
+      severity: "high",
+    });
+
+    alert("CAPA initiation rejected.");
+    fetchRecord();
+  };
+
   const submitInvestigationApproval = async () => {
     if (isLocked) return;
 
-    if (!record?.problem_description) return alert("Intake issue summary is required.");
+    if (!initiationApproved) return alert("Initiation approval is required before investigation approval.");
     if (!record?.scope_summary) return alert("Scope summary is required.");
-    if (!record?.containment_action) return alert("Containment action is required.");
+    if (!record?.interim_controls_required) return alert("Interim Controls Required must be answered.");
+    if (
+      record?.interim_controls_required === "yes" &&
+      !record?.containment_action
+    ) {
+      return alert("Interim control description is required when interim controls are required.");
+    }
+    if (
+      record?.interim_controls_required === "no" &&
+      !record?.no_interim_controls_justification
+    ) {
+      return alert("Rationale for no interim controls is required.");
+    }
     if (!record?.investigation_findings && !record?.investigation_summary) {
       return alert("Investigation findings are required.");
     }
     if (!record?.root_cause) return alert("Root cause is required.");
     if (!record?.severity) return alert("Severity is required.");
-    if (!record?.risk_level) return alert("Risk level is required.");
+    if (!getEffectiveRiskLevel()) return alert("Risk level is required.");
     if (!record?.risk_rationale && !record?.risk_assessment) {
       return alert("Risk rationale is required.");
     }
@@ -620,7 +888,7 @@ export default function EnterpriseCapaWorkflowPage() {
         investigation_approved_by: userEmail,
         investigation_approved_at: now,
         investigation_approval_comments: investigationApprovalComments || null,
-        status: "implementation",
+        status: "action_plan",
       })
       .eq("id", id);
 
@@ -631,12 +899,12 @@ export default function EnterpriseCapaWorkflowPage() {
 
     await addAuditLog(
       "investigation_approved",
-      "CAPA investigation package approved. Corrective action and implementation phases unlocked."
+      "CAPA investigation package approved. Action plan proposal phase unlocked."
     );
 
     await notifyCapaOwner({
       title: "CAPA Investigation Approved",
-      message: `${record?.capa_number || "CAPA"} investigation was approved. Corrective action and task execution are now available.`,
+      message: `${record?.capa_number || "CAPA"} investigation was approved. Action plan proposal is now available.`,
       notificationType: "investigation_approved",
       severity: "info",
     });
@@ -695,16 +963,178 @@ export default function EnterpriseCapaWorkflowPage() {
     fetchRecord();
   };
 
+  const submitActionPlanApproval = async () => {
+    if (isLocked) return;
+
+    if (!investigationApproved) {
+      return alert("Investigation approval is required before action plan approval.");
+    }
+
+    if (!record?.corrective_action_plan) {
+      return alert("Action plan is required.");
+    }
+
+    if (!record?.action_owner) {
+      return alert("Action owner is required.");
+    }
+
+    if (!record?.action_due_date) {
+      return alert("Action due date is required.");
+    }
+
+    if (!record?.verification_method) {
+      return alert("Verification method is required.");
+    }
+
+    if (!record?.effectiveness_success_criteria) {
+      return alert("Effectiveness success criteria are required.");
+    }
+
+    await saveAll();
+
+    const now = new Date().toISOString();
+
+    const { error } = await supabase
+      .from("capas")
+      .update({
+        action_plan_approval_status: "pending",
+        action_plan_submitted_by: userEmail || "unknown",
+        action_plan_submitted_at: now,
+        status: "pending_action_plan_approval",
+      })
+      .eq("id", id);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    await addAuditLog(
+      "action_plan_submitted_for_approval",
+      "CAPA action plan, implementation tasks, and effectiveness plan submitted for approval."
+    );
+
+    await notifyApprovers({
+      title: "CAPA Action Plan Approval Required",
+      message: `${record?.capa_number || "CAPA"} requires action plan approval.`,
+      notificationType: "action_plan_approval_required",
+      severity: record?.severity === "critical" || getEffectiveRiskLevel() === "critical" ? "critical" : "medium",
+    });
+
+    alert("Action plan package submitted for approval.");
+    fetchRecord();
+  };
+
+  const approveActionPlan = async () => {
+    if (!canApprove) {
+      alert("Only an approver or VP Quality can approve the action plan.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Approve Action Plan Package?\n\nThis approves the proposed actions, assigned implementation tasks, and effectiveness plan before execution."
+    );
+
+    if (!confirmed) return;
+
+    const now = new Date().toISOString();
+
+    const { error } = await supabase
+      .from("capas")
+      .update({
+        action_plan_approval_status: "approved",
+        action_plan_approved_by: userEmail,
+        action_plan_approved_at: now,
+        action_plan_approval_comments: actionPlanApprovalComments || null,
+        status: "implementation",
+      })
+      .eq("id", id);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    await addAuditLog(
+      "action_plan_approved",
+      "CAPA action plan approved. Implementation task execution unlocked."
+    );
+
+    await notifyCapaOwner({
+      title: "CAPA Action Plan Approved",
+      message: `${record?.capa_number || "CAPA"} action plan was approved. Implementation may begin.`,
+      notificationType: "action_plan_approved",
+      severity: "info",
+    });
+
+    alert("Action plan approved.");
+    fetchRecord();
+  };
+
+  const rejectActionPlan = async () => {
+    if (!canApprove) {
+      alert("Only an approver or VP Quality can reject the action plan.");
+      return;
+    }
+
+    if (!actionPlanApprovalComments.trim()) {
+      alert("Rejection comments are required.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Reject action plan package and return for revision?"
+    );
+    if (!confirmed) return;
+
+    const now = new Date().toISOString();
+
+    const { error } = await supabase
+      .from("capas")
+      .update({
+        action_plan_approval_status: "rejected",
+        action_plan_rejected_by: userEmail,
+        action_plan_rejected_at: now,
+        action_plan_rejection_comments: actionPlanApprovalComments,
+        status: "action_plan",
+      })
+      .eq("id", id);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    await addAuditLog(
+      "action_plan_rejected",
+      `CAPA action plan package rejected. Comments: ${actionPlanApprovalComments}`
+    );
+
+    await notifyCapaOwner({
+      title: "CAPA Action Plan Rejected",
+      message: `${record?.capa_number || "CAPA"} action plan was rejected. Comments: ${actionPlanApprovalComments}`,
+      notificationType: "action_plan_rejected",
+      severity: "high",
+    });
+
+    alert("Action plan rejected.");
+    fetchRecord();
+  };
+
   const markImplemented = async () => {
     if (implementationLocked) {
       alert(
-        "Corrective action and implementation are locked until investigation approval is complete."
+        "Implementation is locked until action plan approval is complete."
       );
       return;
     }
 
+    if (!actionPlanApproved) {
+      return alert("Action plan approval is required before implementation.");
+    }
+
     if (!record?.corrective_action_plan) {
-      return alert("Corrective action is required.");
+      return alert("Action plan is required.");
     }
 
     if (!record?.implementation_details) {
@@ -747,6 +1177,11 @@ export default function EnterpriseCapaWorkflowPage() {
 
     if (!investigationApproved) {
       alert("Investigation approval is required before closure.");
+      return;
+    }
+
+    if (!actionPlanApproved) {
+      alert("Action plan approval is required before closure.");
       return;
     }
 
@@ -834,7 +1269,7 @@ export default function EnterpriseCapaWorkflowPage() {
     const now = new Date().toISOString();
 
     const signatureMeaning =
-      "I approve final CAPA closure and confirm the intake, scope, containment, investigation, root cause, risk assessment, corrective action, implementation, effectiveness verification, execution tasks, and closure review are complete.";
+      "I approve final CAPA closure and confirm the initiation, evaluation, investigation, root cause determination, action plan approval, implementation, effectiveness plan, effectiveness verification, execution tasks, and closure review are complete.";
 
     const { error } = await supabase
       .from("capas")
@@ -984,19 +1419,33 @@ export default function EnterpriseCapaWorkflowPage() {
   const stages: WorkflowStage[] = useMemo(
     () => [
       {
-        key: "intake",
-        label: "Intake",
-        completed: Boolean(record?.problem_description),
+        key: "initiation",
+        label: "Initiation",
+        completed: Boolean(
+          record?.problem_description &&
+            record?.capa_justification &&
+            record?.capa_type
+        ),
       },
       {
-        key: "scope",
-        label: "Scope",
-        completed: Boolean(record?.scope_summary),
+        key: "initiationapproval",
+        label: "Initiation Approval",
+        completed: initiationApproved,
+        status: record?.initiation_approval_status,
       },
       {
-        key: "containment",
-        label: "Containment",
-        completed: Boolean(record?.containment_action),
+        key: "evaluation",
+        label: "Evaluation",
+        completed: Boolean(
+          record?.scope_summary &&
+            record?.interim_controls_required &&
+            (record?.interim_controls_required === "yes"
+              ? record?.containment_action
+              : record?.no_interim_controls_justification) &&
+            record?.severity &&
+            getEffectiveRiskLevel()
+        ),
+        locked: evaluationLocked,
       },
       {
         key: "investigation",
@@ -1004,35 +1453,33 @@ export default function EnterpriseCapaWorkflowPage() {
         completed: Boolean(
           record?.investigation_findings || record?.investigation_summary
         ),
+        locked: investigationLocked,
       },
       {
         key: "rootcause",
-        label: "Root Cause",
+        label: "Root Cause Determination",
         completed: Boolean(record?.root_cause),
-      },
-      {
-        key: "risk",
-        label: "Risk / Severity",
-        completed: Boolean(record?.severity && record?.risk_level),
+        locked: investigationLocked,
       },
       {
         key: "investigationapproval",
         label: "Investigation Approval",
         completed: investigationApproved,
         status: record?.investigation_approval_status,
+        locked: investigationLocked,
       },
       {
-        key: "correctiveaction",
-        label: "Corrective Action",
+        key: "actionplan",
+        label: "Action Plan Proposal",
         completed: Boolean(record?.corrective_action_plan),
-        locked: implementationLocked,
+        locked: actionPlanPlanningLocked,
       },
       {
-        key: "tasks",
-        label: "Execution Tasks",
-        completed: tasks.length > 0 && tasksComplete,
-        locked: implementationLocked,
-        status: `${tasks.length} task(s)`,
+        key: "actionplanapproval",
+        label: "Action Plan Approval",
+        completed: actionPlanApproved,
+        status: record?.action_plan_approval_status,
+        locked: !investigationApproved || isLocked,
       },
       {
         key: "implementation",
@@ -1041,22 +1488,33 @@ export default function EnterpriseCapaWorkflowPage() {
         locked: implementationLocked,
       },
       {
+        key: "effectivenessplan",
+        label: "Effectiveness Plan",
+        completed: Boolean(record?.verification_method && record?.effectiveness_success_criteria),
+        locked: actionPlanPlanningLocked,
+      },
+      {
         key: "effectiveness",
-        label: "Effectiveness",
+        label: "Effectiveness Verification",
         completed: Boolean(record?.effectiveness_rating && record?.effectiveness_check),
         locked: implementationLocked,
       },
       {
         key: "closure",
-        label: "Closure / Cancel",
+        label: "Closure Approval",
         completed: closureApproved || record?.status === "cancelled",
         status: record?.closure_approval_status,
       },
     ],
     [
       record,
+      initiationApproved,
       investigationApproved,
+      actionPlanApproved,
       closureApproved,
+      evaluationLocked,
+      investigationLocked,
+      actionPlanPlanningLocked,
       implementationLocked,
       tasks,
       tasksComplete,
@@ -1108,9 +1566,10 @@ export default function EnterpriseCapaWorkflowPage() {
             {record.title || "Untitled CAPA"}
           </h1>
           <p style={subtleText}>
-            Intake → Scope → Containment → Investigation → Root Cause → Risk /
-            Severity → Approval → Action → Tasks → Implementation →
-            Effectiveness → Closure.
+            Initiation → Initiation Approval → Evaluation → Investigation →
+            Root Cause Determination → Investigation Approval → Action Plan →
+            Action Plan Approval → Implementation → Effectiveness Plan →
+            Effectiveness Verification → Closure.
           </p>
         </div>
 
@@ -1193,7 +1652,7 @@ export default function EnterpriseCapaWorkflowPage() {
         <SummaryCard label="Due Date" value={record.due_date} />
         <SummaryCard label="Supplier" value={record.supplier_name} />
         <SummaryCard label="Linked NCMR" value={record.linked_ncmr_title} />
-        <SummaryCard label="Classification" value={record.capa_classification} />
+        <SummaryCard label="CAPA Type" value={record.capa_type || record.capa_classification} />
         <SummaryCard label="Effectiveness" value={record.effectiveness_rating} />
       </section>
 
@@ -1241,15 +1700,43 @@ export default function EnterpriseCapaWorkflowPage() {
 
         <div>
           <WorkflowCard
-            sectionKey="intake"
-            title="1. Intake"
-            subtitle="Capture the issue and source of detection."
-            expanded={expandedSections.includes("intake")}
-            onToggle={() => toggleSection("intake")}
+            sectionKey="initiation"
+            title="1. Initiation"
+            subtitle="Document the CAPA type, source, problem statement, justification, and impact before Quality approval."
+            expanded={expandedSections.includes("initiation")}
+            onToggle={() => toggleSection("initiation")}
           >
-            <Field label="Issue Summary">
+            <div style={formGridStyle}>
+              <Field label="CAPA Type">
+                <select
+                  value={record.capa_type || ""}
+                  onChange={(e) => {
+                    updateField("capa_type", e.target.value);
+                    saveField("capa_type", e.target.value);
+                  }}
+                  disabled={isLocked}
+                  style={inputStyle(isLocked)}
+                >
+                  <option value="">Select</option>
+                  <option value="corrective">Corrective CAPA</option>
+                  <option value="preventive">Preventive CAPA</option>
+                </select>
+              </Field>
+
+              <Field label="CAPA Source">
+                <input
+                  value={record.capa_source || record.source_type || ""}
+                  onChange={(e) => updateField("capa_source", e.target.value)}
+                  onBlur={(e) => saveField("capa_source", e.target.value)}
+                  disabled={isLocked}
+                  style={inputStyle(isLocked)}
+                />
+              </Field>
+            </div>
+
+            <Field label="Problem Statement">
               <textarea
-                value={record.problem_description || ""}
+                value={record.problem_description || record.problem_statement || ""}
                 onChange={(e) =>
                   updateField("problem_description", e.target.value)
                 }
@@ -1260,53 +1747,102 @@ export default function EnterpriseCapaWorkflowPage() {
               />
             </Field>
 
+            <Field label="Justification for CAPA">
+              <textarea
+                value={record.capa_justification || ""}
+                onChange={(e) =>
+                  updateField("capa_justification", e.target.value)
+                }
+                onBlur={(e) => saveField("capa_justification", e.target.value)}
+                disabled={isLocked}
+                rows={3}
+                style={textareaStyle(isLocked)}
+              />
+            </Field>
+
             <div style={formGridStyle}>
-              <Field label="Detection Source">
-                <input
-                  value={record.detection_source || ""}
-                  onChange={(e) => updateField("detection_source", e.target.value)}
-                  onBlur={(e) => saveField("detection_source", e.target.value)}
+              <Field label="Product Impact">
+                <textarea
+                  value={record.product_impact || record.product_quality_impact || ""}
+                  onChange={(e) => updateField("product_impact", e.target.value)}
+                  onBlur={(e) => saveField("product_impact", e.target.value)}
                   disabled={isLocked}
-                  style={inputStyle(isLocked)}
+                  rows={3}
+                  style={textareaStyle(isLocked)}
                 />
               </Field>
 
-              <Field label="CAPA Classification">
-                <select
-                  value={record.capa_classification || ""}
-                  onChange={(e) => {
-                    updateField("capa_classification", e.target.value);
-                    saveField("capa_classification", e.target.value);
-                  }}
+              <Field label="Process Impact">
+                <textarea
+                  value={record.process_impact || record.affected_process || ""}
+                  onChange={(e) => updateField("process_impact", e.target.value)}
+                  onBlur={(e) => saveField("process_impact", e.target.value)}
                   disabled={isLocked}
-                  style={inputStyle(isLocked)}
-                >
-                  <option value="">Select</option>
-                  <option value="correction_only">Correction Only</option>
-                  <option value="corrective_action">Corrective Action</option>
-                  <option value="preventive_action">Preventive Action</option>
-                  <option value="systemic_capa">Systemic CAPA</option>
-                  <option value="supplier_capa">Supplier CAPA</option>
-                </select>
+                  rows={3}
+                  style={textareaStyle(isLocked)}
+                />
+              </Field>
+
+              <Field label="Patient Impact">
+                <textarea
+                  value={record.patient_safety_impact || ""}
+                  onChange={(e) =>
+                    updateField("patient_safety_impact", e.target.value)
+                  }
+                  onBlur={(e) =>
+                    saveField("patient_safety_impact", e.target.value)
+                  }
+                  disabled={isLocked}
+                  rows={3}
+                  style={textareaStyle(isLocked)}
+                />
               </Field>
             </div>
           </WorkflowCard>
 
+          <ApprovalCard
+            sectionKey="initiationapproval"
+            title="2. Initiation Approval"
+            description="Quality approval confirms the CAPA is justified and may proceed to evaluation and investigation."
+            status={record.initiation_approval_status || "not_submitted"}
+            comments={initiationApprovalComments}
+            setComments={setInitiationApprovalComments}
+            submittedBy={record.initiation_submitted_by}
+            submittedAt={record.initiation_submitted_at}
+            approvedBy={record.initiation_approved_by}
+            approvedAt={record.initiation_approved_at}
+            rejectedBy={record.initiation_rejected_by}
+            rejectedAt={record.initiation_rejected_at}
+            disabled={isLocked}
+            canApprove={canApprove}
+            expanded={expandedSections.includes("initiationapproval")}
+            onToggle={() => toggleSection("initiationapproval")}
+            onSubmit={submitInitiationApproval}
+            onApprove={approveInitiation}
+            onReject={rejectInitiation}
+          />
+
           <WorkflowCard
-            sectionKey="scope"
-            title="2. Scope"
-            subtitle="Define affected product, lot, process, supplier, and potential impact."
-            expanded={expandedSections.includes("scope")}
-            onToggle={() => toggleSection("scope")}
+            sectionKey="evaluation"
+            title="3. Evaluation"
+            subtitle="Define scope, interim controls, severity, occurrence, detection, risk assessment, impact, and rationale."
+            locked={evaluationLocked}
+            expanded={expandedSections.includes("evaluation")}
+            onToggle={() => toggleSection("evaluation")}
           >
+            {evaluationLocked && !isLocked ? (
+              <p style={subtleText}>Initiation approval is required before Evaluation can be edited.</p>
+            ) : null}
+
+            <h3>Scope</h3>
             <Field label="Scope Summary">
               <textarea
                 value={record.scope_summary || ""}
                 onChange={(e) => updateField("scope_summary", e.target.value)}
                 onBlur={(e) => saveField("scope_summary", e.target.value)}
-                disabled={isLocked}
+                disabled={evaluationLocked}
                 rows={3}
-                style={textareaStyle(isLocked)}
+                style={textareaStyle(evaluationLocked)}
               />
             </Field>
 
@@ -1316,8 +1852,8 @@ export default function EnterpriseCapaWorkflowPage() {
                   value={record.affected_product || ""}
                   onChange={(e) => updateField("affected_product", e.target.value)}
                   onBlur={(e) => saveField("affected_product", e.target.value)}
-                  disabled={isLocked}
-                  style={inputStyle(isLocked)}
+                  disabled={evaluationLocked}
+                  style={inputStyle(evaluationLocked)}
                 />
               </Field>
 
@@ -1326,8 +1862,8 @@ export default function EnterpriseCapaWorkflowPage() {
                   value={record.affected_lot || ""}
                   onChange={(e) => updateField("affected_lot", e.target.value)}
                   onBlur={(e) => saveField("affected_lot", e.target.value)}
-                  disabled={isLocked}
-                  style={inputStyle(isLocked)}
+                  disabled={evaluationLocked}
+                  style={inputStyle(evaluationLocked)}
                 />
               </Field>
 
@@ -1336,8 +1872,8 @@ export default function EnterpriseCapaWorkflowPage() {
                   value={record.affected_process || ""}
                   onChange={(e) => updateField("affected_process", e.target.value)}
                   onBlur={(e) => saveField("affected_process", e.target.value)}
-                  disabled={isLocked}
-                  style={inputStyle(isLocked)}
+                  disabled={evaluationLocked}
+                  style={inputStyle(evaluationLocked)}
                 />
               </Field>
 
@@ -1346,8 +1882,8 @@ export default function EnterpriseCapaWorkflowPage() {
                   value={record.affected_supplier || record.supplier_name || ""}
                   onChange={(e) => updateField("affected_supplier", e.target.value)}
                   onBlur={(e) => saveField("affected_supplier", e.target.value)}
-                  disabled={isLocked}
-                  style={inputStyle(isLocked)}
+                  disabled={evaluationLocked}
+                  style={inputStyle(evaluationLocked)}
                 />
               </Field>
             </div>
@@ -1357,61 +1893,91 @@ export default function EnterpriseCapaWorkflowPage() {
                 value={record.potential_impact || ""}
                 onChange={(e) => updateField("potential_impact", e.target.value)}
                 onBlur={(e) => saveField("potential_impact", e.target.value)}
-                disabled={isLocked}
+                disabled={evaluationLocked}
                 rows={3}
-                style={textareaStyle(isLocked)}
+                style={textareaStyle(evaluationLocked)}
               />
             </Field>
-          </WorkflowCard>
 
-          <WorkflowCard
-            sectionKey="containment"
-            title="3. Containment"
-            subtitle="Define immediate correction, containment owner, and residual risk."
-            expanded={expandedSections.includes("containment")}
-            onToggle={() => toggleSection("containment")}
-          >
+            <h3>Interim Controls</h3>
             <div style={formGridStyle}>
-              <Field label="Containment Action">
-                <textarea
-                  value={record.containment_action || ""}
-                  onChange={(e) => updateField("containment_action", e.target.value)}
-                  onBlur={(e) => saveField("containment_action", e.target.value)}
-                  disabled={isLocked}
-                  rows={4}
-                  style={textareaStyle(isLocked)}
-                />
-              </Field>
-
-              <Field label="Containment Owner">
-                <input
-                  value={record.containment_owner || ""}
-                  onChange={(e) => updateField("containment_owner", e.target.value)}
-                  onBlur={(e) => saveField("containment_owner", e.target.value)}
-                  disabled={isLocked}
-                  style={inputStyle(isLocked)}
-                />
-              </Field>
-
-              <Field label="Containment Complete">
+              <Field label="Interim Controls Required?">
                 <select
-                  value={record.containment_complete || ""}
+                  value={record.interim_controls_required || ""}
                   onChange={(e) => {
-                    updateField("containment_complete", e.target.value);
-                    saveField("containment_complete", e.target.value);
+                    updateField("interim_controls_required", e.target.value);
+                    saveField("interim_controls_required", e.target.value);
                   }}
-                  disabled={isLocked}
-                  style={inputStyle(isLocked)}
+                  disabled={evaluationLocked}
+                  style={inputStyle(evaluationLocked)}
                 >
                   <option value="">Select</option>
                   <option value="yes">Yes</option>
                   <option value="no">No</option>
-                  <option value="not_required">Not Required</option>
                 </select>
               </Field>
+
+              {record.interim_controls_required === "yes" ? (
+                <>
+                  <Field label="Interim Control Description">
+                    <textarea
+                      value={record.containment_action || ""}
+                      onChange={(e) => updateField("containment_action", e.target.value)}
+                      onBlur={(e) => saveField("containment_action", e.target.value)}
+                      disabled={evaluationLocked}
+                      rows={4}
+                      style={textareaStyle(evaluationLocked)}
+                    />
+                  </Field>
+
+                  <Field label="Interim Control Owner">
+                    <input
+                      value={record.containment_owner || ""}
+                      onChange={(e) => updateField("containment_owner", e.target.value)}
+                      onBlur={(e) => saveField("containment_owner", e.target.value)}
+                      disabled={evaluationLocked}
+                      style={inputStyle(evaluationLocked)}
+                    />
+                  </Field>
+
+                  <Field label="Interim Control Complete">
+                    <select
+                      value={record.containment_complete || ""}
+                      onChange={(e) => {
+                        updateField("containment_complete", e.target.value);
+                        saveField("containment_complete", e.target.value);
+                      }}
+                      disabled={evaluationLocked}
+                      style={inputStyle(evaluationLocked)}
+                    >
+                      <option value="">Select</option>
+                      <option value="yes">Yes</option>
+                      <option value="no">No</option>
+                      <option value="not_required">Not Required</option>
+                    </select>
+                  </Field>
+                </>
+              ) : null}
             </div>
 
-            <Field label="Residual Risk After Containment">
+            {record.interim_controls_required === "no" ? (
+              <Field label="Rationale for No Interim Controls">
+                <textarea
+                  value={record.no_interim_controls_justification || ""}
+                  onChange={(e) =>
+                    updateField("no_interim_controls_justification", e.target.value)
+                  }
+                  onBlur={(e) =>
+                    saveField("no_interim_controls_justification", e.target.value)
+                  }
+                  disabled={evaluationLocked}
+                  rows={3}
+                  style={textareaStyle(evaluationLocked)}
+                />
+              </Field>
+            ) : null}
+
+            <Field label="Residual Risk After Interim Controls">
               <textarea
                 value={record.containment_residual_risk || ""}
                 onChange={(e) =>
@@ -1420,11 +1986,224 @@ export default function EnterpriseCapaWorkflowPage() {
                 onBlur={(e) =>
                   saveField("containment_residual_risk", e.target.value)
                 }
-                disabled={isLocked}
+                disabled={evaluationLocked}
                 rows={3}
-                style={textareaStyle(isLocked)}
+                style={textareaStyle(evaluationLocked)}
               />
             </Field>
+
+            <h3>Risk Assessment</h3>
+            <div style={formGridStyle}>
+              <Field label="Risk Assessment Method">
+                <select
+                  value={record.risk_assessment_method || "automatic"}
+                  onChange={(e) => {
+                    updateField("risk_assessment_method", e.target.value);
+                    saveField("risk_assessment_method", e.target.value);
+                  }}
+                  disabled={evaluationLocked}
+                  style={inputStyle(evaluationLocked)}
+                >
+                  <option value="automatic">Automatic</option>
+                  <option value="manual">Manual</option>
+                </select>
+              </Field>
+
+              <Field label="Severity">
+                <select
+                  value={record.severity || ""}
+                  onChange={(e) => {
+                    updateField("severity", e.target.value);
+                    saveField("severity", e.target.value);
+                  }}
+                  disabled={evaluationLocked}
+                  style={inputStyle(evaluationLocked)}
+                >
+                  <option value="">Select</option>
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                  <option value="critical">Critical</option>
+                </select>
+              </Field>
+
+              <Field label="Occurrence">
+                <select
+                  value={record.occurrence_rating || ""}
+                  onChange={(e) => {
+                    updateField("occurrence_rating", e.target.value);
+                    saveField("occurrence_rating", e.target.value);
+                  }}
+                  disabled={evaluationLocked}
+                  style={inputStyle(evaluationLocked)}
+                >
+                  <option value="">Select</option>
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                </select>
+              </Field>
+
+              <Field label="Detection">
+                <select
+                  value={record.detection_rating || ""}
+                  onChange={(e) => {
+                    updateField("detection_rating", e.target.value);
+                    saveField("detection_rating", e.target.value);
+                  }}
+                  disabled={evaluationLocked}
+                  style={inputStyle(evaluationLocked)}
+                >
+                  <option value="">Select</option>
+                  <option value="high_detection">High Detection</option>
+                  <option value="medium_detection">Medium Detection</option>
+                  <option value="low_detection">Low Detection</option>
+                </select>
+              </Field>
+            </div>
+
+            {record.risk_assessment_method === "manual" ? (
+              <Field label="Risk Level">
+                <select
+                  value={record.risk_level || ""}
+                  onChange={(e) => {
+                    updateField("risk_level", e.target.value);
+                    saveField("risk_level", e.target.value);
+                  }}
+                  disabled={evaluationLocked}
+                  style={inputStyle(evaluationLocked)}
+                >
+                  <option value="">Select</option>
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                  <option value="critical">Critical</option>
+                </select>
+              </Field>
+            ) : (
+              <div
+                style={{
+                  border: "1px solid #bfdbfe",
+                  background: "#eff6ff",
+                  padding: "12px",
+                  borderRadius: "10px",
+                  marginBottom: "12px",
+                }}
+              >
+                <strong>Calculated Risk Level:</strong>{" "}
+                {calculateCapaRiskLevel(
+                  record.severity,
+                  record.occurrence_rating,
+                  record.detection_rating
+                ) || "Not Calculated"}
+              </div>
+            )}
+
+            {record.risk_assessment_method !== "manual" ? (
+              <div style={formGridStyle}>
+                <Field label="Override Calculated Risk?">
+                  <YesNoSelect
+                    value={record.risk_override_enabled ? "yes" : "no"}
+                    onChange={(value) => {
+                      updateField("risk_override_enabled", value === "yes");
+                      saveField("risk_override_enabled", value === "yes");
+                    }}
+                    disabled={evaluationLocked}
+                  />
+                </Field>
+
+                {record.risk_override_enabled ? (
+                  <>
+                    <Field label="Override Risk Level">
+                      <select
+                        value={record.risk_override_level || ""}
+                        onChange={(e) => {
+                          updateField("risk_override_level", e.target.value);
+                          saveField("risk_override_level", e.target.value);
+                        }}
+                        disabled={evaluationLocked}
+                        style={inputStyle(evaluationLocked)}
+                      >
+                        <option value="">Select</option>
+                        <option value="low">Low</option>
+                        <option value="medium">Medium</option>
+                        <option value="high">High</option>
+                        <option value="critical">Critical</option>
+                      </select>
+                    </Field>
+
+                    <Field label="Risk Override Justification">
+                      <textarea
+                        value={record.risk_override_justification || ""}
+                        onChange={(e) =>
+                          updateField("risk_override_justification", e.target.value)
+                        }
+                        onBlur={(e) =>
+                          saveField("risk_override_justification", e.target.value)
+                        }
+                        disabled={evaluationLocked}
+                        rows={3}
+                        style={textareaStyle(evaluationLocked)}
+                      />
+                    </Field>
+                  </>
+                ) : null}
+              </div>
+            ) : null}
+
+            <div style={formGridStyle}>
+              <Field label="Patient Safety Impact">
+                <textarea
+                  value={record.patient_safety_impact || ""}
+                  onChange={(e) =>
+                    updateField("patient_safety_impact", e.target.value)
+                  }
+                  onBlur={(e) =>
+                    saveField("patient_safety_impact", e.target.value)
+                  }
+                  disabled={evaluationLocked}
+                  rows={3}
+                  style={textareaStyle(evaluationLocked)}
+                />
+              </Field>
+
+              <Field label="Product Quality Impact">
+                <textarea
+                  value={record.product_quality_impact || record.product_impact || ""}
+                  onChange={(e) =>
+                    updateField("product_quality_impact", e.target.value)
+                  }
+                  onBlur={(e) =>
+                    saveField("product_quality_impact", e.target.value)
+                  }
+                  disabled={evaluationLocked}
+                  rows={3}
+                  style={textareaStyle(evaluationLocked)}
+                />
+              </Field>
+
+              <Field label="Regulatory Impact">
+                <textarea
+                  value={record.regulatory_impact || ""}
+                  onChange={(e) => updateField("regulatory_impact", e.target.value)}
+                  onBlur={(e) => saveField("regulatory_impact", e.target.value)}
+                  disabled={evaluationLocked}
+                  rows={3}
+                  style={textareaStyle(evaluationLocked)}
+                />
+              </Field>
+
+              <Field label="Risk Rationale">
+                <textarea
+                  value={record.risk_rationale || record.risk_assessment || ""}
+                  onChange={(e) => updateField("risk_rationale", e.target.value)}
+                  onBlur={(e) => saveField("risk_rationale", e.target.value)}
+                  disabled={evaluationLocked}
+                  rows={3}
+                  style={textareaStyle(evaluationLocked)}
+                />
+              </Field>
+            </div>
           </WorkflowCard>
 
           <WorkflowCard
@@ -1433,7 +2212,11 @@ export default function EnterpriseCapaWorkflowPage() {
             subtitle="Document objective, evidence reviewed, findings, and conclusion."
             expanded={expandedSections.includes("investigation")}
             onToggle={() => toggleSection("investigation")}
+            locked={investigationLocked}
           >
+            {investigationLocked && !isLocked ? (
+              <p style={subtleText}>Initiation approval is required before Investigation can be edited.</p>
+            ) : null}
             <div style={formGridStyle}>
               <Field label="Investigation Objective">
                 <textarea
@@ -1499,8 +2282,8 @@ export default function EnterpriseCapaWorkflowPage() {
 
           <WorkflowCard
             sectionKey="rootcause"
-            title="5. Root Cause"
-            subtitle="Document root cause method, contributing factors, verification, and systemic impact."
+            title="5. Root Cause Determination"
+            subtitle="Document root cause analysis method, verified root cause, contributing factors, verification, and systemic impact."
             expanded={expandedSections.includes("rootcause")}
             onToggle={() => toggleSection("rootcause")}
           >
@@ -1576,143 +2359,9 @@ export default function EnterpriseCapaWorkflowPage() {
             </div>
           </WorkflowCard>
 
-          <WorkflowCard
-            sectionKey="risk"
-            title="6. Risk Assessment / Severity"
-            subtitle="Assess severity, occurrence, detection, risk level, and quality/regulatory impact."
-            expanded={expandedSections.includes("risk")}
-            onToggle={() => toggleSection("risk")}
-          >
-            <div style={formGridStyle}>
-              <Field label="Severity">
-                <select
-                  value={record.severity || ""}
-                  onChange={(e) => {
-                    updateField("severity", e.target.value);
-                    saveField("severity", e.target.value);
-                  }}
-                  disabled={isLocked}
-                  style={inputStyle(isLocked)}
-                >
-                  <option value="">Select</option>
-                  <option value="low">Low</option>
-                  <option value="medium">Medium</option>
-                  <option value="high">High</option>
-                  <option value="critical">Critical</option>
-                </select>
-              </Field>
-
-              <Field label="Occurrence">
-                <select
-                  value={record.occurrence_rating || ""}
-                  onChange={(e) => {
-                    updateField("occurrence_rating", e.target.value);
-                    saveField("occurrence_rating", e.target.value);
-                  }}
-                  disabled={isLocked}
-                  style={inputStyle(isLocked)}
-                >
-                  <option value="">Select</option>
-                  <option value="low">Low</option>
-                  <option value="medium">Medium</option>
-                  <option value="high">High</option>
-                </select>
-              </Field>
-
-              <Field label="Detection">
-                <select
-                  value={record.detection_rating || ""}
-                  onChange={(e) => {
-                    updateField("detection_rating", e.target.value);
-                    saveField("detection_rating", e.target.value);
-                  }}
-                  disabled={isLocked}
-                  style={inputStyle(isLocked)}
-                >
-                  <option value="">Select</option>
-                  <option value="high_detection">High Detection</option>
-                  <option value="medium_detection">Medium Detection</option>
-                  <option value="low_detection">Low Detection</option>
-                </select>
-              </Field>
-
-              <Field label="Risk Level">
-                <select
-                  value={record.risk_level || ""}
-                  onChange={(e) => {
-                    updateField("risk_level", e.target.value);
-                    saveField("risk_level", e.target.value);
-                  }}
-                  disabled={isLocked}
-                  style={inputStyle(isLocked)}
-                >
-                  <option value="">Select</option>
-                  <option value="low">Low</option>
-                  <option value="medium">Medium</option>
-                  <option value="high">High</option>
-                  <option value="critical">Critical</option>
-                </select>
-              </Field>
-            </div>
-
-            <div style={formGridStyle}>
-              <Field label="Patient Safety Impact">
-                <textarea
-                  value={record.patient_safety_impact || ""}
-                  onChange={(e) =>
-                    updateField("patient_safety_impact", e.target.value)
-                  }
-                  onBlur={(e) =>
-                    saveField("patient_safety_impact", e.target.value)
-                  }
-                  disabled={isLocked}
-                  rows={3}
-                  style={textareaStyle(isLocked)}
-                />
-              </Field>
-
-              <Field label="Product Quality Impact">
-                <textarea
-                  value={record.product_quality_impact || ""}
-                  onChange={(e) =>
-                    updateField("product_quality_impact", e.target.value)
-                  }
-                  onBlur={(e) =>
-                    saveField("product_quality_impact", e.target.value)
-                  }
-                  disabled={isLocked}
-                  rows={3}
-                  style={textareaStyle(isLocked)}
-                />
-              </Field>
-
-              <Field label="Regulatory Impact">
-                <textarea
-                  value={record.regulatory_impact || ""}
-                  onChange={(e) => updateField("regulatory_impact", e.target.value)}
-                  onBlur={(e) => saveField("regulatory_impact", e.target.value)}
-                  disabled={isLocked}
-                  rows={3}
-                  style={textareaStyle(isLocked)}
-                />
-              </Field>
-
-              <Field label="Risk Rationale">
-                <textarea
-                  value={record.risk_rationale || record.risk_assessment || ""}
-                  onChange={(e) => updateField("risk_rationale", e.target.value)}
-                  onBlur={(e) => saveField("risk_rationale", e.target.value)}
-                  disabled={isLocked}
-                  rows={3}
-                  style={textareaStyle(isLocked)}
-                />
-              </Field>
-            </div>
-          </WorkflowCard>
-
           <ApprovalCard
             sectionKey="investigationapproval"
-            title="7. Investigation Approval"
+            title="6. Investigation Approval"
             description="Approver reviews scope, containment, investigation, root cause, risk assessment, and severity before implementation begins."
             status={record.investigation_approval_status || "not_submitted"}
             comments={investigationApprovalComments}
@@ -1733,26 +2382,26 @@ export default function EnterpriseCapaWorkflowPage() {
           />
 
           <WorkflowCard
-            sectionKey="correctiveaction"
-            title="8. Corrective Action"
-            subtitle="Define corrective action, owner, due date, and verification method."
-            locked={implementationLocked}
-            expanded={expandedSections.includes("correctiveaction")}
-            onToggle={() => toggleSection("correctiveaction")}
+            sectionKey="actionplan"
+            title="7. Action Plan Proposal"
+            subtitle="Define the corrective or preventive action plan, owner, due date, required resources, required evidence, and effectiveness plan."
+            locked={actionPlanPlanningLocked}
+            expanded={expandedSections.includes("actionplan")}
+            onToggle={() => toggleSection("actionplan")}
           >
-            {implementationLocked && !isLocked ? <LockNotice /> : null}
+            {actionPlanPlanningLocked && !isLocked ? <LockNotice /> : null}
 
             <div style={formGridStyle}>
-              <Field label="Corrective Action">
+              <Field label={record.capa_type === "preventive" ? "Preventive Action Plan" : "Corrective Action Plan"}>
                 <textarea
                   value={record.corrective_action_plan || ""}
                   onChange={(e) =>
                     updateField("corrective_action_plan", e.target.value)
                   }
                   onBlur={(e) => saveField("corrective_action_plan", e.target.value)}
-                  disabled={implementationLocked}
+                  disabled={actionPlanPlanningLocked}
                   rows={4}
-                  style={textareaStyle(implementationLocked)}
+                  style={textareaStyle(actionPlanPlanningLocked)}
                 />
               </Field>
 
@@ -1761,8 +2410,8 @@ export default function EnterpriseCapaWorkflowPage() {
                   value={record.action_owner || ""}
                   onChange={(e) => updateField("action_owner", e.target.value)}
                   onBlur={(e) => saveField("action_owner", e.target.value)}
-                  disabled={implementationLocked}
-                  style={inputStyle(implementationLocked)}
+                  disabled={actionPlanPlanningLocked}
+                  style={inputStyle(actionPlanPlanningLocked)}
                 />
               </Field>
 
@@ -1774,8 +2423,8 @@ export default function EnterpriseCapaWorkflowPage() {
                     updateField("action_due_date", e.target.value);
                     saveField("action_due_date", e.target.value);
                   }}
-                  disabled={implementationLocked}
-                  style={inputStyle(implementationLocked)}
+                  disabled={actionPlanPlanningLocked}
+                  style={inputStyle(actionPlanPlanningLocked)}
                 />
               </Field>
 
@@ -1784,25 +2433,47 @@ export default function EnterpriseCapaWorkflowPage() {
                   value={record.verification_method || ""}
                   onChange={(e) => updateField("verification_method", e.target.value)}
                   onBlur={(e) => saveField("verification_method", e.target.value)}
-                  disabled={implementationLocked}
+                  disabled={actionPlanPlanningLocked}
                   rows={3}
-                  style={textareaStyle(implementationLocked)}
+                  style={textareaStyle(actionPlanPlanningLocked)}
+                />
+              </Field>
+
+              <Field label="Required Resources">
+                <textarea
+                  value={record.required_resources || ""}
+                  onChange={(e) => updateField("required_resources", e.target.value)}
+                  onBlur={(e) => saveField("required_resources", e.target.value)}
+                  disabled={actionPlanPlanningLocked}
+                  rows={3}
+                  style={textareaStyle(actionPlanPlanningLocked)}
+                />
+              </Field>
+
+              <Field label="Required Evidence">
+                <textarea
+                  value={record.required_evidence || ""}
+                  onChange={(e) => updateField("required_evidence", e.target.value)}
+                  onBlur={(e) => saveField("required_evidence", e.target.value)}
+                  disabled={actionPlanPlanningLocked}
+                  rows={3}
+                  style={textareaStyle(actionPlanPlanningLocked)}
                 />
               </Field>
             </div>
           </WorkflowCard>
 
           <WorkflowCard
-            sectionKey="tasks"
-            title="9. Execution Tasks"
-            subtitle="Assign executable CAPA tasks with owners, due dates, evidence, and completion signatures."
-            locked={implementationLocked}
-            expanded={expandedSections.includes("tasks")}
-            onToggle={() => toggleSection("tasks")}
+            sectionKey="implementationtasks"
+            title="8. Implementation Task Assignment"
+            subtitle="Assign implementation tasks as part of the action plan proposal. Task execution unlocks after action plan approval."
+            locked={actionPlanPlanningLocked}
+            expanded={expandedSections.includes("implementationtasks")}
+            onToggle={() => toggleSection("implementationtasks")}
           >
-            {implementationLocked && !isLocked ? <LockNotice /> : null}
+            {actionPlanPlanningLocked && !isLocked ? <LockNotice /> : null}
 
-            {!implementationLocked ? (
+            {!actionPlanPlanningLocked ? (
               <>
                 <div style={formGridStyle}>
                   <Field label="Task Type">
@@ -1885,7 +2556,7 @@ export default function EnterpriseCapaWorkflowPage() {
                   <TaskCard
                     key={task.id}
                     task={task}
-                    locked={isLocked}
+                    locked={implementationLocked}
                     evidence={taskEvidence[task.id] || ""}
                     setEvidence={(value) =>
                       setTaskEvidence((prev) => ({
@@ -1906,10 +2577,32 @@ export default function EnterpriseCapaWorkflowPage() {
             </div>
           </WorkflowCard>
 
+          <ApprovalCard
+            sectionKey="actionplanapproval"
+            title="9. Action Plan Approval"
+            description="Approve the proposed action plan, implementation task assignments, and effectiveness plan before execution."
+            status={record.action_plan_approval_status || "not_submitted"}
+            comments={actionPlanApprovalComments}
+            setComments={setActionPlanApprovalComments}
+            submittedBy={record.action_plan_submitted_by}
+            submittedAt={record.action_plan_submitted_at}
+            approvedBy={record.action_plan_approved_by}
+            approvedAt={record.action_plan_approved_at}
+            rejectedBy={record.action_plan_rejected_by}
+            rejectedAt={record.action_plan_rejected_at}
+            disabled={isLocked}
+            canApprove={canApprove}
+            expanded={expandedSections.includes("actionplanapproval")}
+            onToggle={() => toggleSection("actionplanapproval")}
+            onSubmit={submitActionPlanApproval}
+            onApprove={approveActionPlan}
+            onReject={rejectActionPlan}
+          />
+
           <WorkflowCard
             sectionKey="implementation"
             title="10. Implementation"
-            subtitle="Document implementation evidence and related QMS updates."
+            subtitle="Execute the approved action plan and complete assigned implementation tasks with evidence."
             locked={implementationLocked}
             expanded={expandedSections.includes("implementation")}
             onToggle={() => toggleSection("implementation")}
@@ -1985,9 +2678,115 @@ export default function EnterpriseCapaWorkflowPage() {
           </WorkflowCard>
 
           <WorkflowCard
+            sectionKey="effectivenessplan"
+            title="11. Effectiveness Plan"
+            subtitle="Define how CAPA success will be measured before effectiveness verification begins."
+            locked={actionPlanPlanningLocked}
+            expanded={expandedSections.includes("effectivenessplan")}
+            onToggle={() => toggleSection("effectivenessplan")}
+          >
+            {actionPlanPlanningLocked && !isLocked ? <LockNotice /> : null}
+
+            <div style={formGridStyle}>
+              <Field label="Verification Method">
+                <textarea
+                  value={record.verification_method || record.monitoring_method || record.effectiveness_plan || ""}
+                  onChange={(e) => updateField("verification_method", e.target.value)}
+                  onBlur={(e) => saveField("verification_method", e.target.value)}
+                  disabled={actionPlanPlanningLocked}
+                  rows={3}
+                  style={textareaStyle(actionPlanPlanningLocked)}
+                />
+              </Field>
+
+              <Field label="Success Criteria">
+                <textarea
+                  value={record.effectiveness_success_criteria || ""}
+                  onChange={(e) =>
+                    updateField("effectiveness_success_criteria", e.target.value)
+                  }
+                  onBlur={(e) =>
+                    saveField("effectiveness_success_criteria", e.target.value)
+                  }
+                  disabled={actionPlanPlanningLocked}
+                  rows={3}
+                  style={textareaStyle(actionPlanPlanningLocked)}
+                />
+              </Field>
+
+              <Field label="Data to Collect">
+                <textarea
+                  value={record.effectiveness_data_to_collect || ""}
+                  onChange={(e) =>
+                    updateField("effectiveness_data_to_collect", e.target.value)
+                  }
+                  onBlur={(e) =>
+                    saveField("effectiveness_data_to_collect", e.target.value)
+                  }
+                  disabled={actionPlanPlanningLocked}
+                  rows={3}
+                  style={textareaStyle(actionPlanPlanningLocked)}
+                />
+              </Field>
+
+              <Field label="Sample Size">
+                <input
+                  value={record.effectiveness_sample_size || ""}
+                  onChange={(e) =>
+                    updateField("effectiveness_sample_size", e.target.value)
+                  }
+                  onBlur={(e) =>
+                    saveField("effectiveness_sample_size", e.target.value)
+                  }
+                  disabled={actionPlanPlanningLocked}
+                  style={inputStyle(actionPlanPlanningLocked)}
+                />
+              </Field>
+
+              <Field label="Verification Owner">
+                <input
+                  value={record.verification_owner || ""}
+                  onChange={(e) => updateField("verification_owner", e.target.value)}
+                  onBlur={(e) => saveField("verification_owner", e.target.value)}
+                  disabled={actionPlanPlanningLocked}
+                  style={inputStyle(actionPlanPlanningLocked)}
+                />
+              </Field>
+
+              <Field label="Verification Due Date">
+                <input
+                  type="date"
+                  value={record.verification_due_date || ""}
+                  onChange={(e) => {
+                    updateField("verification_due_date", e.target.value);
+                    saveField("verification_due_date", e.target.value);
+                  }}
+                  disabled={actionPlanPlanningLocked}
+                  style={inputStyle(actionPlanPlanningLocked)}
+                />
+              </Field>
+            </div>
+
+            <Field label="Required Objective Evidence">
+              <textarea
+                value={record.required_objective_evidence || ""}
+                onChange={(e) =>
+                  updateField("required_objective_evidence", e.target.value)
+                }
+                onBlur={(e) =>
+                  saveField("required_objective_evidence", e.target.value)
+                }
+                disabled={actionPlanPlanningLocked}
+                rows={3}
+                style={textareaStyle(actionPlanPlanningLocked)}
+              />
+            </Field>
+          </WorkflowCard>
+
+          <WorkflowCard
             sectionKey="effectiveness"
-            title="11. Effectiveness"
-            subtitle="Document monitoring method, monitoring period, results, recurrence, and final rating."
+            title="12. Effectiveness Verification"
+            subtitle="Execute the approved effectiveness plan and document results, recurrence, rating, evidence, and follow-up."
             locked={implementationLocked}
             expanded={expandedSections.includes("effectiveness")}
             onToggle={() => toggleSection("effectiveness")}
@@ -1995,29 +2794,6 @@ export default function EnterpriseCapaWorkflowPage() {
             {implementationLocked && !isLocked ? <LockNotice /> : null}
 
             <div style={formGridStyle}>
-              <Field label="Monitoring Method">
-                <textarea
-                  value={record.monitoring_method || record.effectiveness_plan || ""}
-                  onChange={(e) =>
-                    updateField("monitoring_method", e.target.value)
-                  }
-                  onBlur={(e) => saveField("monitoring_method", e.target.value)}
-                  disabled={implementationLocked}
-                  rows={3}
-                  style={textareaStyle(implementationLocked)}
-                />
-              </Field>
-
-              <Field label="Monitoring Period">
-                <input
-                  value={record.monitoring_period || ""}
-                  onChange={(e) => updateField("monitoring_period", e.target.value)}
-                  onBlur={(e) => saveField("monitoring_period", e.target.value)}
-                  disabled={implementationLocked}
-                  style={inputStyle(implementationLocked)}
-                />
-              </Field>
-
               <Field label="Effectiveness Results">
                 <textarea
                   value={record.effectiveness_check || ""}
@@ -2093,8 +2869,8 @@ export default function EnterpriseCapaWorkflowPage() {
 
           <ApprovalCard
             sectionKey="closure"
-            title="12. Closure Approval"
-            description="Final approval confirms CAPA completion, effectiveness, execution tasks, and closure readiness. Approval locks the record."
+            title="13. Closure Approval"
+            description="Final approval confirms implementation, task completion, effectiveness verification, and closure readiness. Approval locks the record."
             status={record.closure_approval_status || "not_submitted"}
             comments={closureApprovalComments}
             setComments={setClosureApprovalComments}
