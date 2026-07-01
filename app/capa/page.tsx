@@ -45,6 +45,11 @@ export default function CapaPage() {
   const [userEmail, setUserEmail] = useState("");
 
   const [title, setTitle] = useState("");
+  const [capaType, setCapaType] = useState("corrective");
+  const [capaJustification, setCapaJustification] = useState("");
+  const [productImpact, setProductImpact] = useState("");
+  const [processImpact, setProcessImpact] = useState("");
+  const [patientImpact, setPatientImpact] = useState("");
   const [owner, setOwner] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [capaSource, setCapaSource] = useState("direct");
@@ -103,7 +108,12 @@ export default function CapaPage() {
 
   const createDirectCapa = async () => {
     if (!title) {
-      alert("CAPA title is required.");
+      alert("Problem statement is required.");
+      return;
+    }
+
+    if (!capaJustification.trim()) {
+      alert("CAPA justification is required.");
       return;
     }
 
@@ -111,9 +121,18 @@ export default function CapaPage() {
       .from("capas")
       .insert({
         title,
+        problem_statement: title,
+        problem_description: title,
+        capa_type: capaType,
+        capa_classification: capaType === "preventive" ? "preventive_action" : "corrective_action",
+        capa_justification: capaJustification,
+        product_impact: productImpact || null,
+        process_impact: processImpact || null,
+        patient_safety_impact: patientImpact || null,
         owner,
         due_date: dueDate || null,
-        status: "open",
+        status: "pending_initiation_approval",
+        initiation_approval_status: "not_submitted",
         source_type: "direct",
         capa_source: capaSource,
         linked_ncmr_title: null,
@@ -131,10 +150,15 @@ export default function CapaPage() {
       "capa",
       data.id,
       "created",
-      `Direct CAPA created: ${title}`
+      `Direct CAPA initiated: ${title}`
     );
 
     setTitle("");
+    setCapaType("corrective");
+    setCapaJustification("");
+    setProductImpact("");
+    setProcessImpact("");
+    setPatientImpact("");
     setOwner("");
     setDueDate("");
     setCapaSource("direct");
@@ -441,21 +465,42 @@ export default function CapaPage() {
       </section>
 <section style={sectionStyle}>
         <h2>Initiate Direct CAPA</h2>
+        <p style={{ color: "#4b5563", marginTop: 0 }}>
+          Complete the initiation package before submitting for Quality approval.
+        </p>
 
         <div style={formGridStyle}>
           <div>
-            <label>CAPA Title</label>
+            <label>CAPA Type</label>
 
-            <input
-              value={title}
-              onChange={(e) =>
-                setTitle(
-                  e.target.value
-                )
-              }
-              placeholder="CAPA title"
+            <select
+              value={capaType}
+              onChange={(e) => setCapaType(e.target.value)}
               style={inputStyle}
-            />
+            >
+              <option value="corrective">Corrective CAPA</option>
+              <option value="preventive">Preventive CAPA</option>
+            </select>
+          </div>
+
+          <div>
+            <label>CAPA Source</label>
+
+            <select
+              value={capaSource}
+              onChange={(e) => setCapaSource(e.target.value)}
+              style={inputStyle}
+            >
+              <option value="direct">Direct</option>
+              <option value="ncmr">NCMR</option>
+              <option value="audit">Audit</option>
+              <option value="complaint">Complaint</option>
+              <option value="trend">Trend</option>
+              <option value="management_review">Management Review</option>
+              <option value="supplier_issue">Supplier Issue</option>
+              <option value="process_issue">Process Issue</option>
+              <option value="risk_management">Risk Management</option>
+            </select>
           </div>
 
           <div>
@@ -463,11 +508,7 @@ export default function CapaPage() {
 
             <input
               value={owner}
-              onChange={(e) =>
-                setOwner(
-                  e.target.value
-                )
-              }
+              onChange={(e) => setOwner(e.target.value)}
               placeholder="CAPA owner"
               style={inputStyle}
             />
@@ -479,62 +520,67 @@ export default function CapaPage() {
             <input
               type="date"
               value={dueDate}
-              onChange={(e) =>
-                setDueDate(
-                  e.target.value
-                )
-              }
+              onChange={(e) => setDueDate(e.target.value)}
               style={inputStyle}
+            />
+          </div>
+        </div>
+
+        <div style={{ marginTop: "12px" }}>
+          <label>Problem Statement</label>
+          <textarea
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="Describe the problem, trend, or preventive concern that requires CAPA."
+            rows={3}
+            style={{ ...inputStyle, minHeight: "90px" }}
+          />
+        </div>
+
+        <div style={{ marginTop: "12px" }}>
+          <label>Justification for CAPA</label>
+          <textarea
+            value={capaJustification}
+            onChange={(e) => setCapaJustification(e.target.value)}
+            placeholder="Explain why a CAPA is required."
+            rows={3}
+            style={{ ...inputStyle, minHeight: "90px" }}
+          />
+        </div>
+
+        <div style={formGridStyle}>
+          <div>
+            <label>Product Impact</label>
+            <textarea
+              value={productImpact}
+              onChange={(e) => setProductImpact(e.target.value)}
+              rows={3}
+              style={{ ...inputStyle, minHeight: "90px" }}
             />
           </div>
 
           <div>
-            <label>CAPA Source</label>
+            <label>Process Impact</label>
+            <textarea
+              value={processImpact}
+              onChange={(e) => setProcessImpact(e.target.value)}
+              rows={3}
+              style={{ ...inputStyle, minHeight: "90px" }}
+            />
+          </div>
 
-            <select
-              value={capaSource}
-              onChange={(e) =>
-                setCapaSource(
-                  e.target.value
-                )
-              }
-              style={inputStyle}
-            >
-              <option value="direct">
-                Direct
-              </option>
-
-              <option value="audit">
-                Audit
-              </option>
-
-              <option value="complaint">
-                Complaint
-              </option>
-
-              <option value="trend">
-                Trend
-              </option>
-
-              <option value="management_review">
-                Management Review
-              </option>
-
-              <option value="supplier_issue">
-                Supplier Issue
-              </option>
-
-              <option value="process_issue">
-                Process Issue
-              </option>
-            </select>
+          <div>
+            <label>Patient Impact</label>
+            <textarea
+              value={patientImpact}
+              onChange={(e) => setPatientImpact(e.target.value)}
+              rows={3}
+              style={{ ...inputStyle, minHeight: "90px" }}
+            />
           </div>
         </div>
 
-        <button
-          onClick={createDirectCapa}
-          style={primaryButtonStyle}
-        >
+        <button onClick={createDirectCapa} style={primaryButtonStyle}>
           Create CAPA
         </button>
       </section>
