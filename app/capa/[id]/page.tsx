@@ -4195,6 +4195,17 @@ const buttonRowStyle: CSSProperties = {
   flexWrap: "wrap",
 };
 
+
+const primaryLinkStyle: CSSProperties = {
+  display: "inline-block",
+  background: "#2563eb",
+  color: "white",
+  padding: "8px 12px",
+  borderRadius: "8px",
+  textDecoration: "none",
+  fontWeight: 700,
+};
+
 const primaryButtonStyle: CSSProperties = {
   background: "#2563eb",
   color: "white",
