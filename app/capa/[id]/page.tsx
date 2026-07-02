@@ -1524,10 +1524,6 @@ export default function EnterpriseCapaWorkflowPage() {
       return alert("Verification method is required.");
     }
 
-    if (!record?.effectiveness_success_criteria) {
-      return alert("Effectiveness success criteria are required.");
-    }
-
     await saveAll();
 
     const submitted = await submitGateForApproval("action_plan", actionPlanApprovalComments);
