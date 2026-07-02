@@ -138,6 +138,7 @@ export default function EnterpriseCapaWorkflowPage() {
   const investigationLocked = !initiationApproved || isLocked;
   const actionPlanPlanningLocked = !investigationApproved || actionPlanApproved || isLocked;
   const implementationLocked = !actionPlanApproved || isLocked;
+  const effectivenessPlanLocked = !record?.implemented_by || isLocked;
 
   const canApprove = userRole === "approver" || userRole === "vp_quality";
 
@@ -1774,7 +1775,7 @@ export default function EnterpriseCapaWorkflowPage() {
         key: "effectivenessplan",
         label: "Effectiveness Plan",
         completed: Boolean(record?.verification_method && record?.effectiveness_success_criteria),
-        locked: actionPlanPlanningLocked,
+        locked: effectivenessPlanLocked,
       },
       {
         key: "effectiveness",
@@ -1799,6 +1800,7 @@ export default function EnterpriseCapaWorkflowPage() {
       investigationLocked,
       actionPlanPlanningLocked,
       implementationLocked,
+      effectivenessPlanLocked,
       tasks,
       tasksComplete,
     ]
@@ -3036,11 +3038,15 @@ export default function EnterpriseCapaWorkflowPage() {
             sectionKey="effectivenessplan"
             title="11. Effectiveness Plan"
             subtitle="Define how CAPA success will be measured before effectiveness verification begins."
-            locked={actionPlanPlanningLocked}
+            locked={effectivenessPlanLocked}
             expanded={expandedSections.includes("effectivenessplan")}
             onToggle={() => toggleSection("effectivenessplan")}
           >
-            {actionPlanPlanningLocked && !isLocked ? <LockNotice /> : null}
+            {effectivenessPlanLocked && !isLocked ? (
+              <p style={subtleText}>
+                Implementation must be marked complete before the Effectiveness Plan can be edited.
+              </p>
+            ) : null}
 
             <div style={formGridStyle}>
               <Field label="Verification Method">
@@ -3048,9 +3054,9 @@ export default function EnterpriseCapaWorkflowPage() {
                   value={record.verification_method || record.monitoring_method || record.effectiveness_plan || ""}
                   onChange={(e) => updateField("verification_method", e.target.value)}
                   onBlur={(e) => saveField("verification_method", e.target.value)}
-                  disabled={actionPlanPlanningLocked}
+                  disabled={effectivenessPlanLocked}
                   rows={3}
-                  style={textareaStyle(actionPlanPlanningLocked)}
+                  style={textareaStyle(effectivenessPlanLocked)}
                 />
               </Field>
 
@@ -3063,9 +3069,9 @@ export default function EnterpriseCapaWorkflowPage() {
                   onBlur={(e) =>
                     saveField("effectiveness_success_criteria", e.target.value)
                   }
-                  disabled={actionPlanPlanningLocked}
+                  disabled={effectivenessPlanLocked}
                   rows={3}
-                  style={textareaStyle(actionPlanPlanningLocked)}
+                  style={textareaStyle(effectivenessPlanLocked)}
                 />
               </Field>
 
@@ -3078,9 +3084,9 @@ export default function EnterpriseCapaWorkflowPage() {
                   onBlur={(e) =>
                     saveField("effectiveness_data_to_collect", e.target.value)
                   }
-                  disabled={actionPlanPlanningLocked}
+                  disabled={effectivenessPlanLocked}
                   rows={3}
-                  style={textareaStyle(actionPlanPlanningLocked)}
+                  style={textareaStyle(effectivenessPlanLocked)}
                 />
               </Field>
 
@@ -3093,8 +3099,8 @@ export default function EnterpriseCapaWorkflowPage() {
                   onBlur={(e) =>
                     saveField("effectiveness_sample_size", e.target.value)
                   }
-                  disabled={actionPlanPlanningLocked}
-                  style={inputStyle(actionPlanPlanningLocked)}
+                  disabled={effectivenessPlanLocked}
+                  style={inputStyle(effectivenessPlanLocked)}
                 />
               </Field>
 
@@ -3103,8 +3109,8 @@ export default function EnterpriseCapaWorkflowPage() {
                   value={record.verification_owner || ""}
                   onChange={(e) => updateField("verification_owner", e.target.value)}
                   onBlur={(e) => saveField("verification_owner", e.target.value)}
-                  disabled={actionPlanPlanningLocked}
-                  style={inputStyle(actionPlanPlanningLocked)}
+                  disabled={effectivenessPlanLocked}
+                  style={inputStyle(effectivenessPlanLocked)}
                 />
               </Field>
 
@@ -3116,8 +3122,8 @@ export default function EnterpriseCapaWorkflowPage() {
                     updateField("verification_due_date", e.target.value);
                     saveField("verification_due_date", e.target.value);
                   }}
-                  disabled={actionPlanPlanningLocked}
-                  style={inputStyle(actionPlanPlanningLocked)}
+                  disabled={effectivenessPlanLocked}
+                  style={inputStyle(effectivenessPlanLocked)}
                 />
               </Field>
             </div>
@@ -3131,9 +3137,9 @@ export default function EnterpriseCapaWorkflowPage() {
                 onBlur={(e) =>
                   saveField("required_objective_evidence", e.target.value)
                 }
-                disabled={actionPlanPlanningLocked}
+                disabled={effectivenessPlanLocked}
                 rows={3}
-                style={textareaStyle(actionPlanPlanningLocked)}
+                style={textareaStyle(effectivenessPlanLocked)}
               />
             </Field>
           </WorkflowCard>
