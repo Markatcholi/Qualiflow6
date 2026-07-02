@@ -1540,10 +1540,6 @@ This approval becomes part of the official electronic quality record.`,
     alert("CAPA approvals are completed from My Approval Tasks.");
   };
 
-  const rejectGateApproval = async (_gate: ApprovalGateKey, _comments: string) => {
-    alert("CAPA approval rejections are completed from My Approval Tasks.");
-  };
-
   const markImplemented = async () => {
     if (implementationLocked) {
       alert(
