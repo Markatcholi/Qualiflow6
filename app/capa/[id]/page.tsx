@@ -3742,15 +3742,6 @@ function ApprovalCard({
               )}
             </>
           ) : null}
-
-                {isPending ? (
-                  <a href="/my-approval-tasks" style={primaryLinkStyle}>
-                    Open My Approval Tasks
-                  </a>
-                ) : null}
-              </div>
-            </>
-          ) : null}
         </div>
       ) : null}
     </section>
