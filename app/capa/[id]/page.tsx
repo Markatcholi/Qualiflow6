@@ -773,7 +773,7 @@ export default function EnterpriseCapaWorkflowPage() {
         severity: getEffectiveRiskLevel() === "critical" ? "critical" : "medium",
         relatedRecordId: id,
         relatedModule: "capa",
-        relatedUrl: `/capa/${id}`,
+        relatedUrl: `/my-approval-tasks`,
         createdBy: userEmail,
         deduplicationKey: `CAPA_${gate}_${id}_${task.approver_email}`,
       });
@@ -1074,7 +1074,7 @@ export default function EnterpriseCapaWorkflowPage() {
         severity,
         relatedRecordId: id,
         relatedModule: "capa",
-        relatedUrl: `/capa/${id}`,
+        relatedUrl: `/my-approval-tasks`,
         createdBy: userEmail,
       });
     }
@@ -1326,7 +1326,7 @@ export default function EnterpriseCapaWorkflowPage() {
       severity: "medium",
       relatedRecordId: id,
       relatedModule: "capa",
-      relatedUrl: `/capa/${id}`,
+      relatedUrl: `/my-approval-tasks`,
       createdBy: userEmail,
       deduplicationKey: `TASK_ASSIGNED_${id}_${newTask.task_title}_${taskOwnerEmail}`,
     });
@@ -1372,7 +1372,7 @@ export default function EnterpriseCapaWorkflowPage() {
         severity: status === "blocked" ? "high" : "medium",
         relatedRecordId: id,
         relatedModule: "capa",
-        relatedUrl: `/capa/${id}`,
+        relatedUrl: `/my-approval-tasks`,
         createdBy: userEmail,
       });
     }
@@ -3759,15 +3759,10 @@ function ApprovalCard({
                   </button>
                 ) : null}
 
-                {isPending && canApprove ? (
-                  <>
-                    <button onClick={onApprove} style={primaryButtonStyle}>
-                      Approve My Task
-                    </button>
-                    <button onClick={onReject} style={dangerButtonStyle}>
-                      Reject Package
-                    </button>
-                  </>
+                {isPending ? (
+                  <a href="/my-approval-tasks" style={primaryLinkStyle}>
+                    Open My Approval Tasks
+                  </a>
                 ) : null}
               </div>
             </>
@@ -3856,24 +3851,16 @@ function TaskCard({
           ) : null}
         </div>
 
-        {!complete && !locked ? (
+        {!complete ? (
           <div style={{ minWidth: "240px" }}>
-            <Field label="Completion Evidence">
-              <textarea
-                value={evidence}
-                onChange={(e) => setEvidence(e.target.value)}
-                rows={3}
-                style={textareaStyle(false)}
-              />
-            </Field>
-
-            <div style={{ display: "grid", gap: "8px" }}>
-              <button onClick={onStart}>Start</button>
-              <button onClick={onPendingReview}>Pending Review</button>
-              <button onClick={onBlock}>Blocked</button>
-              <button onClick={onComplete} style={secondaryButtonStyle}>
-                Complete with E-Signature
-              </button>
+            <div style={evidenceBoxStyle}>
+              <strong>Task Execution</strong>
+              <p style={{ marginBottom: "8px" }}>
+                Assigned CAPA implementation tasks are completed from the central task queue.
+              </p>
+              <a href="/my-approval-tasks" style={primaryLinkStyle}>
+                Open My Approval Tasks
+              </a>
             </div>
           </div>
         ) : null}
