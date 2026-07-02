@@ -3573,20 +3573,43 @@ function ApprovalCard({
 
           {!disabled && !isApproved ? (
             <>
-              <div
-                style={{
-                  border: "1px solid #d1d5db",
-                  borderRadius: "10px",
-                  padding: "12px",
-                  marginTop: "12px",
-                  marginBottom: "12px",
-                  background: "#f9fafb",
-                }}
-              >
-                <h3 style={{ marginTop: 0 }}>Approvers</h3>
+              {isPending ? (
+                <div
+                  style={{
+                    border: "1px solid #bfdbfe",
+                    borderRadius: "10px",
+                    padding: "14px",
+                    marginTop: "12px",
+                    marginBottom: "12px",
+                    background: "#eff6ff",
+                  }}
+                >
+                  <h3 style={{ marginTop: 0 }}>Approval Package Submitted</h3>
+                  <p style={{ marginBottom: "8px" }}>
+                    This approval package has been sent to the assigned approver task queue.
+                    Approval and rejection must be completed from My Approval Tasks.
+                  </p>
+                  <p style={{ marginBottom: "8px", color: "#4b5563" }}>
+                    Approval tasks are intentionally hidden from the CAPA owner workspace after submission.
+                  </p>
+                  <a href="/my-approval-tasks" style={primaryLinkStyle}>
+                    Open My Approval Tasks
+                  </a>
+                </div>
+              ) : (
+                <>
+                  <div
+                    style={{
+                      border: "1px solid #d1d5db",
+                      borderRadius: "10px",
+                      padding: "12px",
+                      marginTop: "12px",
+                      marginBottom: "12px",
+                      background: "#f9fafb",
+                    }}
+                  >
+                    <h3 style={{ marginTop: 0 }}>Approvers</h3>
 
-                {!isPending ? (
-                  <>
                     <div style={formGridStyle}>
                       <Field label="Approval Matrix">
                         <select
@@ -3662,102 +3685,63 @@ function ApprovalCard({
                         </button>
                       </div>
                     </div>
-                  </>
-                ) : (
-                  <p style={subtleText}>
-                    Approval package is pending. Approvers cannot be changed unless the package is rejected and resubmitted.
-                  </p>
-                )}
 
-                <div style={{ marginTop: "12px" }}>
-                  {configuredApprovers.length === 0 ? (
-                    <p style={subtleText}>No approvers configured.</p>
-                  ) : (
-                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
-                      <thead>
-                        <tr>
-                          <th style={tableHeaderStyle}>Order</th>
-                          <th style={tableHeaderStyle}>Approver</th>
-                          <th style={tableHeaderStyle}>Role</th>
-                          <th style={tableHeaderStyle}>Required</th>
-                          <th style={tableHeaderStyle}>Action</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {configuredApprovers.map((approver) => (
-                          <tr key={approver.id}>
-                            <td style={tableCellStyle}>{approver.approval_order || "-"}</td>
-                            <td style={tableCellStyle}>{approver.approver_email}</td>
-                            <td style={tableCellStyle}>{approver.approver_role || "CAPA Approver"}</td>
-                            <td style={tableCellStyle}>{approver.is_required === false ? "No" : "Yes"}</td>
-                            <td style={tableCellStyle}>
-                              {!isPending ? (
-                                <button
-                                  type="button"
-                                  onClick={() => onRemoveApprover(approver.id)}
-                                  disabled={loadingApprovals}
-                                >
-                                  Remove
-                                </button>
-                              ) : (
-                                "Locked"
-                              )}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )}
-                </div>
+                    <div style={{ marginTop: "12px" }}>
+                      {configuredApprovers.length === 0 ? (
+                        <p style={subtleText}>No approvers configured.</p>
+                      ) : (
+                        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
+                          <thead>
+                            <tr>
+                              <th style={tableHeaderStyle}>Order</th>
+                              <th style={tableHeaderStyle}>Approver</th>
+                              <th style={tableHeaderStyle}>Role</th>
+                              <th style={tableHeaderStyle}>Required</th>
+                              <th style={tableHeaderStyle}>Action</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {configuredApprovers.map((approver) => (
+                              <tr key={approver.id}>
+                                <td style={tableCellStyle}>{approver.approval_order || "-"}</td>
+                                <td style={tableCellStyle}>{approver.approver_email}</td>
+                                <td style={tableCellStyle}>{approver.approver_role || "CAPA Approver"}</td>
+                                <td style={tableCellStyle}>{approver.is_required === false ? "No" : "Yes"}</td>
+                                <td style={tableCellStyle}>
+                                  <button
+                                    type="button"
+                                    onClick={() => onRemoveApprover(approver.id)}
+                                    disabled={loadingApprovals}
+                                  >
+                                    Remove
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
+                    </div>
+                  </div>
 
-                <div style={{ marginTop: "12px" }}>
-                  <strong>Approval Tasks</strong>
-                  {approvalTasks.length === 0 ? (
-                    <p style={subtleText}>No approval tasks generated.</p>
-                  ) : (
-                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
-                      <thead>
-                        <tr>
-                          <th style={tableHeaderStyle}>Approver</th>
-                          <th style={tableHeaderStyle}>Role</th>
-                          <th style={tableHeaderStyle}>Required</th>
-                          <th style={tableHeaderStyle}>Status</th>
-                          <th style={tableHeaderStyle}>Completed By</th>
-                          <th style={tableHeaderStyle}>Completed At</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {approvalTasks.map((task) => (
-                          <tr key={task.id}>
-                            <td style={tableCellStyle}>{task.approver_email}</td>
-                            <td style={tableCellStyle}>{task.approver_role || "CAPA Approver"}</td>
-                            <td style={tableCellStyle}>{task.is_required === false ? "No" : "Yes"}</td>
-                            <td style={tableCellStyle}>{task.task_status || "pending"}</td>
-                            <td style={tableCellStyle}>{task.completed_by || "-"}</td>
-                            <td style={tableCellStyle}>{task.completed_at || "-"}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )}
-                </div>
-              </div>
+                  <Field label="Submission Comments">
+                    <textarea
+                      value={comments}
+                      onChange={(e) => setComments(e.target.value)}
+                      rows={3}
+                      style={textareaStyle(false)}
+                    />
+                  </Field>
 
-              <Field label={isPending ? "Approval / Rejection Comments" : "Submission Comments"}>
-                <textarea
-                  value={comments}
-                  onChange={(e) => setComments(e.target.value)}
-                  rows={3}
-                  style={textareaStyle(false)}
-                />
-              </Field>
-
-              <div style={buttonRowStyle}>
-                {!isPending ? (
-                  <button onClick={onSubmit} style={secondaryButtonStyle}>
-                    Submit for Approval
-                  </button>
-                ) : null}
+                  <div style={buttonRowStyle}>
+                    <button onClick={onSubmit} style={secondaryButtonStyle}>
+                      Submit for Approval
+                    </button>
+                  </div>
+                </>
+              )}
+            </>
+          ) : null}
 
                 {isPending ? (
                   <a href="/my-approval-tasks" style={primaryLinkStyle}>
@@ -3856,7 +3840,7 @@ function TaskCard({
             <div style={evidenceBoxStyle}>
               <strong>Task Execution</strong>
               <p style={{ marginBottom: "8px" }}>
-                Assigned CAPA implementation tasks are completed from the central task queue.
+                Assigned CAPA implementation tasks are completed from My Approval Tasks / task queue.
               </p>
               <a href="/my-approval-tasks" style={primaryLinkStyle}>
                 Open My Approval Tasks
