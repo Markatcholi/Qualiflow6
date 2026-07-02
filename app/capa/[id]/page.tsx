@@ -55,16 +55,18 @@ type CapaGateApprover = {
 
 type CapaApprovalTask = {
   id: string;
-  capa_id: string;
-  approval_gate: ApprovalGateKey | string;
-  approver_email: string;
-  approver_role: string | null;
-  task_status: string | null;
-  is_required: boolean | null;
-  approval_order: number | null;
+  entity_type: string | null;
+  entity_id: string | null;
+  task_type: string | null;
+  required_function: string | null;
+  assigned_to_email: string | null;
+  assigned_by_email: string | null;
+  status: string | null;
+  required: boolean | null;
   comments: string | null;
-  completed_by: string | null;
-  completed_at: string | null;
+  signed_by: string | null;
+  signed_at: string | null;
+  approver_comment: string | null;
   created_at: string | null;
 };
 
@@ -274,11 +276,10 @@ export default function EnterpriseCapaWorkflowPage() {
     if (!id) return;
 
     const { data, error } = await supabase
-      .from("capa_approval_tasks")
+      .from("approval_tasks")
       .select("*")
-      .eq("capa_id", id)
-      .order("approval_gate", { ascending: true })
-      .order("approval_order", { ascending: true })
+      .eq("entity_type", "capa")
+      .eq("entity_id", id)
       .order("created_at", { ascending: true });
 
     if (error) {
@@ -318,6 +319,10 @@ export default function EnterpriseCapaWorkflowPage() {
     action_plan: "Action Plan Approval",
     closure: "Closure Approval",
   };
+
+  const getCapaApprovalTaskType = (gate: ApprovalGateKey) =>
+    `capa_${gate}_approval`;
+
 
   const approvalGateStatusFields: Record<ApprovalGateKey, any> = {
     initiation: {
@@ -392,11 +397,11 @@ export default function EnterpriseCapaWorkflowPage() {
     gateApprovers.filter((approver) => approver.approval_gate === gate);
 
   const getGateApprovalTasks = (gate: ApprovalGateKey) =>
-    approvalTasks.filter((task) => task.approval_gate === gate);
+    approvalTasks.filter((task) => task.task_type === getCapaApprovalTaskType(gate));
 
   const getPendingGateApprovalTasks = (gate: ApprovalGateKey) =>
     getGateApprovalTasks(gate).filter(
-      (task) => (task.task_status || "pending") === "pending"
+      (task) => (task.status || "pending") === "pending"
     );
 
   const hasActiveGateApprovalTasks = (gate: ApprovalGateKey) =>
@@ -711,29 +716,38 @@ export default function EnterpriseCapaWorkflowPage() {
       return false;
     }
 
+    const taskType = getCapaApprovalTaskType(gate);
+
     await supabase
-      .from("capa_approval_tasks")
+      .from("approval_tasks")
       .delete()
-      .eq("capa_id", id)
-      .eq("approval_gate", gate)
-      .eq("task_status", "pending");
+      .eq("entity_type", "capa")
+      .eq("entity_id", id)
+      .eq("task_type", taskType)
+      .eq("status", "pending");
 
     const taskRows = configuredApprovers.map((approver, index) => ({
-      capa_id: id,
-      approval_gate: gate,
-      approver_email: normalizeApproverEmail(approver.approver_email),
-      approver_role: approver.approver_role || "CAPA Approver",
-      task_status: "pending",
-      is_required: approver.is_required !== false,
-      approval_order: approver.approval_order || index + 1,
-      signature_meaning: `${approvalGateLabels[gate]} approval requested.`,
-      comments: comments || null,
-      created_by: userEmail || "unknown",
+      entity_type: "capa",
+      entity_id: id,
+      task_type: taskType,
+      required_function: approver.approver_role || approvalGateLabels[gate],
+      assigned_to_email: normalizeApproverEmail(approver.approver_email),
+      assigned_by_email: userEmail || "unknown",
+      status: "pending",
+      required: approver.is_required !== false,
+      comments:
+        comments ||
+        `Please review ${record?.capa_number || "this CAPA"} for ${approvalGateLabels[gate]}.
+
+Review the CAPA section and approve only if it is complete, justified, and compliant with procedure requirements.
+
+This approval becomes part of the official electronic quality record.`,
     }));
 
-    const { error: taskError } = await supabase
-      .from("capa_approval_tasks")
-      .insert(taskRows);
+    const { data: insertedTasks, error: taskError } = await supabase
+      .from("approval_tasks")
+      .insert(taskRows)
+      .select();
 
     if (taskError) {
       alert(taskError.message);
@@ -758,88 +772,30 @@ export default function EnterpriseCapaWorkflowPage() {
       return false;
     }
 
+    if (insertedTasks && insertedTasks.length > 0) {
+      const notifications = insertedTasks.map((task: any) => ({
+        recipient_email: task.assigned_to_email,
+        subject: `${approvalGateLabels[gate]} assigned: ${record?.capa_number || "CAPA"}`,
+        body: `You have been assigned ${approvalGateLabels[gate]} for ${record?.capa_number || "this CAPA"}. Please open My Approval Tasks.`,
+        entity_type: "capa",
+        entity_id: id,
+        task_id: task.id,
+        status: "pending",
+      }));
+
+      await supabase.from("notification_queue").insert(notifications);
+    }
+
     await addAuditLog(
       "approval_package_submitted",
-      `${approvalGateLabels[gate]} submitted with ${taskRows.length} approver task(s).`
+      `${approvalGateLabels[gate]} submitted to My Approval Tasks with ${taskRows.length} approver task(s).`
     );
-
-    for (const task of taskRows) {
-      await createNotification({
-        userEmail: task.approver_email,
-        assignedRole: "approver",
-        title: `${approvalGateLabels[gate]} Required`,
-        message: `${record?.capa_number || "CAPA"} requires your approval for ${approvalGateLabels[gate]}.`,
-        notificationType: `capa_${gate}_approval_required`,
-        severity: getEffectiveRiskLevel() === "critical" ? "critical" : "medium",
-        relatedRecordId: id,
-        relatedModule: "capa",
-        relatedUrl: `/my-approval-tasks`,
-        createdBy: userEmail,
-        deduplicationKey: `CAPA_${gate}_${id}_${task.approver_email}`,
-      });
-    }
 
     await refreshApprovalEngine();
     return true;
   };
 
-  const completeGateApproval = async (gate: ApprovalGateKey, comments: string) => {
-    const currentUser = normalizeApproverEmail(userEmail);
-    const pendingTasks = getPendingGateApprovalTasks(gate);
-    const matchingTask =
-      pendingTasks.find(
-        (task) => normalizeApproverEmail(task.approver_email) === currentUser
-      ) || (canApprove ? pendingTasks[0] : null);
-
-    if (!matchingTask) {
-      alert("No pending approval task is assigned to you for this gate.");
-      return;
-    }
-
-    const confirmed = window.confirm(
-      `Electronic Signature:\n\nApprove ${approvalGateLabels[gate]}?`
-    );
-
-    if (!confirmed) return;
-
-    const now = new Date().toISOString();
-
-    const { error } = await supabase
-      .from("capa_approval_tasks")
-      .update({
-        task_status: "approved",
-        completed_by: userEmail || "unknown",
-        completed_at: now,
-        comments: comments || null,
-        signature_meaning: `I approve ${approvalGateLabels[gate]}.`,
-      })
-      .eq("id", matchingTask.id);
-
-    if (error) {
-      alert(error.message);
-      return;
-    }
-
-    await addAuditLog(
-      "approval_task_completed",
-      `${approvalGateLabels[gate]} approval task completed by ${userEmail}.`
-    );
-
-    const { data: remainingTasks } = await supabase
-      .from("capa_approval_tasks")
-      .select("*")
-      .eq("capa_id", id)
-      .eq("approval_gate", gate)
-      .eq("is_required", true)
-      .eq("task_status", "pending");
-
-    if ((remainingTasks || []).length === 0) {
-      await approveGateAutomatically(gate, comments);
-      return;
-    }
-
-    await refreshApprovalEngine();
-  };
+  // CAPA approvals are completed from /my-approval-tasks.
 
   const approveGateAutomatically = async (gate: ApprovalGateKey, comments: string) => {
     const now = new Date().toISOString();
@@ -933,7 +889,7 @@ export default function EnterpriseCapaWorkflowPage() {
     }
 
     await supabase
-      .from("capa_approval_tasks")
+      .from("approval_tasks")
       .update({
         task_status: "cancelled",
         cancelled_at: now,
@@ -1295,41 +1251,81 @@ export default function EnterpriseCapaWorkflowPage() {
       return;
     }
 
-    const { error } = await supabase.from("capa_tasks").insert({
-      capa_id: id,
-      task_type: newTask.task_type,
-      task_title: newTask.task_title,
-      task_description: newTask.task_description || null,
-      owner: taskOwnerEmail,
-      owner_email: taskOwnerEmail,
-      due_date: newTask.due_date || null,
-      status: "open",
-      created_by: userEmail || "unknown",
-      sequence_order: tasks.length + 1,
-    });
+    const { data: capaTask, error } = await supabase
+      .from("capa_tasks")
+      .insert({
+        capa_id: id,
+        task_type: newTask.task_type,
+        task_title: newTask.task_title,
+        task_description: newTask.task_description || null,
+        owner: taskOwnerEmail,
+        owner_email: taskOwnerEmail,
+        due_date: newTask.due_date || null,
+        status: "open",
+        created_by: userEmail || "unknown",
+        sequence_order: tasks.length + 1,
+      })
+      .select()
+      .single();
 
     if (error) {
       alert(error.message);
       return;
     }
 
+    const { data: centralTask, error: approvalTaskError } = await supabase
+      .from("approval_tasks")
+      .insert({
+        entity_type: "capa",
+        entity_id: id,
+        task_type: "capa_implementation_task",
+        required_function: newTask.task_title,
+        assigned_to_email: taskOwnerEmail,
+        assigned_by_email: userEmail || "unknown",
+        status: "pending",
+        required: true,
+        comments:
+          newTask.task_description ||
+          `Please complete the assigned CAPA implementation task for ${record?.capa_number || "this CAPA"}.`,
+        capa_task_id: capaTask?.id,
+      })
+      .select()
+      .single();
+
+    if (approvalTaskError) {
+      alert(approvalTaskError.message);
+      return;
+    }
+
     await addAuditLog(
       "task_created",
-      `CAPA task created: ${newTask.task_title}`
+      `CAPA implementation task created and routed to My Approval Tasks: ${newTask.task_title}`
     );
 
     await createNotification({
       userEmail: taskOwnerEmail,
-      title: "CAPA Task Assigned",
-      message: `You have been assigned a CAPA task: ${newTask.task_title}`,
-      notificationType: "capa_task_assigned",
+      title: "CAPA Implementation Task Assigned",
+      message: `You have been assigned a CAPA implementation task: ${newTask.task_title}`,
+      notificationType: "capa_implementation_task_assigned",
       severity: "medium",
       relatedRecordId: id,
       relatedModule: "capa",
       relatedUrl: `/my-approval-tasks`,
       createdBy: userEmail,
-      deduplicationKey: `TASK_ASSIGNED_${id}_${newTask.task_title}_${taskOwnerEmail}`,
+      deduplicationKey: `CAPA_IMPLEMENTATION_TASK_${id}_${centralTask?.id || newTask.task_title}_${taskOwnerEmail}`,
     });
+
+    if (centralTask?.id) {
+      await supabase.from("notification_queue").insert({
+        recipient_email: taskOwnerEmail,
+        subject: `CAPA implementation task assigned: ${record?.capa_number || "CAPA"}`,
+        body: `You have been assigned a CAPA implementation task for ${record?.capa_number || "this CAPA"}. Please open My Approval Tasks.`,
+        entity_type: "capa",
+        entity_id: id,
+        task_id: centralTask.id,
+        status: "pending",
+      });
+    }
 
     setNewTask({
       task_type: "corrective_action",
@@ -1340,6 +1336,7 @@ export default function EnterpriseCapaWorkflowPage() {
     });
 
     fetchTasks();
+    fetchApprovalTasks();
   };
 
   const updateTaskStatus = async (task: CapaTask, status: string) => {
@@ -1712,12 +1709,6 @@ export default function EnterpriseCapaWorkflowPage() {
         ),
       },
       {
-        key: "initiationapproval",
-        label: "Initiation Approval",
-        completed: initiationApproved,
-        status: record?.initiation_approval_status,
-      },
-      {
         key: "evaluation",
         label: "Evaluation",
         completed: Boolean(
@@ -1746,24 +1737,10 @@ export default function EnterpriseCapaWorkflowPage() {
         locked: investigationLocked,
       },
       {
-        key: "investigationapproval",
-        label: "Investigation Approval",
-        completed: investigationApproved,
-        status: record?.investigation_approval_status,
-        locked: investigationLocked,
-      },
-      {
         key: "actionplan",
         label: "Action Plan Proposal",
         completed: Boolean(record?.corrective_action_plan),
         locked: actionPlanPlanningLocked,
-      },
-      {
-        key: "actionplanapproval",
-        label: "Action Plan Approval",
-        completed: actionPlanApproved,
-        status: record?.action_plan_approval_status,
-        locked: !investigationApproved || isLocked,
       },
       {
         key: "implementation",
@@ -1782,12 +1759,6 @@ export default function EnterpriseCapaWorkflowPage() {
         label: "Effectiveness Verification",
         completed: Boolean(record?.effectiveness_rating && record?.effectiveness_check),
         locked: implementationLocked,
-      },
-      {
-        key: "closure",
-        label: "Closure Approval",
-        completed: closureApproved || record?.status === "cancelled",
-        status: record?.closure_approval_status,
       },
     ],
     [
@@ -1851,9 +1822,9 @@ export default function EnterpriseCapaWorkflowPage() {
             {record.title || "Untitled CAPA"}
           </h1>
           <p style={subtleText}>
-            Initiation → Initiation Approval → Evaluation → Investigation →
-            Root Cause Determination → Investigation Approval → Action Plan →
-            Action Plan Approval → Implementation → Effectiveness Plan →
+            Initiation → Evaluation → Investigation →
+            Root Cause Determination → Action Plan →
+            Implementation → Effectiveness Plan →
             Effectiveness Verification → Closure.
           </p>
         </div>
@@ -2083,12 +2054,12 @@ export default function EnterpriseCapaWorkflowPage() {
                 />
               </Field>
             </div>
-          </WorkflowCard>
 
-          <ApprovalCard
-            sectionKey="initiationapproval"
+
+<ApprovalInlinePanel
+            sectionKey="initiationapproval-inline"
             gateKey="initiation"
-            title="2. Initiation Approval"
+            title="Approvers / Submit Initiation for Approval"
             description="Quality approval confirms the CAPA is justified and may proceed to evaluation and investigation."
             status={record.initiation_approval_status || "not_submitted"}
             comments={initiationApprovalComments}
@@ -2130,6 +2101,9 @@ export default function EnterpriseCapaWorkflowPage() {
             onApprove={approveInitiation}
             onReject={rejectInitiation}
           />
+          </WorkflowCard>
+
+          
 
           <WorkflowCard
             sectionKey="evaluation"
@@ -2666,12 +2640,12 @@ export default function EnterpriseCapaWorkflowPage() {
                 />
               </Field>
             </div>
-          </WorkflowCard>
 
-          <ApprovalCard
-            sectionKey="investigationapproval"
+
+<ApprovalInlinePanel
+            sectionKey="investigationapproval-inline"
             gateKey="investigation"
-            title="6. Investigation Approval"
+            title="Approvers / Submit Investigation for Approval"
             description="Approver reviews scope, containment, investigation, root cause, risk assessment, and severity before implementation begins."
             status={record.investigation_approval_status || "not_submitted"}
             comments={investigationApprovalComments}
@@ -2713,6 +2687,9 @@ export default function EnterpriseCapaWorkflowPage() {
             onApprove={approveInvestigation}
             onReject={rejectInvestigation}
           />
+          </WorkflowCard>
+
+          
 
           <WorkflowCard
             sectionKey="actionplan"
@@ -2908,12 +2885,12 @@ export default function EnterpriseCapaWorkflowPage() {
                 ))
               )}
             </div>
-          </WorkflowCard>
 
-          <ApprovalCard
-            sectionKey="actionplanapproval"
+
+<ApprovalInlinePanel
+            sectionKey="actionplanapproval-inline"
             gateKey="action_plan"
-            title="9. Action Plan Approval"
+            title="Approvers / Submit Action Plan for Approval"
             description="Approve the proposed action plan, implementation task assignments, and effectiveness plan before execution."
             status={record.action_plan_approval_status || "not_submitted"}
             comments={actionPlanApprovalComments}
@@ -2955,6 +2932,9 @@ export default function EnterpriseCapaWorkflowPage() {
             onApprove={approveActionPlan}
             onReject={rejectActionPlan}
           />
+          </WorkflowCard>
+
+          
 
           <WorkflowCard
             sectionKey="implementation"
@@ -3226,12 +3206,12 @@ export default function EnterpriseCapaWorkflowPage() {
                 />
               </Field>
             ) : null}
-          </WorkflowCard>
 
-          <ApprovalCard
-            sectionKey="closure"
+
+<ApprovalInlinePanel
+            sectionKey="closureapproval-inline"
             gateKey="closure"
-            title="13. Closure Approval"
+            title="Approvers / Submit Closure for Approval"
             description="Final approval confirms implementation, task completion, effectiveness verification, and closure readiness. Approval locks the record."
             status={record.closure_approval_status || "not_submitted"}
             comments={closureApprovalComments}
@@ -3273,6 +3253,9 @@ export default function EnterpriseCapaWorkflowPage() {
             onApprove={approveClosure}
             onReject={rejectClosure}
           />
+          </WorkflowCard>
+
+          
 
           {!isLocked ? (
             <WorkflowCard
@@ -3425,9 +3408,12 @@ function WorkflowCard({
   onToggle: () => void;
 }) {
   return (
-    <section
+    <div
       style={{
-        ...workflowCardStyle,
+        border: "1px solid #d1d5db",
+        borderRadius: "12px",
+        padding: "14px",
+        marginTop: "18px",
         opacity: locked ? 0.82 : 1,
         borderLeft: `8px solid ${locked ? "#9ca3af" : "#2563eb"}`,
       }}
@@ -3448,11 +3434,11 @@ function WorkflowCard({
       </button>
 
       {expanded ? <div id={sectionKey}>{children}</div> : null}
-    </section>
+    </div>
   );
 }
 
-function ApprovalCard({
+function ApprovalInlinePanel({
   sectionKey,
   gateKey,
   title,
@@ -3530,9 +3516,12 @@ function ApprovalCard({
   const isRejected = status === "rejected";
 
   return (
-    <section
+    <div
       style={{
-        ...workflowCardStyle,
+        border: "1px solid #d1d5db",
+        borderRadius: "12px",
+        padding: "14px",
+        marginTop: "18px",
         borderLeft: `8px solid ${
           isApproved
             ? "#15803d"
@@ -3744,7 +3733,7 @@ function ApprovalCard({
           ) : null}
         </div>
       ) : null}
-    </section>
+    </div>
   );
 }
 
