@@ -34,12 +34,58 @@ type CapaTask = {
   created_by: string | null;
 };
 
+type ApprovalGateKey =
+  | "initiation"
+  | "investigation"
+  | "action_plan"
+  | "closure";
+
+type CapaGateApprover = {
+  id: string;
+  capa_id: string;
+  approval_gate: ApprovalGateKey | string;
+  approver_email: string;
+  approver_role: string | null;
+  approval_order: number | null;
+  is_required: boolean | null;
+  approval_status: string | null;
+  source_template_id: string | null;
+  created_at: string | null;
+};
+
+type CapaApprovalTask = {
+  id: string;
+  capa_id: string;
+  approval_gate: ApprovalGateKey | string;
+  approver_email: string;
+  approver_role: string | null;
+  task_status: string | null;
+  is_required: boolean | null;
+  approval_order: number | null;
+  comments: string | null;
+  completed_by: string | null;
+  completed_at: string | null;
+  created_at: string | null;
+};
+
 export default function EnterpriseCapaWorkflowPage() {
   const params = useParams<{ id: string }>();
   const id = params.id;
 
   const [record, setRecord] = useState<any>(null);
   const [tasks, setTasks] = useState<CapaTask[]>([]);
+  const [gateApprovers, setGateApprovers] = useState<CapaGateApprover[]>([]);
+  const [approvalTasks, setApprovalTasks] = useState<CapaApprovalTask[]>([]);
+  const [approvalMatrixTemplates, setApprovalMatrixTemplates] = useState<any[]>([]);
+  const [selectedApprovalMatrixByGate, setSelectedApprovalMatrixByGate] =
+    useState<Record<string, string>>({});
+  const [manualApproverEmailByGate, setManualApproverEmailByGate] =
+    useState<Record<string, string>>({});
+  const [manualApproverRoleByGate, setManualApproverRoleByGate] =
+    useState<Record<string, string>>({});
+  const [manualApproverRequiredByGate, setManualApproverRequiredByGate] =
+    useState<Record<string, boolean>>({});
+  const [loadingApprovals, setLoadingApprovals] = useState(false);
   const [loading, setLoading] = useState(true);
   const [savingField, setSavingField] = useState("");
 
@@ -168,11 +214,89 @@ export default function EnterpriseCapaWorkflowPage() {
     setTasks((data as CapaTask[]) || []);
   };
 
+  const fetchApprovalMatrixTemplates = async () => {
+    const { data, error } = await supabase
+      .from("approval_matrix_templates")
+      .select("*");
+
+    if (error) {
+      console.warn("Unable to load approval matrix templates:", error.message);
+      setApprovalMatrixTemplates([]);
+      return;
+    }
+
+    const capaTemplates = (data || []).filter((template: any) => {
+      const templateModule = String(
+        template?.module || template?.module_name || template?.template_module || ""
+      ).toLowerCase();
+      const isActive = template?.is_active !== false && template?.active !== false;
+
+      return (
+        isActive &&
+        (templateModule === "capa" ||
+          templateModule.includes("capa") ||
+          templateModule.includes("corrective") ||
+          templateModule.includes("preventive"))
+      );
+    });
+
+    setApprovalMatrixTemplates(
+      capaTemplates.sort((a: any, b: any) =>
+        String(a.template_name || a.name || "").localeCompare(
+          String(b.template_name || b.name || "")
+        )
+      )
+    );
+  };
+
+  const fetchGateApprovers = async () => {
+    if (!id) return;
+
+    const { data, error } = await supabase
+      .from("capa_gate_approvers")
+      .select("*")
+      .eq("capa_id", id)
+      .order("approval_gate", { ascending: true })
+      .order("approval_order", { ascending: true })
+      .order("created_at", { ascending: true });
+
+    if (error) {
+      console.warn("Unable to load CAPA gate approvers:", error.message);
+      setGateApprovers([]);
+      return;
+    }
+
+    setGateApprovers((data as CapaGateApprover[]) || []);
+  };
+
+  const fetchApprovalTasks = async () => {
+    if (!id) return;
+
+    const { data, error } = await supabase
+      .from("capa_approval_tasks")
+      .select("*")
+      .eq("capa_id", id)
+      .order("approval_gate", { ascending: true })
+      .order("approval_order", { ascending: true })
+      .order("created_at", { ascending: true });
+
+    if (error) {
+      console.warn("Unable to load CAPA approval tasks:", error.message);
+      setApprovalTasks([]);
+      return;
+    }
+
+    setApprovalTasks((data as CapaApprovalTask[]) || []);
+  };
+
   useEffect(() => {
     if (id) {
       fetchUserRole();
       fetchRecord();
       fetchTasks();
+      fetchApprovalMatrixTemplates();
+      fetchGateApprovers();
+      fetchApprovalTasks();
     }
   }, [id]);
 
@@ -184,6 +308,654 @@ export default function EnterpriseCapaWorkflowPage() {
       details,
       user_email: userEmail || "unknown",
     });
+  };
+
+
+  const approvalGateLabels: Record<ApprovalGateKey, string> = {
+    initiation: "Initiation Approval",
+    investigation: "Investigation Approval",
+    action_plan: "Action Plan Approval",
+    closure: "Closure Approval",
+  };
+
+  const approvalGateStatusFields: Record<ApprovalGateKey, any> = {
+    initiation: {
+      status: "initiation_approval_status",
+      submittedBy: "initiation_submitted_by",
+      submittedAt: "initiation_submitted_at",
+      approvedBy: "initiation_approved_by",
+      approvedAt: "initiation_approved_at",
+      approvalComments: "initiation_approval_comments",
+      rejectedBy: "initiation_rejected_by",
+      rejectedAt: "initiation_rejected_at",
+      rejectionComments: "initiation_rejection_comments",
+      nextStatus: "evaluation",
+      pendingStatus: "pending_initiation_approval",
+      rejectedStatus: "initiation",
+      matrixId: "initiation_approval_matrix_id",
+    },
+    investigation: {
+      status: "investigation_approval_status",
+      submittedBy: "investigation_submitted_by",
+      submittedAt: "investigation_submitted_at",
+      approvedBy: "investigation_approved_by",
+      approvedAt: "investigation_approved_at",
+      approvalComments: "investigation_approval_comments",
+      rejectedBy: "investigation_rejected_by",
+      rejectedAt: "investigation_rejected_at",
+      rejectionComments: "investigation_rejection_comments",
+      nextStatus: "action_plan",
+      pendingStatus: "pending_investigation_approval",
+      rejectedStatus: "investigation",
+      matrixId: "investigation_approval_matrix_id",
+    },
+    action_plan: {
+      status: "action_plan_approval_status",
+      submittedBy: "action_plan_submitted_by",
+      submittedAt: "action_plan_submitted_at",
+      approvedBy: "action_plan_approved_by",
+      approvedAt: "action_plan_approved_at",
+      approvalComments: "action_plan_approval_comments",
+      rejectedBy: "action_plan_rejected_by",
+      rejectedAt: "action_plan_rejected_at",
+      rejectionComments: "action_plan_rejection_comments",
+      nextStatus: "implementation",
+      pendingStatus: "pending_action_plan_approval",
+      rejectedStatus: "action_plan",
+      matrixId: "action_plan_approval_matrix_id",
+    },
+    closure: {
+      status: "closure_approval_status",
+      submittedBy: "closure_submitted_by",
+      submittedAt: "closure_submitted_at",
+      approvedBy: "closure_approved_by",
+      approvedAt: "closure_approved_at",
+      approvalComments: "closure_approval_comments",
+      rejectedBy: "closure_rejected_by",
+      rejectedAt: "closure_rejected_at",
+      rejectionComments: "closure_rejection_comments",
+      nextStatus: "closed",
+      pendingStatus: "pending_closure_approval",
+      rejectedStatus: "effectiveness_review",
+      matrixId: "closure_approval_matrix_id",
+    },
+  };
+
+  const normalizeApproverEmail = (email: any) =>
+    String(email || "").trim().toLowerCase();
+
+  const isValidEmailFormat = (email: string) =>
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
+  const getGateApprovers = (gate: ApprovalGateKey) =>
+    gateApprovers.filter((approver) => approver.approval_gate === gate);
+
+  const getGateApprovalTasks = (gate: ApprovalGateKey) =>
+    approvalTasks.filter((task) => task.approval_gate === gate);
+
+  const getPendingGateApprovalTasks = (gate: ApprovalGateKey) =>
+    getGateApprovalTasks(gate).filter(
+      (task) => (task.task_status || "pending") === "pending"
+    );
+
+  const hasActiveGateApprovalTasks = (gate: ApprovalGateKey) =>
+    getPendingGateApprovalTasks(gate).length > 0;
+
+  const refreshApprovalEngine = async () => {
+    await fetchGateApprovers();
+    await fetchApprovalTasks();
+    await fetchRecord();
+  };
+
+  const validateApproverEmails = async (emails: string[]) => {
+    const normalizedEmails = Array.from(
+      new Set(emails.map((email) => normalizeApproverEmail(email)).filter(Boolean))
+    );
+
+    if (normalizedEmails.length === 0) {
+      return { valid: false, message: "At least one approver email is required." };
+    }
+
+    const invalidFormatEmails = normalizedEmails.filter(
+      (email) => !isValidEmailFormat(email)
+    );
+
+    if (invalidFormatEmails.length > 0) {
+      return {
+        valid: false,
+        message: `The following approver email(s) are not valid email addresses:\n\n${invalidFormatEmails.join("\n")}`,
+      };
+    }
+
+    const { data, error } = await supabase
+      .from("user_roles")
+      .select("user_email")
+      .in("user_email", normalizedEmails);
+
+    if (error) {
+      return {
+        valid: false,
+        message: `Unable to validate approver emails against system users: ${error.message}`,
+      };
+    }
+
+    const validSystemUsers = new Set(
+      (data || []).map((item: any) => normalizeApproverEmail(item.user_email))
+    );
+
+    const unknownUsers = normalizedEmails.filter(
+      (email) => !validSystemUsers.has(email)
+    );
+
+    if (unknownUsers.length > 0) {
+      return {
+        valid: false,
+        message: `The following approver email(s) are not valid QualiSphere users:\n\n${unknownUsers.join("\n")}\n\nPlease correct the approver list before submitting for approval.`,
+      };
+    }
+
+    return { valid: true, message: "" };
+  };
+
+  const normalizeMatrixApproverRow = (row: any, index: number) => {
+    const approverEmail =
+      row?.approver_email ||
+      row?.user_email ||
+      row?.email ||
+      row?.reviewer_email ||
+      row?.assigned_to_email ||
+      "";
+
+    const approverRole =
+      row?.approver_role ||
+      row?.role ||
+      row?.approval_role ||
+      row?.reviewer_role ||
+      row?.required_function ||
+      row?.function_name ||
+      "CAPA Approver";
+
+    const approvalOrder =
+      row?.approval_order ??
+      row?.display_order ??
+      row?.sort_order ??
+      row?.sequence ??
+      row?.order_index ??
+      index + 1;
+
+    return {
+      approver_email: normalizeApproverEmail(approverEmail),
+      approver_role: String(approverRole || "CAPA Approver").trim(),
+      approval_order: Number(approvalOrder) || index + 1,
+      is_required: row?.is_required === false || row?.required === false ? false : true,
+    };
+  };
+
+  const fetchApprovalMatrixRows = async (templateId: string) => {
+    const candidateTables = [
+      "approval_matrix_template_rows",
+      "approval_matrix_reviewers",
+      "approval_matrix_approvers",
+      "approval_matrix_steps",
+    ];
+
+    for (const tableName of candidateTables) {
+      const { data, error } = await supabase
+        .from(tableName)
+        .select("*")
+        .eq("template_id", templateId);
+
+      if (error) {
+        console.warn(`Unable to load ${tableName}:`, error.message);
+        continue;
+      }
+
+      if (data && data.length > 0) {
+        return data
+          .map((row: any, index: number) => normalizeMatrixApproverRow(row, index))
+          .filter((row: any) => row.approver_email);
+      }
+    }
+
+    return [];
+  };
+
+  const loadApproversFromMatrix = async (gate: ApprovalGateKey) => {
+    if (hasActiveGateApprovalTasks(gate)) {
+      alert("Approvers cannot be changed while this approval package has active tasks.");
+      return;
+    }
+
+    const templateId = selectedApprovalMatrixByGate[gate];
+
+    if (!templateId) {
+      alert("Select an approval matrix first.");
+      return;
+    }
+
+    const matrixRows = await fetchApprovalMatrixRows(templateId);
+
+    if (matrixRows.length === 0) {
+      alert("No approver rows were found for the selected approval matrix.");
+      return;
+    }
+
+    const validation = await validateApproverEmails(
+      matrixRows.map((row: any) => row.approver_email)
+    );
+
+    if (!validation.valid) {
+      alert(`Approval matrix cannot be loaded.\n\n${validation.message}`);
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Load approvers from this approval matrix? Existing configured approvers for this gate will be replaced."
+    );
+
+    if (!confirmed) return;
+
+    setLoadingApprovals(true);
+
+    await supabase
+      .from("capa_gate_approvers")
+      .delete()
+      .eq("capa_id", id)
+      .eq("approval_gate", gate);
+
+    const rowsToInsert = matrixRows.map((row: any, index: number) => ({
+      capa_id: id,
+      approval_gate: gate,
+      approver_email: row.approver_email,
+      approver_role: row.approver_role || "CAPA Approver",
+      approval_status: "configured",
+      approval_order: row.approval_order || index + 1,
+      is_required: row.is_required !== false,
+      source_template_id: templateId,
+      signature_meaning: `${approvalGateLabels[gate]} requested from approval matrix.`,
+      created_by: userEmail || "unknown",
+    }));
+
+    const { error } = await supabase.from("capa_gate_approvers").insert(rowsToInsert);
+
+    if (error) {
+      setLoadingApprovals(false);
+      alert(error.message);
+      return;
+    }
+
+    const matrixField = approvalGateStatusFields[gate].matrixId;
+    await supabase.from("capas").update({ [matrixField]: templateId }).eq("id", id);
+
+    await addAuditLog(
+      "approval_matrix_loaded",
+      `${approvalGateLabels[gate]} loaded ${rowsToInsert.length} approver(s) from approval matrix.`
+    );
+
+    setLoadingApprovals(false);
+    await refreshApprovalEngine();
+  };
+
+  const addManualApprover = async (gate: ApprovalGateKey) => {
+    if (hasActiveGateApprovalTasks(gate)) {
+      alert("Approvers cannot be changed while this approval package has active tasks.");
+      return;
+    }
+
+    const approverEmail = normalizeApproverEmail(manualApproverEmailByGate[gate]);
+    const approverRole =
+      manualApproverRoleByGate[gate] || "CAPA Approver";
+    const isRequired = manualApproverRequiredByGate[gate] !== false;
+
+    if (!approverEmail) {
+      alert("Approver email is required.");
+      return;
+    }
+
+    if (
+      getGateApprovers(gate).some(
+        (approver) => normalizeApproverEmail(approver.approver_email) === approverEmail
+      )
+    ) {
+      alert("This approver is already configured for this approval gate.");
+      return;
+    }
+
+    const validation = await validateApproverEmails([approverEmail]);
+
+    if (!validation.valid) {
+      alert(`Manual approver cannot be added.\n\n${validation.message}`);
+      return;
+    }
+
+    const nextOrder =
+      getGateApprovers(gate).length > 0
+        ? Math.max(
+            ...getGateApprovers(gate).map(
+              (approver) => Number(approver.approval_order) || 0
+            )
+          ) + 1
+        : 1;
+
+    const { error } = await supabase.from("capa_gate_approvers").insert({
+      capa_id: id,
+      approval_gate: gate,
+      approver_email: approverEmail,
+      approver_role: approverRole,
+      approval_status: "configured",
+      approval_order: nextOrder,
+      is_required: isRequired,
+      signature_meaning: `Manual ${approvalGateLabels[gate]} requested.`,
+      created_by: userEmail || "unknown",
+    });
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    await addAuditLog(
+      "manual_approver_added",
+      `${approvalGateLabels[gate]} manual approver added: ${approverEmail}`
+    );
+
+    setManualApproverEmailByGate((prev) => ({ ...prev, [gate]: "" }));
+    setManualApproverRoleByGate((prev) => ({ ...prev, [gate]: "CAPA Approver" }));
+    setManualApproverRequiredByGate((prev) => ({ ...prev, [gate]: true }));
+
+    await refreshApprovalEngine();
+  };
+
+  const removeGateApprover = async (gate: ApprovalGateKey, approverId: string) => {
+    if (hasActiveGateApprovalTasks(gate)) {
+      alert("Approvers cannot be changed while this approval package has active tasks.");
+      return;
+    }
+
+    const confirmed = window.confirm("Remove this approver from the approval gate?");
+    if (!confirmed) return;
+
+    const { error } = await supabase
+      .from("capa_gate_approvers")
+      .delete()
+      .eq("id", approverId);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    await addAuditLog(
+      "manual_approver_removed",
+      `${approvalGateLabels[gate]} approver removed.`
+    );
+
+    await refreshApprovalEngine();
+  };
+
+  const submitGateForApproval = async (gate: ApprovalGateKey, comments: string) => {
+    const configuredApprovers = getGateApprovers(gate);
+
+    if (configuredApprovers.length === 0) {
+      alert("Configure at least one approver before submitting for approval.");
+      return false;
+    }
+
+    const validation = await validateApproverEmails(
+      configuredApprovers.map((approver) => approver.approver_email)
+    );
+
+    if (!validation.valid) {
+      alert(`Approval package cannot be submitted.\n\n${validation.message}`);
+      return false;
+    }
+
+    await supabase
+      .from("capa_approval_tasks")
+      .delete()
+      .eq("capa_id", id)
+      .eq("approval_gate", gate)
+      .eq("task_status", "pending");
+
+    const taskRows = configuredApprovers.map((approver, index) => ({
+      capa_id: id,
+      approval_gate: gate,
+      approver_email: normalizeApproverEmail(approver.approver_email),
+      approver_role: approver.approver_role || "CAPA Approver",
+      task_status: "pending",
+      is_required: approver.is_required !== false,
+      approval_order: approver.approval_order || index + 1,
+      signature_meaning: `${approvalGateLabels[gate]} approval requested.`,
+      comments: comments || null,
+      created_by: userEmail || "unknown",
+    }));
+
+    const { error: taskError } = await supabase
+      .from("capa_approval_tasks")
+      .insert(taskRows);
+
+    if (taskError) {
+      alert(taskError.message);
+      return false;
+    }
+
+    const now = new Date().toISOString();
+    const fields = approvalGateStatusFields[gate];
+
+    const { error } = await supabase
+      .from("capas")
+      .update({
+        [fields.status]: "pending",
+        [fields.submittedBy]: userEmail || "unknown",
+        [fields.submittedAt]: now,
+        status: fields.pendingStatus,
+      })
+      .eq("id", id);
+
+    if (error) {
+      alert(error.message);
+      return false;
+    }
+
+    await addAuditLog(
+      "approval_package_submitted",
+      `${approvalGateLabels[gate]} submitted with ${taskRows.length} approver task(s).`
+    );
+
+    for (const task of taskRows) {
+      await createNotification({
+        userEmail: task.approver_email,
+        assignedRole: "approver",
+        title: `${approvalGateLabels[gate]} Required`,
+        message: `${record?.capa_number || "CAPA"} requires your approval for ${approvalGateLabels[gate]}.`,
+        notificationType: `capa_${gate}_approval_required`,
+        severity: getEffectiveRiskLevel() === "critical" ? "critical" : "medium",
+        relatedRecordId: id,
+        relatedModule: "capa",
+        relatedUrl: `/capa/${id}`,
+        createdBy: userEmail,
+        deduplicationKey: `CAPA_${gate}_${id}_${task.approver_email}`,
+      });
+    }
+
+    await refreshApprovalEngine();
+    return true;
+  };
+
+  const completeGateApproval = async (gate: ApprovalGateKey, comments: string) => {
+    const currentUser = normalizeApproverEmail(userEmail);
+    const pendingTasks = getPendingGateApprovalTasks(gate);
+    const matchingTask =
+      pendingTasks.find(
+        (task) => normalizeApproverEmail(task.approver_email) === currentUser
+      ) || (canApprove ? pendingTasks[0] : null);
+
+    if (!matchingTask) {
+      alert("No pending approval task is assigned to you for this gate.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Electronic Signature:\n\nApprove ${approvalGateLabels[gate]}?`
+    );
+
+    if (!confirmed) return;
+
+    const now = new Date().toISOString();
+
+    const { error } = await supabase
+      .from("capa_approval_tasks")
+      .update({
+        task_status: "approved",
+        completed_by: userEmail || "unknown",
+        completed_at: now,
+        comments: comments || null,
+        signature_meaning: `I approve ${approvalGateLabels[gate]}.`,
+      })
+      .eq("id", matchingTask.id);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    await addAuditLog(
+      "approval_task_completed",
+      `${approvalGateLabels[gate]} approval task completed by ${userEmail}.`
+    );
+
+    const { data: remainingTasks } = await supabase
+      .from("capa_approval_tasks")
+      .select("*")
+      .eq("capa_id", id)
+      .eq("approval_gate", gate)
+      .eq("is_required", true)
+      .eq("task_status", "pending");
+
+    if ((remainingTasks || []).length === 0) {
+      await approveGateAutomatically(gate, comments);
+      return;
+    }
+
+    await refreshApprovalEngine();
+  };
+
+  const approveGateAutomatically = async (gate: ApprovalGateKey, comments: string) => {
+    const now = new Date().toISOString();
+    const fields = approvalGateStatusFields[gate];
+
+    const updatePayload: any = {
+      [fields.status]: "approved",
+      [fields.approvedBy]: userEmail || "system",
+      [fields.approvedAt]: now,
+      [fields.approvalComments]: comments || null,
+      status: fields.nextStatus,
+    };
+
+    if (gate === "closure") {
+      const signatureMeaning =
+        "I approve final CAPA closure and confirm the initiation, evaluation, investigation, root cause determination, action plan approval, implementation, effectiveness plan, effectiveness verification, execution tasks, and closure review are complete.";
+
+      updatePayload.approved_by = userEmail;
+      updatePayload.approved_at = now;
+      updatePayload.signed_by = userEmail;
+      updatePayload.signed_at = now;
+      updatePayload.signature_meaning = signatureMeaning;
+      updatePayload.capa_signature_meaning = signatureMeaning;
+      updatePayload.capa_closed_by = userEmail;
+      updatePayload.closed_at = now;
+      updatePayload.status = "closed";
+      updatePayload.is_locked = true;
+      updatePayload.locked_by = userEmail;
+      updatePayload.locked_at = now;
+    }
+
+    const { error } = await supabase
+      .from("capas")
+      .update(updatePayload)
+      .eq("id", id);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    await addAuditLog(
+      "approval_gate_auto_approved",
+      `${approvalGateLabels[gate]} completed. All required approval tasks are approved.`
+    );
+
+    await notifyCapaOwner({
+      title: `${approvalGateLabels[gate]} Approved`,
+      message: `${record?.capa_number || "CAPA"} ${approvalGateLabels[gate]} is approved.`,
+      notificationType: `capa_${gate}_approved`,
+      severity: "info",
+    });
+
+    alert(`${approvalGateLabels[gate]} approved.`);
+    await refreshApprovalEngine();
+  };
+
+  const rejectGateApproval = async (gate: ApprovalGateKey, comments: string) => {
+    if (!canApprove) {
+      alert("Only an approver or VP Quality can reject approval packages.");
+      return;
+    }
+
+    if (!comments.trim()) {
+      alert("Rejection comments are required.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Reject ${approvalGateLabels[gate]} and return for revision?`
+    );
+    if (!confirmed) return;
+
+    const now = new Date().toISOString();
+    const fields = approvalGateStatusFields[gate];
+
+    const { error } = await supabase
+      .from("capas")
+      .update({
+        [fields.status]: "rejected",
+        [fields.rejectedBy]: userEmail,
+        [fields.rejectedAt]: now,
+        [fields.rejectionComments]: comments,
+        status: fields.rejectedStatus,
+      })
+      .eq("id", id);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    await supabase
+      .from("capa_approval_tasks")
+      .update({
+        task_status: "cancelled",
+        cancelled_at: now,
+        comments,
+      })
+      .eq("capa_id", id)
+      .eq("approval_gate", gate)
+      .eq("task_status", "pending");
+
+    await addAuditLog(
+      "approval_gate_rejected",
+      `${approvalGateLabels[gate]} rejected. Comments: ${comments}`
+    );
+
+    await notifyCapaOwner({
+      title: `${approvalGateLabels[gate]} Rejected`,
+      message: `${record?.capa_number || "CAPA"} ${approvalGateLabels[gate]} was rejected. Comments: ${comments}`,
+      notificationType: `capa_${gate}_rejected`,
+      severity: "high",
+    });
+
+    alert(`${approvalGateLabels[gate]} rejected.`);
+    await refreshApprovalEngine();
   };
 
 
@@ -675,135 +1447,18 @@ export default function EnterpriseCapaWorkflowPage() {
 
     await saveAll();
 
-    const now = new Date().toISOString();
-
-    const { error } = await supabase
-      .from("capas")
-      .update({
-        initiation_approval_status: "pending",
-        initiation_submitted_by: userEmail || "unknown",
-        initiation_submitted_at: now,
-        status: "pending_initiation_approval",
-      })
-      .eq("id", id);
-
-    if (error) {
-      alert(error.message);
-      return;
+    const submitted = await submitGateForApproval("initiation", initiationApprovalComments);
+    if (submitted) {
+      alert("CAPA initiation package submitted for approval.");
     }
-
-    await addAuditLog(
-      "initiation_submitted_for_approval",
-      "CAPA initiation package submitted for approval."
-    );
-
-    await notifyApprovers({
-      title: "CAPA Initiation Approval Required",
-      message: `${record?.capa_number || "CAPA"} requires initiation approval.`,
-      notificationType: "initiation_approval_required",
-      severity: "medium",
-    });
-
-    alert("CAPA initiation package submitted for approval.");
-    fetchRecord();
   };
 
   const approveInitiation = async () => {
-    if (!canApprove) {
-      alert("Only an approver or VP Quality can approve initiation.");
-      return;
-    }
-
-    const confirmed = window.confirm(
-      "Approve CAPA initiation?\n\nThis confirms the CAPA is justified and may proceed to evaluation and investigation."
-    );
-
-    if (!confirmed) return;
-
-    const now = new Date().toISOString();
-
-    const { error } = await supabase
-      .from("capas")
-      .update({
-        initiation_approval_status: "approved",
-        initiation_approved_by: userEmail,
-        initiation_approved_at: now,
-        initiation_approval_comments: initiationApprovalComments || null,
-        status: "evaluation",
-      })
-      .eq("id", id);
-
-    if (error) {
-      alert(error.message);
-      return;
-    }
-
-    await addAuditLog(
-      "initiation_approved",
-      "CAPA initiation package approved. Evaluation and investigation phases unlocked."
-    );
-
-    await notifyCapaOwner({
-      title: "CAPA Initiation Approved",
-      message: `${record?.capa_number || "CAPA"} initiation was approved.`,
-      notificationType: "initiation_approved",
-      severity: "info",
-    });
-
-    alert("CAPA initiation approved.");
-    fetchRecord();
+    await completeGateApproval("initiation", initiationApprovalComments);
   };
-
   const rejectInitiation = async () => {
-    if (!canApprove) {
-      alert("Only an approver or VP Quality can reject initiation.");
-      return;
-    }
-
-    if (!initiationApprovalComments.trim()) {
-      alert("Rejection comments are required.");
-      return;
-    }
-
-    const confirmed = window.confirm(
-      "Reject initiation package and return for revision?"
-    );
-    if (!confirmed) return;
-
-    const now = new Date().toISOString();
-
-    const { error } = await supabase
-      .from("capas")
-      .update({
-        initiation_approval_status: "rejected",
-        initiation_rejected_by: userEmail,
-        initiation_rejected_at: now,
-        initiation_rejection_comments: initiationApprovalComments,
-        status: "initiation",
-      })
-      .eq("id", id);
-
-    if (error) {
-      alert(error.message);
-      return;
-    }
-
-    await addAuditLog(
-      "initiation_rejected",
-      `CAPA initiation package rejected. Comments: ${initiationApprovalComments}`
-    );
-
-    await notifyCapaOwner({
-      title: "CAPA Initiation Rejected",
-      message: `${record?.capa_number || "CAPA"} initiation was rejected. Comments: ${initiationApprovalComments}`,
-      notificationType: "initiation_rejected",
-      severity: "high",
-    });
-
-    alert("CAPA initiation rejected.");
-    fetchRecord();
+    await rejectGateApproval("initiation", initiationApprovalComments);
   };
-
   const submitInvestigationApproval = async () => {
     if (isLocked) return;
 
@@ -834,135 +1489,18 @@ export default function EnterpriseCapaWorkflowPage() {
 
     await saveAll();
 
-    const now = new Date().toISOString();
-
-    const { error } = await supabase
-      .from("capas")
-      .update({
-        investigation_approval_status: "pending",
-        investigation_submitted_by: userEmail || "unknown",
-        investigation_submitted_at: now,
-        status: "pending_investigation_approval",
-      })
-      .eq("id", id);
-
-    if (error) {
-      alert(error.message);
-      return;
+    const submitted = await submitGateForApproval("investigation", investigationApprovalComments);
+    if (submitted) {
+      alert("Investigation package submitted for approval.");
     }
-
-    await addAuditLog(
-      "investigation_submitted_for_approval",
-      "CAPA investigation, root cause, and risk assessment submitted for approval."
-    );
-
-    await notifyApprovers({
-      title: "CAPA Investigation Approval Required",
-      message: `${record?.capa_number || "CAPA"} requires investigation/root cause approval.`,
-      notificationType: "investigation_approval_required",
-      severity: record?.severity === "critical" || record?.risk_level === "critical" ? "critical" : "medium",
-    });
-
-    alert("Investigation package submitted for approval.");
-    fetchRecord();
   };
 
   const approveInvestigation = async () => {
-    if (!canApprove) {
-      alert("Only an approver or VP Quality can approve investigation.");
-      return;
-    }
-
-    const confirmed = window.confirm(
-      "Approve Investigation Package?\n\nThis confirms scope, containment, investigation, root cause, and risk/severity are adequate before corrective action implementation begins."
-    );
-
-    if (!confirmed) return;
-
-    const now = new Date().toISOString();
-
-    const { error } = await supabase
-      .from("capas")
-      .update({
-        investigation_approval_status: "approved",
-        investigation_approved_by: userEmail,
-        investigation_approved_at: now,
-        investigation_approval_comments: investigationApprovalComments || null,
-        status: "action_plan",
-      })
-      .eq("id", id);
-
-    if (error) {
-      alert(error.message);
-      return;
-    }
-
-    await addAuditLog(
-      "investigation_approved",
-      "CAPA investigation package approved. Action plan proposal phase unlocked."
-    );
-
-    await notifyCapaOwner({
-      title: "CAPA Investigation Approved",
-      message: `${record?.capa_number || "CAPA"} investigation was approved. Action plan proposal is now available.`,
-      notificationType: "investigation_approved",
-      severity: "info",
-    });
-
-    alert("Investigation package approved.");
-    fetchRecord();
+    await completeGateApproval("investigation", investigationApprovalComments);
   };
-
   const rejectInvestigation = async () => {
-    if (!canApprove) {
-      alert("Only an approver or VP Quality can reject investigation.");
-      return;
-    }
-
-    if (!investigationApprovalComments.trim()) {
-      alert("Rejection comments are required.");
-      return;
-    }
-
-    const confirmed = window.confirm(
-      "Reject investigation package and return for revision?"
-    );
-    if (!confirmed) return;
-
-    const now = new Date().toISOString();
-
-    const { error } = await supabase
-      .from("capas")
-      .update({
-        investigation_approval_status: "rejected",
-        investigation_rejected_by: userEmail,
-        investigation_rejected_at: now,
-        investigation_rejection_comments: investigationApprovalComments,
-        status: "investigation",
-      })
-      .eq("id", id);
-
-    if (error) {
-      alert(error.message);
-      return;
-    }
-
-    await addAuditLog(
-      "investigation_rejected",
-      `CAPA investigation package rejected. Comments: ${investigationApprovalComments}`
-    );
-
-    await notifyCapaOwner({
-      title: "CAPA Investigation Rejected",
-      message: `${record?.capa_number || "CAPA"} investigation was rejected. Comments: ${investigationApprovalComments}`,
-      notificationType: "investigation_rejected",
-      severity: "high",
-    });
-
-    alert("Investigation package rejected.");
-    fetchRecord();
+    await rejectGateApproval("investigation", investigationApprovalComments);
   };
-
   const submitActionPlanApproval = async () => {
     if (isLocked) return;
 
@@ -992,135 +1530,18 @@ export default function EnterpriseCapaWorkflowPage() {
 
     await saveAll();
 
-    const now = new Date().toISOString();
-
-    const { error } = await supabase
-      .from("capas")
-      .update({
-        action_plan_approval_status: "pending",
-        action_plan_submitted_by: userEmail || "unknown",
-        action_plan_submitted_at: now,
-        status: "pending_action_plan_approval",
-      })
-      .eq("id", id);
-
-    if (error) {
-      alert(error.message);
-      return;
+    const submitted = await submitGateForApproval("action_plan", actionPlanApprovalComments);
+    if (submitted) {
+      alert("Action plan package submitted for approval.");
     }
-
-    await addAuditLog(
-      "action_plan_submitted_for_approval",
-      "CAPA action plan, implementation tasks, and effectiveness plan submitted for approval."
-    );
-
-    await notifyApprovers({
-      title: "CAPA Action Plan Approval Required",
-      message: `${record?.capa_number || "CAPA"} requires action plan approval.`,
-      notificationType: "action_plan_approval_required",
-      severity: record?.severity === "critical" || getEffectiveRiskLevel() === "critical" ? "critical" : "medium",
-    });
-
-    alert("Action plan package submitted for approval.");
-    fetchRecord();
   };
 
   const approveActionPlan = async () => {
-    if (!canApprove) {
-      alert("Only an approver or VP Quality can approve the action plan.");
-      return;
-    }
-
-    const confirmed = window.confirm(
-      "Approve Action Plan Package?\n\nThis approves the proposed actions, assigned implementation tasks, and effectiveness plan before execution."
-    );
-
-    if (!confirmed) return;
-
-    const now = new Date().toISOString();
-
-    const { error } = await supabase
-      .from("capas")
-      .update({
-        action_plan_approval_status: "approved",
-        action_plan_approved_by: userEmail,
-        action_plan_approved_at: now,
-        action_plan_approval_comments: actionPlanApprovalComments || null,
-        status: "implementation",
-      })
-      .eq("id", id);
-
-    if (error) {
-      alert(error.message);
-      return;
-    }
-
-    await addAuditLog(
-      "action_plan_approved",
-      "CAPA action plan approved. Implementation task execution unlocked."
-    );
-
-    await notifyCapaOwner({
-      title: "CAPA Action Plan Approved",
-      message: `${record?.capa_number || "CAPA"} action plan was approved. Implementation may begin.`,
-      notificationType: "action_plan_approved",
-      severity: "info",
-    });
-
-    alert("Action plan approved.");
-    fetchRecord();
+    await completeGateApproval("action_plan", actionPlanApprovalComments);
   };
-
   const rejectActionPlan = async () => {
-    if (!canApprove) {
-      alert("Only an approver or VP Quality can reject the action plan.");
-      return;
-    }
-
-    if (!actionPlanApprovalComments.trim()) {
-      alert("Rejection comments are required.");
-      return;
-    }
-
-    const confirmed = window.confirm(
-      "Reject action plan package and return for revision?"
-    );
-    if (!confirmed) return;
-
-    const now = new Date().toISOString();
-
-    const { error } = await supabase
-      .from("capas")
-      .update({
-        action_plan_approval_status: "rejected",
-        action_plan_rejected_by: userEmail,
-        action_plan_rejected_at: now,
-        action_plan_rejection_comments: actionPlanApprovalComments,
-        status: "action_plan",
-      })
-      .eq("id", id);
-
-    if (error) {
-      alert(error.message);
-      return;
-    }
-
-    await addAuditLog(
-      "action_plan_rejected",
-      `CAPA action plan package rejected. Comments: ${actionPlanApprovalComments}`
-    );
-
-    await notifyCapaOwner({
-      title: "CAPA Action Plan Rejected",
-      message: `${record?.capa_number || "CAPA"} action plan was rejected. Comments: ${actionPlanApprovalComments}`,
-      notificationType: "action_plan_rejected",
-      severity: "high",
-    });
-
-    alert("Action plan rejected.");
-    fetchRecord();
+    await rejectGateApproval("action_plan", actionPlanApprovalComments);
   };
-
   const markImplemented = async () => {
     if (implementationLocked) {
       alert(
@@ -1216,157 +1637,23 @@ export default function EnterpriseCapaWorkflowPage() {
 
     await saveAll();
 
-    const now = new Date().toISOString();
-
-    const { error } = await supabase
-      .from("capas")
-      .update({
-        closure_approval_status: "pending",
-        closure_submitted_by: userEmail || "unknown",
-        closure_submitted_at: now,
-        status: "pending_closure_approval",
-      })
-      .eq("id", id);
-
-    if (error) {
-      alert(error.message);
-      return;
+    const submitted = await submitGateForApproval("closure", closureApprovalComments);
+    if (submitted) {
+      alert("CAPA submitted for closure approval.");
     }
-
-    await addAuditLog(
-      "closure_submitted_for_approval",
-      "CAPA submitted for closure approval."
-    );
-
-    await notifyApprovers({
-      title: "CAPA Closure Approval Required",
-      message: `${record?.capa_number || "CAPA"} is ready for final closure approval.`,
-      notificationType: "closure_approval_required",
-      severity: "medium",
-    });
-
-    alert("CAPA submitted for closure approval.");
-    fetchRecord();
   };
 
   const approveClosure = async () => {
-    if (!canApprove) {
-      alert("Only an approver or VP Quality can approve closure.");
-      return;
-    }
-
     if (!tasksComplete) {
       alert("All CAPA execution tasks must be completed before closure approval.");
       return;
     }
 
-    const confirmed = window.confirm(
-      "Electronic Signature:\n\nApprove final CAPA closure and permanently lock this CAPA record?"
-    );
-
-    if (!confirmed) return;
-
-    const now = new Date().toISOString();
-
-    const signatureMeaning =
-      "I approve final CAPA closure and confirm the initiation, evaluation, investigation, root cause determination, action plan approval, implementation, effectiveness plan, effectiveness verification, execution tasks, and closure review are complete.";
-
-    const { error } = await supabase
-      .from("capas")
-      .update({
-        closure_approval_status: "approved",
-        closure_approved_by: userEmail,
-        closure_approved_at: now,
-        closure_approval_comments: closureApprovalComments || null,
-        closure_signature_meaning: signatureMeaning,
-
-        approved_by: userEmail,
-        approved_at: now,
-        signed_by: userEmail,
-        signed_at: now,
-        signature_meaning: signatureMeaning,
-        capa_signature_meaning: signatureMeaning,
-        capa_closed_by: userEmail,
-        closed_at: now,
-
-        status: "closed",
-        is_locked: true,
-        locked_by: userEmail,
-        locked_at: now,
-      })
-      .eq("id", id);
-
-    if (error) {
-      alert(error.message);
-      return;
-    }
-
-    await addAuditLog(
-      "closure_approved_signed_locked",
-      `CAPA closure approved and locked. Meaning: ${signatureMeaning}`
-    );
-
-    await notifyCapaOwner({
-      title: "CAPA Closed and Locked",
-      message: `${record?.capa_number || "CAPA"} has been approved, closed, electronically signed, and locked.`,
-      notificationType: "capa_closed",
-      severity: "info",
-    });
-
-    alert("CAPA approved, closed, and locked.");
-    fetchRecord();
+    await completeGateApproval("closure", closureApprovalComments);
   };
-
   const rejectClosure = async () => {
-    if (!canApprove) {
-      alert("Only an approver or VP Quality can reject closure.");
-      return;
-    }
-
-    if (!closureApprovalComments.trim()) {
-      alert("Closure rejection comments are required.");
-      return;
-    }
-
-    const confirmed = window.confirm(
-      "Reject closure and return to effectiveness review?"
-    );
-    if (!confirmed) return;
-
-    const now = new Date().toISOString();
-
-    const { error } = await supabase
-      .from("capas")
-      .update({
-        closure_approval_status: "rejected",
-        closure_rejected_by: userEmail,
-        closure_rejected_at: now,
-        closure_rejection_comments: closureApprovalComments,
-        status: "effectiveness_review",
-      })
-      .eq("id", id);
-
-    if (error) {
-      alert(error.message);
-      return;
-    }
-
-    await addAuditLog(
-      "closure_rejected",
-      `CAPA closure rejected. Comments: ${closureApprovalComments}`
-    );
-
-    await notifyCapaOwner({
-      title: "CAPA Closure Rejected",
-      message: `${record?.capa_number || "CAPA"} closure was rejected. Comments: ${closureApprovalComments}`,
-      notificationType: "closure_rejected",
-      severity: "high",
-    });
-
-    alert("Closure rejected.");
-    fetchRecord();
+    await rejectGateApproval("closure", closureApprovalComments);
   };
-
   const cancelCapa = async () => {
     if (isLocked) return;
 
@@ -1802,6 +2089,7 @@ export default function EnterpriseCapaWorkflowPage() {
 
           <ApprovalCard
             sectionKey="initiationapproval"
+            gateKey="initiation"
             title="2. Initiation Approval"
             description="Quality approval confirms the CAPA is justified and may proceed to evaluation and investigation."
             status={record.initiation_approval_status || "not_submitted"}
@@ -1817,6 +2105,29 @@ export default function EnterpriseCapaWorkflowPage() {
             canApprove={canApprove}
             expanded={expandedSections.includes("initiationapproval")}
             onToggle={() => toggleSection("initiationapproval")}
+            approvalMatrixTemplates={approvalMatrixTemplates}
+            selectedApprovalMatrixId={selectedApprovalMatrixByGate["initiation"] || ""}
+            setSelectedApprovalMatrixId={(value) =>
+              setSelectedApprovalMatrixByGate((prev) => ({ ...prev, initiation: value }))
+            }
+            manualApproverEmail={manualApproverEmailByGate["initiation"] || ""}
+            setManualApproverEmail={(value) =>
+              setManualApproverEmailByGate((prev) => ({ ...prev, initiation: value }))
+            }
+            manualApproverRole={manualApproverRoleByGate["initiation"] || "CAPA Approver"}
+            setManualApproverRole={(value) =>
+              setManualApproverRoleByGate((prev) => ({ ...prev, initiation: value }))
+            }
+            manualApproverRequired={manualApproverRequiredByGate["initiation"] !== false}
+            setManualApproverRequired={(value) =>
+              setManualApproverRequiredByGate((prev) => ({ ...prev, initiation: value }))
+            }
+            configuredApprovers={getGateApprovers("initiation")}
+            approvalTasks={getGateApprovalTasks("initiation")}
+            loadingApprovals={loadingApprovals}
+            onLoadMatrix={() => loadApproversFromMatrix("initiation")}
+            onAddManualApprover={() => addManualApprover("initiation")}
+            onRemoveApprover={(approverId) => removeGateApprover("initiation", approverId)}
             onSubmit={submitInitiationApproval}
             onApprove={approveInitiation}
             onReject={rejectInitiation}
@@ -2361,6 +2672,7 @@ export default function EnterpriseCapaWorkflowPage() {
 
           <ApprovalCard
             sectionKey="investigationapproval"
+            gateKey="investigation"
             title="6. Investigation Approval"
             description="Approver reviews scope, containment, investigation, root cause, risk assessment, and severity before implementation begins."
             status={record.investigation_approval_status || "not_submitted"}
@@ -2376,6 +2688,29 @@ export default function EnterpriseCapaWorkflowPage() {
             canApprove={canApprove}
             expanded={expandedSections.includes("investigationapproval")}
             onToggle={() => toggleSection("investigationapproval")}
+            approvalMatrixTemplates={approvalMatrixTemplates}
+            selectedApprovalMatrixId={selectedApprovalMatrixByGate["investigation"] || ""}
+            setSelectedApprovalMatrixId={(value) =>
+              setSelectedApprovalMatrixByGate((prev) => ({ ...prev, investigation: value }))
+            }
+            manualApproverEmail={manualApproverEmailByGate["investigation"] || ""}
+            setManualApproverEmail={(value) =>
+              setManualApproverEmailByGate((prev) => ({ ...prev, investigation: value }))
+            }
+            manualApproverRole={manualApproverRoleByGate["investigation"] || "CAPA Approver"}
+            setManualApproverRole={(value) =>
+              setManualApproverRoleByGate((prev) => ({ ...prev, investigation: value }))
+            }
+            manualApproverRequired={manualApproverRequiredByGate["investigation"] !== false}
+            setManualApproverRequired={(value) =>
+              setManualApproverRequiredByGate((prev) => ({ ...prev, investigation: value }))
+            }
+            configuredApprovers={getGateApprovers("investigation")}
+            approvalTasks={getGateApprovalTasks("investigation")}
+            loadingApprovals={loadingApprovals}
+            onLoadMatrix={() => loadApproversFromMatrix("investigation")}
+            onAddManualApprover={() => addManualApprover("investigation")}
+            onRemoveApprover={(approverId) => removeGateApprover("investigation", approverId)}
             onSubmit={submitInvestigationApproval}
             onApprove={approveInvestigation}
             onReject={rejectInvestigation}
@@ -2579,6 +2914,7 @@ export default function EnterpriseCapaWorkflowPage() {
 
           <ApprovalCard
             sectionKey="actionplanapproval"
+            gateKey="action_plan"
             title="9. Action Plan Approval"
             description="Approve the proposed action plan, implementation task assignments, and effectiveness plan before execution."
             status={record.action_plan_approval_status || "not_submitted"}
@@ -2594,6 +2930,29 @@ export default function EnterpriseCapaWorkflowPage() {
             canApprove={canApprove}
             expanded={expandedSections.includes("actionplanapproval")}
             onToggle={() => toggleSection("actionplanapproval")}
+            approvalMatrixTemplates={approvalMatrixTemplates}
+            selectedApprovalMatrixId={selectedApprovalMatrixByGate["action_plan"] || ""}
+            setSelectedApprovalMatrixId={(value) =>
+              setSelectedApprovalMatrixByGate((prev) => ({ ...prev, action_plan: value }))
+            }
+            manualApproverEmail={manualApproverEmailByGate["action_plan"] || ""}
+            setManualApproverEmail={(value) =>
+              setManualApproverEmailByGate((prev) => ({ ...prev, action_plan: value }))
+            }
+            manualApproverRole={manualApproverRoleByGate["action_plan"] || "CAPA Approver"}
+            setManualApproverRole={(value) =>
+              setManualApproverRoleByGate((prev) => ({ ...prev, action_plan: value }))
+            }
+            manualApproverRequired={manualApproverRequiredByGate["action_plan"] !== false}
+            setManualApproverRequired={(value) =>
+              setManualApproverRequiredByGate((prev) => ({ ...prev, action_plan: value }))
+            }
+            configuredApprovers={getGateApprovers("action_plan")}
+            approvalTasks={getGateApprovalTasks("action_plan")}
+            loadingApprovals={loadingApprovals}
+            onLoadMatrix={() => loadApproversFromMatrix("action_plan")}
+            onAddManualApprover={() => addManualApprover("action_plan")}
+            onRemoveApprover={(approverId) => removeGateApprover("action_plan", approverId)}
             onSubmit={submitActionPlanApproval}
             onApprove={approveActionPlan}
             onReject={rejectActionPlan}
@@ -2869,6 +3228,7 @@ export default function EnterpriseCapaWorkflowPage() {
 
           <ApprovalCard
             sectionKey="closure"
+            gateKey="closure"
             title="13. Closure Approval"
             description="Final approval confirms implementation, task completion, effectiveness verification, and closure readiness. Approval locks the record."
             status={record.closure_approval_status || "not_submitted"}
@@ -2884,6 +3244,29 @@ export default function EnterpriseCapaWorkflowPage() {
             canApprove={canApprove}
             expanded={expandedSections.includes("closure")}
             onToggle={() => toggleSection("closure")}
+            approvalMatrixTemplates={approvalMatrixTemplates}
+            selectedApprovalMatrixId={selectedApprovalMatrixByGate["closure"] || ""}
+            setSelectedApprovalMatrixId={(value) =>
+              setSelectedApprovalMatrixByGate((prev) => ({ ...prev, closure: value }))
+            }
+            manualApproverEmail={manualApproverEmailByGate["closure"] || ""}
+            setManualApproverEmail={(value) =>
+              setManualApproverEmailByGate((prev) => ({ ...prev, closure: value }))
+            }
+            manualApproverRole={manualApproverRoleByGate["closure"] || "CAPA Approver"}
+            setManualApproverRole={(value) =>
+              setManualApproverRoleByGate((prev) => ({ ...prev, closure: value }))
+            }
+            manualApproverRequired={manualApproverRequiredByGate["closure"] !== false}
+            setManualApproverRequired={(value) =>
+              setManualApproverRequiredByGate((prev) => ({ ...prev, closure: value }))
+            }
+            configuredApprovers={getGateApprovers("closure")}
+            approvalTasks={getGateApprovalTasks("closure")}
+            loadingApprovals={loadingApprovals}
+            onLoadMatrix={() => loadApproversFromMatrix("closure")}
+            onAddManualApprover={() => addManualApprover("closure")}
+            onRemoveApprover={(approverId) => removeGateApprover("closure", approverId)}
             onSubmit={submitClosureApproval}
             onApprove={approveClosure}
             onReject={rejectClosure}
@@ -3069,6 +3452,7 @@ function WorkflowCard({
 
 function ApprovalCard({
   sectionKey,
+  gateKey,
   title,
   description,
   status,
@@ -3083,12 +3467,28 @@ function ApprovalCard({
   disabled,
   canApprove,
   expanded,
+  approvalMatrixTemplates,
+  selectedApprovalMatrixId,
+  setSelectedApprovalMatrixId,
+  manualApproverEmail,
+  setManualApproverEmail,
+  manualApproverRole,
+  setManualApproverRole,
+  manualApproverRequired,
+  setManualApproverRequired,
+  configuredApprovers,
+  approvalTasks,
+  loadingApprovals,
+  onLoadMatrix,
+  onAddManualApprover,
+  onRemoveApprover,
   onToggle,
   onSubmit,
   onApprove,
   onReject,
 }: {
   sectionKey: string;
+  gateKey: ApprovalGateKey;
   title: string;
   description: string;
   status: string;
@@ -3103,6 +3503,21 @@ function ApprovalCard({
   disabled: boolean;
   canApprove: boolean;
   expanded: boolean;
+  approvalMatrixTemplates: any[];
+  selectedApprovalMatrixId: string;
+  setSelectedApprovalMatrixId: (value: string) => void;
+  manualApproverEmail: string;
+  setManualApproverEmail: (value: string) => void;
+  manualApproverRole: string;
+  setManualApproverRole: (value: string) => void;
+  manualApproverRequired: boolean;
+  setManualApproverRequired: (value: boolean) => void;
+  configuredApprovers: CapaGateApprover[];
+  approvalTasks: CapaApprovalTask[];
+  loadingApprovals: boolean;
+  onLoadMatrix: () => void;
+  onAddManualApprover: () => void;
+  onRemoveApprover: (approverId: string) => void;
   onToggle: () => void;
   onSubmit: () => void;
   onApprove: () => void;
@@ -3156,7 +3571,177 @@ function ApprovalCard({
 
           {!disabled && !isApproved ? (
             <>
-              <Field label="Approval / Rejection Comments">
+              <div
+                style={{
+                  border: "1px solid #d1d5db",
+                  borderRadius: "10px",
+                  padding: "12px",
+                  marginTop: "12px",
+                  marginBottom: "12px",
+                  background: "#f9fafb",
+                }}
+              >
+                <h3 style={{ marginTop: 0 }}>Approvers</h3>
+
+                {!isPending ? (
+                  <>
+                    <div style={formGridStyle}>
+                      <Field label="Approval Matrix">
+                        <select
+                          value={selectedApprovalMatrixId}
+                          onChange={(e) => setSelectedApprovalMatrixId(e.target.value)}
+                          disabled={loadingApprovals}
+                          style={inputStyle(loadingApprovals)}
+                        >
+                          <option value="">Select approval matrix</option>
+                          {approvalMatrixTemplates.map((template: any) => (
+                            <option key={template.id} value={template.id}>
+                              {template.template_name || template.name || "Approval Matrix"}
+                            </option>
+                          ))}
+                        </select>
+                      </Field>
+
+                      <div style={{ display: "flex", alignItems: "end" }}>
+                        <button
+                          type="button"
+                          onClick={onLoadMatrix}
+                          disabled={loadingApprovals}
+                          style={buttonDisabledStyle(loadingApprovals)}
+                        >
+                          Load Matrix
+                        </button>
+                      </div>
+                    </div>
+
+                    <div style={formGridStyle}>
+                      <Field label="Manual Approver Email">
+                        <input
+                          type="email"
+                          value={manualApproverEmail}
+                          onChange={(e) => setManualApproverEmail(e.target.value)}
+                          placeholder="approver@company.com"
+                          disabled={loadingApprovals}
+                          style={inputStyle(loadingApprovals)}
+                        />
+                      </Field>
+
+                      <Field label="Approver Role">
+                        <input
+                          value={manualApproverRole}
+                          onChange={(e) => setManualApproverRole(e.target.value)}
+                          disabled={loadingApprovals}
+                          style={inputStyle(loadingApprovals)}
+                        />
+                      </Field>
+
+                      <Field label="Required?">
+                        <select
+                          value={manualApproverRequired ? "yes" : "no"}
+                          onChange={(e) =>
+                            setManualApproverRequired(e.target.value === "yes")
+                          }
+                          disabled={loadingApprovals}
+                          style={inputStyle(loadingApprovals)}
+                        >
+                          <option value="yes">Yes</option>
+                          <option value="no">No</option>
+                        </select>
+                      </Field>
+
+                      <div style={{ display: "flex", alignItems: "end" }}>
+                        <button
+                          type="button"
+                          onClick={onAddManualApprover}
+                          disabled={loadingApprovals}
+                          style={buttonDisabledStyle(loadingApprovals)}
+                        >
+                          Add Approver
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <p style={subtleText}>
+                    Approval package is pending. Approvers cannot be changed unless the package is rejected and resubmitted.
+                  </p>
+                )}
+
+                <div style={{ marginTop: "12px" }}>
+                  {configuredApprovers.length === 0 ? (
+                    <p style={subtleText}>No approvers configured.</p>
+                  ) : (
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
+                      <thead>
+                        <tr>
+                          <th style={tableHeaderStyle}>Order</th>
+                          <th style={tableHeaderStyle}>Approver</th>
+                          <th style={tableHeaderStyle}>Role</th>
+                          <th style={tableHeaderStyle}>Required</th>
+                          <th style={tableHeaderStyle}>Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {configuredApprovers.map((approver) => (
+                          <tr key={approver.id}>
+                            <td style={tableCellStyle}>{approver.approval_order || "-"}</td>
+                            <td style={tableCellStyle}>{approver.approver_email}</td>
+                            <td style={tableCellStyle}>{approver.approver_role || "CAPA Approver"}</td>
+                            <td style={tableCellStyle}>{approver.is_required === false ? "No" : "Yes"}</td>
+                            <td style={tableCellStyle}>
+                              {!isPending ? (
+                                <button
+                                  type="button"
+                                  onClick={() => onRemoveApprover(approver.id)}
+                                  disabled={loadingApprovals}
+                                >
+                                  Remove
+                                </button>
+                              ) : (
+                                "Locked"
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+
+                <div style={{ marginTop: "12px" }}>
+                  <strong>Approval Tasks</strong>
+                  {approvalTasks.length === 0 ? (
+                    <p style={subtleText}>No approval tasks generated.</p>
+                  ) : (
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
+                      <thead>
+                        <tr>
+                          <th style={tableHeaderStyle}>Approver</th>
+                          <th style={tableHeaderStyle}>Role</th>
+                          <th style={tableHeaderStyle}>Required</th>
+                          <th style={tableHeaderStyle}>Status</th>
+                          <th style={tableHeaderStyle}>Completed By</th>
+                          <th style={tableHeaderStyle}>Completed At</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {approvalTasks.map((task) => (
+                          <tr key={task.id}>
+                            <td style={tableCellStyle}>{task.approver_email}</td>
+                            <td style={tableCellStyle}>{task.approver_role || "CAPA Approver"}</td>
+                            <td style={tableCellStyle}>{task.is_required === false ? "No" : "Yes"}</td>
+                            <td style={tableCellStyle}>{task.task_status || "pending"}</td>
+                            <td style={tableCellStyle}>{task.completed_by || "-"}</td>
+                            <td style={tableCellStyle}>{task.completed_at || "-"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              </div>
+
+              <Field label={isPending ? "Approval / Rejection Comments" : "Submission Comments"}>
                 <textarea
                   value={comments}
                   onChange={(e) => setComments(e.target.value)}
@@ -3166,17 +3751,19 @@ function ApprovalCard({
               </Field>
 
               <div style={buttonRowStyle}>
-                <button onClick={onSubmit} style={secondaryButtonStyle}>
-                  Submit
-                </button>
+                {!isPending ? (
+                  <button onClick={onSubmit} style={secondaryButtonStyle}>
+                    Submit for Approval
+                  </button>
+                ) : null}
 
                 {isPending && canApprove ? (
                   <>
                     <button onClick={onApprove} style={primaryButtonStyle}>
-                      Approve
+                      Approve My Task
                     </button>
                     <button onClick={onReject} style={dangerButtonStyle}>
-                      Reject
+                      Reject Package
                     </button>
                   </>
                 ) : null}
@@ -3385,6 +3972,19 @@ function isTaskOverdue(task: CapaTask) {
   const today = new Date().toISOString().slice(0, 10);
   return task.due_date < today;
 }
+
+
+const tableHeaderStyle: CSSProperties = {
+  textAlign: "left",
+  borderBottom: "1px solid #d1d5db",
+  padding: "8px",
+  background: "#f3f4f6",
+};
+
+const tableCellStyle: CSSProperties = {
+  borderBottom: "1px solid #e5e7eb",
+  padding: "8px",
+};
 
 function getWorkflowHealth(record: any, overdueTaskCount: number) {
   if (record?.status === "closed") {
