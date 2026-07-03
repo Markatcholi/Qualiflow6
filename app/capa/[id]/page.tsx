@@ -170,7 +170,10 @@ export default function EnterpriseCapaWorkflowPage() {
   };
 
   const fetchRecord = async () => {
-    setLoading(true);
+    const shouldShowLoading = !record;
+    if (shouldShowLoading) {
+      setLoading(true);
+    }
 
     const { data, error } = await supabase
       .from("capas")
@@ -1167,6 +1170,10 @@ This approval becomes part of the official electronic quality record.`,
     }
 
     await addAuditLog("field_saved", `CAPA field saved: ${field}`);
+
+    // Refresh silently after save. Do not show the loading screen here,
+    // because unmounting/remounting the page while typing causes the
+    // active section to collapse and the page to jump back to Initiation.
     fetchRecord();
   };
 
