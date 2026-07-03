@@ -45,6 +45,8 @@ type CapaGateApprover = {
   capa_id: string;
   approval_gate: ApprovalGateKey | string;
   approver_email: string;
+  approver_function: string | null;
+  approver_job_title: string | null;
   approver_role: string | null;
   approval_order: number | null;
   is_required: boolean | null;
@@ -82,6 +84,10 @@ export default function EnterpriseCapaWorkflowPage() {
   const [selectedApprovalMatrixByGate, setSelectedApprovalMatrixByGate] =
     useState<Record<string, string>>({});
   const [manualApproverEmailByGate, setManualApproverEmailByGate] =
+    useState<Record<string, string>>({});
+  const [manualApproverFunctionByGate, setManualApproverFunctionByGate] =
+    useState<Record<string, string>>({});
+  const [manualApproverJobTitleByGate, setManualApproverJobTitleByGate] =
     useState<Record<string, string>>({});
   const [manualApproverRoleByGate, setManualApproverRoleByGate] =
     useState<Record<string, string>>({});
@@ -472,14 +478,31 @@ export default function EnterpriseCapaWorkflowPage() {
       row?.assigned_to_email ||
       "";
 
+    const approverFunction =
+      row?.approver_function ||
+      row?.function ||
+      row?.function_name ||
+      row?.required_function ||
+      row?.department ||
+      "";
+
+    const approverJobTitle =
+      row?.approver_job_title ||
+      row?.job_title ||
+      row?.title ||
+      row?.approver_role ||
+      row?.role ||
+      row?.approval_role ||
+      row?.reviewer_role ||
+      "Approver";
+
     const approverRole =
       row?.approver_role ||
       row?.role ||
       row?.approval_role ||
       row?.reviewer_role ||
-      row?.required_function ||
-      row?.function_name ||
-      "CAPA Approver";
+      approverJobTitle ||
+      "Approver";
 
     const approvalOrder =
       row?.approval_order ??
@@ -491,9 +514,11 @@ export default function EnterpriseCapaWorkflowPage() {
 
     return {
       approver_email: normalizeApproverEmail(approverEmail),
-      approver_role: String(approverRole || "CAPA Approver").trim(),
+      approver_function: String(approverFunction || "").trim(),
+      approver_job_title: String(approverJobTitle || "Approver").trim(),
+      approver_role: String(approverRole || approverJobTitle || "Approver").trim(),
       approval_order: Number(approvalOrder) || index + 1,
-      is_required: row?.is_required === false || row?.required === false ? false : true,
+      is_required: true,
     };
   };
 
@@ -573,10 +598,12 @@ export default function EnterpriseCapaWorkflowPage() {
       capa_id: id,
       approval_gate: gate,
       approver_email: row.approver_email,
-      approver_role: row.approver_role || "CAPA Approver",
+      approver_function: row.approver_function || null,
+      approver_job_title: row.approver_job_title || row.approver_role || "Approver",
+      approver_role: row.approver_role || row.approver_job_title || "Approver",
       approval_status: "configured",
       approval_order: row.approval_order || index + 1,
-      is_required: row.is_required !== false,
+      is_required: true,
       source_template_id: templateId,
       signature_meaning: `${approvalGateLabels[gate]} requested from approval matrix.`,
       created_by: userEmail || "unknown",
@@ -609,12 +636,21 @@ export default function EnterpriseCapaWorkflowPage() {
     }
 
     const approverEmail = normalizeApproverEmail(manualApproverEmailByGate[gate]);
-    const approverRole =
-      manualApproverRoleByGate[gate] || "CAPA Approver";
-    const isRequired = manualApproverRequiredByGate[gate] !== false;
+    const approverFunction = String(manualApproverFunctionByGate[gate] || "").trim();
+    const approverJobTitle = String(manualApproverJobTitleByGate[gate] || "").trim();
+
+    if (!approverFunction) {
+      alert("Function is required.");
+      return;
+    }
+
+    if (!approverJobTitle) {
+      alert("Job title is required.");
+      return;
+    }
 
     if (!approverEmail) {
-      alert("Approver email is required.");
+      alert("User email is required.");
       return;
     }
 
@@ -647,10 +683,12 @@ export default function EnterpriseCapaWorkflowPage() {
       capa_id: id,
       approval_gate: gate,
       approver_email: approverEmail,
-      approver_role: approverRole,
+      approver_function: approverFunction,
+      approver_job_title: approverJobTitle,
+      approver_role: approverJobTitle,
       approval_status: "configured",
       approval_order: nextOrder,
-      is_required: isRequired,
+      is_required: true,
       signature_meaning: `Manual ${approvalGateLabels[gate]} requested.`,
       created_by: userEmail || "unknown",
     });
@@ -662,11 +700,13 @@ export default function EnterpriseCapaWorkflowPage() {
 
     await addAuditLog(
       "manual_approver_added",
-      `${approvalGateLabels[gate]} manual approver added: ${approverEmail}`
+      `${approvalGateLabels[gate]} approver added: ${approverFunction} / ${approverJobTitle} / ${approverEmail}`
     );
 
     setManualApproverEmailByGate((prev) => ({ ...prev, [gate]: "" }));
-    setManualApproverRoleByGate((prev) => ({ ...prev, [gate]: "CAPA Approver" }));
+    setManualApproverFunctionByGate((prev) => ({ ...prev, [gate]: "" }));
+    setManualApproverJobTitleByGate((prev) => ({ ...prev, [gate]: "" }));
+    setManualApproverRoleByGate((prev) => ({ ...prev, [gate]: "" }));
     setManualApproverRequiredByGate((prev) => ({ ...prev, [gate]: true }));
 
     await refreshApprovalEngine();
@@ -730,11 +770,16 @@ export default function EnterpriseCapaWorkflowPage() {
       entity_type: "capa",
       entity_id: id,
       task_type: taskType,
-      required_function: approver.approver_role || approvalGateLabels[gate],
+      required_function:
+        `${approver.approver_function || "Function Not Specified"} - ${
+          approver.approver_job_title || approver.approver_role || "Approver"
+        }`,
+      approver_function: approver.approver_function || null,
+      approver_job_title: approver.approver_job_title || approver.approver_role || null,
       assigned_to_email: normalizeApproverEmail(approver.approver_email),
       assigned_by_email: userEmail || "unknown",
       status: "pending",
-      required: approver.is_required !== false,
+      required: true,
       comments:
         comments ||
         `Please review ${record?.capa_number || "this CAPA"} for ${approvalGateLabels[gate]}.
@@ -2087,7 +2132,15 @@ This approval becomes part of the official electronic quality record.`,
             setManualApproverEmail={(value) =>
               setManualApproverEmailByGate((prev) => ({ ...prev, initiation: value }))
             }
-            manualApproverRole={manualApproverRoleByGate["initiation"] || "CAPA Approver"}
+              manualApproverFunction={manualApproverFunctionByGate["initiation"] || ""}
+              setManualApproverFunction={(value) =>
+                setManualApproverFunctionByGate((prev) => ({ ...prev, initiation: value }))
+              }
+              manualApproverJobTitle={manualApproverJobTitleByGate["initiation"] || ""}
+              setManualApproverJobTitle={(value) =>
+                setManualApproverJobTitleByGate((prev) => ({ ...prev, initiation: value }))
+              }
+            manualApproverRole={manualApproverRoleByGate["initiation"] || manualApproverJobTitleByGate["initiation"] || ""}
             setManualApproverRole={(value) =>
               setManualApproverRoleByGate((prev) => ({ ...prev, initiation: value }))
             }
@@ -2673,7 +2726,15 @@ This approval becomes part of the official electronic quality record.`,
             setManualApproverEmail={(value) =>
               setManualApproverEmailByGate((prev) => ({ ...prev, investigation: value }))
             }
-            manualApproverRole={manualApproverRoleByGate["investigation"] || "CAPA Approver"}
+              manualApproverFunction={manualApproverFunctionByGate["investigation"] || ""}
+              setManualApproverFunction={(value) =>
+                setManualApproverFunctionByGate((prev) => ({ ...prev, investigation: value }))
+              }
+              manualApproverJobTitle={manualApproverJobTitleByGate["investigation"] || ""}
+              setManualApproverJobTitle={(value) =>
+                setManualApproverJobTitleByGate((prev) => ({ ...prev, investigation: value }))
+              }
+            manualApproverRole={manualApproverRoleByGate["investigation"] || manualApproverJobTitleByGate["investigation"] || ""}
             setManualApproverRole={(value) =>
               setManualApproverRoleByGate((prev) => ({ ...prev, investigation: value }))
             }
@@ -2918,7 +2979,15 @@ This approval becomes part of the official electronic quality record.`,
             setManualApproverEmail={(value) =>
               setManualApproverEmailByGate((prev) => ({ ...prev, action_plan: value }))
             }
-            manualApproverRole={manualApproverRoleByGate["action_plan"] || "CAPA Approver"}
+              manualApproverFunction={manualApproverFunctionByGate["action_plan"] || ""}
+              setManualApproverFunction={(value) =>
+                setManualApproverFunctionByGate((prev) => ({ ...prev, action_plan: value }))
+              }
+              manualApproverJobTitle={manualApproverJobTitleByGate["action_plan"] || ""}
+              setManualApproverJobTitle={(value) =>
+                setManualApproverJobTitleByGate((prev) => ({ ...prev, action_plan: value }))
+              }
+            manualApproverRole={manualApproverRoleByGate["action_plan"] || manualApproverJobTitleByGate["action_plan"] || ""}
             setManualApproverRole={(value) =>
               setManualApproverRoleByGate((prev) => ({ ...prev, action_plan: value }))
             }
@@ -3239,7 +3308,15 @@ This approval becomes part of the official electronic quality record.`,
             setManualApproverEmail={(value) =>
               setManualApproverEmailByGate((prev) => ({ ...prev, closure: value }))
             }
-            manualApproverRole={manualApproverRoleByGate["closure"] || "CAPA Approver"}
+              manualApproverFunction={manualApproverFunctionByGate["closure"] || ""}
+              setManualApproverFunction={(value) =>
+                setManualApproverFunctionByGate((prev) => ({ ...prev, closure: value }))
+              }
+              manualApproverJobTitle={manualApproverJobTitleByGate["closure"] || ""}
+              setManualApproverJobTitle={(value) =>
+                setManualApproverJobTitleByGate((prev) => ({ ...prev, closure: value }))
+              }
+            manualApproverRole={manualApproverRoleByGate["closure"] || manualApproverJobTitleByGate["closure"] || ""}
             setManualApproverRole={(value) =>
               setManualApproverRoleByGate((prev) => ({ ...prev, closure: value }))
             }
@@ -3464,6 +3541,10 @@ function ApprovalInlinePanel({
   setSelectedApprovalMatrixId,
   manualApproverEmail,
   setManualApproverEmail,
+  manualApproverFunction,
+  setManualApproverFunction,
+  manualApproverJobTitle,
+  setManualApproverJobTitle,
   manualApproverRole,
   setManualApproverRole,
   manualApproverRequired,
@@ -3500,6 +3581,10 @@ function ApprovalInlinePanel({
   setSelectedApprovalMatrixId: (value: string) => void;
   manualApproverEmail: string;
   setManualApproverEmail: (value: string) => void;
+  manualApproverFunction: string;
+  setManualApproverFunction: (value: string) => void;
+  manualApproverJobTitle: string;
+  setManualApproverJobTitle: (value: string) => void;
   manualApproverRole: string;
   setManualApproverRole: (value: string) => void;
   manualApproverRequired: boolean;
@@ -3575,7 +3660,30 @@ function ApprovalInlinePanel({
         </div>
 
         <div style={formGridStyle}>
-          <Field label="Manual Approver Email">
+          <Field label="Function">
+            <input
+              value={manualApproverFunction}
+              onChange={(e) => setManualApproverFunction(e.target.value)}
+              placeholder="Quality, Operations, Regulatory Affairs"
+              disabled={loadingApprovals}
+              style={inputStyle(loadingApprovals)}
+            />
+          </Field>
+
+          <Field label="Job Title">
+            <input
+              value={manualApproverJobTitle}
+              onChange={(e) => {
+                setManualApproverJobTitle(e.target.value);
+                setManualApproverRole(e.target.value);
+              }}
+              placeholder="Quality Manager, Quality Engineer"
+              disabled={loadingApprovals}
+              style={inputStyle(loadingApprovals)}
+            />
+          </Field>
+
+          <Field label="User Email">
             <input
               type="email"
               value={manualApproverEmail}
@@ -3584,27 +3692,6 @@ function ApprovalInlinePanel({
               disabled={loadingApprovals}
               style={inputStyle(loadingApprovals)}
             />
-          </Field>
-
-          <Field label="Approver Role">
-            <input
-              value={manualApproverRole}
-              onChange={(e) => setManualApproverRole(e.target.value)}
-              disabled={loadingApprovals}
-              style={inputStyle(loadingApprovals)}
-            />
-          </Field>
-
-          <Field label="Required?">
-            <select
-              value={manualApproverRequired ? "yes" : "no"}
-              onChange={(e) => setManualApproverRequired(e.target.value === "yes")}
-              disabled={loadingApprovals}
-              style={inputStyle(loadingApprovals)}
-            >
-              <option value="yes">Yes</option>
-              <option value="no">No</option>
-            </select>
           </Field>
 
           <div style={{ display: "flex", alignItems: "end" }}>
@@ -3624,9 +3711,9 @@ function ApprovalInlinePanel({
             <thead>
               <tr>
                 <th style={tableHeaderStyle}>Order</th>
-                <th style={tableHeaderStyle}>Approver</th>
-                <th style={tableHeaderStyle}>Role</th>
-                <th style={tableHeaderStyle}>Required</th>
+                <th style={tableHeaderStyle}>Function</th>
+                <th style={tableHeaderStyle}>Job Title</th>
+                <th style={tableHeaderStyle}>User</th>
                 <th style={tableHeaderStyle}>Action</th>
               </tr>
             </thead>
@@ -3634,9 +3721,9 @@ function ApprovalInlinePanel({
               {configuredApprovers.map((approver) => (
                 <tr key={approver.id}>
                   <td style={tableCellStyle}>{approver.approval_order || "-"}</td>
+                  <td style={tableCellStyle}>{approver.approver_function || "N/A"}</td>
+                  <td style={tableCellStyle}>{approver.approver_job_title || approver.approver_role || "N/A"}</td>
                   <td style={tableCellStyle}>{approver.approver_email}</td>
-                  <td style={tableCellStyle}>{approver.approver_role || "CAPA Approver"}</td>
-                  <td style={tableCellStyle}>{approver.is_required === false ? "No" : "Yes"}</td>
                   <td style={tableCellStyle}>
                     <button
                       type="button"
