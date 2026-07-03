@@ -3517,226 +3517,156 @@ function ApprovalInlinePanel({
 }) {
   const isApproved = status === "approved";
   const isPending = status === "pending";
-  const isRejected = status === "rejected";
+
+  if (disabled || isApproved || isPending) {
+    return null;
+  }
 
   return (
     <div
+      id={sectionKey}
       style={{
-        border: "1px solid #d1d5db",
-        borderRadius: "12px",
-        padding: "14px",
+        borderTop: "1px solid #e5e7eb",
         marginTop: "18px",
-        borderLeft: `8px solid ${
-          isApproved
-            ? "#15803d"
-            : isPending
-            ? "#d97706"
-            : isRejected
-            ? "#dc2626"
-            : "#6b7280"
-        }`,
+        paddingTop: "18px",
       }}
     >
-      <button
-        type="button"
-        onClick={onToggle}
-        style={collapseHeaderButtonStyle}
-        aria-expanded={expanded}
-        aria-controls={sectionKey}
+      <h3 style={{ marginTop: 0 }}>{title}</h3>
+      <p style={{ ...subtleText, marginTop: 0 }}>{description}</p>
+
+      <div
+        style={{
+          border: "1px solid #d1d5db",
+          borderRadius: "10px",
+          padding: "12px",
+          marginBottom: "12px",
+          background: "#f9fafb",
+        }}
       >
-        <div>
-          <h2 style={{ margin: "0 0 4px 0" }}>
-            {expanded ? "▼" : "▶"} {title}
-          </h2>
-          <p style={{ ...subtleText, margin: 0 }}>{description}</p>
-        </div>
-      </button>
+        <h4 style={{ marginTop: 0 }}>Approvers</h4>
 
-      {expanded ? (
-        <div id={sectionKey}>
-          <div style={summaryGridStyle}>
-            <SummaryCard label="Status" value={status || "Not Submitted"} />
-            <SummaryCard label="Submitted By" value={submittedBy} />
-            <SummaryCard label="Submitted At" value={submittedAt} />
-            <SummaryCard label="Approved By" value={approvedBy} />
-            <SummaryCard label="Approved At" value={approvedAt} />
-            <SummaryCard label="Rejected By" value={rejectedBy} />
-            <SummaryCard label="Rejected At" value={rejectedAt} />
+        <div style={formGridStyle}>
+          <Field label="Approval Matrix">
+            <select
+              value={selectedApprovalMatrixId}
+              onChange={(e) => setSelectedApprovalMatrixId(e.target.value)}
+              disabled={loadingApprovals}
+              style={inputStyle(loadingApprovals)}
+            >
+              <option value="">Select approval matrix</option>
+              {approvalMatrixTemplates.map((template: any) => (
+                <option key={template.id} value={template.id}>
+                  {template.template_name || template.name || "Approval Matrix"}
+                </option>
+              ))}
+            </select>
+          </Field>
+
+          <div style={{ display: "flex", alignItems: "end" }}>
+            <button
+              type="button"
+              onClick={onLoadMatrix}
+              disabled={loadingApprovals}
+              style={buttonDisabledStyle(loadingApprovals)}
+            >
+              Load Matrix
+            </button>
           </div>
-
-          {!disabled && !isApproved ? (
-            <>
-              {isPending ? (
-                <div
-                  style={{
-                    border: "1px solid #bfdbfe",
-                    borderRadius: "10px",
-                    padding: "14px",
-                    marginTop: "12px",
-                    marginBottom: "12px",
-                    background: "#eff6ff",
-                  }}
-                >
-                  <h3 style={{ marginTop: 0 }}>Approval Package Submitted</h3>
-                  <p style={{ marginBottom: "8px" }}>
-                    This approval package has been sent to the assigned approver task queue.
-                    Approval and rejection must be completed from My Approval Tasks.
-                  </p>
-                  <p style={{ marginBottom: "8px", color: "#4b5563" }}>
-                    Approval tasks are intentionally hidden from the CAPA owner workspace after submission.
-                  </p>
-                  <a href="/my-approval-tasks" style={primaryLinkStyle}>
-                    Open My Approval Tasks
-                  </a>
-                </div>
-              ) : (
-                <>
-                  <div
-                    style={{
-                      border: "1px solid #d1d5db",
-                      borderRadius: "10px",
-                      padding: "12px",
-                      marginTop: "12px",
-                      marginBottom: "12px",
-                      background: "#f9fafb",
-                    }}
-                  >
-                    <h3 style={{ marginTop: 0 }}>Approvers</h3>
-
-                    <div style={formGridStyle}>
-                      <Field label="Approval Matrix">
-                        <select
-                          value={selectedApprovalMatrixId}
-                          onChange={(e) => setSelectedApprovalMatrixId(e.target.value)}
-                          disabled={loadingApprovals}
-                          style={inputStyle(loadingApprovals)}
-                        >
-                          <option value="">Select approval matrix</option>
-                          {approvalMatrixTemplates.map((template: any) => (
-                            <option key={template.id} value={template.id}>
-                              {template.template_name || template.name || "Approval Matrix"}
-                            </option>
-                          ))}
-                        </select>
-                      </Field>
-
-                      <div style={{ display: "flex", alignItems: "end" }}>
-                        <button
-                          type="button"
-                          onClick={onLoadMatrix}
-                          disabled={loadingApprovals}
-                          style={buttonDisabledStyle(loadingApprovals)}
-                        >
-                          Load Matrix
-                        </button>
-                      </div>
-                    </div>
-
-                    <div style={formGridStyle}>
-                      <Field label="Manual Approver Email">
-                        <input
-                          type="email"
-                          value={manualApproverEmail}
-                          onChange={(e) => setManualApproverEmail(e.target.value)}
-                          placeholder="approver@company.com"
-                          disabled={loadingApprovals}
-                          style={inputStyle(loadingApprovals)}
-                        />
-                      </Field>
-
-                      <Field label="Approver Role">
-                        <input
-                          value={manualApproverRole}
-                          onChange={(e) => setManualApproverRole(e.target.value)}
-                          disabled={loadingApprovals}
-                          style={inputStyle(loadingApprovals)}
-                        />
-                      </Field>
-
-                      <Field label="Required?">
-                        <select
-                          value={manualApproverRequired ? "yes" : "no"}
-                          onChange={(e) =>
-                            setManualApproverRequired(e.target.value === "yes")
-                          }
-                          disabled={loadingApprovals}
-                          style={inputStyle(loadingApprovals)}
-                        >
-                          <option value="yes">Yes</option>
-                          <option value="no">No</option>
-                        </select>
-                      </Field>
-
-                      <div style={{ display: "flex", alignItems: "end" }}>
-                        <button
-                          type="button"
-                          onClick={onAddManualApprover}
-                          disabled={loadingApprovals}
-                          style={buttonDisabledStyle(loadingApprovals)}
-                        >
-                          Add Approver
-                        </button>
-                      </div>
-                    </div>
-
-                    <div style={{ marginTop: "12px" }}>
-                      {configuredApprovers.length === 0 ? (
-                        <p style={subtleText}>No approvers configured.</p>
-                      ) : (
-                        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
-                          <thead>
-                            <tr>
-                              <th style={tableHeaderStyle}>Order</th>
-                              <th style={tableHeaderStyle}>Approver</th>
-                              <th style={tableHeaderStyle}>Role</th>
-                              <th style={tableHeaderStyle}>Required</th>
-                              <th style={tableHeaderStyle}>Action</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {configuredApprovers.map((approver) => (
-                              <tr key={approver.id}>
-                                <td style={tableCellStyle}>{approver.approval_order || "-"}</td>
-                                <td style={tableCellStyle}>{approver.approver_email}</td>
-                                <td style={tableCellStyle}>{approver.approver_role || "CAPA Approver"}</td>
-                                <td style={tableCellStyle}>{approver.is_required === false ? "No" : "Yes"}</td>
-                                <td style={tableCellStyle}>
-                                  <button
-                                    type="button"
-                                    onClick={() => onRemoveApprover(approver.id)}
-                                    disabled={loadingApprovals}
-                                  >
-                                    Remove
-                                  </button>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      )}
-                    </div>
-                  </div>
-
-                  <Field label="Submission Comments">
-                    <textarea
-                      value={comments}
-                      onChange={(e) => setComments(e.target.value)}
-                      rows={3}
-                      style={textareaStyle(false)}
-                    />
-                  </Field>
-
-                  <div style={buttonRowStyle}>
-                    <button onClick={onSubmit} style={secondaryButtonStyle}>
-                      Submit for Approval
-                    </button>
-                  </div>
-                </>
-              )}
-            </>
-          ) : null}
         </div>
-      ) : null}
+
+        <div style={formGridStyle}>
+          <Field label="Manual Approver Email">
+            <input
+              type="email"
+              value={manualApproverEmail}
+              onChange={(e) => setManualApproverEmail(e.target.value)}
+              placeholder="approver@company.com"
+              disabled={loadingApprovals}
+              style={inputStyle(loadingApprovals)}
+            />
+          </Field>
+
+          <Field label="Approver Role">
+            <input
+              value={manualApproverRole}
+              onChange={(e) => setManualApproverRole(e.target.value)}
+              disabled={loadingApprovals}
+              style={inputStyle(loadingApprovals)}
+            />
+          </Field>
+
+          <Field label="Required?">
+            <select
+              value={manualApproverRequired ? "yes" : "no"}
+              onChange={(e) => setManualApproverRequired(e.target.value === "yes")}
+              disabled={loadingApprovals}
+              style={inputStyle(loadingApprovals)}
+            >
+              <option value="yes">Yes</option>
+              <option value="no">No</option>
+            </select>
+          </Field>
+
+          <div style={{ display: "flex", alignItems: "end" }}>
+            <button
+              type="button"
+              onClick={onAddManualApprover}
+              disabled={loadingApprovals}
+              style={buttonDisabledStyle(loadingApprovals)}
+            >
+              Add Approver
+            </button>
+          </div>
+        </div>
+
+        {configuredApprovers.length > 0 ? (
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
+            <thead>
+              <tr>
+                <th style={tableHeaderStyle}>Order</th>
+                <th style={tableHeaderStyle}>Approver</th>
+                <th style={tableHeaderStyle}>Role</th>
+                <th style={tableHeaderStyle}>Required</th>
+                <th style={tableHeaderStyle}>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {configuredApprovers.map((approver) => (
+                <tr key={approver.id}>
+                  <td style={tableCellStyle}>{approver.approval_order || "-"}</td>
+                  <td style={tableCellStyle}>{approver.approver_email}</td>
+                  <td style={tableCellStyle}>{approver.approver_role || "CAPA Approver"}</td>
+                  <td style={tableCellStyle}>{approver.is_required === false ? "No" : "Yes"}</td>
+                  <td style={tableCellStyle}>
+                    <button
+                      type="button"
+                      onClick={() => onRemoveApprover(approver.id)}
+                      disabled={loadingApprovals}
+                    >
+                      Remove
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <p style={subtleText}>No approvers configured.</p>
+        )}
+      </div>
+
+      <Field label="Submission Comments">
+        <textarea
+          value={comments}
+          onChange={(e) => setComments(e.target.value)}
+          rows={3}
+          style={textareaStyle(false)}
+        />
+      </Field>
+
+      <button onClick={onSubmit} style={primaryButtonStyle}>
+        Submit for Approval
+      </button>
     </div>
   );
 }
