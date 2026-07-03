@@ -47,6 +47,7 @@ type CapaGateApprover = {
   approver_email: string;
   approver_function: string | null;
   approver_job_title: string | null;
+  approver_due_date: string | null;
   approver_role: string | null;
   approval_order: number | null;
   is_required: boolean | null;
@@ -88,6 +89,8 @@ export default function EnterpriseCapaWorkflowPage() {
   const [manualApproverFunctionByGate, setManualApproverFunctionByGate] =
     useState<Record<string, string>>({});
   const [manualApproverJobTitleByGate, setManualApproverJobTitleByGate] =
+    useState<Record<string, string>>({});
+  const [manualApproverDueDateByGate, setManualApproverDueDateByGate] =
     useState<Record<string, string>>({});
   const [manualApproverRoleByGate, setManualApproverRoleByGate] =
     useState<Record<string, string>>({});
@@ -516,6 +519,7 @@ export default function EnterpriseCapaWorkflowPage() {
       approver_email: normalizeApproverEmail(approverEmail),
       approver_function: String(approverFunction || "").trim(),
       approver_job_title: String(approverJobTitle || "Approver").trim(),
+      approver_due_date: row?.approver_due_date || row?.due_date || null,
       approver_role: String(approverRole || approverJobTitle || "Approver").trim(),
       approval_order: Number(approvalOrder) || index + 1,
       is_required: true,
@@ -600,6 +604,7 @@ export default function EnterpriseCapaWorkflowPage() {
       approver_email: row.approver_email,
       approver_function: row.approver_function || null,
       approver_job_title: row.approver_job_title || row.approver_role || "Approver",
+      approver_due_date: row.approver_due_date || null,
       approver_role: row.approver_role || row.approver_job_title || "Approver",
       approval_status: "configured",
       approval_order: row.approval_order || index + 1,
@@ -638,6 +643,7 @@ export default function EnterpriseCapaWorkflowPage() {
     const approverEmail = normalizeApproverEmail(manualApproverEmailByGate[gate]);
     const approverFunction = String(manualApproverFunctionByGate[gate] || "").trim();
     const approverJobTitle = String(manualApproverJobTitleByGate[gate] || "").trim();
+    const approverDueDate = String(manualApproverDueDateByGate[gate] || "").trim();
 
     if (!approverFunction) {
       alert("Function is required.");
@@ -651,6 +657,11 @@ export default function EnterpriseCapaWorkflowPage() {
 
     if (!approverEmail) {
       alert("User email is required.");
+      return;
+    }
+
+    if (!approverDueDate) {
+      alert("Approval due date is required.");
       return;
     }
 
@@ -685,6 +696,7 @@ export default function EnterpriseCapaWorkflowPage() {
       approver_email: approverEmail,
       approver_function: approverFunction,
       approver_job_title: approverJobTitle,
+      approver_due_date: approverDueDate,
       approver_role: approverJobTitle,
       approval_status: "configured",
       approval_order: nextOrder,
@@ -700,12 +712,13 @@ export default function EnterpriseCapaWorkflowPage() {
 
     await addAuditLog(
       "manual_approver_added",
-      `${approvalGateLabels[gate]} approver added: ${approverFunction} / ${approverJobTitle} / ${approverEmail}`
+      `${approvalGateLabels[gate]} approver added: ${approverFunction} / ${approverJobTitle} / ${approverEmail} / due ${approverDueDate}`
     );
 
     setManualApproverEmailByGate((prev) => ({ ...prev, [gate]: "" }));
     setManualApproverFunctionByGate((prev) => ({ ...prev, [gate]: "" }));
     setManualApproverJobTitleByGate((prev) => ({ ...prev, [gate]: "" }));
+    setManualApproverDueDateByGate((prev) => ({ ...prev, [gate]: "" }));
     setManualApproverRoleByGate((prev) => ({ ...prev, [gate]: "" }));
     setManualApproverRequiredByGate((prev) => ({ ...prev, [gate]: true }));
 
@@ -776,6 +789,7 @@ export default function EnterpriseCapaWorkflowPage() {
         }`,
       approver_function: approver.approver_function || null,
       approver_job_title: approver.approver_job_title || approver.approver_role || null,
+      due_date: approver.approver_due_date || null,
       assigned_to_email: normalizeApproverEmail(approver.approver_email),
       assigned_by_email: userEmail || "unknown",
       status: "pending",
@@ -2140,6 +2154,10 @@ This approval becomes part of the official electronic quality record.`,
               setManualApproverJobTitle={(value) =>
                 setManualApproverJobTitleByGate((prev) => ({ ...prev, initiation: value }))
               }
+              manualApproverDueDate={manualApproverDueDateByGate["initiation"] || ""}
+              setManualApproverDueDate={(value) =>
+                setManualApproverDueDateByGate((prev) => ({ ...prev, initiation: value }))
+              }
             manualApproverRole={manualApproverRoleByGate["initiation"] || manualApproverJobTitleByGate["initiation"] || ""}
             setManualApproverRole={(value) =>
               setManualApproverRoleByGate((prev) => ({ ...prev, initiation: value }))
@@ -2734,6 +2752,10 @@ This approval becomes part of the official electronic quality record.`,
               setManualApproverJobTitle={(value) =>
                 setManualApproverJobTitleByGate((prev) => ({ ...prev, investigation: value }))
               }
+              manualApproverDueDate={manualApproverDueDateByGate["investigation"] || ""}
+              setManualApproverDueDate={(value) =>
+                setManualApproverDueDateByGate((prev) => ({ ...prev, investigation: value }))
+              }
             manualApproverRole={manualApproverRoleByGate["investigation"] || manualApproverJobTitleByGate["investigation"] || ""}
             setManualApproverRole={(value) =>
               setManualApproverRoleByGate((prev) => ({ ...prev, investigation: value }))
@@ -2986,6 +3008,10 @@ This approval becomes part of the official electronic quality record.`,
               manualApproverJobTitle={manualApproverJobTitleByGate["action_plan"] || ""}
               setManualApproverJobTitle={(value) =>
                 setManualApproverJobTitleByGate((prev) => ({ ...prev, action_plan: value }))
+              }
+              manualApproverDueDate={manualApproverDueDateByGate["action_plan"] || ""}
+              setManualApproverDueDate={(value) =>
+                setManualApproverDueDateByGate((prev) => ({ ...prev, action_plan: value }))
               }
             manualApproverRole={manualApproverRoleByGate["action_plan"] || manualApproverJobTitleByGate["action_plan"] || ""}
             setManualApproverRole={(value) =>
@@ -3316,6 +3342,10 @@ This approval becomes part of the official electronic quality record.`,
               setManualApproverJobTitle={(value) =>
                 setManualApproverJobTitleByGate((prev) => ({ ...prev, closure: value }))
               }
+              manualApproverDueDate={manualApproverDueDateByGate["closure"] || ""}
+              setManualApproverDueDate={(value) =>
+                setManualApproverDueDateByGate((prev) => ({ ...prev, closure: value }))
+              }
             manualApproverRole={manualApproverRoleByGate["closure"] || manualApproverJobTitleByGate["closure"] || ""}
             setManualApproverRole={(value) =>
               setManualApproverRoleByGate((prev) => ({ ...prev, closure: value }))
@@ -3545,6 +3575,8 @@ function ApprovalInlinePanel({
   setManualApproverFunction,
   manualApproverJobTitle,
   setManualApproverJobTitle,
+  manualApproverDueDate,
+  setManualApproverDueDate,
   manualApproverRole,
   setManualApproverRole,
   manualApproverRequired,
@@ -3585,6 +3617,8 @@ function ApprovalInlinePanel({
   setManualApproverFunction: (value: string) => void;
   manualApproverJobTitle: string;
   setManualApproverJobTitle: (value: string) => void;
+  manualApproverDueDate: string;
+  setManualApproverDueDate: (value: string) => void;
   manualApproverRole: string;
   setManualApproverRole: (value: string) => void;
   manualApproverRequired: boolean;
@@ -3628,7 +3662,7 @@ function ApprovalInlinePanel({
           background: "#f9fafb",
         }}
       >
-        <h4 style={{ marginTop: 0 }}>Approvers</h4>
+        <h4 style={{ marginTop: 0 }}>Approval Assignments</h4>
 
         <div style={formGridStyle}>
           <Field label="Approval Matrix">
@@ -3694,6 +3728,16 @@ function ApprovalInlinePanel({
             />
           </Field>
 
+          <Field label="Due Date">
+            <input
+              type="date"
+              value={manualApproverDueDate}
+              onChange={(e) => setManualApproverDueDate(e.target.value)}
+              disabled={loadingApprovals}
+              style={inputStyle(loadingApprovals)}
+            />
+          </Field>
+
           <div style={{ display: "flex", alignItems: "end" }}>
             <button
               type="button"
@@ -3714,7 +3758,9 @@ function ApprovalInlinePanel({
                 <th style={tableHeaderStyle}>Function</th>
                 <th style={tableHeaderStyle}>Job Title</th>
                 <th style={tableHeaderStyle}>User</th>
-                <th style={tableHeaderStyle}>Action</th>
+                <th style={tableHeaderStyle}>Due Date</th>
+                <th style={tableHeaderStyle}>Approval</th>
+                <th style={tableHeaderStyle}>Approval Date</th>
               </tr>
             </thead>
             <tbody>
@@ -3724,15 +3770,9 @@ function ApprovalInlinePanel({
                   <td style={tableCellStyle}>{approver.approver_function || "N/A"}</td>
                   <td style={tableCellStyle}>{approver.approver_job_title || approver.approver_role || "N/A"}</td>
                   <td style={tableCellStyle}>{approver.approver_email}</td>
-                  <td style={tableCellStyle}>
-                    <button
-                      type="button"
-                      onClick={() => onRemoveApprover(approver.id)}
-                      disabled={loadingApprovals}
-                    >
-                      Remove
-                    </button>
-                  </td>
+                  <td style={tableCellStyle}>{approver.approver_due_date || "N/A"}</td>
+                  <td style={tableCellStyle}>Pending</td>
+                  <td style={tableCellStyle}>—</td>
                 </tr>
               ))}
             </tbody>
