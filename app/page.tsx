@@ -35,8 +35,16 @@ export default function HomePage() {
 
       <section style={containerStyle}>
         <div style={topBarStyle}>
-          <a href="/login" style={loginButtonStyle}>
-            Login
+          <a href="/login" style={signinButtonStyle}>
+            Sign In
+          </a>
+
+          <a href="/signup" style={createAccountButtonStyle}>
+            Create Account
+          </a>
+
+          <a href="/login" style={requestDemoButtonStyle}>
+            Request Demo
           </a>
         </div>
 
@@ -128,10 +136,34 @@ const containerStyle: React.CSSProperties = {
 const topBarStyle: React.CSSProperties = {
   display: "flex",
   justifyContent: "flex-end",
+  alignItems: "center",
+  gap: "12px",
+  flexWrap: "wrap",
   marginBottom: "48px",
 };
 
-const loginButtonStyle: React.CSSProperties = {
+const signinButtonStyle: React.CSSProperties = {
+  backgroundColor: "rgba(255,255,255,0.86)",
+  color: "#111827",
+  padding: "12px 22px",
+  borderRadius: "999px",
+  textDecoration: "none",
+  fontWeight: 800,
+  border: "1px solid rgba(148,163,184,0.55)",
+  boxShadow: "0 12px 28px rgba(15, 23, 42, 0.08)",
+};
+
+const createAccountButtonStyle: React.CSSProperties = {
+  backgroundColor: "#2563eb",
+  color: "#ffffff",
+  padding: "12px 22px",
+  borderRadius: "999px",
+  textDecoration: "none",
+  fontWeight: 800,
+  boxShadow: "0 12px 28px rgba(37, 99, 235, 0.22)",
+};
+
+const requestDemoButtonStyle: React.CSSProperties = {
   backgroundColor: "#111827",
   color: "#ffffff",
   padding: "12px 22px",
