@@ -48,8 +48,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: listError.message }, { status: 500 });
     }
 
-    const targetUser = usersData.users.find(
-      (user) => user.email?.toLowerCase() === normalizedEmail
+    const users = ((usersData as any)?.users || []) as Array<{
+      id: string;
+      email?: string | null;
+    }>;
+
+    const targetUser = users.find(
+      (user) => String(user.email || "").toLowerCase() === normalizedEmail
     );
 
     if (!targetUser) {
