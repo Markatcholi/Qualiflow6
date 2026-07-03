@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
 
@@ -14,7 +15,7 @@ export default function LoginPage() {
     }
 
     const { error } = await supabase.auth.signInWithPassword({
-      email,
+      email: email.trim().toLowerCase(),
       password,
     });
 
@@ -30,27 +31,16 @@ export default function LoginPage() {
     <main style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
       <h1>Login</h1>
 
-      <div style={{ marginBottom: "10px" }}>
-        <input
-          type="email"
-          placeholder="Enter your email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          style={{ padding: "8px", width: "250px" }}
-        />
-      </div>
+      <input type="email" placeholder="Enter your email" value={email} onChange={(e) => setEmail(e.target.value)} />
+      <br /><br />
 
-      <div style={{ marginBottom: "10px" }}>
-        <input
-          type="password"
-          placeholder="Enter your password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          style={{ padding: "8px", width: "250px" }}
-        />
-      </div>
+      <input type="password" placeholder="Enter your password" value={password} onChange={(e) => setPassword(e.target.value)} />
+      <br /><br />
 
       <button onClick={login}>Login</button>
+      <br /><br />
+
+      <Link href="/signup">Create Account</Link>
     </main>
   );
 }
