@@ -3766,12 +3766,6 @@ function ApprovalInlinePanel({
                 <th style={tableHeaderStyle}>Job Title</th>
                 <th style={tableHeaderStyle}>User</th>
                 <th style={tableHeaderStyle}>Due Date</th>
-                {isPending || isApproved || isRejected ? (
-                  <>
-                    <th style={tableHeaderStyle}>Approval</th>
-                    <th style={tableHeaderStyle}>Approval Date</th>
-                  </>
-                ) : null}
               </tr>
             </thead>
             <tbody>
@@ -3782,16 +3776,6 @@ function ApprovalInlinePanel({
                   <td style={tableCellStyle}>{approver.approver_job_title || approver.approver_role || "N/A"}</td>
                   <td style={tableCellStyle}>{approver.approver_email}</td>
                   <td style={tableCellStyle}>{approver.approver_due_date || "N/A"}</td>
-                  {isPending || isApproved || isRejected ? (
-                    <>
-                      <td style={tableCellStyle}>
-                        {isApproved ? "Approved" : isRejected ? "Rejected" : "Pending"}
-                      </td>
-                      <td style={tableCellStyle}>
-                        {approvedAt || rejectedAt || "—"}
-                      </td>
-                    </>
-                  ) : null}
                 </tr>
               ))}
             </tbody>
