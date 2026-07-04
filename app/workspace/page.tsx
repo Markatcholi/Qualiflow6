@@ -107,9 +107,7 @@ export default function HomePage() {
           </p>
         </div>
 
-        <a href="/my-approval-tasks" style={primaryButtonStyle}>
-          Open My Tasks
-        </a>
+
       </header>
 
       <section style={workspaceGridStyle}>
@@ -174,9 +172,7 @@ export default function HomePage() {
           <div style={rightPanelHeaderStyle}>
             <div>
               <h2 style={panelTitleStyle}>My Tasks</h2>
-              <p style={{ margin: 0, color: "#64748b" }}>
-                Oldest assigned tasks appear first.
-              </p>
+
             </div>
 
             <span style={taskCountStyle}>{tasks.length}</span>
@@ -286,16 +282,24 @@ function getTaskUrl(task: any) {
 }
 
 function getRecordDisplay(task: any) {
-  return (
+  const directRecord =
     task.record_number ||
     task.capa_number ||
     task.entity_number ||
     task.ncmr_number ||
     task.change_number ||
-    task.document_number ||
-    task.entity_id ||
-    "Record"
-  );
+    task.document_number;
+
+  if (directRecord) return directRecord;
+
+  const title = String(task.task_title || "");
+  const recordMatch = title.match(/\b(CAPA\d+|NCMR\d+|CC\d+|SCAR\d+|AUD\d+|DOC\d+)\b/i);
+
+  if (recordMatch?.[1]) {
+    return recordMatch[1].toUpperCase();
+  }
+
+  return task.entity_id || "Record";
 }
 
 function getTaskName(task: any) {
@@ -304,10 +308,16 @@ function getTaskName(task: any) {
   }
 
   if (task.task_title) {
-    return task.task_title;
+    return cleanTaskTitle(task.task_title);
   }
 
   return formatTaskType(task.task_type);
+}
+
+function cleanTaskTitle(value: any) {
+  return String(value || "Task")
+    .replace(/\s+for\s+(CAPA\d+|NCMR\d+|CC\d+|SCAR\d+|AUD\d+|DOC\d+)\b/gi, "")
+    .trim();
 }
 
 function getCapaApprovalLabel(task: any) {
@@ -531,7 +541,7 @@ const rightPanelHeaderStyle: React.CSSProperties = {
   justifyContent: "space-between",
   gap: "14px",
   alignItems: "center",
-  marginBottom: "14px",
+  marginBottom: "8px",
 };
 
 const panelTitleStyle: React.CSSProperties = {
@@ -678,15 +688,15 @@ const taskTableStyle: React.CSSProperties = {
 
 const tableHeaderStyle: React.CSSProperties = {
   textAlign: "left",
-  padding: "12px",
+  padding: "10px 12px",
   borderBottom: "1px solid #d1d5db",
   background: "#f8fafc",
   fontWeight: 900,
-  color: "#334155",
+  color: "#111827",
 };
 
 const tableCellStyle: React.CSSProperties = {
-  padding: "12px",
+  padding: "10px 12px",
   borderBottom: "1px solid #e5e7eb",
   verticalAlign: "middle",
 };
