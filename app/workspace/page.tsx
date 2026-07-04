@@ -10,6 +10,11 @@ export default function HomePage() {
   const [role, setRole] = useState("user");
   const [tasks, setTasks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [availableUsers, setAvailableUsers] = useState<string[]>([]);
+  const [reassignTask, setReassignTask] = useState<any>(null);
+  const [reassignEmail, setReassignEmail] = useState("");
+  const [reassignReason, setReassignReason] = useState("");
+  const [reassigning, setReassigning] = useState(false);
   const [openGroups, setOpenGroups] = useState<Record<ModuleGroupKey, boolean>>({
     myWork: true,
     quality: true,
@@ -60,6 +65,18 @@ export default function HomePage() {
     }
 
     setTasks(taskData || []);
+
+    const { data: usersData } = await supabase
+      .from("user_roles")
+      .select("user_email")
+      .order("user_email", { ascending: true });
+
+    setAvailableUsers(
+      (usersData || [])
+        .map((user: any) => String(user.user_email || "").toLowerCase())
+        .filter(Boolean)
+    );
+
     setLoading(false);
   };
 
@@ -72,6 +89,80 @@ export default function HomePage() {
       ...current,
       [group]: !current[group],
     }));
+  };
+
+  const openReassignDialog = (task: any) => {
+    setReassignTask(task);
+    setReassignEmail("");
+    setReassignReason("");
+  };
+
+  const closeReassignDialog = () => {
+    if (reassigning) return;
+    setReassignTask(null);
+    setReassignEmail("");
+    setReassignReason("");
+  };
+
+  const completeReassignment = async () => {
+    if (!reassignTask?.id) return;
+
+    const newAssignee = String(reassignEmail || "").trim().toLowerCase();
+    const currentAssignee = String(reassignTask.assigned_to_email || "").trim().toLowerCase();
+
+    if (!newAssignee) {
+      alert("New assignee email is required.");
+      return;
+    }
+
+    if (newAssignee === currentAssignee) {
+      alert("The new assignee must be different from the current assignee.");
+      return;
+    }
+
+    if (!reassignReason.trim()) {
+      alert("Reason for reassignment is required.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Reassign this task from ${currentAssignee} to ${newAssignee}?`
+    );
+
+    if (!confirmed) return;
+
+    setReassigning(true);
+
+    const { error } = await supabase
+      .from("approval_tasks")
+      .update({
+        assigned_to_email: newAssignee,
+        reassigned_from_email: currentAssignee,
+        reassigned_by_email: email,
+        reassigned_at: new Date().toISOString(),
+        reassignment_reason: reassignReason.trim(),
+      })
+      .eq("id", reassignTask.id)
+      .eq("assigned_to_email", email.toLowerCase());
+
+    setReassigning(false);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    await supabase.from("audit_logs").insert({
+      entity_type: reassignTask.entity_type,
+      entity_id: reassignTask.entity_id,
+      action: "task_reassigned",
+      details: `Task reassigned from ${currentAssignee} to ${newAssignee}. Reason: ${reassignReason.trim()}`,
+      user_email: email,
+    });
+
+    alert("Task reassigned.");
+    closeReassignDialog();
+    fetchHomeData();
   };
 
   if (loading) {
@@ -219,9 +310,18 @@ export default function HomePage() {
                           </span>
                         </td>
                         <td style={tableCellStyle}>
-                          <a href={taskUrl} style={tableOpenLinkStyle}>
-                            Open
-                          </a>
+                          <div style={actionButtonGroupStyle}>
+                            <a href={taskUrl} style={tableOpenLinkStyle}>
+                              Open
+                            </a>
+                            <button
+                              type="button"
+                              onClick={() => openReassignDialog(task)}
+                              style={tableReassignButtonStyle}
+                            >
+                              Reassign
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -232,6 +332,68 @@ export default function HomePage() {
           )}
         </section>
       </section>
+
+      {reassignTask ? (
+        <div style={modalOverlayStyle}>
+          <section style={modalCardStyle}>
+            <h2 style={{ marginTop: 0 }}>Reassign Task</h2>
+
+            <div style={modalFieldStyle}>
+              <label style={modalLabelStyle}>Current Assignee</label>
+              <div style={readOnlyValueStyle}>{reassignTask.assigned_to_email || "N/A"}</div>
+            </div>
+
+            <div style={modalFieldStyle}>
+              <label style={modalLabelStyle}>New Assignee</label>
+              <select
+                value={reassignEmail}
+                onChange={(event) => setReassignEmail(event.target.value)}
+                style={modalInputStyle}
+              >
+                <option value="">Select user</option>
+                {availableUsers
+                  .filter((user) => user !== String(reassignTask.assigned_to_email || "").toLowerCase())
+                  .map((user) => (
+                    <option key={user} value={user}>
+                      {user}
+                    </option>
+                  ))}
+              </select>
+            </div>
+
+            <div style={modalFieldStyle}>
+              <label style={modalLabelStyle}>Reason for Reassignment</label>
+              <textarea
+                value={reassignReason}
+                onChange={(event) => setReassignReason(event.target.value)}
+                rows={4}
+                style={modalTextareaStyle}
+                placeholder="Example: I am unavailable and need this task reassigned."
+              />
+            </div>
+
+            <div style={modalActionsStyle}>
+              <button
+                type="button"
+                onClick={closeReassignDialog}
+                disabled={reassigning}
+                style={modalSecondaryButtonStyle}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={completeReassignment}
+                disabled={reassigning}
+                style={modalPrimaryButtonStyle}
+              >
+                {reassigning ? "Reassigning..." : "Reassign"}
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </main>
   );
 }
@@ -719,4 +881,102 @@ const tableOpenLinkStyle: React.CSSProperties = {
   padding: "6px 10px",
   textDecoration: "none",
   fontWeight: 900,
+};
+
+const actionButtonGroupStyle: React.CSSProperties = {
+  display: "flex",
+  gap: "8px",
+  alignItems: "center",
+  flexWrap: "wrap",
+};
+
+const tableReassignButtonStyle: React.CSSProperties = {
+  background: "#ffffff",
+  color: "#1d4ed8",
+  border: "1px solid #bfdbfe",
+  borderRadius: "8px",
+  padding: "6px 10px",
+  fontWeight: 900,
+  cursor: "pointer",
+};
+
+const modalOverlayStyle: React.CSSProperties = {
+  position: "fixed",
+  inset: 0,
+  background: "rgba(15, 23, 42, 0.35)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "24px",
+  zIndex: 50,
+};
+
+const modalCardStyle: React.CSSProperties = {
+  width: "100%",
+  maxWidth: "520px",
+  background: "#ffffff",
+  borderRadius: "18px",
+  border: "1px solid #d1d5db",
+  padding: "22px",
+  boxShadow: "0 24px 80px rgba(15, 23, 42, 0.25)",
+};
+
+const modalFieldStyle: React.CSSProperties = {
+  marginBottom: "14px",
+};
+
+const modalLabelStyle: React.CSSProperties = {
+  display: "block",
+  fontWeight: 900,
+  marginBottom: "6px",
+};
+
+const readOnlyValueStyle: React.CSSProperties = {
+  border: "1px solid #e5e7eb",
+  background: "#f8fafc",
+  borderRadius: "10px",
+  padding: "10px",
+  fontWeight: 800,
+};
+
+const modalInputStyle: React.CSSProperties = {
+  width: "100%",
+  border: "1px solid #cbd5e1",
+  borderRadius: "10px",
+  padding: "10px",
+  boxSizing: "border-box",
+};
+
+const modalTextareaStyle: React.CSSProperties = {
+  width: "100%",
+  border: "1px solid #cbd5e1",
+  borderRadius: "10px",
+  padding: "10px",
+  boxSizing: "border-box",
+};
+
+const modalActionsStyle: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "flex-end",
+  gap: "10px",
+  marginTop: "16px",
+};
+
+const modalSecondaryButtonStyle: React.CSSProperties = {
+  border: "1px solid #d1d5db",
+  background: "#ffffff",
+  borderRadius: "10px",
+  padding: "9px 14px",
+  fontWeight: 900,
+  cursor: "pointer",
+};
+
+const modalPrimaryButtonStyle: React.CSSProperties = {
+  border: "none",
+  background: "#2563eb",
+  color: "#ffffff",
+  borderRadius: "10px",
+  padding: "9px 14px",
+  fontWeight: 900,
+  cursor: "pointer",
 };
