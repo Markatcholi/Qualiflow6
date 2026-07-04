@@ -12,8 +12,10 @@ export default function MyApprovalTasksPage() {
 
   const fetchTasks = async () => {
     setLoading(true);
+
     const { data: userData } = await supabase.auth.getUser();
     const email = userData?.user?.email || "";
+
     setUserEmail(email);
     setSignatureEmail(email);
 
@@ -74,9 +76,87 @@ export default function MyApprovalTasksPage() {
     return "initiation";
   };
 
+  const getApprovalGateLabel = (task: any) => {
+    const gate = getCapaGateFromTask(task);
+
+    if (gate === "initiation") return "Initiation Approval";
+    if (gate === "investigation") return "Investigation Approval";
+    if (gate === "action_plan") return "Action Plan Approval";
+    if (gate === "implementation") return "Implementation Approval";
+    if (gate === "effectiveness_plan") return "Effectiveness Plan Approval";
+    if (gate === "closure") return "Closure Approval";
+
+    return "Approval";
+  };
+
   const getCapaReviewUrl = (task: any) => {
     const gate = getCapaGateFromTask(task);
     return `/capa/${task.entity_id}/approval-review?gate=${gate}&taskId=${task.id}`;
+  };
+
+  const getRecordDisplay = (task: any) => {
+    return task.record_number || task.capa_number || task.entity_number || task.entity_id || "Record";
+  };
+
+  const getTaskTitle = (task: any) => {
+    if (isCapaApprovalTask(task)) {
+      const jobTitle = task.approver_job_title || task.required_function || "Approver";
+      return `${jobTitle} — ${getRecordDisplay(task)} ${getApprovalGateLabel(task)}`;
+    }
+
+    return task.task_title || `${task.required_function || "Task"} — ${formatTaskType(task.task_type)}`;
+  };
+
+  const getDueStatus = (task: any) => {
+    const dueDateValue = task.due_date || task.approver_due_date;
+
+    if (!dueDateValue) {
+      return {
+        label: "No due date",
+        icon: "⚪",
+        background: "#f9fafb",
+        border: "#d1d5db",
+        text: "#374151",
+      };
+    }
+
+    const today = new Date();
+    const dueDate = new Date(`${dueDateValue}T23:59:59`);
+
+    today.setHours(0, 0, 0, 0);
+
+    const millisecondsPerDay = 1000 * 60 * 60 * 24;
+    const daysRemaining = Math.ceil(
+      (dueDate.getTime() - today.getTime()) / millisecondsPerDay
+    );
+
+    if (daysRemaining < 0) {
+      return {
+        label: "Overdue",
+        icon: "🔴",
+        background: "#fef2f2",
+        border: "#fecaca",
+        text: "#991b1b",
+      };
+    }
+
+    if (daysRemaining <= 3) {
+      return {
+        label: daysRemaining === 0 ? "Due today" : `Due in ${daysRemaining} day${daysRemaining === 1 ? "" : "s"}`,
+        icon: "🟡",
+        background: "#fffbeb",
+        border: "#fde68a",
+        text: "#92400e",
+      };
+    }
+
+    return {
+      label: `Due in ${daysRemaining} days`,
+      icon: "🟢",
+      background: "#f0fdf4",
+      border: "#bbf7d0",
+      text: "#166534",
+    };
   };
 
   const signTask = async (task: any, status: "approved" | "rejected") => {
@@ -198,149 +278,142 @@ export default function MyApprovalTasksPage() {
     fetchTasks();
   };
 
-  if (loading) return <main style={{ padding: "20px" }}>Loading tasks...</main>;
+  if (loading) {
+    return <main style={pageStyle}>Loading tasks...</main>;
+  }
 
   return (
-    <main style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
-      <h1>My Tasks</h1>
-      <p><strong>Logged-in:</strong> {userEmail || "none"}</p>
+    <main style={pageStyle}>
+      <header style={headerStyle}>
+        <div>
+          <div style={eyebrowStyle}>QUALISPHERE WORK QUEUE</div>
+          <h1 style={{ margin: "4px 0" }}>My Tasks</h1>
+          <p style={{ margin: 0, color: "#4b5563" }}>
+            Logged in as <strong>{userEmail || "none"}</strong>
+          </p>
+        </div>
+      </header>
 
-      <div style={{ marginBottom: "16px" }}>
-        <label>Re-enter Your Email for E-Signature</label><br />
+      <div style={signatureBoxStyle}>
+        <label style={labelStyle}>Re-enter Your Email for E-Signature</label>
         <input
           value={signatureEmail}
           onChange={(e) => setSignatureEmail(e.target.value)}
-          style={{ padding: "8px", width: "100%", maxWidth: "500px" }}
+          style={inputStyle}
         />
       </div>
 
       {tasks.length === 0 ? (
-        <p>No tasks assigned to you.</p>
+        <section style={emptyStateStyle}>No tasks assigned to you.</section>
       ) : (
         <div style={{ display: "grid", gap: "12px" }}>
           {tasks.map((task) => {
             const capaApproval = isCapaApprovalTask(task);
+            const dueStatus = getDueStatus(task);
+            const pending = task.status === "pending";
 
             return (
               <section
                 key={task.id}
                 style={{
-                  border: "1px solid #d1d5db",
-                  borderRadius: "8px",
-                  padding: "12px",
+                  ...taskCardStyle,
+                  borderLeft: `8px solid ${pending ? dueStatus.border : "#d1d5db"}`,
                   background:
                     task.status === "approved" || task.status === "completed"
                       ? "#f0fdf4"
                       : task.status === "rejected"
                       ? "#fef2f2"
-                      : "#f9fafb",
+                      : "#ffffff",
                 }}
               >
-                <h2 style={{ marginTop: 0 }}>
-                  {task.task_title || `${task.required_function} — ${task.task_type}`}
-                </h2>
+                <div style={taskHeaderStyle}>
+                  <div>
+                    <h2 style={{ margin: "0 0 8px 0", fontSize: "22px" }}>
+                      {getTaskTitle(task)}
+                    </h2>
 
-                <p><strong>Status:</strong> {task.status}</p>
-                <p><strong>Entity:</strong> {task.entity_type} / {task.entity_id}</p>
-                <p><strong>Assigned By:</strong> {task.assigned_by_email || "N/A"}</p>
-                <p><strong>Created:</strong> {task.created_at}</p>
+                    <div style={taskMetaRowStyle}>
+                      <span style={statusPillStyle(task.status)}>
+                        {formatTaskStatus(task.status)}
+                      </span>
 
-                {task.approver_function || task.approver_job_title ? (
-                  <p>
-                    <strong>Approval Capacity:</strong>{" "}
-                    {task.approver_function || "N/A"} / {task.approver_job_title || task.required_function || "N/A"}
-                  </p>
-                ) : null}
+                      <span
+                        style={{
+                          ...duePillStyle,
+                          background: dueStatus.background,
+                          borderColor: dueStatus.border,
+                          color: dueStatus.text,
+                        }}
+                      >
+                        {dueStatus.icon} Due: {task.due_date || task.approver_due_date || "N/A"}
+                        {pending ? ` (${dueStatus.label})` : ""}
+                      </span>
+                    </div>
+                  </div>
 
-                {task.entity_type === "ncmr" ? (
-                  <p><a href={`/ncmrs/${task.entity_id}`} target="_blank" rel="noreferrer">Open NCMR</a></p>
-                ) : null}
-
-                {capaApproval ? (
-                  <div
-                    style={{
-                      border: "1px solid #bfdbfe",
-                      background: "#eff6ff",
-                      borderRadius: "8px",
-                      padding: "12px",
-                      marginTop: "10px",
-                      marginBottom: "12px",
-                    }}
-                  >
-                    <strong>CAPA Read-Only Review Required</strong>
-                    <p style={{ marginBottom: "10px" }}>
-                      Open the CAPA review package to review the submitted section and prior approved context before approving or rejecting.
-                    </p>
+                  {capaApproval ? (
                     <a href={getCapaReviewUrl(task)} style={primaryLinkStyle}>
                       Open CAPA Review Package
                     </a>
-                  </div>
-                ) : null}
-
-                <div style={{ marginTop: "10px", marginBottom: "12px" }}>
-                  <label style={{ display: "block", fontWeight: 600, marginBottom: "4px" }}>
-                    Review Instructions
-                  </label>
-                  <textarea
-                    value={task.task_instructions || task.comments || "No instructions provided."}
-                    readOnly
-                    rows={capaApproval ? 4 : 8}
-                    style={{
-                      width: "100%",
-                      maxWidth: "800px",
-                      background: "#f3f4f6",
-                      display: "block",
-                    }}
-                  />
+                  ) : null}
                 </div>
 
                 {!capaApproval ? (
-                  <div style={{ marginTop: "10px", marginBottom: "12px" }}>
-                    <label style={{ display: "block", fontWeight: 600, marginBottom: "4px" }}>
-                      {task.task_type === "correction_task" ||
-                      task.task_type === "rework_task" ||
-                      task.task_type === "investigation_collaboration"
-                        ? "Completion Comment"
-                        : "Approver Comment"}
-                    </label>
-                    <textarea
-                      value={approverCommentByTask[task.id] ?? task.approver_comment ?? ""}
-                      onChange={(e) => updateApproverComment(task.id, e.target.value)}
-                      disabled={task.status !== "pending"}
-                      placeholder="Add approval comment or rejection rationale. Required if rejecting."
-                      rows={4}
-                      style={{ width: "100%", maxWidth: "800px", display: "block" }}
-                    />
-                  </div>
-                ) : null}
+                  <>
+                    <div style={{ marginTop: "14px", marginBottom: "12px" }}>
+                      <label style={labelStyle}>Review Instructions</label>
+                      <textarea
+                        value={task.task_instructions || task.comments || "No instructions provided."}
+                        readOnly
+                        rows={6}
+                        style={readOnlyTextareaStyle}
+                      />
+                    </div>
 
-                {task.status === "pending" ? (
-                  capaApproval ? (
-                    <div style={{ marginTop: "10px", display: "flex", gap: "8px" }}>
-                      <button onClick={() => (window.location.href = getCapaReviewUrl(task))}>
-                        Review CAPA
-                      </button>
+                    <div style={{ marginTop: "10px", marginBottom: "12px" }}>
+                      <label style={labelStyle}>
+                        {task.task_type === "correction_task" ||
+                        task.task_type === "rework_task" ||
+                        task.task_type === "investigation_collaboration"
+                          ? "Completion Comment"
+                          : "Approver Comment"}
+                      </label>
+                      <textarea
+                        value={approverCommentByTask[task.id] ?? task.approver_comment ?? ""}
+                        onChange={(e) => updateApproverComment(task.id, e.target.value)}
+                        disabled={task.status !== "pending"}
+                        placeholder="Add approval comment or rejection rationale. Required if rejecting."
+                        rows={4}
+                        style={textareaStyle}
+                      />
                     </div>
-                  ) : task.task_type === "correction_task" ||
-                    task.task_type === "rework_task" ||
-                    task.task_type === "investigation_collaboration" ? (
-                    <div style={{ marginTop: "10px", display: "flex", gap: "8px" }}>
-                      <button onClick={() => completeExecutionTask(task)}>Complete Task</button>
-                    </div>
-                  ) : (
-                    <div style={{ marginTop: "10px", display: "flex", gap: "8px" }}>
-                      <button onClick={() => signTask(task, "approved")}>Approve</button>
-                      <button onClick={() => signTask(task, "rejected")}>Reject</button>
-                    </div>
-                  )
-                ) : (
-                  <div style={{ marginTop: "10px" }}>
-                    <strong>Signed By:</strong> {task.signed_by || task.completed_by || "N/A"}<br />
-                    <strong>Signed At:</strong> {task.signed_at || task.completed_at || "N/A"}<br />
-                    <strong>Signature Meaning:</strong> {task.signature_meaning || "N/A"}<br />
-                    <strong>Comment:</strong> {task.approver_comment || task.completion_comment || "N/A"}
-                  </div>
-                )}
+
+                    {task.status === "pending" ? (
+                      task.task_type === "correction_task" ||
+                      task.task_type === "rework_task" ||
+                      task.task_type === "investigation_collaboration" ? (
+                        <div style={buttonRowStyle}>
+                          <button onClick={() => completeExecutionTask(task)}>
+                            Complete Task
+                          </button>
+                        </div>
+                      ) : (
+                        <div style={buttonRowStyle}>
+                          <button onClick={() => signTask(task, "approved")}>
+                            Approve
+                          </button>
+                          <button onClick={() => signTask(task, "rejected")}>
+                            Reject
+                          </button>
+                        </div>
+                      )
+                    ) : (
+                      <CompletedTaskDetails task={task} />
+                    )}
+                  </>
+                ) : task.status !== "pending" ? (
+                  <CompletedTaskDetails task={task} />
+                ) : null}
               </section>
             );
           })}
@@ -350,12 +423,164 @@ export default function MyApprovalTasksPage() {
   );
 }
 
+function CompletedTaskDetails({ task }: { task: any }) {
+  return (
+    <div style={{ marginTop: "12px", color: "#374151" }}>
+      <strong>Signed By:</strong> {task.signed_by || task.completed_by || "N/A"}<br />
+      <strong>Signed At:</strong> {task.signed_at || task.completed_at || "N/A"}<br />
+      <strong>Signature Meaning:</strong> {task.signature_meaning || "N/A"}<br />
+      <strong>Comment:</strong> {task.approver_comment || task.completion_comment || "N/A"}
+    </div>
+  );
+}
+
+function formatTaskType(value: any) {
+  return String(value || "task")
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function formatTaskStatus(value: any) {
+  return String(value || "pending")
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+const pageStyle: React.CSSProperties = {
+  padding: "24px",
+  fontFamily: "Arial, sans-serif",
+  background: "#f8fafc",
+  color: "#111827",
+  minHeight: "100vh",
+};
+
+const headerStyle: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: "16px",
+  alignItems: "flex-start",
+  marginBottom: "18px",
+};
+
+const eyebrowStyle: React.CSSProperties = {
+  color: "#2563eb",
+  fontSize: "12px",
+  fontWeight: 900,
+  letterSpacing: "0.14em",
+};
+
+const signatureBoxStyle: React.CSSProperties = {
+  background: "white",
+  border: "1px solid #d1d5db",
+  borderRadius: "12px",
+  padding: "14px",
+  marginBottom: "16px",
+};
+
+const labelStyle: React.CSSProperties = {
+  display: "block",
+  fontWeight: 800,
+  marginBottom: "6px",
+};
+
+const inputStyle: React.CSSProperties = {
+  padding: "8px",
+  width: "100%",
+  maxWidth: "500px",
+  border: "1px solid #cbd5e1",
+  borderRadius: "8px",
+};
+
+const emptyStateStyle: React.CSSProperties = {
+  background: "white",
+  border: "1px solid #d1d5db",
+  borderRadius: "12px",
+  padding: "18px",
+};
+
+const taskCardStyle: React.CSSProperties = {
+  border: "1px solid #d1d5db",
+  borderRadius: "12px",
+  padding: "16px",
+  boxShadow: "0 8px 20px rgba(15,23,42,0.06)",
+};
+
+const taskHeaderStyle: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: "14px",
+  flexWrap: "wrap",
+};
+
+const taskMetaRowStyle: React.CSSProperties = {
+  display: "flex",
+  gap: "10px",
+  flexWrap: "wrap",
+  alignItems: "center",
+};
+
+const statusPillStyle = (status: string): React.CSSProperties => ({
+  display: "inline-flex",
+  alignItems: "center",
+  border: "1px solid #d1d5db",
+  borderRadius: "999px",
+  padding: "6px 10px",
+  background:
+    status === "approved" || status === "completed"
+      ? "#dcfce7"
+      : status === "rejected"
+      ? "#fee2e2"
+      : "#eff6ff",
+  color:
+    status === "approved" || status === "completed"
+      ? "#166534"
+      : status === "rejected"
+      ? "#991b1b"
+      : "#1d4ed8",
+  fontWeight: 800,
+});
+
+const duePillStyle: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  border: "1px solid",
+  borderRadius: "999px",
+  padding: "6px 10px",
+  fontWeight: 800,
+};
+
 const primaryLinkStyle: React.CSSProperties = {
   display: "inline-block",
   background: "#2563eb",
   color: "white",
-  padding: "8px 12px",
-  borderRadius: "8px",
+  padding: "10px 14px",
+  borderRadius: "10px",
   textDecoration: "none",
-  fontWeight: 700,
+  fontWeight: 800,
+};
+
+const readOnlyTextareaStyle: React.CSSProperties = {
+  width: "100%",
+  maxWidth: "800px",
+  background: "#f3f4f6",
+  border: "1px solid #d1d5db",
+  borderRadius: "8px",
+  padding: "8px",
+  display: "block",
+};
+
+const textareaStyle: React.CSSProperties = {
+  width: "100%",
+  maxWidth: "800px",
+  border: "1px solid #cbd5e1",
+  borderRadius: "8px",
+  padding: "8px",
+  display: "block",
+};
+
+const buttonRowStyle: React.CSSProperties = {
+  marginTop: "10px",
+  display: "flex",
+  gap: "8px",
 };
