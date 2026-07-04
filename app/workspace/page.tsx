@@ -233,7 +233,7 @@ export default function HomePage() {
                 </tbody>
               </table>
             </div>
-          )}          )}
+          )}
         </section>
       </section>
     </main>
