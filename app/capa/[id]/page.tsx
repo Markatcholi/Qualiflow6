@@ -148,6 +148,7 @@ export default function EnterpriseCapaWorkflowPage() {
   const evaluationLocked = !initiationApproved || isLocked;
   const investigationLocked = !initiationApproved || isLocked;
   const actionPlanPlanningLocked = !investigationApproved || actionPlanApproved || isLocked;
+  const implementationTaskAssignmentLocked = !actionPlanApproved || isLocked;
   const implementationLocked = !actionPlanApproved || isLocked;
   const effectivenessPlanLocked = !record?.implemented_by || isLocked;
 
@@ -1299,9 +1300,9 @@ This approval becomes part of the official electronic quality record.`,
       return;
     }
 
-    if (actionPlanPlanningLocked) {
+    if (implementationTaskAssignmentLocked) {
       alert(
-        "Task assignment is available after investigation approval and before action plan approval."
+        "Implementation task assignment is available only after action plan approval."
       );
       return;
     }
@@ -2868,19 +2869,77 @@ This approval becomes part of the official electronic quality record.`,
                 />
               </Field>
             </div>
+
+<ApprovalInlinePanel
+            sectionKey="actionplanapproval-inline"
+            gateKey="action_plan"
+            title="Approvers / Submit Action Plan for Approval"
+            description="Approve the proposed action plan, implementation task assignments, and effectiveness plan before execution."
+            status={record.action_plan_approval_status || "not_submitted"}
+            comments={actionPlanApprovalComments}
+            setComments={setActionPlanApprovalComments}
+            submittedBy={record.action_plan_submitted_by}
+            submittedAt={record.action_plan_submitted_at}
+            approvedBy={record.action_plan_approved_by}
+            approvedAt={record.action_plan_approved_at}
+            rejectedBy={record.action_plan_rejected_by}
+            rejectedAt={record.action_plan_rejected_at}
+            disabled={isLocked}
+            canApprove={canApprove}
+            expanded={expandedSections.includes("actionplanapproval")}
+            onToggle={() => toggleSection("actionplanapproval")}
+            approvalMatrixTemplates={approvalMatrixTemplates}
+            selectedApprovalMatrixId={selectedApprovalMatrixByGate["action_plan"] || ""}
+            setSelectedApprovalMatrixId={(value) =>
+              setSelectedApprovalMatrixByGate((prev) => ({ ...prev, action_plan: value }))
+            }
+            manualApproverEmail={manualApproverEmailByGate["action_plan"] || ""}
+            setManualApproverEmail={(value) =>
+              setManualApproverEmailByGate((prev) => ({ ...prev, action_plan: value }))
+            }
+              manualApproverFunction={manualApproverFunctionByGate["action_plan"] || ""}
+              setManualApproverFunction={(value) =>
+                setManualApproverFunctionByGate((prev) => ({ ...prev, action_plan: value }))
+              }
+              manualApproverJobTitle={manualApproverJobTitleByGate["action_plan"] || ""}
+              setManualApproverJobTitle={(value) =>
+                setManualApproverJobTitleByGate((prev) => ({ ...prev, action_plan: value }))
+              }
+              manualApproverDueDate={manualApproverDueDateByGate["action_plan"] || ""}
+              setManualApproverDueDate={(value) =>
+                setManualApproverDueDateByGate((prev) => ({ ...prev, action_plan: value }))
+              }
+            manualApproverRole={manualApproverRoleByGate["action_plan"] || manualApproverJobTitleByGate["action_plan"] || ""}
+            setManualApproverRole={(value) =>
+              setManualApproverRoleByGate((prev) => ({ ...prev, action_plan: value }))
+            }
+            manualApproverRequired={manualApproverRequiredByGate["action_plan"] !== false}
+            setManualApproverRequired={(value) =>
+              setManualApproverRequiredByGate((prev) => ({ ...prev, action_plan: value }))
+            }
+            configuredApprovers={getGateApprovers("action_plan")}
+            approvalTasks={getGateApprovalTasks("action_plan")}
+            loadingApprovals={loadingApprovals}
+            onLoadMatrix={() => loadApproversFromMatrix("action_plan")}
+            onAddManualApprover={() => addManualApprover("action_plan")}
+            onRemoveApprover={(approverId) => removeGateApprover("action_plan", approverId)}
+            onSubmit={submitActionPlanApproval}
+            onApprove={approveActionPlan}
+            onReject={rejectActionPlan}
+          />
           </WorkflowCard>
 
           <WorkflowCard
             sectionKey="implementationtasks"
             title="8. Implementation Task Assignment"
-            subtitle="Assign implementation tasks as part of the action plan proposal. Task execution unlocks after action plan approval."
-            locked={actionPlanPlanningLocked}
+            subtitle="Assign implementation tasks after the action plan has been approved."
+            locked={implementationTaskAssignmentLocked}
             expanded={expandedSections.includes("implementationtasks")}
             onToggle={() => toggleSection("implementationtasks")}
           >
-            {actionPlanPlanningLocked && !isLocked ? <LockNotice /> : null}
+            {implementationTaskAssignmentLocked && !isLocked ? <LockNotice /> : null}
 
-            {!actionPlanPlanningLocked ? (
+            {!implementationTaskAssignmentLocked ? (
               <>
                 <div style={formGridStyle}>
                   <Field label="Task Type">
@@ -2984,70 +3043,14 @@ This approval becomes part of the official electronic quality record.`,
             </div>
 
 
-<ApprovalInlinePanel
-            sectionKey="actionplanapproval-inline"
-            gateKey="action_plan"
-            title="Approvers / Submit Action Plan for Approval"
-            description="Approve the proposed action plan, implementation task assignments, and effectiveness plan before execution."
-            status={record.action_plan_approval_status || "not_submitted"}
-            comments={actionPlanApprovalComments}
-            setComments={setActionPlanApprovalComments}
-            submittedBy={record.action_plan_submitted_by}
-            submittedAt={record.action_plan_submitted_at}
-            approvedBy={record.action_plan_approved_by}
-            approvedAt={record.action_plan_approved_at}
-            rejectedBy={record.action_plan_rejected_by}
-            rejectedAt={record.action_plan_rejected_at}
-            disabled={isLocked}
-            canApprove={canApprove}
-            expanded={expandedSections.includes("actionplanapproval")}
-            onToggle={() => toggleSection("actionplanapproval")}
-            approvalMatrixTemplates={approvalMatrixTemplates}
-            selectedApprovalMatrixId={selectedApprovalMatrixByGate["action_plan"] || ""}
-            setSelectedApprovalMatrixId={(value) =>
-              setSelectedApprovalMatrixByGate((prev) => ({ ...prev, action_plan: value }))
-            }
-            manualApproverEmail={manualApproverEmailByGate["action_plan"] || ""}
-            setManualApproverEmail={(value) =>
-              setManualApproverEmailByGate((prev) => ({ ...prev, action_plan: value }))
-            }
-              manualApproverFunction={manualApproverFunctionByGate["action_plan"] || ""}
-              setManualApproverFunction={(value) =>
-                setManualApproverFunctionByGate((prev) => ({ ...prev, action_plan: value }))
-              }
-              manualApproverJobTitle={manualApproverJobTitleByGate["action_plan"] || ""}
-              setManualApproverJobTitle={(value) =>
-                setManualApproverJobTitleByGate((prev) => ({ ...prev, action_plan: value }))
-              }
-              manualApproverDueDate={manualApproverDueDateByGate["action_plan"] || ""}
-              setManualApproverDueDate={(value) =>
-                setManualApproverDueDateByGate((prev) => ({ ...prev, action_plan: value }))
-              }
-            manualApproverRole={manualApproverRoleByGate["action_plan"] || manualApproverJobTitleByGate["action_plan"] || ""}
-            setManualApproverRole={(value) =>
-              setManualApproverRoleByGate((prev) => ({ ...prev, action_plan: value }))
-            }
-            manualApproverRequired={manualApproverRequiredByGate["action_plan"] !== false}
-            setManualApproverRequired={(value) =>
-              setManualApproverRequiredByGate((prev) => ({ ...prev, action_plan: value }))
-            }
-            configuredApprovers={getGateApprovers("action_plan")}
-            approvalTasks={getGateApprovalTasks("action_plan")}
-            loadingApprovals={loadingApprovals}
-            onLoadMatrix={() => loadApproversFromMatrix("action_plan")}
-            onAddManualApprover={() => addManualApprover("action_plan")}
-            onRemoveApprover={(approverId) => removeGateApprover("action_plan", approverId)}
-            onSubmit={submitActionPlanApproval}
-            onApprove={approveActionPlan}
-            onReject={rejectActionPlan}
-          />
+
           </WorkflowCard>
 
           
 
           <WorkflowCard
             sectionKey="implementation"
-            title="10. Implementation"
+            title="9. Implementation"
             subtitle="Execute the approved action plan and complete assigned implementation tasks with evidence."
             locked={implementationLocked}
             expanded={expandedSections.includes("implementation")}
