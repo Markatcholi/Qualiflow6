@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
 
@@ -9,15 +8,13 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
 
   const login = async () => {
-    const normalizedEmail = email.trim().toLowerCase();
-
-    if (!normalizedEmail || !password) {
+    if (!email || !password) {
       alert("Email and password are required.");
       return;
     }
 
     const { error } = await supabase.auth.signInWithPassword({
-      email: normalizedEmail,
+      email,
       password,
     });
 
@@ -26,20 +23,15 @@ export default function LoginPage() {
       return;
     }
 
-    window.location.href = "/dashboard";
+    window.location.href = "/workspace";
   };
 
   return (
     <main style={pageStyle}>
       <section style={cardStyle}>
-        <div style={eyebrowStyle}>QUALISPHERE ACCESS</div>
-        <h1 style={{ margin: "8px 0 6px" }}>Sign In</h1>
-        <p style={subtleText}>
-          Access your quality workspace, workflow tasks, approvals, and controlled records.
-        </p>
+        <h1 style={{ marginTop: 0 }}>Login</h1>
 
-        <div style={{ marginBottom: "12px" }}>
-          <label style={labelStyle}>Email</label>
+        <div style={{ marginBottom: "10px" }}>
           <input
             type="email"
             placeholder="Enter your email"
@@ -49,8 +41,7 @@ export default function LoginPage() {
           />
         </div>
 
-        <div style={{ marginBottom: "16px" }}>
-          <label style={labelStyle}>Password</label>
+        <div style={{ marginBottom: "14px" }}>
           <input
             type="password"
             placeholder="Enter your password"
@@ -60,25 +51,11 @@ export default function LoginPage() {
           />
         </div>
 
-        <button onClick={login} style={primaryButtonStyle}>
-          Sign In
-        </button>
+        <button onClick={login} style={buttonStyle}>Login</button>
 
-        <div style={linkRowStyle}>
-          <Link href="/forgot-password" style={linkStyle}>
-            Forgot Password?
-          </Link>
-
-          <Link href="/signup" style={linkStyle}>
-            Create Account
-          </Link>
-        </div>
-
-        <div style={{ marginTop: "18px" }}>
-          <Link href="/" style={secondaryLinkStyle}>
-            Back to Home
-          </Link>
-        </div>
+        <p style={{ marginTop: "16px" }}>
+          <a href="/forgot-password">Forgot password?</a>
+        </p>
       </section>
     </main>
   );
@@ -86,79 +63,38 @@ export default function LoginPage() {
 
 const pageStyle: React.CSSProperties = {
   minHeight: "100vh",
-  padding: "24px",
-  fontFamily: "Arial, sans-serif",
-  background: "linear-gradient(135deg, #eef2ff, #f8fafc)",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
+  background: "#f8fafc",
+  fontFamily: "Arial, sans-serif",
+  padding: "24px",
 };
 
 const cardStyle: React.CSSProperties = {
-  width: "100%",
-  maxWidth: "440px",
   background: "white",
-  border: "1px solid #dbeafe",
+  border: "1px solid #d1d5db",
   borderRadius: "18px",
   padding: "28px",
-  boxShadow: "0 12px 30px rgba(15, 23, 42, 0.12)",
-};
-
-const eyebrowStyle: React.CSSProperties = {
-  color: "#2563eb",
-  fontWeight: 800,
-  fontSize: "12px",
-  letterSpacing: "0.18em",
-};
-
-const subtleText: React.CSSProperties = {
-  color: "#4b5563",
-  marginTop: 0,
-  marginBottom: "20px",
-  lineHeight: "24px",
-};
-
-const labelStyle: React.CSSProperties = {
-  display: "block",
-  fontWeight: 700,
-  marginBottom: "6px",
+  width: "100%",
+  maxWidth: "420px",
+  boxShadow: "0 18px 45px rgba(15,23,42,0.10)",
 };
 
 const inputStyle: React.CSSProperties = {
   padding: "10px",
   width: "100%",
-  border: "1px solid #cbd5e1",
-  borderRadius: "10px",
   boxSizing: "border-box",
+  border: "1px solid #cbd5e1",
+  borderRadius: "8px",
 };
 
-const primaryButtonStyle: React.CSSProperties = {
+const buttonStyle: React.CSSProperties = {
   background: "#2563eb",
   color: "white",
   border: "none",
   borderRadius: "10px",
-  padding: "10px 18px",
+  padding: "10px 16px",
   fontWeight: 800,
   cursor: "pointer",
-  width: "100%",
-};
-
-const linkRowStyle: React.CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  gap: "12px",
-  flexWrap: "wrap",
-  marginTop: "16px",
-};
-
-const linkStyle: React.CSSProperties = {
-  color: "#2563eb",
-  fontWeight: 700,
-  textDecoration: "none",
-};
-
-const secondaryLinkStyle: React.CSSProperties = {
-  color: "#475569",
-  fontWeight: 700,
-  textDecoration: "none",
 };
