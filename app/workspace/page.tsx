@@ -173,7 +173,7 @@ export default function HomePage() {
         <section style={rightPanelStyle}>
           <div style={rightPanelHeaderStyle}>
             <div>
-              <h2 style={panelTitleStyle}>My Pending Tasks</h2>
+              <h2 style={panelTitleStyle}>My Tasks</h2>
               <p style={{ margin: 0, color: "#64748b" }}>
                 Oldest assigned tasks appear first.
               </p>
@@ -187,45 +187,53 @@ export default function HomePage() {
               No pending tasks assigned to you.
             </div>
           ) : (
-            <ol style={taskListStyle}>
-              {tasks.map((task, index) => {
-                const dueStatus = getDueStatus(task);
-                const taskUrl = getTaskUrl(task);
+            <div style={tableWrapStyle}>
+              <table style={taskTableStyle}>
+                <thead>
+                  <tr>
+                    <th style={tableHeaderStyle}>Record</th>
+                    <th style={tableHeaderStyle}>Task</th>
+                    <th style={tableHeaderStyle}>Assigned</th>
+                    <th style={tableHeaderStyle}>Due Date</th>
+                    <th style={tableHeaderStyle}>Status</th>
+                    <th style={tableHeaderStyle}>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tasks.map((task) => {
+                    const dueStatus = getDueStatus(task);
+                    const taskUrl = getTaskUrl(task);
 
-                return (
-                  <li key={task.id} style={taskItemStyle}>
-                    <div style={taskNumberStyle}>{index + 1}</div>
-
-                    <div style={taskCardStyle}>
-                      <div style={taskCardTopRowStyle}>
-                        <h3 style={{ margin: 0 }}>{getTaskTitle(task)}</h3>
-                        <span
-                          style={{
-                            ...dueBadgeStyle,
-                            background: dueStatus.background,
-                            borderColor: dueStatus.border,
-                            color: dueStatus.text,
-                          }}
-                        >
-                          {dueStatus.icon} {dueStatus.label}
-                        </span>
-                      </div>
-
-                      <div style={taskMetaStyle}>
-                        <span>Status: Pending</span>
-                        <span>Due: {task.due_date || "N/A"}</span>
-                        <span>Assigned: {formatDate(task.created_at)}</span>
-                      </div>
-
-                      <a href={taskUrl} style={taskLinkStyle}>
-                        Open
-                      </a>
-                    </div>
-                  </li>
-                );
-              })}
-            </ol>
-          )}
+                    return (
+                      <tr key={task.id}>
+                        <td style={tableCellStyle}>{getRecordDisplay(task)}</td>
+                        <td style={tableCellStyle}>{getTaskName(task)}</td>
+                        <td style={tableCellStyle}>{formatDate(task.created_at)}</td>
+                        <td style={tableCellStyle}>{task.due_date || "N/A"}</td>
+                        <td style={tableCellStyle}>
+                          <span
+                            style={{
+                              ...statusBadgeStyle,
+                              background: dueStatus.background,
+                              borderColor: dueStatus.border,
+                              color: dueStatus.text,
+                            }}
+                          >
+                            {dueStatus.icon} {dueStatus.label}
+                          </span>
+                        </td>
+                        <td style={tableCellStyle}>
+                          <a href={taskUrl} style={tableOpenLinkStyle}>
+                            Open
+                          </a>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}          )}
         </section>
       </section>
     </main>
@@ -275,6 +283,44 @@ function getTaskUrl(task: any) {
   if (task.entity_type === "document") return `/documents/${task.entity_id}`;
 
   return "/my-approval-tasks";
+}
+
+function getRecordDisplay(task: any) {
+  return (
+    task.record_number ||
+    task.capa_number ||
+    task.entity_number ||
+    task.ncmr_number ||
+    task.change_number ||
+    task.document_number ||
+    task.entity_id ||
+    "Record"
+  );
+}
+
+function getTaskName(task: any) {
+  if (isCapaApprovalTask(task)) {
+    return getCapaApprovalLabel(task);
+  }
+
+  if (task.task_title) {
+    return task.task_title;
+  }
+
+  return formatTaskType(task.task_type);
+}
+
+function getCapaApprovalLabel(task: any) {
+  const gate = getCapaGateFromTask(task);
+
+  if (gate === "initiation") return "Initiation Approval";
+  if (gate === "investigation") return "Investigation Approval";
+  if (gate === "action_plan") return "Action Plan Approval";
+  if (gate === "implementation") return "Implementation Approval";
+  if (gate === "effectiveness_plan") return "Effectiveness Plan Approval";
+  if (gate === "closure") return "Closure Approval";
+
+  return "CAPA Approval";
 }
 
 function isCapaApprovalTask(task: any) {
@@ -612,6 +658,55 @@ const taskLinkStyle: React.CSSProperties = {
   color: "white",
   borderRadius: "9px",
   padding: "8px 12px",
+  textDecoration: "none",
+  fontWeight: 900,
+};
+
+
+const tableWrapStyle: React.CSSProperties = {
+  overflowX: "auto",
+  border: "1px solid #e5e7eb",
+  borderRadius: "14px",
+};
+
+const taskTableStyle: React.CSSProperties = {
+  width: "100%",
+  borderCollapse: "collapse",
+  background: "#ffffff",
+  fontSize: "14px",
+};
+
+const tableHeaderStyle: React.CSSProperties = {
+  textAlign: "left",
+  padding: "12px",
+  borderBottom: "1px solid #d1d5db",
+  background: "#f8fafc",
+  fontWeight: 900,
+  color: "#334155",
+};
+
+const tableCellStyle: React.CSSProperties = {
+  padding: "12px",
+  borderBottom: "1px solid #e5e7eb",
+  verticalAlign: "middle",
+};
+
+const statusBadgeStyle: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  border: "1px solid",
+  borderRadius: "999px",
+  padding: "5px 9px",
+  fontWeight: 900,
+  whiteSpace: "nowrap",
+};
+
+const tableOpenLinkStyle: React.CSSProperties = {
+  display: "inline-block",
+  background: "#2563eb",
+  color: "#ffffff",
+  borderRadius: "8px",
+  padding: "6px 10px",
   textDecoration: "none",
   fontWeight: 900,
 };
