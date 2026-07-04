@@ -8,7 +8,11 @@ export default function AppHeader() {
   const [role, setRole] = useState("");
 
   const canAccessAdmin =
-    role === "admin" || role === "approver" || role === "vp_quality";
+    role === "admin" ||
+    role === "administrator" ||
+    role === "coordinator" ||
+    role === "approver" ||
+    role === "vp_quality";
 
   const fetchUser = async () => {
     const { data: userData } = await supabase.auth.getUser();
@@ -36,79 +40,49 @@ export default function AppHeader() {
   }, []);
 
   return (
-    <header
-      style={{
-        padding: "12px 20px",
-        borderBottom: "1px solid #ccc",
-        fontFamily: "Arial, sans-serif",
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-        gap: "20px",
-        flexWrap: "wrap",
-      }}
-    >
-      <nav>
-        <a href="/dashboard" style={{ marginRight: "12px" }}>
-          Dashboard
-        </a>
+    <header style={headerStyle}>
+      <nav style={navStyle}>
+        <div style={moduleGroupStyle}>
+          <div style={groupLabelStyle}>My Work</div>
+          <a href="/my-approval-tasks" style={primaryNavLinkStyle}>
+            My Tasks
+          </a>
+        </div>
 
-        <a href="/management-review" style={{ marginRight: "15px" }}>
-          Management Review
-        </a>
+        <div style={moduleGroupStyle}>
+          <div style={groupLabelStyle}>Quality Management</div>
+          <a href="/capa" style={navLinkStyle}>CAPA</a>
+          <a href="/ncmrs" style={navLinkStyle}>NCMRs</a>
+          <a href="/complaints" style={navLinkStyle}>Complaints</a>
+          <a href="/supplier-quality/scars" style={navLinkStyle}>SCARs</a>
+          <a href="/audits" style={navLinkStyle}>Audits</a>
+          <a href="/oos-oot" style={navLinkStyle}>OOS/OOT</a>
+        </div>
 
-        <a href="/ncmrs" style={{ marginRight: "12px" }}>
-          NCMRs
-        </a>
+        <div style={moduleGroupStyle}>
+          <div style={groupLabelStyle}>Operations</div>
+          <a href="/change-control" style={navLinkStyle}>Change Control</a>
+          <a href="/documents" style={navLinkStyle}>Documents</a>
+          <a href="/training" style={navLinkStyle}>Training</a>
+          <a href="/suppliers" style={navLinkStyle}>Suppliers</a>
+        </div>
 
-        <a href="/capa" style={{ marginRight: "12px" }}>
-          CAPA
-        </a>
-
-        <a href="/change-control" style={{ marginRight: "12px" }}>
-  Change Control
-</a>
-
-<a href="/complaints" style={{ marginRight: "12px" }}>
-  Complaints
-</a>
-
-<a href="/documents" style={{ marginRight: "12px" }}>
-  Documents
-</a>
-
-        <a href="/training" style={{ marginRight: "12px" }}>
-          Training
-        </a>
-
-        <a href="/suppliers" style={{ marginRight: "12px" }}>
-          Suppliers
-        </a>
-
-        <a href="/supplier-quality/scars" style={{ marginRight: "12px" }}>
-          SCARs
-        </a>
-
-        <a href="/audits" style={{ marginRight: "12px" }}>
-          Audits
-        </a>
-
-        <a href="/oos-oot" style={{ marginRight: "12px" }}>
-          OOS/OOT
-        </a>
-
-        <a href="/audit" style={{ marginRight: "12px" }}>
-          Audit Trail
-        </a>
+        <div style={moduleGroupStyle}>
+          <div style={groupLabelStyle}>Analytics</div>
+          <a href="/dashboard" style={navLinkStyle}>Dashboard</a>
+          <a href="/management-review" style={navLinkStyle}>Management Review</a>
+          <a href="/audit" style={navLinkStyle}>Audit Trail</a>
+        </div>
 
         {canAccessAdmin ? (
-          <a href="/admin/master-data" style={{ marginRight: "12px" }}>
-            Admin Master Data
-          </a>
+          <div style={moduleGroupStyle}>
+            <div style={groupLabelStyle}>Administration</div>
+            <a href="/admin/master-data" style={navLinkStyle}>Admin Master Data</a>
+          </div>
         ) : null}
       </nav>
 
-      <div>
+      <div style={userBoxStyle}>
         <span style={{ marginRight: "12px" }}>
           {email ? `${email} (${role || "user"})` : "Not logged in"}
         </span>
@@ -118,3 +92,65 @@ export default function AppHeader() {
     </header>
   );
 }
+
+const headerStyle: React.CSSProperties = {
+  padding: "14px 20px",
+  borderBottom: "1px solid #d1d5db",
+  fontFamily: "Arial, sans-serif",
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  gap: "20px",
+  flexWrap: "wrap",
+  background: "#ffffff",
+};
+
+const navStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "flex-start",
+  gap: "18px",
+  flexWrap: "wrap",
+};
+
+const moduleGroupStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: "8px",
+  flexWrap: "wrap",
+  paddingRight: "12px",
+  borderRight: "1px solid #e5e7eb",
+};
+
+const groupLabelStyle: React.CSSProperties = {
+  fontSize: "11px",
+  fontWeight: 900,
+  color: "#64748b",
+  textTransform: "uppercase",
+  letterSpacing: "0.08em",
+  marginRight: "2px",
+};
+
+const navLinkStyle: React.CSSProperties = {
+  color: "#1f2937",
+  textDecoration: "none",
+  fontWeight: 700,
+  fontSize: "14px",
+};
+
+const primaryNavLinkStyle: React.CSSProperties = {
+  color: "#ffffff",
+  background: "#2563eb",
+  borderRadius: "999px",
+  padding: "7px 12px",
+  textDecoration: "none",
+  fontWeight: 900,
+  fontSize: "14px",
+};
+
+const userBoxStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: "8px",
+  flexWrap: "wrap",
+  fontSize: "14px",
+};
