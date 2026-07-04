@@ -239,6 +239,7 @@ export default function CapaApprovalReviewPage() {
           <Summary label="Assigned To" value={task?.assigned_to_email || "N/A"} />
           <Summary label="Function" value={task?.approver_function || "N/A"} />
           <Summary label="Job Title" value={task?.approver_job_title || task?.required_function || "N/A"} />
+          <Summary label="Approval Due Date" value={task?.due_date || "N/A"} />
           <Summary label="Task Status" value={taskStatus} />
         </div>
 
