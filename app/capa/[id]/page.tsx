@@ -786,6 +786,9 @@ export default function EnterpriseCapaWorkflowPage() {
       entity_type: "capa",
       entity_id: id,
       task_type: taskType,
+      task_title: `${approver.approver_job_title || approver.approver_role || "Approver"} — ${
+        record?.capa_number || "CAPA"
+      } ${approvalGateLabels[gate]}`,
       required_function:
         `${approver.approver_function || "Function Not Specified"} - ${
           approver.approver_job_title || approver.approver_role || "Approver"
