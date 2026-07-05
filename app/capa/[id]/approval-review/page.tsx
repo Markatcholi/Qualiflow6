@@ -30,6 +30,102 @@ const gateTaskTypes: Record<ApprovalGate, string> = {
   closure: "capa_closure_approval",
 };
 
+const gateStatusFields: Record<
+  ApprovalGate,
+  {
+    status: string;
+    submittedBy: string;
+    submittedAt: string;
+    approvedBy: string;
+    approvedAt: string;
+    approvalComments: string;
+    rejectedBy: string;
+    rejectedAt: string;
+    rejectionComments: string;
+    approvedRecordStatus: string;
+    rejectedRecordStatus: string;
+  }
+> = {
+  initiation: {
+    status: "initiation_approval_status",
+    submittedBy: "initiation_submitted_by",
+    submittedAt: "initiation_submitted_at",
+    approvedBy: "initiation_approved_by",
+    approvedAt: "initiation_approved_at",
+    approvalComments: "initiation_approval_comments",
+    rejectedBy: "initiation_rejected_by",
+    rejectedAt: "initiation_rejected_at",
+    rejectionComments: "initiation_rejection_comments",
+    approvedRecordStatus: "evaluation",
+    rejectedRecordStatus: "initiation",
+  },
+  investigation: {
+    status: "investigation_approval_status",
+    submittedBy: "investigation_submitted_by",
+    submittedAt: "investigation_submitted_at",
+    approvedBy: "investigation_approved_by",
+    approvedAt: "investigation_approved_at",
+    approvalComments: "investigation_approval_comments",
+    rejectedBy: "investigation_rejected_by",
+    rejectedAt: "investigation_rejected_at",
+    rejectionComments: "investigation_rejection_comments",
+    approvedRecordStatus: "action_plan",
+    rejectedRecordStatus: "investigation",
+  },
+  action_plan: {
+    status: "action_plan_approval_status",
+    submittedBy: "action_plan_submitted_by",
+    submittedAt: "action_plan_submitted_at",
+    approvedBy: "action_plan_approved_by",
+    approvedAt: "action_plan_approved_at",
+    approvalComments: "action_plan_approval_comments",
+    rejectedBy: "action_plan_rejected_by",
+    rejectedAt: "action_plan_rejected_at",
+    rejectionComments: "action_plan_rejection_comments",
+    approvedRecordStatus: "implementation",
+    rejectedRecordStatus: "action_plan",
+  },
+  implementation: {
+    status: "implementation_approval_status",
+    submittedBy: "implementation_submitted_by",
+    submittedAt: "implementation_submitted_at",
+    approvedBy: "implementation_approved_by",
+    approvedAt: "implementation_approved_at",
+    approvalComments: "implementation_approval_comments",
+    rejectedBy: "implementation_rejected_by",
+    rejectedAt: "implementation_rejected_at",
+    rejectionComments: "implementation_rejection_comments",
+    approvedRecordStatus: "effectiveness_plan",
+    rejectedRecordStatus: "implementation",
+  },
+  effectiveness_plan: {
+    status: "effectiveness_plan_approval_status",
+    submittedBy: "effectiveness_plan_submitted_by",
+    submittedAt: "effectiveness_plan_submitted_at",
+    approvedBy: "effectiveness_plan_approved_by",
+    approvedAt: "effectiveness_plan_approved_at",
+    approvalComments: "effectiveness_plan_approval_comments",
+    rejectedBy: "effectiveness_plan_rejected_by",
+    rejectedAt: "effectiveness_plan_rejected_at",
+    rejectionComments: "effectiveness_plan_rejection_comments",
+    approvedRecordStatus: "effectiveness_verification",
+    rejectedRecordStatus: "effectiveness_plan",
+  },
+  closure: {
+    status: "closure_approval_status",
+    submittedBy: "closure_submitted_by",
+    submittedAt: "closure_submitted_at",
+    approvedBy: "closure_approved_by",
+    approvedAt: "closure_approved_at",
+    approvalComments: "closure_approval_comments",
+    rejectedBy: "closure_rejected_by",
+    rejectedAt: "closure_rejected_at",
+    rejectionComments: "closure_rejection_comments",
+    approvedRecordStatus: "closed",
+    rejectedRecordStatus: "effectiveness_verification",
+  },
+};
+
 export default function CapaApprovalReviewPage() {
   const params = useParams<{ id: string }>();
   const searchParams = useSearchParams();
@@ -143,6 +239,32 @@ export default function CapaApprovalReviewPage() {
       return;
     }
 
+    const fields = gateStatusFields[gate];
+    const capaUpdate: Record<string, any> = {
+      [fields.status]: "approved",
+      [fields.approvedBy]: userEmail,
+      [fields.approvedAt]: now,
+      [fields.approvalComments]: comments || null,
+      status: fields.approvedRecordStatus,
+    };
+
+    if (gate === "closure") {
+      capaUpdate.closed_at = now;
+      capaUpdate.signed_by = userEmail;
+      capaUpdate.signed_at = now;
+      capaUpdate.signature_meaning = "CAPA closure approved by electronic signature.";
+    }
+
+    const { error: capaUpdateError } = await supabase
+      .from("capas")
+      .update(capaUpdate)
+      .eq("id", id);
+
+    if (capaUpdateError) {
+      alert(capaUpdateError.message);
+      return;
+    }
+
     await addAuditLog("approval_task_approved", `${gateLabels[gate]} approved.`);
     alert("Approval completed.");
     window.location.href = "/my-approval-tasks";
@@ -184,6 +306,23 @@ export default function CapaApprovalReviewPage() {
 
     if (error) {
       alert(error.message);
+      return;
+    }
+
+    const fields = gateStatusFields[gate];
+    const { error: capaUpdateError } = await supabase
+      .from("capas")
+      .update({
+        [fields.status]: "rejected",
+        [fields.rejectedBy]: userEmail,
+        [fields.rejectedAt]: now,
+        [fields.rejectionComments]: comments,
+        status: fields.rejectedRecordStatus,
+      })
+      .eq("id", id);
+
+    if (capaUpdateError) {
+      alert(capaUpdateError.message);
       return;
     }
 
