@@ -134,6 +134,27 @@ export default function EnterpriseCapaWorkflowPage() {
     record?.status === "closed" ||
     record?.status === "cancelled";
 
+  const currentUserEmail = String(userEmail || "").trim().toLowerCase();
+  const recordOwnerEmail =
+    String(record?.owner_email || "").trim().toLowerCase() ||
+    (String(record?.owner || "").includes("@")
+      ? String(record?.owner || "").trim().toLowerCase()
+      : "") ||
+    String(record?.created_by || "").trim().toLowerCase();
+
+  const isRecordOwner =
+    Boolean(currentUserEmail) &&
+    Boolean(recordOwnerEmail) &&
+    currentUserEmail === recordOwnerEmail;
+
+  const canEditRecord = !isLocked && isRecordOwner;
+
+  const readOnlyForNonOwner =
+    Boolean(record) &&
+    Boolean(currentUserEmail) &&
+    Boolean(recordOwnerEmail) &&
+    !isRecordOwner;
+
   const initiationApproved =
     record?.initiation_approval_status === "approved";
 
@@ -145,12 +166,13 @@ export default function EnterpriseCapaWorkflowPage() {
 
   const closureApproved = record?.closure_approval_status === "approved";
 
-  const evaluationLocked = !initiationApproved || isLocked;
-  const investigationLocked = !initiationApproved || isLocked;
-  const actionPlanPlanningLocked = !investigationApproved || actionPlanApproved || isLocked;
-  const implementationTaskAssignmentLocked = !actionPlanApproved || isLocked;
-  const implementationLocked = !actionPlanApproved || isLocked;
-  const effectivenessPlanLocked = !record?.implemented_by || isLocked;
+  const evaluationLocked = !initiationApproved || !canEditRecord;
+  const investigationLocked = !initiationApproved || !canEditRecord;
+  const actionPlanPlanningLocked =
+    !investigationApproved || actionPlanApproved || !canEditRecord;
+  const implementationTaskAssignmentLocked = !actionPlanApproved || !canEditRecord;
+  const implementationLocked = !actionPlanApproved || !canEditRecord;
+  const effectivenessPlanLocked = !record?.implemented_by || !canEditRecord;
 
   const canApprove = userRole === "approver" || userRole === "vp_quality";
 
@@ -1145,8 +1167,8 @@ This approval becomes part of the official electronic quality record.`,
   };
 
   const updateField = (field: string, value: any) => {
-    if (isLocked) {
-      alert("This CAPA record is locked and cannot be edited.");
+    if (!canEditRecord) {
+      alert("Only the CAPA owner can edit this in-process record. Approved or closed records require a controlled workflow return.");
       return;
     }
 
@@ -1157,7 +1179,7 @@ This approval becomes part of the official electronic quality record.`,
   };
 
   const saveField = async (field: string, value: any) => {
-    if (isLocked) return;
+    if (!canEditRecord) return;
 
     setSavingField(field);
 
@@ -1182,8 +1204,8 @@ This approval becomes part of the official electronic quality record.`,
   };
 
   const saveAll = async () => {
-    if (isLocked) {
-      alert("This CAPA record is locked and cannot be edited.");
+    if (!canEditRecord) {
+      alert("Only the CAPA owner can edit this in-process record. Approved or closed records require a controlled workflow return.");
       return;
     }
 
@@ -1295,8 +1317,8 @@ This approval becomes part of the official electronic quality record.`,
   };
 
   const createTask = async () => {
-    if (isLocked) {
-      alert("This CAPA record is locked and cannot be edited.");
+    if (!canEditRecord) {
+      alert("Only the CAPA owner can edit this in-process record. Approved or closed records require a controlled workflow return.");
       return;
     }
 
@@ -1410,8 +1432,8 @@ This approval becomes part of the official electronic quality record.`,
   };
 
   const updateTaskStatus = async (task: CapaTask, status: string) => {
-    if (isLocked) {
-      alert("This CAPA record is locked and cannot be edited.");
+    if (!canEditRecord) {
+      alert("Only the CAPA owner can edit this in-process record. Approved or closed records require a controlled workflow return.");
       return;
     }
 
@@ -1499,7 +1521,7 @@ This approval becomes part of the official electronic quality record.`,
   };
 
   const submitInitiationApproval = async () => {
-    if (isLocked) return;
+    if (!canEditRecord) return;
 
     if (!record?.problem_description && !record?.problem_statement) {
       return alert("Problem statement is required before initiation approval.");
@@ -1528,7 +1550,7 @@ This approval becomes part of the official electronic quality record.`,
     await rejectGateApproval("initiation", initiationApprovalComments);
   };
   const submitInvestigationApproval = async () => {
-    if (isLocked) return;
+    if (!canEditRecord) return;
 
     if (!initiationApproved) return alert("Initiation approval is required before investigation approval.");
     if (!record?.scope_summary) return alert("Scope summary is required.");
@@ -1570,7 +1592,7 @@ This approval becomes part of the official electronic quality record.`,
     await rejectGateApproval("investigation", investigationApprovalComments);
   };
   const submitActionPlanApproval = async () => {
-    if (isLocked) return;
+    if (!canEditRecord) return;
 
     if (!investigationApproved) {
       return alert("Investigation approval is required before action plan approval.");
@@ -1662,7 +1684,7 @@ This approval becomes part of the official electronic quality record.`,
   const tasksComplete = tasks.length === 0 || incompleteTasks.length === 0;
 
   const submitClosureApproval = async () => {
-    if (isLocked) return;
+    if (!canEditRecord) return;
 
     if (!investigationApproved) {
       alert("Investigation approval is required before closure.");
@@ -1723,7 +1745,7 @@ This approval becomes part of the official electronic quality record.`,
     await rejectGateApproval("closure", closureApprovalComments);
   };
   const cancelCapa = async () => {
-    if (isLocked) return;
+    if (!canEditRecord) return;
 
     if (!canApprove) {
       alert("Only an approver or VP Quality can cancel a CAPA.");
@@ -1909,7 +1931,7 @@ This approval becomes part of the official electronic quality record.`,
           </button>
           <button
             onClick={saveAll}
-            disabled={isLocked}
+            disabled={!canEditRecord}
             style={buttonDisabledStyle(isLocked)}
           >
             Save All
@@ -1974,6 +1996,14 @@ This approval becomes part of the official electronic quality record.`,
             ? "Cancelled"
             : "Approved and closed"}{" "}
           quality record.
+        </section>
+      ) : null}
+
+      {readOnlyForNonOwner ? (
+        <section style={readOnlyBannerStyle}>
+          👁️ READ ONLY — You are not the CAPA owner. You may review the record,
+          but edits must be performed by the CAPA owner or through a controlled
+          workflow return.
         </section>
       ) : null}
 
@@ -2044,8 +2074,8 @@ This approval becomes part of the official electronic quality record.`,
                     updateField("capa_type", e.target.value);
                     saveField("capa_type", e.target.value);
                   }}
-                  disabled={isLocked}
-                  style={inputStyle(isLocked)}
+                  disabled={!canEditRecord}
+                  style={inputStyle(!canEditRecord)}
                 >
                   <option value="">Select</option>
                   <option value="corrective">Corrective CAPA</option>
@@ -2058,8 +2088,8 @@ This approval becomes part of the official electronic quality record.`,
                   value={record.capa_source || record.source_type || ""}
                   onChange={(e) => updateField("capa_source", e.target.value)}
                   onBlur={(e) => saveField("capa_source", e.target.value)}
-                  disabled={isLocked}
-                  style={inputStyle(isLocked)}
+                  disabled={!canEditRecord}
+                  style={inputStyle(!canEditRecord)}
                 />
               </Field>
             </div>
@@ -2071,9 +2101,9 @@ This approval becomes part of the official electronic quality record.`,
                   updateField("problem_description", e.target.value)
                 }
                 onBlur={(e) => saveField("problem_description", e.target.value)}
-                disabled={isLocked}
+                disabled={!canEditRecord}
                 rows={4}
-                style={textareaStyle(isLocked)}
+                style={textareaStyle(!canEditRecord)}
               />
             </Field>
 
@@ -2084,9 +2114,9 @@ This approval becomes part of the official electronic quality record.`,
                   updateField("capa_justification", e.target.value)
                 }
                 onBlur={(e) => saveField("capa_justification", e.target.value)}
-                disabled={isLocked}
+                disabled={!canEditRecord}
                 rows={3}
-                style={textareaStyle(isLocked)}
+                style={textareaStyle(!canEditRecord)}
               />
             </Field>
 
@@ -2096,9 +2126,9 @@ This approval becomes part of the official electronic quality record.`,
                   value={record.product_impact || record.product_quality_impact || ""}
                   onChange={(e) => updateField("product_impact", e.target.value)}
                   onBlur={(e) => saveField("product_impact", e.target.value)}
-                  disabled={isLocked}
+                  disabled={!canEditRecord}
                   rows={3}
-                  style={textareaStyle(isLocked)}
+                  style={textareaStyle(!canEditRecord)}
                 />
               </Field>
 
@@ -2107,9 +2137,9 @@ This approval becomes part of the official electronic quality record.`,
                   value={record.process_impact || record.affected_process || ""}
                   onChange={(e) => updateField("process_impact", e.target.value)}
                   onBlur={(e) => saveField("process_impact", e.target.value)}
-                  disabled={isLocked}
+                  disabled={!canEditRecord}
                   rows={3}
-                  style={textareaStyle(isLocked)}
+                  style={textareaStyle(!canEditRecord)}
                 />
               </Field>
 
@@ -2122,9 +2152,9 @@ This approval becomes part of the official electronic quality record.`,
                   onBlur={(e) =>
                     saveField("patient_safety_impact", e.target.value)
                   }
-                  disabled={isLocked}
+                  disabled={!canEditRecord}
                   rows={3}
-                  style={textareaStyle(isLocked)}
+                  style={textareaStyle(!canEditRecord)}
                 />
               </Field>
             </div>
@@ -2144,7 +2174,7 @@ This approval becomes part of the official electronic quality record.`,
             approvedAt={record.initiation_approved_at}
             rejectedBy={record.initiation_rejected_by}
             rejectedAt={record.initiation_rejected_at}
-            disabled={isLocked}
+            disabled={!canEditRecord}
             canApprove={canApprove}
             expanded={expandedSections.includes("initiationapproval")}
             onToggle={() => toggleSection("initiationapproval")}
@@ -2596,9 +2626,9 @@ This approval becomes part of the official electronic quality record.`,
                   onBlur={(e) =>
                     saveField("investigation_objective", e.target.value)
                   }
-                  disabled={isLocked}
+                  disabled={!canEditRecord}
                   rows={3}
-                  style={textareaStyle(isLocked)}
+                  style={textareaStyle(!canEditRecord)}
                 />
               </Field>
 
@@ -2607,9 +2637,9 @@ This approval becomes part of the official electronic quality record.`,
                   value={record.evidence_reviewed || ""}
                   onChange={(e) => updateField("evidence_reviewed", e.target.value)}
                   onBlur={(e) => saveField("evidence_reviewed", e.target.value)}
-                  disabled={isLocked}
+                  disabled={!canEditRecord}
                   rows={3}
-                  style={textareaStyle(isLocked)}
+                  style={textareaStyle(!canEditRecord)}
                 />
               </Field>
 
@@ -2626,9 +2656,9 @@ This approval becomes part of the official electronic quality record.`,
                   onBlur={(e) =>
                     saveField("investigation_findings", e.target.value)
                   }
-                  disabled={isLocked}
+                  disabled={!canEditRecord}
                   rows={4}
-                  style={textareaStyle(isLocked)}
+                  style={textareaStyle(!canEditRecord)}
                 />
               </Field>
 
@@ -2641,9 +2671,9 @@ This approval becomes part of the official electronic quality record.`,
                   onBlur={(e) =>
                     saveField("investigation_conclusion", e.target.value)
                   }
-                  disabled={isLocked}
+                  disabled={!canEditRecord}
                   rows={3}
-                  style={textareaStyle(isLocked)}
+                  style={textareaStyle(!canEditRecord)}
                 />
               </Field>
             </div>
@@ -2664,8 +2694,8 @@ This approval becomes part of the official electronic quality record.`,
                     updateField("root_cause_method", e.target.value);
                     saveField("root_cause_method", e.target.value);
                   }}
-                  disabled={isLocked}
-                  style={inputStyle(isLocked)}
+                  disabled={!canEditRecord}
+                  style={inputStyle(!canEditRecord)}
                 >
                   <option value="">Select</option>
                   <option value="5_why">5 Why</option>
@@ -2681,9 +2711,9 @@ This approval becomes part of the official electronic quality record.`,
                   value={record.root_cause || ""}
                   onChange={(e) => updateField("root_cause", e.target.value)}
                   onBlur={(e) => saveField("root_cause", e.target.value)}
-                  disabled={isLocked}
+                  disabled={!canEditRecord}
                   rows={4}
-                  style={textareaStyle(isLocked)}
+                  style={textareaStyle(!canEditRecord)}
                 />
               </Field>
 
@@ -2694,9 +2724,9 @@ This approval becomes part of the official electronic quality record.`,
                     updateField("contributing_factors", e.target.value)
                   }
                   onBlur={(e) => saveField("contributing_factors", e.target.value)}
-                  disabled={isLocked}
+                  disabled={!canEditRecord}
                   rows={3}
-                  style={textareaStyle(isLocked)}
+                  style={textareaStyle(!canEditRecord)}
                 />
               </Field>
 
@@ -2709,9 +2739,9 @@ This approval becomes part of the official electronic quality record.`,
                   onBlur={(e) =>
                     saveField("root_cause_verification", e.target.value)
                   }
-                  disabled={isLocked}
+                  disabled={!canEditRecord}
                   rows={3}
-                  style={textareaStyle(isLocked)}
+                  style={textareaStyle(!canEditRecord)}
                 />
               </Field>
 
@@ -2720,9 +2750,9 @@ This approval becomes part of the official electronic quality record.`,
                   value={record.systemic_impact || ""}
                   onChange={(e) => updateField("systemic_impact", e.target.value)}
                   onBlur={(e) => saveField("systemic_impact", e.target.value)}
-                  disabled={isLocked}
+                  disabled={!canEditRecord}
                   rows={3}
-                  style={textareaStyle(isLocked)}
+                  style={textareaStyle(!canEditRecord)}
                 />
               </Field>
             </div>
@@ -2742,7 +2772,7 @@ This approval becomes part of the official electronic quality record.`,
             approvedAt={record.investigation_approved_at}
             rejectedBy={record.investigation_rejected_by}
             rejectedAt={record.investigation_rejected_at}
-            disabled={isLocked}
+            disabled={!canEditRecord}
             canApprove={canApprove}
             expanded={expandedSections.includes("investigationapproval")}
             onToggle={() => toggleSection("investigationapproval")}
@@ -2884,7 +2914,7 @@ This approval becomes part of the official electronic quality record.`,
             approvedAt={record.action_plan_approved_at}
             rejectedBy={record.action_plan_rejected_by}
             rejectedAt={record.action_plan_rejected_at}
-            disabled={isLocked}
+            disabled={!canEditRecord}
             canApprove={canApprove}
             expanded={expandedSections.includes("actionplanapproval")}
             onToggle={() => toggleSection("actionplanapproval")}
@@ -3334,7 +3364,7 @@ This approval becomes part of the official electronic quality record.`,
             approvedAt={record.closure_approved_at || record.signed_at}
             rejectedBy={record.closure_rejected_by}
             rejectedAt={record.closure_rejected_at}
-            disabled={isLocked}
+            disabled={!canEditRecord}
             canApprove={canApprove}
             expanded={expandedSections.includes("closure")}
             onToggle={() => toggleSection("closure")}
@@ -3394,8 +3424,8 @@ This approval becomes part of the official electronic quality record.`,
                   <select
                     value={cancelReason}
                     onChange={(e) => setCancelReason(e.target.value)}
-                    disabled={isLocked}
-                    style={inputStyle(isLocked)}
+                    disabled={!canEditRecord}
+                    style={inputStyle(!canEditRecord)}
                   >
                     <option value="">Select</option>
                     <option value="initiated_in_error">Initiated in Error</option>
@@ -3410,9 +3440,9 @@ This approval becomes part of the official electronic quality record.`,
                   <textarea
                     value={cancellationJustification}
                     onChange={(e) => setCancellationJustification(e.target.value)}
-                    disabled={isLocked}
+                    disabled={!canEditRecord}
                     rows={3}
-                    style={textareaStyle(isLocked)}
+                    style={textareaStyle(!canEditRecord)}
                   />
                 </Field>
               </div>
@@ -4301,6 +4331,17 @@ const lockedBannerStyle: CSSProperties = {
   fontWeight: 700,
   marginBottom: "20px",
 };
+
+const readOnlyBannerStyle: CSSProperties = {
+  border: "1px solid #bfdbfe",
+  background: "#eff6ff",
+  color: "#1e3a8a",
+  borderRadius: "12px",
+  padding: "12px",
+  marginBottom: "16px",
+  fontWeight: 800,
+};
+
 
 const lockedNoticeStyle: CSSProperties = {
   padding: "10px",
