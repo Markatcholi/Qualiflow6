@@ -724,10 +724,7 @@ export default function CapaPage() {
             <article
               key={item.id}
               style={{
-                border:
-                  isOverdue
-                    ? "2px solid #dc2626"
-                    : "1px solid #d1d5db",
+                border: "1px solid #d1d5db",
                 borderRadius: "14px",
                 padding: "18px",
                 background: "white",
