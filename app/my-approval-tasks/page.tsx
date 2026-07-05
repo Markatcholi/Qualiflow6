@@ -29,7 +29,7 @@ export default function MyApprovalTasksPage() {
       .from("approval_tasks")
       .select("*")
       .eq("assigned_to_email", email.toLowerCase())
-      .order("created_at", { ascending: false });
+      .order("created_at", { ascending: true });
 
     if (error) {
       alert(error.message);
@@ -37,7 +37,40 @@ export default function MyApprovalTasksPage() {
       return;
     }
 
-    setTasks(data || []);
+    const normalizedEmail = email.toLowerCase();
+
+    const { data: ownedCapaData, error: ownedCapaError } = await supabase
+      .from("capas")
+      .select("*")
+      .or(
+        `owner_email.eq.${normalizedEmail},owner.eq.${normalizedEmail},created_by.eq.${normalizedEmail}`
+      )
+      .not("status", "in", '("closed","cancelled")')
+      .order("created_at", { ascending: true });
+
+    if (ownedCapaError) {
+      alert(ownedCapaError.message);
+      setLoading(false);
+      return;
+    }
+
+    const assignedTaskItems = (data || []).map((task: any) => ({
+      ...task,
+      workspace_item_type: "assigned_task",
+    }));
+
+    const ownedCapaItems = (ownedCapaData || [])
+      .filter((capa: any) => shouldShowOwnedCapaWork(capa))
+      .map((capa: any) => ({
+        ...capa,
+        workspace_item_type: "owned_capa",
+      }));
+
+    setTasks(
+      [...assignedTaskItems, ...ownedCapaItems].sort((a: any, b: any) =>
+        String(a.created_at || "").localeCompare(String(b.created_at || ""))
+      )
+    );
     setLoading(false);
   };
 
@@ -95,10 +128,18 @@ export default function MyApprovalTasksPage() {
   };
 
   const getRecordDisplay = (task: any) => {
+    if (task.workspace_item_type === "owned_capa") {
+      return task.capa_number || task.id || "CAPA";
+    }
+
     return task.record_number || task.capa_number || task.entity_number || task.entity_id || "Record";
   };
 
   const getTaskTitle = (task: any) => {
+    if (task.workspace_item_type === "owned_capa") {
+      return `${getRecordDisplay(task)} — ${getOwnedCapaWorkLabel(task)}`;
+    }
+
     if (isCapaApprovalTask(task)) {
       const jobTitle = task.approver_job_title || task.required_function || "Approver";
       return `${jobTitle} — ${getRecordDisplay(task)} ${getApprovalGateLabel(task)}`;
@@ -108,7 +149,10 @@ export default function MyApprovalTasksPage() {
   };
 
   const getDueStatus = (task: any) => {
-    const dueDateValue = task.due_date || task.approver_due_date;
+    const dueDateValue =
+      task.workspace_item_type === "owned_capa"
+        ? task.due_date || task.action_due_date || task.effectiveness_due_date
+        : task.due_date || task.approver_due_date;
 
     if (!dueDateValue) {
       return {
@@ -309,6 +353,7 @@ export default function MyApprovalTasksPage() {
         <div style={{ display: "grid", gap: "12px" }}>
           {tasks.map((task) => {
             const capaApproval = isCapaApprovalTask(task);
+            const ownedCapaWork = task.workspace_item_type === "owned_capa";
             const dueStatus = getDueStatus(task);
             const pending = task.status === "pending";
 
@@ -351,14 +396,18 @@ export default function MyApprovalTasksPage() {
                     </div>
                   </div>
 
-                  {capaApproval ? (
+                  {ownedCapaWork ? (
+                    <a href={`/capa/${task.id}`} style={primaryLinkStyle}>
+                      Open CAPA
+                    </a>
+                  ) : capaApproval ? (
                     <a href={getCapaReviewUrl(task)} style={primaryLinkStyle}>
                       Open CAPA Review Package
                     </a>
                   ) : null}
                 </div>
 
-                {!capaApproval ? (
+                {!capaApproval && !ownedCapaWork ? (
                   <>
                     <div style={{ marginTop: "14px", marginBottom: "12px" }}>
                       <label style={labelStyle}>Review Instructions</label>
@@ -411,7 +460,7 @@ export default function MyApprovalTasksPage() {
                       <CompletedTaskDetails task={task} />
                     )}
                   </>
-                ) : task.status !== "pending" ? (
+                ) : !ownedCapaWork && task.status !== "pending" ? (
                   <CompletedTaskDetails task={task} />
                 ) : null}
               </section>
@@ -421,6 +470,48 @@ export default function MyApprovalTasksPage() {
       )}
     </main>
   );
+}
+
+function shouldShowOwnedCapaWork(capa: any) {
+  const status = String(capa.status || "").toLowerCase();
+
+  if (status === "closed" || status === "cancelled") return false;
+  if (status.includes("pending") && status.includes("approval")) return false;
+
+  return true;
+}
+
+function getOwnedCapaWorkLabel(capa: any) {
+  if (!capa.initiation_approval_status || capa.initiation_approval_status === "not_submitted") {
+    return "Complete Initiation";
+  }
+
+  if (capa.initiation_approval_status === "rejected") return "Revise Initiation";
+
+  if (capa.initiation_approval_status === "approved" && !capa.investigation_approval_status) {
+    return "Complete Evaluation / Investigation";
+  }
+
+  if (capa.investigation_approval_status === "rejected") return "Revise Investigation";
+
+  if (capa.investigation_approval_status === "approved" && !capa.action_plan_approval_status) {
+    return "Complete Action Plan Proposal";
+  }
+
+  if (capa.action_plan_approval_status === "rejected") return "Revise Action Plan";
+
+  if (capa.action_plan_approval_status === "approved" && !capa.implemented_by) {
+    return "Complete Implementation";
+  }
+
+  if (capa.implemented_by && !capa.effectiveness_verified_by && !capa.effectiveness_rating) {
+    return "Complete Effectiveness Verification";
+  }
+
+  if (capa.effectiveness_rating && !capa.closure_approval_status) return "Submit Closure";
+  if (capa.closure_approval_status === "rejected") return "Revise Closure";
+
+  return "Continue CAPA";
 }
 
 function CompletedTaskDetails({ task }: { task: any }) {
