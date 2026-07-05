@@ -8,7 +8,7 @@ type ModuleGroupKey = "myWork" | "quality" | "analytics" | "administration";
 export default function HomePage() {
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("user");
-  const [tasks, setTasks] = useState<any[]>([]);
+  const [workItems, setWorkItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [availableUsers, setAvailableUsers] = useState<string[]>([]);
   const [reassignTask, setReassignTask] = useState<any>(null);
@@ -37,7 +37,7 @@ export default function HomePage() {
     setEmail(userEmail);
 
     if (!userEmail) {
-      setTasks([]);
+      setWorkItems([]);
       setLoading(false);
       return;
     }
@@ -64,7 +64,40 @@ export default function HomePage() {
       return;
     }
 
-    setTasks(taskData || []);
+    const normalizedEmail = userEmail.toLowerCase();
+
+    const { data: ownedCapaData, error: ownedCapaError } = await supabase
+      .from("capas")
+      .select("*")
+      .or(
+        `owner_email.eq.${normalizedEmail},owner.eq.${normalizedEmail},created_by.eq.${normalizedEmail}`
+      )
+      .not("status", "in", '("closed","cancelled")')
+      .order("created_at", { ascending: true });
+
+    if (ownedCapaError) {
+      alert(ownedCapaError.message);
+      setLoading(false);
+      return;
+    }
+
+    const assignedTaskItems = (taskData || []).map((task: any) => ({
+      ...task,
+      workspace_item_type: "assigned_task",
+    }));
+
+    const ownedCapaItems = (ownedCapaData || [])
+      .filter((capa: any) => shouldShowOwnedCapaWork(capa))
+      .map((capa: any) => ({
+        ...capa,
+        workspace_item_type: "owned_capa",
+      }));
+
+    setWorkItems(
+      [...assignedTaskItems, ...ownedCapaItems].sort((a: any, b: any) =>
+        String(a.created_at || "").localeCompare(String(b.created_at || ""))
+      )
+    );
 
     const { data: usersData } = await supabase
       .from("user_roles")
@@ -266,12 +299,12 @@ export default function HomePage() {
 
             </div>
 
-            <span style={taskCountStyle}>{tasks.length}</span>
+            <span style={taskCountStyle}>{workItems.length}</span>
           </div>
 
-          {tasks.length === 0 ? (
+          {workItems.length === 0 ? (
             <div style={emptyTaskStyle}>
-              No pending tasks assigned to you.
+              No pending work assigned to you.
             </div>
           ) : (
             <div style={tableWrapStyle}>
@@ -287,7 +320,7 @@ export default function HomePage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {tasks.map((task) => {
+                  {workItems.map((task) => {
                     const dueStatus = getDueStatus(task);
                     const taskUrl = getTaskUrl(task);
 
@@ -296,7 +329,11 @@ export default function HomePage() {
                         <td style={tableCellStyle}>{getRecordDisplay(task)}</td>
                         <td style={tableCellStyle}>{getTaskName(task)}</td>
                         <td style={tableCellStyle}>{formatDate(task.created_at)}</td>
-                        <td style={tableCellStyle}>{task.due_date || "N/A"}</td>
+                        <td style={tableCellStyle}>
+                          {task.workspace_item_type === "owned_capa"
+                            ? task.due_date || task.action_due_date || task.effectiveness_due_date || "N/A"
+                            : task.due_date || "N/A"}
+                        </td>
                         <td style={tableCellStyle}>
                           <span
                             style={{
@@ -314,13 +351,15 @@ export default function HomePage() {
                             <a href={taskUrl} style={tableOpenLinkStyle}>
                               Open
                             </a>
-                            <button
-                              type="button"
-                              onClick={() => openReassignDialog(task)}
-                              style={tableReassignButtonStyle}
-                            >
-                              Reassign
-                            </button>
+                            {task.workspace_item_type === "assigned_task" ? (
+                              <button
+                                type="button"
+                                onClick={() => openReassignDialog(task)}
+                                style={tableReassignButtonStyle}
+                              >
+                                Reassign
+                              </button>
+                            ) : null}
                           </div>
                         </td>
                       </tr>
@@ -431,6 +470,10 @@ function ModuleGroup({
 }
 
 function getTaskUrl(task: any) {
+  if (task.workspace_item_type === "owned_capa") {
+    return `/capa/${task.id}`;
+  }
+
   if (isCapaApprovalTask(task)) {
     const gate = getCapaGateFromTask(task);
     return `/capa/${task.entity_id}/approval-review?gate=${gate}&taskId=${task.id}`;
@@ -444,6 +487,10 @@ function getTaskUrl(task: any) {
 }
 
 function getRecordDisplay(task: any) {
+  if (task.workspace_item_type === "owned_capa") {
+    return task.capa_number || task.id || "CAPA";
+  }
+
   const directRecord =
     task.record_number ||
     task.capa_number ||
@@ -465,6 +512,10 @@ function getRecordDisplay(task: any) {
 }
 
 function getTaskName(task: any) {
+  if (task.workspace_item_type === "owned_capa") {
+    return getOwnedCapaWorkLabel(task);
+  }
+
   if (isCapaApprovalTask(task)) {
     return getCapaApprovalLabel(task);
   }
@@ -537,8 +588,53 @@ function getTaskTitle(task: any) {
   return jobTitle ? `${jobTitle} — ${record} ${taskType}` : `${record} ${taskType}`;
 }
 
+function shouldShowOwnedCapaWork(capa: any) {
+  const status = String(capa.status || "").toLowerCase();
+
+  if (status === "closed" || status === "cancelled") return false;
+  if (status.includes("pending") && status.includes("approval")) return false;
+
+  return true;
+}
+
+function getOwnedCapaWorkLabel(capa: any) {
+  if (!capa.initiation_approval_status || capa.initiation_approval_status === "not_submitted") {
+    return "Complete Initiation";
+  }
+
+  if (capa.initiation_approval_status === "rejected") return "Revise Initiation";
+
+  if (capa.initiation_approval_status === "approved" && !capa.investigation_approval_status) {
+    return "Complete Evaluation / Investigation";
+  }
+
+  if (capa.investigation_approval_status === "rejected") return "Revise Investigation";
+
+  if (capa.investigation_approval_status === "approved" && !capa.action_plan_approval_status) {
+    return "Complete Action Plan Proposal";
+  }
+
+  if (capa.action_plan_approval_status === "rejected") return "Revise Action Plan";
+
+  if (capa.action_plan_approval_status === "approved" && !capa.implemented_by) {
+    return "Complete Implementation";
+  }
+
+  if (capa.implemented_by && !capa.effectiveness_verified_by && !capa.effectiveness_rating) {
+    return "Complete Effectiveness Verification";
+  }
+
+  if (capa.effectiveness_rating && !capa.closure_approval_status) return "Submit Closure";
+  if (capa.closure_approval_status === "rejected") return "Revise Closure";
+
+  return "Continue CAPA";
+}
+
 function getDueStatus(task: any) {
-  const dueDateValue = task.due_date;
+  const dueDateValue =
+    task.workspace_item_type === "owned_capa"
+      ? task.due_date || task.action_due_date || task.effectiveness_due_date
+      : task.due_date;
 
   if (!dueDateValue) {
     return {
