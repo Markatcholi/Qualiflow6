@@ -180,7 +180,8 @@ export default function EnterpriseCapaWorkflowPage() {
   const actionPlanPlanningLocked =
     !investigationApproved || actionPlanApproved || !canEditRecord;
   const implementationTaskAssignmentLocked = !actionPlanApproved || !canEditRecord;
-  const implementationLocked = !actionPlanApproved || !canEditRecord;
+  const implementationLocked =
+    !actionPlanApproved || Boolean(record?.implemented_by) || !canEditRecord;
   const effectivenessPlanLocked =
     !record?.implemented_by || effectivenessPlanApproved || !canEditRecord;
   const effectivenessVerificationLocked =
@@ -1714,7 +1715,9 @@ This approval becomes part of the official electronic quality record.`,
   const markImplemented = async () => {
     if (implementationLocked) {
       alert(
-        "Implementation is locked until action plan approval is complete."
+        record?.implemented_by
+          ? "Implementation is already complete and locked."
+          : "Implementation is locked until action plan approval is complete."
       );
       return;
     }
@@ -2701,7 +2704,11 @@ This approval becomes part of the official electronic quality record.`,
             locked={investigationLocked}
           >
             {investigationLocked && !isLocked ? (
-              <p style={subtleText}>Initiation approval is required before Investigation can be edited.</p>
+              <p style={subtleText}>
+                {investigationApproved
+                  ? "Investigation is approved and locked. Use controlled workflow return if revision is required."
+                  : "Initiation approval is required before Investigation can be edited."}
+              </p>
             ) : null}
             <div style={formGridStyle}>
               <Field label="Investigation Objective">
@@ -2713,9 +2720,9 @@ This approval becomes part of the official electronic quality record.`,
                   onBlur={(e) =>
                     saveField("investigation_objective", e.target.value)
                   }
-                  disabled={!canEditRecord}
+                  disabled={investigationLocked}
                   rows={3}
-                  style={textareaStyle(!canEditRecord)}
+                  style={textareaStyle(investigationLocked)}
                 />
               </Field>
 
@@ -2724,9 +2731,9 @@ This approval becomes part of the official electronic quality record.`,
                   value={record.evidence_reviewed || ""}
                   onChange={(e) => updateField("evidence_reviewed", e.target.value)}
                   onBlur={(e) => saveField("evidence_reviewed", e.target.value)}
-                  disabled={!canEditRecord}
+                  disabled={investigationLocked}
                   rows={3}
-                  style={textareaStyle(!canEditRecord)}
+                  style={textareaStyle(investigationLocked)}
                 />
               </Field>
 
@@ -2743,9 +2750,9 @@ This approval becomes part of the official electronic quality record.`,
                   onBlur={(e) =>
                     saveField("investigation_findings", e.target.value)
                   }
-                  disabled={!canEditRecord}
+                  disabled={investigationLocked}
                   rows={4}
-                  style={textareaStyle(!canEditRecord)}
+                  style={textareaStyle(investigationLocked)}
                 />
               </Field>
 
@@ -2758,9 +2765,9 @@ This approval becomes part of the official electronic quality record.`,
                   onBlur={(e) =>
                     saveField("investigation_conclusion", e.target.value)
                   }
-                  disabled={!canEditRecord}
+                  disabled={investigationLocked}
                   rows={3}
-                  style={textareaStyle(!canEditRecord)}
+                  style={textareaStyle(investigationLocked)}
                 />
               </Field>
             </div>
@@ -2781,8 +2788,8 @@ This approval becomes part of the official electronic quality record.`,
                     updateField("root_cause_method", e.target.value);
                     saveField("root_cause_method", e.target.value);
                   }}
-                  disabled={!canEditRecord}
-                  style={inputStyle(!canEditRecord)}
+                  disabled={investigationLocked}
+                  style={inputStyle(investigationLocked)}
                 >
                   <option value="">Select</option>
                   <option value="5_why">5 Why</option>
@@ -2798,9 +2805,9 @@ This approval becomes part of the official electronic quality record.`,
                   value={record.root_cause || ""}
                   onChange={(e) => updateField("root_cause", e.target.value)}
                   onBlur={(e) => saveField("root_cause", e.target.value)}
-                  disabled={!canEditRecord}
+                  disabled={investigationLocked}
                   rows={4}
-                  style={textareaStyle(!canEditRecord)}
+                  style={textareaStyle(investigationLocked)}
                 />
               </Field>
 
@@ -2811,9 +2818,9 @@ This approval becomes part of the official electronic quality record.`,
                     updateField("contributing_factors", e.target.value)
                   }
                   onBlur={(e) => saveField("contributing_factors", e.target.value)}
-                  disabled={!canEditRecord}
+                  disabled={investigationLocked}
                   rows={3}
-                  style={textareaStyle(!canEditRecord)}
+                  style={textareaStyle(investigationLocked)}
                 />
               </Field>
 
@@ -2826,9 +2833,9 @@ This approval becomes part of the official electronic quality record.`,
                   onBlur={(e) =>
                     saveField("root_cause_verification", e.target.value)
                   }
-                  disabled={!canEditRecord}
+                  disabled={investigationLocked}
                   rows={3}
-                  style={textareaStyle(!canEditRecord)}
+                  style={textareaStyle(investigationLocked)}
                 />
               </Field>
 
@@ -2837,9 +2844,9 @@ This approval becomes part of the official electronic quality record.`,
                   value={record.systemic_impact || ""}
                   onChange={(e) => updateField("systemic_impact", e.target.value)}
                   onBlur={(e) => saveField("systemic_impact", e.target.value)}
-                  disabled={!canEditRecord}
+                  disabled={investigationLocked}
                   rows={3}
-                  style={textareaStyle(!canEditRecord)}
+                  style={textareaStyle(investigationLocked)}
                 />
               </Field>
             </div>
@@ -2859,7 +2866,7 @@ This approval becomes part of the official electronic quality record.`,
             approvedAt={record.investigation_approved_at}
             rejectedBy={record.investigation_rejected_by}
             rejectedAt={record.investigation_rejected_at}
-            disabled={!canEditRecord}
+            disabled={investigationLocked}
             canApprove={canApprove}
             expanded={expandedSections.includes("investigationapproval")}
             onToggle={() => toggleSection("investigationapproval")}
@@ -3173,7 +3180,13 @@ This approval becomes part of the official electronic quality record.`,
             expanded={expandedSections.includes("implementation")}
             onToggle={() => toggleSection("implementation")}
           >
-            {implementationLocked && !isLocked ? <LockNotice /> : null}
+            {implementationLocked && !isLocked ? (
+              <p style={subtleText}>
+                {record?.implemented_by
+                  ? "Implementation is complete and locked. Use controlled workflow return if revision is required."
+                  : "Action plan approval is required before Implementation can be edited."}
+              </p>
+            ) : null}
 
             <div style={formGridStyle}>
               <Field label="Procedure Updated">
@@ -3253,7 +3266,9 @@ This approval becomes part of the official electronic quality record.`,
           >
             {effectivenessPlanLocked && !isLocked ? (
               <p style={subtleText}>
-                Implementation must be marked complete before the Effectiveness Plan can be edited.
+                {effectivenessPlanApproved
+                  ? "Effectiveness Plan is approved and locked. Use controlled workflow return if revision is required."
+                  : "Implementation must be marked complete before the Effectiveness Plan can be edited."}
               </p>
             ) : null}
 
@@ -3446,7 +3461,13 @@ This approval becomes part of the official electronic quality record.`,
             expanded={expandedSections.includes("effectiveness")}
             onToggle={() => toggleSection("effectiveness")}
           >
-            {effectivenessVerificationLocked && !isLocked ? <LockNotice /> : null}
+            {effectivenessVerificationLocked && !isLocked ? (
+              <p style={subtleText}>
+                {!effectivenessPlanApproved
+                  ? "Effectiveness Plan approval is required before Effectiveness Verification can be edited."
+                  : "Effectiveness Verification is locked because closure has been approved or the record is read-only."}
+              </p>
+            ) : null}
 
             <div style={formGridStyle}>
               <Field label="Effectiveness Results">
