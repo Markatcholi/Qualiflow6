@@ -38,6 +38,7 @@ type ApprovalGateKey =
   | "initiation"
   | "investigation"
   | "action_plan"
+  | "effectiveness_plan"
   | "closure";
 
 type CapaGateApprover = {
@@ -114,6 +115,8 @@ export default function EnterpriseCapaWorkflowPage() {
     useState("");
   const [actionPlanApprovalComments, setActionPlanApprovalComments] =
     useState("");
+  const [effectivenessPlanApprovalComments, setEffectivenessPlanApprovalComments] =
+    useState("");
   const [closureApprovalComments, setClosureApprovalComments] = useState("");
   const [cancelReason, setCancelReason] = useState("");
   const [cancellationJustification, setCancellationJustification] =
@@ -164,15 +167,24 @@ export default function EnterpriseCapaWorkflowPage() {
   const actionPlanApproved =
     record?.action_plan_approval_status === "approved";
 
+  const effectivenessPlanApproved =
+    record?.effectiveness_plan_approval_status === "approved";
+
   const closureApproved = record?.closure_approval_status === "approved";
 
-  const evaluationLocked = !initiationApproved || !canEditRecord;
-  const investigationLocked = !initiationApproved || !canEditRecord;
+  // Approved workflow sections are immutable by default.
+  // A prior section can only be changed later through a controlled workflow return.
+  const initiationLocked = initiationApproved || !canEditRecord;
+  const evaluationLocked = !initiationApproved || investigationApproved || !canEditRecord;
+  const investigationLocked = !initiationApproved || investigationApproved || !canEditRecord;
   const actionPlanPlanningLocked =
     !investigationApproved || actionPlanApproved || !canEditRecord;
   const implementationTaskAssignmentLocked = !actionPlanApproved || !canEditRecord;
   const implementationLocked = !actionPlanApproved || !canEditRecord;
-  const effectivenessPlanLocked = !record?.implemented_by || !canEditRecord;
+  const effectivenessPlanLocked =
+    !record?.implemented_by || effectivenessPlanApproved || !canEditRecord;
+  const effectivenessVerificationLocked =
+    !effectivenessPlanApproved || closureApproved || !canEditRecord;
 
   const canApprove = userRole === "approver" || userRole === "vp_quality";
 
@@ -224,6 +236,11 @@ export default function EnterpriseCapaWorkflowPage() {
     setActionPlanApprovalComments(
       data?.action_plan_approval_comments ||
         data?.action_plan_rejection_comments ||
+        ""
+    );
+    setEffectivenessPlanApprovalComments(
+      data?.effectiveness_plan_approval_comments ||
+        data?.effectiveness_plan_rejection_comments ||
         ""
     );
     setClosureApprovalComments(
@@ -352,6 +369,7 @@ export default function EnterpriseCapaWorkflowPage() {
     initiation: "Initiation Approval",
     investigation: "Investigation Approval",
     action_plan: "Action Plan Approval",
+    effectiveness_plan: "Effectiveness Plan Approval",
     closure: "Closure Approval",
   };
 
@@ -404,6 +422,21 @@ export default function EnterpriseCapaWorkflowPage() {
       pendingStatus: "pending_action_plan_approval",
       rejectedStatus: "action_plan",
       matrixId: "action_plan_approval_matrix_id",
+    },
+    effectiveness_plan: {
+      status: "effectiveness_plan_approval_status",
+      submittedBy: "effectiveness_plan_submitted_by",
+      submittedAt: "effectiveness_plan_submitted_at",
+      approvedBy: "effectiveness_plan_approved_by",
+      approvedAt: "effectiveness_plan_approved_at",
+      approvalComments: "effectiveness_plan_approval_comments",
+      rejectedBy: "effectiveness_plan_rejected_by",
+      rejectedAt: "effectiveness_plan_rejected_at",
+      rejectionComments: "effectiveness_plan_rejection_comments",
+      nextStatus: "effectiveness_verification",
+      pendingStatus: "pending_effectiveness_plan_approval",
+      rejectedStatus: "effectiveness_plan",
+      matrixId: "effectiveness_plan_approval_matrix_id",
     },
     closure: {
       status: "closure_approval_status",
@@ -1630,6 +1663,50 @@ This approval becomes part of the official electronic quality record.`,
   const rejectActionPlan = async () => {
     await rejectGateApproval("action_plan", actionPlanApprovalComments);
   };
+
+  const submitEffectivenessPlanApproval = async () => {
+    if (!canEditRecord) return;
+
+    if (!record?.implemented_by) {
+      return alert("Implementation must be completed before effectiveness plan approval.");
+    }
+
+    if (!record?.verification_method && !record?.monitoring_method && !record?.effectiveness_plan) {
+      return alert("Verification method is required.");
+    }
+
+    if (!record?.effectiveness_success_criteria) {
+      return alert("Success criteria are required.");
+    }
+
+    if (!record?.verification_owner) {
+      return alert("Verification owner is required.");
+    }
+
+    if (!record?.verification_due_date) {
+      return alert("Verification due date is required.");
+    }
+
+    await saveAll();
+
+    const submitted = await submitGateForApproval(
+      "effectiveness_plan",
+      effectivenessPlanApprovalComments
+    );
+
+    if (submitted) {
+      alert("Effectiveness plan package submitted for approval.");
+    }
+  };
+
+  const approveEffectivenessPlan = async () => {
+    await completeGateApproval("effectiveness_plan", effectivenessPlanApprovalComments);
+  };
+
+  const rejectEffectivenessPlan = async () => {
+    await rejectGateApproval("effectiveness_plan", effectivenessPlanApprovalComments);
+  };
+
   const completeGateApproval = async (_gate: ApprovalGateKey, _comments: string) => {
     alert("CAPA approvals are completed from My Approval Tasks.");
   };
@@ -1700,6 +1777,11 @@ This approval becomes part of the official electronic quality record.`,
 
     if (!record?.implemented_by) {
       alert("Implementation must be formally marked complete before closure.");
+      return;
+    }
+
+    if (!effectivenessPlanApproved) {
+      alert("Effectiveness plan approval is required before closure.");
       return;
     }
 
@@ -1856,7 +1938,7 @@ This approval becomes part of the official electronic quality record.`,
         key: "effectiveness",
         label: "Effectiveness Verification",
         completed: Boolean(record?.effectiveness_rating && record?.effectiveness_check),
-        locked: implementationLocked,
+        locked: effectivenessVerificationLocked,
       },
     ],
     [
@@ -1864,12 +1946,14 @@ This approval becomes part of the official electronic quality record.`,
       initiationApproved,
       investigationApproved,
       actionPlanApproved,
+      effectivenessPlanApproved,
       closureApproved,
       evaluationLocked,
       investigationLocked,
       actionPlanPlanningLocked,
       implementationLocked,
       effectivenessPlanLocked,
+      effectivenessVerificationLocked,
       tasks,
       tasksComplete,
     ]
@@ -2065,6 +2149,7 @@ This approval becomes part of the official electronic quality record.`,
             sectionKey="initiation"
             title="1. Initiation"
             subtitle="Document the CAPA type, source, problem statement, justification, and impact before Quality approval."
+            locked={initiationLocked}
             expanded={expandedSections.includes("initiation")}
             onToggle={() => toggleSection("initiation")}
           >
@@ -2076,8 +2161,8 @@ This approval becomes part of the official electronic quality record.`,
                     updateField("capa_type", e.target.value);
                     saveField("capa_type", e.target.value);
                   }}
-                  disabled={!canEditRecord}
-                  style={inputStyle(!canEditRecord)}
+                  disabled={initiationLocked}
+                  style={inputStyle(initiationLocked)}
                 >
                   <option value="">Select</option>
                   <option value="corrective">Corrective CAPA</option>
@@ -2090,8 +2175,8 @@ This approval becomes part of the official electronic quality record.`,
                   value={record.capa_source || record.source_type || ""}
                   onChange={(e) => updateField("capa_source", e.target.value)}
                   onBlur={(e) => saveField("capa_source", e.target.value)}
-                  disabled={!canEditRecord}
-                  style={inputStyle(!canEditRecord)}
+                  disabled={initiationLocked}
+                  style={inputStyle(initiationLocked)}
                 />
               </Field>
             </div>
@@ -2103,9 +2188,9 @@ This approval becomes part of the official electronic quality record.`,
                   updateField("problem_description", e.target.value)
                 }
                 onBlur={(e) => saveField("problem_description", e.target.value)}
-                disabled={!canEditRecord}
+                disabled={initiationLocked}
                 rows={4}
-                style={textareaStyle(!canEditRecord)}
+                style={textareaStyle(initiationLocked)}
               />
             </Field>
 
@@ -2116,9 +2201,9 @@ This approval becomes part of the official electronic quality record.`,
                   updateField("capa_justification", e.target.value)
                 }
                 onBlur={(e) => saveField("capa_justification", e.target.value)}
-                disabled={!canEditRecord}
+                disabled={initiationLocked}
                 rows={3}
-                style={textareaStyle(!canEditRecord)}
+                style={textareaStyle(initiationLocked)}
               />
             </Field>
 
@@ -2128,9 +2213,9 @@ This approval becomes part of the official electronic quality record.`,
                   value={record.product_impact || record.product_quality_impact || ""}
                   onChange={(e) => updateField("product_impact", e.target.value)}
                   onBlur={(e) => saveField("product_impact", e.target.value)}
-                  disabled={!canEditRecord}
+                  disabled={initiationLocked}
                   rows={3}
-                  style={textareaStyle(!canEditRecord)}
+                  style={textareaStyle(initiationLocked)}
                 />
               </Field>
 
@@ -2139,9 +2224,9 @@ This approval becomes part of the official electronic quality record.`,
                   value={record.process_impact || record.affected_process || ""}
                   onChange={(e) => updateField("process_impact", e.target.value)}
                   onBlur={(e) => saveField("process_impact", e.target.value)}
-                  disabled={!canEditRecord}
+                  disabled={initiationLocked}
                   rows={3}
-                  style={textareaStyle(!canEditRecord)}
+                  style={textareaStyle(initiationLocked)}
                 />
               </Field>
 
@@ -2154,9 +2239,9 @@ This approval becomes part of the official electronic quality record.`,
                   onBlur={(e) =>
                     saveField("patient_safety_impact", e.target.value)
                   }
-                  disabled={!canEditRecord}
+                  disabled={initiationLocked}
                   rows={3}
-                  style={textareaStyle(!canEditRecord)}
+                  style={textareaStyle(initiationLocked)}
                 />
               </Field>
             </div>
@@ -3266,17 +3351,102 @@ This approval becomes part of the official electronic quality record.`,
                 style={textareaStyle(effectivenessPlanLocked)}
               />
             </Field>
+
+            <ApprovalInlinePanel
+              sectionKey="effectivenessplanapproval-inline"
+              gateKey="effectiveness_plan"
+              title="Approvers / Submit Effectiveness Plan for Approval"
+              description="Approve the effectiveness plan before effectiveness verification begins."
+              status={record.effectiveness_plan_approval_status || "not_submitted"}
+              comments={effectivenessPlanApprovalComments}
+              setComments={setEffectivenessPlanApprovalComments}
+              submittedBy={record.effectiveness_plan_submitted_by}
+              submittedAt={record.effectiveness_plan_submitted_at}
+              approvedBy={record.effectiveness_plan_approved_by}
+              approvedAt={record.effectiveness_plan_approved_at}
+              rejectedBy={record.effectiveness_plan_rejected_by}
+              rejectedAt={record.effectiveness_plan_rejected_at}
+              disabled={!canEditRecord || effectivenessPlanApproved}
+              canApprove={canApprove}
+              expanded={expandedSections.includes("effectivenessplanapproval")}
+              onToggle={() => toggleSection("effectivenessplanapproval")}
+              approvalMatrixTemplates={approvalMatrixTemplates}
+              selectedApprovalMatrixId={selectedApprovalMatrixByGate["effectiveness_plan"] || ""}
+              setSelectedApprovalMatrixId={(value) =>
+                setSelectedApprovalMatrixByGate((prev) => ({
+                  ...prev,
+                  effectiveness_plan: value,
+                }))
+              }
+              manualApproverEmail={manualApproverEmailByGate["effectiveness_plan"] || ""}
+              setManualApproverEmail={(value) =>
+                setManualApproverEmailByGate((prev) => ({
+                  ...prev,
+                  effectiveness_plan: value,
+                }))
+              }
+              manualApproverFunction={manualApproverFunctionByGate["effectiveness_plan"] || ""}
+              setManualApproverFunction={(value) =>
+                setManualApproverFunctionByGate((prev) => ({
+                  ...prev,
+                  effectiveness_plan: value,
+                }))
+              }
+              manualApproverJobTitle={manualApproverJobTitleByGate["effectiveness_plan"] || ""}
+              setManualApproverJobTitle={(value) =>
+                setManualApproverJobTitleByGate((prev) => ({
+                  ...prev,
+                  effectiveness_plan: value,
+                }))
+              }
+              manualApproverDueDate={manualApproverDueDateByGate["effectiveness_plan"] || ""}
+              setManualApproverDueDate={(value) =>
+                setManualApproverDueDateByGate((prev) => ({
+                  ...prev,
+                  effectiveness_plan: value,
+                }))
+              }
+              manualApproverRole={
+                manualApproverRoleByGate["effectiveness_plan"] ||
+                manualApproverJobTitleByGate["effectiveness_plan"] ||
+                ""
+              }
+              setManualApproverRole={(value) =>
+                setManualApproverRoleByGate((prev) => ({
+                  ...prev,
+                  effectiveness_plan: value,
+                }))
+              }
+              manualApproverRequired={manualApproverRequiredByGate["effectiveness_plan"] !== false}
+              setManualApproverRequired={(value) =>
+                setManualApproverRequiredByGate((prev) => ({
+                  ...prev,
+                  effectiveness_plan: value,
+                }))
+              }
+              configuredApprovers={getGateApprovers("effectiveness_plan")}
+              approvalTasks={getGateApprovalTasks("effectiveness_plan")}
+              loadingApprovals={loadingApprovals}
+              onLoadMatrix={() => loadApproversFromMatrix("effectiveness_plan")}
+              onAddManualApprover={() => addManualApprover("effectiveness_plan")}
+              onRemoveApprover={(approverId) =>
+                removeGateApprover("effectiveness_plan", approverId)
+              }
+              onSubmit={submitEffectivenessPlanApproval}
+              onApprove={approveEffectivenessPlan}
+              onReject={rejectEffectivenessPlan}
+            />
           </WorkflowCard>
 
           <WorkflowCard
             sectionKey="effectiveness"
             title="12. Effectiveness Verification"
             subtitle="Execute the approved effectiveness plan and document results, recurrence, rating, evidence, and follow-up."
-            locked={implementationLocked}
+            locked={effectivenessVerificationLocked}
             expanded={expandedSections.includes("effectiveness")}
             onToggle={() => toggleSection("effectiveness")}
           >
-            {implementationLocked && !isLocked ? <LockNotice /> : null}
+            {effectivenessVerificationLocked && !isLocked ? <LockNotice /> : null}
 
             <div style={formGridStyle}>
               <Field label="Effectiveness Results">
@@ -3286,9 +3456,9 @@ This approval becomes part of the official electronic quality record.`,
                     updateField("effectiveness_check", e.target.value)
                   }
                   onBlur={(e) => saveField("effectiveness_check", e.target.value)}
-                  disabled={implementationLocked}
+                  disabled={effectivenessVerificationLocked}
                   rows={4}
-                  style={textareaStyle(implementationLocked)}
+                  style={textareaStyle(effectivenessVerificationLocked)}
                 />
               </Field>
 
@@ -3299,8 +3469,8 @@ This approval becomes part of the official electronic quality record.`,
                     updateField("effectiveness_rating", e.target.value);
                     saveField("effectiveness_rating", e.target.value);
                   }}
-                  disabled={implementationLocked}
-                  style={inputStyle(implementationLocked)}
+                  disabled={effectivenessVerificationLocked}
+                  style={inputStyle(effectivenessVerificationLocked)}
                 >
                   <option value="">Select</option>
                   <option value="effective">Effective</option>
@@ -3316,7 +3486,7 @@ This approval becomes part of the official electronic quality record.`,
                     updateField("recurrence_detected", value);
                     saveField("recurrence_detected", value);
                   }}
-                  disabled={implementationLocked}
+                  disabled={effectivenessVerificationLocked}
                 />
               </Field>
 
@@ -3327,7 +3497,7 @@ This approval becomes part of the official electronic quality record.`,
                     updateField("followup_capa_required", value);
                     saveField("followup_capa_required", value);
                   }}
-                  disabled={implementationLocked}
+                  disabled={effectivenessVerificationLocked}
                 />
               </Field>
             </div>
@@ -3344,9 +3514,9 @@ This approval becomes part of the official electronic quality record.`,
                   onBlur={(e) =>
                     saveField("effectiveness_followup_action", e.target.value)
                   }
-                  disabled={implementationLocked}
+                  disabled={effectivenessVerificationLocked}
                   rows={3}
-                  style={textareaStyle(implementationLocked)}
+                  style={textareaStyle(effectivenessVerificationLocked)}
                 />
               </Field>
             ) : null}
@@ -3520,6 +3690,10 @@ This approval becomes part of the official electronic quality record.`,
             <SidebarItem
               label="Investigation"
               value={record.investigation_approval_status || "Not Submitted"}
+            />
+            <SidebarItem
+              label="Effectiveness Plan"
+              value={record.effectiveness_plan_approval_status || "Not Submitted"}
             />
             <SidebarItem
               label="Closure"
