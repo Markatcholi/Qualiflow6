@@ -1371,7 +1371,9 @@ This approval becomes part of the official electronic quality record.`,
         entity_type: "capa",
         entity_id: id,
         task_type: "capa_implementation_task",
+        task_title: newTask.task_title,
         required_function: newTask.task_title,
+        due_date: newTask.due_date || null,
         assigned_to_email: taskOwnerEmail,
         assigned_by_email: userEmail || "unknown",
         status: "pending",
@@ -3862,79 +3864,66 @@ function TaskCard({
   onPendingReview: () => void;
   onComplete: () => void;
 }) {
-  const complete = task.status === "complete";
+  const complete = task.status === "completed";
 
   return (
     <div
       style={{
         border: "1px solid #d1d5db",
-        borderLeft: `6px solid ${
-          complete ? "#15803d" : isOverdue ? "#dc2626" : "#d97706"
-        }`,
+        borderLeft: `6px solid ${complete ? "#16a34a" : isOverdue ? "#dc2626" : "#d97706"}`,
         borderRadius: "12px",
         padding: "14px",
         marginBottom: "12px",
-        background: isOverdue && !complete ? "#fef2f2" : "white",
+        background: "#ffffff",
       }}
     >
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          gap: "12px",
-          flexWrap: "wrap",
-        }}
-      >
-        <div style={{ flex: 1, minWidth: "260px" }}>
-          <div style={{ fontWeight: 800 }}>{task.task_title}</div>
-          <div style={{ color: "#6b7280", marginTop: "4px" }}>
-            {task.task_type || "task"}
-          </div>
-          <p>{task.task_description || "No description provided."}</p>
+      <h4 style={{ margin: "0 0 6px 0" }}>{task.task_title || "Implementation Task"}</h4>
 
-          <div style={formGridStyle}>
-            <SummaryCard label="Owner" value={task.owner} />
-            <SummaryCard label="Due Date" value={task.due_date} />
-            <SummaryCard
-              label="Status"
-              value={isOverdue && !complete ? "overdue" : task.status}
-            />
-            <SummaryCard label="Completed By" value={task.completed_by} />
-          </div>
-
-          {complete ? (
-            <div style={evidenceBoxStyle}>
-              <strong>Completion Signature</strong>
-              <p style={{ marginBottom: 0 }}>
-                {task.signature_meaning || "Task completed."}
-              </p>
-              <p style={{ marginBottom: 0 }}>
-                Completed by {task.completed_by || "N/A"} at{" "}
-                {task.completed_at || "N/A"}
-              </p>
-              <p style={{ marginBottom: 0 }}>
-                Evidence: {task.completion_evidence || "N/A"}
-              </p>
-            </div>
-          ) : null}
-        </div>
-
-        {!complete ? (
-          <div style={{ minWidth: "240px" }}>
-            <div style={evidenceBoxStyle}>
-              <strong>Task Execution</strong>
-              <p style={{ marginBottom: "8px" }}>
-                Assigned CAPA implementation tasks are completed from My Approval Tasks / task queue.
-              </p>
-              <a href="/my-approval-tasks" style={primaryLinkStyle}>
-                Open My Approval Tasks
-              </a>
-            </div>
-          </div>
-        ) : null}
+      <div style={{ color: "#6b7280", marginBottom: "8px" }}>
+        {formatTaskType(task.task_type)}
       </div>
+
+      {task.task_description ? (
+        <p style={{ marginTop: 0 }}>{task.task_description}</p>
+      ) : null}
+
+      <div style={formGridStyle}>
+        <SummaryCard label="Owner" value={task.owner_email || task.owner} />
+        <SummaryCard label="Due Date" value={task.due_date} />
+        <SummaryCard
+          label="Status"
+          value={isOverdue && !complete ? "overdue" : task.status}
+        />
+        <SummaryCard label="Completed By" value={task.completed_by} />
+      </div>
+
+      {complete ? (
+        <div style={evidenceBoxStyle}>
+          <strong>Completion Signature</strong>
+          <p style={{ marginBottom: 0 }}>
+            {task.signature_meaning || "Task completed."}
+          </p>
+          <p style={{ marginBottom: 0 }}>
+            Completed by {task.completed_by || "N/A"} at{" "}
+            {task.completed_at || "N/A"}
+          </p>
+          <p style={{ marginBottom: 0 }}>
+            Evidence: {task.completion_evidence || "N/A"}
+          </p>
+        </div>
+      ) : (
+        <p style={{ ...subtleText, marginTop: "12px", marginBottom: 0 }}>
+          This task is routed to the assignee's My Tasks work queue for execution.
+        </p>
+      )}
     </div>
   );
+}
+
+function formatTaskType(value: any) {
+  return String(value || "task")
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
