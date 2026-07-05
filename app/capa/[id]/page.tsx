@@ -158,17 +158,28 @@ export default function EnterpriseCapaWorkflowPage() {
     Boolean(recordOwnerEmail) &&
     !isRecordOwner;
 
+  const hasApprovedGateTask = (gateTaskType: string) =>
+    approvalTasks.some(
+      (task) =>
+        task.task_type === gateTaskType &&
+        (task.status || "").toLowerCase() === "approved"
+    );
+
   const initiationApproved =
-    record?.initiation_approval_status === "approved";
+    record?.initiation_approval_status === "approved" ||
+    hasApprovedGateTask("capa_initiation_approval");
 
   const investigationApproved =
-    record?.investigation_approval_status === "approved";
+    record?.investigation_approval_status === "approved" ||
+    hasApprovedGateTask("capa_investigation_approval");
 
   const actionPlanApproved =
-    record?.action_plan_approval_status === "approved";
+    record?.action_plan_approval_status === "approved" ||
+    hasApprovedGateTask("capa_action_plan_approval");
 
   const effectivenessPlanApproved =
-    record?.effectiveness_plan_approval_status === "approved";
+    record?.effectiveness_plan_approval_status === "approved" ||
+    hasApprovedGateTask("capa_effectiveness_plan_approval");
 
   const closureApproved = record?.closure_approval_status === "approved";
 
