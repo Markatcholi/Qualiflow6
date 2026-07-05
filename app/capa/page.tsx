@@ -889,45 +889,6 @@ export default function CapaPage() {
                 </div>
               </div>
 
-              {item.signed_by ? (
-                <div
-                  style={{
-                    marginTop:
-                      "14px",
-                    padding: "12px",
-                    background:
-                      "#f9fafb",
-                    borderRadius:
-                      "10px",
-                    fontSize:
-                      "14px",
-                  }}
-                >
-                  <strong>
-                    Electronic Signature
-                  </strong>
-
-                  <div
-                    style={{
-                      marginTop:
-                        "6px",
-                    }}
-                  >
-                    Signed by:{" "}
-                    {
-                      item.signed_by
-                    }
-                  </div>
-
-                  <div>
-                    Signed at:{" "}
-                    {
-                      item.signed_at
-                    }
-                  </div>
-                </div>
-              ) : null}
-
               <div
                 style={{
                   marginTop:
@@ -957,38 +918,6 @@ export default function CapaPage() {
                   CAPA Report
                 </a>
 
-                <button
-                  onClick={() =>
-                    updateStatus(
-                      item,
-                      "in_progress"
-                    )
-                  }
-                >
-                  In Progress
-                </button>
-
-                <button
-                  onClick={() =>
-                    updateStatus(
-                      item,
-                      "effectiveness_check"
-                    )
-                  }
-                >
-                  Effectiveness
-                </button>
-
-                <button
-                  onClick={() =>
-                    updateStatus(
-                      item,
-                      "closed"
-                    )
-                  }
-                >
-                  Close
-                </button>
               </div>
             </article>
           );
