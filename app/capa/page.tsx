@@ -695,26 +695,6 @@ export default function CapaPage() {
         }}
       >
         {filteredList.map((item) => {
-          const isOverdue =
-            item.status !== "closed" &&
-            item.due_date &&
-            item.due_date <
-              new Date()
-                .toISOString()
-                .split("T")[0];
-
-          const recurrenceDetected =
-            (item.recurrence_count ||
-              0) >= 2;
-
-          const riskLevel =
-            calculateRisk(item);
-
-          const predictiveEscalation =
-            getPredictiveEscalation(
-              item
-            );
-
           const effectivenessStatus =
             getEffectivenessStatus(
               item
@@ -780,52 +760,9 @@ export default function CapaPage() {
                   }}
                 >
                   <Badge
-                    label={
-                      item.status ||
-                      "unknown"
-                    }
-                    color={
-                      item.status ===
-                      "closed"
-                        ? "#15803d"
-                        : item.status ===
-                          "effectiveness_check"
-                        ? "#7c3aed"
-                        : "#2563eb"
-                    }
+                    label={item.status === "closed" ? "Closed" : "Open"}
+                    color={item.status === "closed" ? "#15803d" : "#2563eb"}
                   />
-
-                  <Badge
-                    label={
-                      riskLevel
-                    }
-                    color={getRiskColor(
-                      riskLevel
-                    )}
-                  />
-
-                  {recurrenceDetected ? (
-                    <Badge
-                      label="Recurring"
-                      color="#dc2626"
-                    />
-                  ) : null}
-
-                  {predictiveEscalation ? (
-                    <Badge
-                      label={
-                        predictiveEscalation
-                      }
-                      color="#b91c1c"
-                    />
-                  ) : null}
-
-                  {isOverdue ? (
-                    <Badge
-                      label="Overdue"
-                      color="#991b1b"
-                    />
-                  ) : null}
                 </div>
               </div>
 
