@@ -592,7 +592,19 @@ function shouldShowOwnedCapaWork(capa: any) {
   const status = String(capa.status || "").toLowerCase();
 
   if (status === "closed" || status === "cancelled") return false;
-  if (status.includes("pending") && status.includes("approval")) return false;
+
+  const approvalPending =
+    status.includes("pending") &&
+    status.includes("approval");
+
+  const pendingGateApproved =
+    (status.includes("initiation") && capa.initiation_approval_status === "approved") ||
+    (status.includes("investigation") && capa.investigation_approval_status === "approved") ||
+    (status.includes("action_plan") && capa.action_plan_approval_status === "approved") ||
+    (status.includes("effectiveness_plan") && capa.effectiveness_plan_approval_status === "approved") ||
+    (status.includes("closure") && capa.closure_approval_status === "approved");
+
+  if (approvalPending && !pendingGateApproved) return false;
 
   return true;
 }
@@ -620,7 +632,16 @@ function getOwnedCapaWorkLabel(capa: any) {
     return "Complete Implementation";
   }
 
-  if (capa.implemented_by && !capa.effectiveness_verified_by && !capa.effectiveness_rating) {
+  if (capa.implemented_by && capa.effectiveness_plan_approval_status !== "approved") {
+    return "Complete / Submit Effectiveness Plan";
+  }
+
+  if (
+    capa.implemented_by &&
+    capa.effectiveness_plan_approval_status === "approved" &&
+    !capa.effectiveness_verified_by &&
+    !capa.effectiveness_rating
+  ) {
     return "Complete Effectiveness Verification";
   }
 
