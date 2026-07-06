@@ -747,7 +747,7 @@ export default function CapaPage() {
                     {item.capa_source ||
                       "N/A"}{" "}
                     | Type:{" "}
-                    {item.source_type ||
+                    {item.capa_type ||
                       "N/A"}
                   </div>
                 </div>
