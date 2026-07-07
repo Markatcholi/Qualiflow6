@@ -13,7 +13,6 @@ export default function HomePage() {
   const [availableUsers, setAvailableUsers] = useState<string[]>([]);
   const [reassignTask, setReassignTask] = useState<any>(null);
   const [reassignEmail, setReassignEmail] = useState("");
-  const [reassignReason, setReassignReason] = useState("");
   const [reassigning, setReassigning] = useState(false);
   const [openGroups, setOpenGroups] = useState<Record<ModuleGroupKey, boolean>>({
     myWork: true,
@@ -127,44 +126,77 @@ export default function HomePage() {
   const openReassignDialog = (task: any) => {
     setReassignTask(task);
     setReassignEmail("");
-    setReassignReason("");
   };
 
   const closeReassignDialog = () => {
     if (reassigning) return;
     setReassignTask(null);
     setReassignEmail("");
-    setReassignReason("");
   };
 
   const completeReassignment = async () => {
     if (!reassignTask?.id) return;
 
     const newAssignee = String(reassignEmail || "").trim().toLowerCase();
-    const currentAssignee = String(reassignTask.assigned_to_email || "").trim().toLowerCase();
 
     if (!newAssignee) {
       alert("New assignee email is required.");
       return;
     }
 
+    setReassigning(true);
+
+    if (reassignTask.workspace_item_type === "owned_capa") {
+      const currentOwner = String(
+        reassignTask.owner_email || reassignTask.owner || email
+      )
+        .trim()
+        .toLowerCase();
+
+      if (newAssignee === currentOwner) {
+        alert("The new owner must be different from the current owner.");
+        setReassigning(false);
+        return;
+      }
+
+      const { error } = await supabase
+        .from("capas")
+        .update({
+          owner_email: newAssignee,
+          owner: newAssignee,
+        })
+        .eq("id", reassignTask.id);
+
+      setReassigning(false);
+
+      if (error) {
+        alert(error.message);
+        return;
+      }
+
+      await supabase.from("audit_logs").insert({
+        entity_type: "capa",
+        entity_id: reassignTask.id,
+        action: "workflow_owner_reassigned",
+        details: `CAPA ownership reassigned from ${currentOwner} to ${newAssignee}.`,
+        user_email: email,
+      });
+
+      alert("CAPA ownership reassigned.");
+      closeReassignDialog();
+      fetchHomeData();
+      return;
+    }
+
+    const currentAssignee = String(reassignTask.assigned_to_email || "")
+      .trim()
+      .toLowerCase();
+
     if (newAssignee === currentAssignee) {
       alert("The new assignee must be different from the current assignee.");
+      setReassigning(false);
       return;
     }
-
-    if (!reassignReason.trim()) {
-      alert("Reason for reassignment is required.");
-      return;
-    }
-
-    const confirmed = window.confirm(
-      `Reassign this task from ${currentAssignee} to ${newAssignee}?`
-    );
-
-    if (!confirmed) return;
-
-    setReassigning(true);
 
     const { error } = await supabase
       .from("approval_tasks")
@@ -173,7 +205,6 @@ export default function HomePage() {
         reassigned_from_email: currentAssignee,
         reassigned_by_email: email,
         reassigned_at: new Date().toISOString(),
-        reassignment_reason: reassignReason.trim(),
       })
       .eq("id", reassignTask.id)
       .eq("assigned_to_email", email.toLowerCase());
@@ -189,7 +220,7 @@ export default function HomePage() {
       entity_type: reassignTask.entity_type,
       entity_id: reassignTask.entity_id,
       action: "task_reassigned",
-      details: `Task reassigned from ${currentAssignee} to ${newAssignee}. Reason: ${reassignReason.trim()}`,
+      details: `Task reassigned from ${currentAssignee} to ${newAssignee}.`,
       user_email: email,
     });
 
@@ -351,7 +382,8 @@ export default function HomePage() {
                             <a href={taskUrl} style={tableOpenLinkStyle}>
                               Open
                             </a>
-                            {task.workspace_item_type === "assigned_task" ? (
+                            {task.workspace_item_type === "assigned_task" ||
+                            task.workspace_item_type === "owned_capa" ? (
                               <button
                                 type="button"
                                 onClick={() => openReassignDialog(task)}
@@ -375,11 +407,21 @@ export default function HomePage() {
       {reassignTask ? (
         <div style={modalOverlayStyle}>
           <section style={modalCardStyle}>
-            <h2 style={{ marginTop: 0 }}>Reassign Task</h2>
+            <h2 style={{ marginTop: 0 }}>
+              Reassign {getRecordDisplay(reassignTask)}
+            </h2>
 
             <div style={modalFieldStyle}>
-              <label style={modalLabelStyle}>Current Assignee</label>
-              <div style={readOnlyValueStyle}>{reassignTask.assigned_to_email || "N/A"}</div>
+              <label style={modalLabelStyle}>
+                {reassignTask.workspace_item_type === "owned_capa"
+                  ? "Current Owner"
+                  : "Current Assignee"}
+              </label>
+              <div style={readOnlyValueStyle}>
+                {reassignTask.workspace_item_type === "owned_capa"
+                  ? reassignTask.owner_email || reassignTask.owner || "N/A"
+                  : reassignTask.assigned_to_email || "N/A"}
+              </div>
             </div>
 
             <div style={modalFieldStyle}>
@@ -391,24 +433,20 @@ export default function HomePage() {
               >
                 <option value="">Select user</option>
                 {availableUsers
-                  .filter((user) => user !== String(reassignTask.assigned_to_email || "").toLowerCase())
+                  .filter((user) =>
+                    user !==
+                    String(
+                      reassignTask.workspace_item_type === "owned_capa"
+                        ? reassignTask.owner_email || reassignTask.owner || ""
+                        : reassignTask.assigned_to_email || ""
+                    ).toLowerCase()
+                  )
                   .map((user) => (
                     <option key={user} value={user}>
                       {user}
                     </option>
                   ))}
               </select>
-            </div>
-
-            <div style={modalFieldStyle}>
-              <label style={modalLabelStyle}>Reason for Reassignment</label>
-              <textarea
-                value={reassignReason}
-                onChange={(event) => setReassignReason(event.target.value)}
-                rows={4}
-                style={modalTextareaStyle}
-                placeholder="Example: I am unavailable and need this task reassigned."
-              />
             </div>
 
             <div style={modalActionsStyle}>
@@ -1057,14 +1095,6 @@ const readOnlyValueStyle: React.CSSProperties = {
 };
 
 const modalInputStyle: React.CSSProperties = {
-  width: "100%",
-  border: "1px solid #cbd5e1",
-  borderRadius: "10px",
-  padding: "10px",
-  boxSizing: "border-box",
-};
-
-const modalTextareaStyle: React.CSSProperties = {
   width: "100%",
   border: "1px solid #cbd5e1",
   borderRadius: "10px",
