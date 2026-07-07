@@ -9,6 +9,10 @@ export default function MyApprovalTasksPage() {
   const [signatureEmail, setSignatureEmail] = useState("");
   const [approverCommentByTask, setApproverCommentByTask] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
+  const [availableUsers, setAvailableUsers] = useState<string[]>([]);
+  const [reassignTask, setReassignTask] = useState<any>(null);
+  const [reassignEmail, setReassignEmail] = useState("");
+  const [reassigning, setReassigning] = useState(false);
 
   const fetchTasks = async () => {
     setLoading(true);
@@ -71,6 +75,18 @@ export default function MyApprovalTasksPage() {
         String(a.created_at || "").localeCompare(String(b.created_at || ""))
       )
     );
+
+    const { data: usersData } = await supabase
+      .from("user_roles")
+      .select("user_email")
+      .order("user_email", { ascending: true });
+
+    setAvailableUsers(
+      (usersData || [])
+        .map((user: any) => String(user.user_email || "").toLowerCase())
+        .filter(Boolean)
+    );
+
     setLoading(false);
   };
 
@@ -201,6 +217,66 @@ export default function MyApprovalTasksPage() {
       border: "#bbf7d0",
       text: "#166534",
     };
+  };
+
+  const openReassignDialog = (task: any) => {
+    setReassignTask(task);
+    setReassignEmail("");
+  };
+
+  const closeReassignDialog = () => {
+    if (reassigning) return;
+    setReassignTask(null);
+    setReassignEmail("");
+  };
+
+  const completeReassignment = async () => {
+    if (!reassignTask?.id) return;
+
+    const newOwner = String(reassignEmail || "").trim().toLowerCase();
+
+    if (!newOwner) {
+      alert("New owner email is required.");
+      return;
+    }
+
+    const currentOwner = String(reassignTask.owner_email || reassignTask.owner || userEmail)
+      .trim()
+      .toLowerCase();
+
+    if (newOwner === currentOwner) {
+      alert("The new owner must be different from the current owner.");
+      return;
+    }
+
+    setReassigning(true);
+
+    const { error } = await supabase
+      .from("capas")
+      .update({
+        owner_email: newOwner,
+        owner: newOwner,
+      })
+      .eq("id", reassignTask.id);
+
+    setReassigning(false);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    await supabase.from("audit_logs").insert({
+      entity_type: "capa",
+      entity_id: reassignTask.id,
+      action: "workflow_owner_reassigned",
+      details: `CAPA ownership reassigned from ${currentOwner} to ${newOwner}.`,
+      user_email: userEmail,
+    });
+
+    alert("CAPA ownership reassigned.");
+    closeReassignDialog();
+    fetchTasks();
   };
 
   const signTask = async (task: any, status: "approved" | "rejected") => {
@@ -397,9 +473,18 @@ export default function MyApprovalTasksPage() {
                   </div>
 
                   {ownedCapaWork ? (
-                    <a href={`/capa/${task.id}`} style={primaryLinkStyle}>
-                      Open CAPA
-                    </a>
+                    <div style={buttonRowStyle}>
+                      <a href={`/capa/${task.id}`} style={primaryLinkStyle}>
+                        Open CAPA
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() => openReassignDialog(task)}
+                        style={secondaryActionButtonStyle}
+                      >
+                        Reassign
+                      </button>
+                    </div>
                   ) : capaApproval ? (
                     <a href={getCapaReviewUrl(task)} style={primaryLinkStyle}>
                       Open CAPA Review Package
@@ -468,6 +553,63 @@ export default function MyApprovalTasksPage() {
           })}
         </div>
       )}
+
+      {reassignTask ? (
+        <div style={modalOverlayStyle}>
+          <section style={modalCardStyle}>
+            <h2 style={{ marginTop: 0 }}>Reassign {getRecordDisplay(reassignTask)}</h2>
+
+            <div style={modalFieldStyle}>
+              <label style={modalLabelStyle}>Current Owner</label>
+              <div style={readOnlyValueStyle}>
+                {reassignTask.owner_email || reassignTask.owner || "N/A"}
+              </div>
+            </div>
+
+            <div style={modalFieldStyle}>
+              <label style={modalLabelStyle}>New Owner</label>
+              <select
+                value={reassignEmail}
+                onChange={(event) => setReassignEmail(event.target.value)}
+                style={modalInputStyle}
+              >
+                <option value="">Select user</option>
+                {availableUsers
+                  .filter(
+                    (user) =>
+                      user !==
+                      String(reassignTask.owner_email || reassignTask.owner || "").toLowerCase()
+                  )
+                  .map((user) => (
+                    <option key={user} value={user}>
+                      {user}
+                    </option>
+                  ))}
+              </select>
+            </div>
+
+            <div style={modalActionsStyle}>
+              <button
+                type="button"
+                onClick={closeReassignDialog}
+                disabled={reassigning}
+                style={modalSecondaryButtonStyle}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={completeReassignment}
+                disabled={reassigning}
+                style={modalPrimaryButtonStyle}
+              >
+                {reassigning ? "Reassigning..." : "Reassign"}
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </main>
   );
 }
@@ -695,4 +837,87 @@ const buttonRowStyle: React.CSSProperties = {
   marginTop: "10px",
   display: "flex",
   gap: "8px",
+};
+
+const secondaryActionButtonStyle: React.CSSProperties = {
+  background: "#ffffff",
+  color: "#1d4ed8",
+  border: "1px solid #bfdbfe",
+  borderRadius: "10px",
+  padding: "10px 14px",
+  fontWeight: 800,
+  cursor: "pointer",
+};
+
+const modalOverlayStyle: React.CSSProperties = {
+  position: "fixed",
+  inset: 0,
+  background: "rgba(15, 23, 42, 0.35)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "24px",
+  zIndex: 50,
+};
+
+const modalCardStyle: React.CSSProperties = {
+  width: "100%",
+  maxWidth: "520px",
+  background: "#ffffff",
+  borderRadius: "18px",
+  border: "1px solid #d1d5db",
+  padding: "22px",
+  boxShadow: "0 24px 80px rgba(15, 23, 42, 0.25)",
+};
+
+const modalFieldStyle: React.CSSProperties = {
+  marginBottom: "14px",
+};
+
+const modalLabelStyle: React.CSSProperties = {
+  display: "block",
+  fontWeight: 900,
+  marginBottom: "6px",
+};
+
+const readOnlyValueStyle: React.CSSProperties = {
+  border: "1px solid #e5e7eb",
+  background: "#f8fafc",
+  borderRadius: "10px",
+  padding: "10px",
+  fontWeight: 800,
+};
+
+const modalInputStyle: React.CSSProperties = {
+  width: "100%",
+  border: "1px solid #cbd5e1",
+  borderRadius: "10px",
+  padding: "10px",
+  boxSizing: "border-box",
+};
+
+const modalActionsStyle: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "flex-end",
+  gap: "10px",
+  marginTop: "16px",
+};
+
+const modalSecondaryButtonStyle: React.CSSProperties = {
+  border: "1px solid #d1d5db",
+  background: "#ffffff",
+  borderRadius: "10px",
+  padding: "9px 14px",
+  fontWeight: 900,
+  cursor: "pointer",
+};
+
+const modalPrimaryButtonStyle: React.CSSProperties = {
+  border: "none",
+  background: "#2563eb",
+  color: "#ffffff",
+  borderRadius: "10px",
+  padding: "9px 14px",
+  fontWeight: 900,
+  cursor: "pointer",
 };
