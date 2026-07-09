@@ -539,17 +539,12 @@ function getRecordDisplay(task: any) {
 
   if (directRecord) return directRecord;
 
-  const searchableText = `${task.task_title || ""} ${task.comments || ""} ${task.task_instructions || ""}`;
-  const recordMatch = searchableText.match(/\b(CAPA\d+|NCMR\d+|CC\d+|SCAR\d+|AUD\d+|DOC\d+)\b/i);
+  const title = String(task.task_title || "");
+  const recordMatch = title.match(/\b(CAPA\d+|NCMR\d+|CC\d+|SCAR\d+|AUD\d+|DOC\d+)\b/i);
 
   if (recordMatch?.[1]) {
     return recordMatch[1].toUpperCase();
   }
-
-  if (task.entity_type === "capa") return "CAPA";
-  if (task.entity_type === "ncmr") return "NCMR";
-  if (task.entity_type === "change_control") return "Change Control";
-  if (task.entity_type === "document") return "Document";
 
   return task.entity_id || "Record";
 }
