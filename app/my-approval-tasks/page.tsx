@@ -148,29 +148,7 @@ export default function MyApprovalTasksPage() {
       return task.capa_number || task.id || "CAPA";
     }
 
-    const directRecord =
-      task.record_number ||
-      task.capa_number ||
-      task.entity_number ||
-      task.ncmr_number ||
-      task.change_number ||
-      task.document_number;
-
-    if (directRecord) return directRecord;
-
-    const searchableText = `${task.task_title || ""} ${task.comments || ""} ${task.task_instructions || ""}`;
-    const recordMatch = searchableText.match(/\b(CAPA\d+|NCMR\d+|CC\d+|SCAR\d+|AUD\d+|DOC\d+)\b/i);
-
-    if (recordMatch?.[1]) {
-      return recordMatch[1].toUpperCase();
-    }
-
-    if (task.entity_type === "capa") return "CAPA";
-    if (task.entity_type === "ncmr") return "NCMR";
-    if (task.entity_type === "change_control") return "Change Control";
-    if (task.entity_type === "document") return "Document";
-
-    return "Record";
+    return task.record_number || task.capa_number || task.entity_number || task.entity_id || "Record";
   };
 
   const getTaskTitle = (task: any) => {
