@@ -1415,6 +1415,7 @@ This approval becomes part of the official electronic quality record.`,
       .insert({
         entity_type: "capa",
         entity_id: id,
+        record_number: record?.capa_number || null,
         task_type: "capa_implementation_task",
         task_title: newTask.task_title,
         required_function: newTask.task_title,
