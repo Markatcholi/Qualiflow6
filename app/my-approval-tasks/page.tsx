@@ -47,7 +47,7 @@ export default function MyApprovalTasksPage() {
       .from("capas")
       .select("*")
       .or(
-        `owner_email.eq.${normalizedEmail},owner.eq.${normalizedEmail},created_by.eq.${normalizedEmail}`
+        `owner_email.eq.${normalizedEmail},owner.eq.${normalizedEmail}`
       )
       .not("status", "in", '("closed","cancelled")')
       .order("created_at", { ascending: true });
@@ -233,77 +233,31 @@ export default function MyApprovalTasksPage() {
   const completeReassignment = async () => {
     if (!reassignTask?.id) return;
 
-    const newAssignee = String(reassignEmail || "").trim().toLowerCase();
+    const newOwner = String(reassignEmail || "").trim().toLowerCase();
 
-    if (!newAssignee) {
-      alert("New assignee email is required.");
+    if (!newOwner) {
+      alert("New owner email is required.");
+      return;
+    }
+
+    const currentOwner = String(reassignTask.owner_email || reassignTask.owner || userEmail)
+      .trim()
+      .toLowerCase();
+
+    if (newOwner === currentOwner) {
+      alert("The new owner must be different from the current owner.");
       return;
     }
 
     setReassigning(true);
 
-    if (reassignTask.workspace_item_type === "owned_capa") {
-      const currentOwner = String(
-        reassignTask.owner_email || reassignTask.owner || userEmail
-      )
-        .trim()
-        .toLowerCase();
-
-      if (newAssignee === currentOwner) {
-        alert("The new owner must be different from the current owner.");
-        setReassigning(false);
-        return;
-      }
-
-      const { error } = await supabase
-        .from("capas")
-        .update({
-          owner_email: newAssignee,
-          owner: newAssignee,
-        })
-        .eq("id", reassignTask.id);
-
-      setReassigning(false);
-
-      if (error) {
-        alert(error.message);
-        return;
-      }
-
-      await supabase.from("audit_logs").insert({
-        entity_type: "capa",
-        entity_id: reassignTask.id,
-        action: "workflow_owner_reassigned",
-        details: `CAPA ownership reassigned from ${currentOwner} to ${newAssignee}.`,
-        user_email: userEmail,
-      });
-
-      alert("CAPA ownership reassigned.");
-      closeReassignDialog();
-      fetchTasks();
-      return;
-    }
-
-    const currentAssignee = String(reassignTask.assigned_to_email || "")
-      .trim()
-      .toLowerCase();
-
-    if (newAssignee === currentAssignee) {
-      alert("The new assignee must be different from the current assignee.");
-      setReassigning(false);
-      return;
-    }
-
     const { error } = await supabase
-      .from("approval_tasks")
+      .from("capas")
       .update({
-        assigned_to_email: newAssignee,
-        reassigned_from_email: currentAssignee,
-        reassigned_by_email: userEmail,
-        reassigned_at: new Date().toISOString(),
+        owner_email: newOwner,
+        owner: newOwner,
       })
-      .eq("id", reassignTask.id)
-      .eq("assigned_to_email", userEmail.toLowerCase());
+      .eq("id", reassignTask.id);
 
     setReassigning(false);
 
@@ -313,14 +267,14 @@ export default function MyApprovalTasksPage() {
     }
 
     await supabase.from("audit_logs").insert({
-      entity_type: reassignTask.entity_type,
-      entity_id: reassignTask.entity_id,
-      action: "task_reassigned",
-      details: `Task reassigned from ${currentAssignee} to ${newAssignee}.`,
+      entity_type: "capa",
+      entity_id: reassignTask.id,
+      action: "workflow_owner_reassigned",
+      details: `CAPA ownership reassigned from ${currentOwner} to ${newOwner}.`,
       user_email: userEmail,
     });
 
-    alert("Task reassigned.");
+    alert("CAPA ownership reassigned.");
     closeReassignDialog();
     fetchTasks();
   };
@@ -606,24 +560,14 @@ export default function MyApprovalTasksPage() {
             <h2 style={{ marginTop: 0 }}>Reassign {getRecordDisplay(reassignTask)}</h2>
 
             <div style={modalFieldStyle}>
-              <label style={modalLabelStyle}>
-                {reassignTask.workspace_item_type === "owned_capa"
-                  ? "Current Owner"
-                  : "Current Assignee"}
-              </label>
+              <label style={modalLabelStyle}>Current Owner</label>
               <div style={readOnlyValueStyle}>
-                {reassignTask.workspace_item_type === "owned_capa"
-                  ? reassignTask.owner_email || reassignTask.owner || "N/A"
-                  : reassignTask.assigned_to_email || "N/A"}
+                {reassignTask.owner_email || reassignTask.owner || "N/A"}
               </div>
             </div>
 
             <div style={modalFieldStyle}>
-              <label style={modalLabelStyle}>
-                {reassignTask.workspace_item_type === "owned_capa"
-                  ? "New Owner"
-                  : "New Assignee"}
-              </label>
+              <label style={modalLabelStyle}>New Owner</label>
               <select
                 value={reassignEmail}
                 onChange={(event) => setReassignEmail(event.target.value)}
@@ -634,11 +578,7 @@ export default function MyApprovalTasksPage() {
                   .filter(
                     (user) =>
                       user !==
-                      String(
-                        reassignTask.workspace_item_type === "owned_capa"
-                          ? reassignTask.owner_email || reassignTask.owner || ""
-                          : reassignTask.assigned_to_email || ""
-                      ).toLowerCase()
+                      String(reassignTask.owner_email || reassignTask.owner || "").toLowerCase()
                   )
                   .map((user) => (
                     <option key={user} value={user}>
