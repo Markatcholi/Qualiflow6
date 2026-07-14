@@ -69,7 +69,7 @@ export default function HomePage() {
       .from("capas")
       .select("*")
       .or(
-        `owner_email.eq.${normalizedEmail},owner.eq.${normalizedEmail},created_by.eq.${normalizedEmail}`
+        `owner_email.eq.${normalizedEmail},owner.eq.${normalizedEmail}`
       )
       .not("status", "in", '("closed","cancelled")')
       .order("created_at", { ascending: true });
