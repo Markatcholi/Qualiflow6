@@ -83,6 +83,7 @@ export default function EnterpriseCapaWorkflowPage() {
   const [gateApprovers, setGateApprovers] = useState<CapaGateApprover[]>([]);
   const [approvalTasks, setApprovalTasks] = useState<CapaApprovalTask[]>([]);
   const [approvalMatrixTemplates, setApprovalMatrixTemplates] = useState<any[]>([]);
+  const [availableOwnerUsers, setAvailableOwnerUsers] = useState<string[]>([]);
   const [selectedApprovalMatrixByGate, setSelectedApprovalMatrixByGate] =
     useState<Record<string, string>>({});
   const [manualApproverEmailByGate, setManualApproverEmailByGate] =
@@ -121,6 +122,10 @@ export default function EnterpriseCapaWorkflowPage() {
   const [cancelReason, setCancelReason] = useState("");
   const [cancellationJustification, setCancellationJustification] =
     useState("");
+  const [newOwnerEmail, setNewOwnerEmail] = useState("");
+  const [ownerReassignmentReason, setOwnerReassignmentReason] = useState("");
+  const [ownerSignatureEmail, setOwnerSignatureEmail] = useState("");
+  const [reassigningOwner, setReassigningOwner] = useState(false);
 
   const [newTask, setNewTask] = useState({
     task_type: "corrective_action",
@@ -198,12 +203,27 @@ export default function EnterpriseCapaWorkflowPage() {
   const effectivenessVerificationLocked =
     !effectivenessPlanApproved || closureApproved || !canEditRecord;
 
-  const canApprove = userRole === "approver" || userRole === "vp_quality";
+  const normalizedUserRole = String(userRole || "").trim().toLowerCase();
+  const canApprove =
+    normalizedUserRole === "approver" ||
+    normalizedUserRole === "vp_quality";
+
+  const canAdministrativelyReassign =
+    normalizedUserRole === "admin" ||
+    normalizedUserRole === "administrator" ||
+    normalizedUserRole === "coordinator" ||
+    normalizedUserRole === "vp_quality";
+
+  const canManageOwnerBeforeInitiationApproval =
+    !isLocked &&
+    !initiationApproved &&
+    (isRecordOwner || canAdministrativelyReassign);
 
   const fetchUserRole = async () => {
     const { data: userData } = await supabase.auth.getUser();
     const email = userData?.user?.email || "";
     setUserEmail(email);
+    setOwnerSignatureEmail(email);
 
     if (!email) return;
 
@@ -279,6 +299,25 @@ export default function EnterpriseCapaWorkflowPage() {
     }
 
     setTasks((data as CapaTask[]) || []);
+  };
+
+  const fetchAvailableOwnerUsers = async () => {
+    const { data, error } = await supabase
+      .from("user_roles")
+      .select("user_email")
+      .order("user_email", { ascending: true });
+
+    if (error) {
+      console.warn("Unable to load CAPA owner users:", error.message);
+      setAvailableOwnerUsers([]);
+      return;
+    }
+
+    setAvailableOwnerUsers(
+      (data || [])
+        .map((item: any) => String(item.user_email || "").trim().toLowerCase())
+        .filter(Boolean)
+    );
   };
 
   const fetchApprovalMatrixTemplates = async () => {
@@ -360,6 +399,7 @@ export default function EnterpriseCapaWorkflowPage() {
       fetchUserRole();
       fetchRecord();
       fetchTasks();
+      fetchAvailableOwnerUsers();
       fetchApprovalMatrixTemplates();
       fetchGateApprovers();
       fetchApprovalTasks();
@@ -1843,6 +1883,99 @@ This approval becomes part of the official electronic quality record.`,
   const rejectClosure = async () => {
     await rejectGateApproval("closure", closureApprovalComments);
   };
+  const reassignCapaOwnerBeforeInitiationApproval = async () => {
+    if (!canManageOwnerBeforeInitiationApproval) {
+      alert("You do not have permission to change the CAPA owner.");
+      return;
+    }
+
+    const normalizedNewOwner = String(newOwnerEmail || "").trim().toLowerCase();
+
+    if (!normalizedNewOwner) {
+      alert("Select a new CAPA owner.");
+      return;
+    }
+
+    if (normalizedNewOwner === recordOwnerEmail) {
+      alert("The new owner must be different from the current owner.");
+      return;
+    }
+
+    const { data: validOwner, error: ownerValidationError } = await supabase
+      .from("user_roles")
+      .select("user_email")
+      .eq("user_email", normalizedNewOwner)
+      .maybeSingle();
+
+    if (ownerValidationError) {
+      alert(ownerValidationError.message);
+      return;
+    }
+
+    if (!validOwner?.user_email) {
+      alert(
+        "The selected CAPA owner is not a valid QualiSphere user. Please select a valid user."
+      );
+      return;
+    }
+
+    const administrativeOverride = !isRecordOwner && canAdministrativelyReassign;
+
+    if (administrativeOverride) {
+      if (!ownerReassignmentReason.trim()) {
+        alert("Reason for administrative reassignment is required.");
+        return;
+      }
+
+      if (
+        String(ownerSignatureEmail || "").trim().toLowerCase() !==
+        currentUserEmail
+      ) {
+        alert("Electronic signature email does not match the logged-in user.");
+        return;
+      }
+
+      const confirmed = window.confirm(
+        "Electronic Signature:\n\nI authorize this administrative CAPA ownership reassignment."
+      );
+
+      if (!confirmed) return;
+    }
+
+    setReassigningOwner(true);
+
+    const { error } = await supabase
+      .from("capas")
+      .update({
+        owner: normalizedNewOwner,
+        owner_email: normalizedNewOwner,
+      })
+      .eq("id", id);
+
+    setReassigningOwner(false);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    const auditDetails = administrativeOverride
+      ? `CAPA ownership administratively reassigned from ${recordOwnerEmail || "unassigned"} to ${normalizedNewOwner}. Reason: ${ownerReassignmentReason.trim()}. Electronic signature verified for ${currentUserEmail}.`
+      : `CAPA ownership reassigned from ${recordOwnerEmail || "unassigned"} to ${normalizedNewOwner}.`;
+
+    await addAuditLog(
+      administrativeOverride
+        ? "capa_owner_administratively_reassigned"
+        : "capa_owner_reassigned",
+      auditDetails
+    );
+
+    setNewOwnerEmail("");
+    setOwnerReassignmentReason("");
+    alert("CAPA ownership reassigned.");
+    await fetchRecord();
+  };
+
   const cancelCapa = async () => {
     if (!canEditRecord) return;
 
@@ -1897,11 +2030,8 @@ This approval becomes part of the official electronic quality record.`,
       {
         key: "initiation",
         label: "Initiation",
-        completed: Boolean(
-          record?.problem_description &&
-            record?.capa_justification &&
-            record?.capa_type
-        ),
+        completed: initiationApproved,
+        locked: initiationLocked,
       },
       {
         key: "evaluation",
@@ -2109,13 +2239,84 @@ This approval becomes part of the official electronic quality record.`,
       ) : null}
 
       <section style={summaryGridStyle}>
-        <SummaryCard label="Owner" value={record.owner} />
+        <SummaryCard label="Owner" value={record.owner_email || record.owner} />
         <SummaryCard label="Due Date" value={record.due_date} />
         <SummaryCard label="Supplier" value={record.supplier_name} />
         <SummaryCard label="Linked NCMR" value={record.linked_ncmr_title} />
         <SummaryCard label="CAPA Type" value={record.capa_type || record.capa_classification} />
         <SummaryCard label="Effectiveness" value={record.effectiveness_rating} />
       </section>
+
+      {canManageOwnerBeforeInitiationApproval ? (
+        <section style={ownerManagementStyle} className="no-print">
+          <div>
+            <h3 style={{ margin: "0 0 6px 0" }}>
+              {isRecordOwner ? "Reassign CAPA Owner" : "Administrative Owner Reassignment"}
+            </h3>
+            <p style={{ margin: 0, color: "#64748b" }}>
+              Available only before Initiation Approval. Reassignment changes ownership only and preserves the CAPA workflow and history.
+            </p>
+          </div>
+
+          <div style={ownerManagementGridStyle}>
+            <Field label="New CAPA Owner">
+              <select
+                value={newOwnerEmail}
+                onChange={(event) => setNewOwnerEmail(event.target.value)}
+                style={inputStyle(false)}
+              >
+                <option value="">Select user</option>
+                {availableOwnerUsers
+                  .filter(
+                    (candidate) =>
+                      candidate !== String(recordOwnerEmail || "").toLowerCase()
+                  )
+                  .map((candidate) => (
+                    <option key={candidate} value={candidate}>
+                      {candidate}
+                    </option>
+                  ))}
+              </select>
+            </Field>
+
+            {!isRecordOwner && canAdministrativelyReassign ? (
+              <>
+                <Field label="Reason for Administrative Reassignment">
+                  <textarea
+                    value={ownerReassignmentReason}
+                    onChange={(event) =>
+                      setOwnerReassignmentReason(event.target.value)
+                    }
+                    rows={3}
+                    style={textareaStyle(false)}
+                  />
+                </Field>
+
+                <Field label="Re-enter Your Email for E-Signature">
+                  <input
+                    value={ownerSignatureEmail}
+                    onChange={(event) =>
+                      setOwnerSignatureEmail(event.target.value)
+                    }
+                    style={inputStyle(false)}
+                  />
+                </Field>
+              </>
+            ) : null}
+          </div>
+
+          <div style={buttonRowStyle}>
+            <button
+              type="button"
+              onClick={reassignCapaOwnerBeforeInitiationApproval}
+              disabled={reassigningOwner}
+              style={primaryButtonStyle}
+            >
+              {reassigningOwner ? "Reassigning..." : "Reassign Owner"}
+            </button>
+          </div>
+        </section>
+      ) : null}
 
       <div style={workspaceStyle}>
         <aside style={railStyle} className="no-print">
@@ -4555,4 +4756,19 @@ const evidenceBoxStyle: CSSProperties = {
   background: "#f9fafb",
   borderRadius: "12px",
   border: "1px solid #d1d5db",
+};
+
+const ownerManagementStyle: CSSProperties = {
+  border: "1px solid #bfdbfe",
+  background: "#f8fbff",
+  borderRadius: "14px",
+  padding: "16px",
+  marginBottom: "18px",
+};
+
+const ownerManagementGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+  gap: "12px",
+  marginTop: "14px",
 };
