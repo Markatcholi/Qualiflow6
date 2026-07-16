@@ -219,6 +219,9 @@ export default function EnterpriseCapaWorkflowPage() {
     !initiationApproved &&
     (isRecordOwner || canAdministrativelyReassign);
 
+  const canCancelCapa =
+    !isLocked && (isRecordOwner || canAdministrativelyReassign);
+
   const fetchUserRole = async () => {
     const { data: userData } = await supabase.auth.getUser();
     const email = userData?.user?.email || "";
@@ -1252,7 +1255,7 @@ This approval becomes part of the official electronic quality record.`,
   };
 
   const updateField = (field: string, value: any) => {
-    if (!canEditRecord) {
+    if (!canCancelCapa) {
       alert("Only the CAPA owner can edit this in-process record. Approved or closed records require a controlled workflow return.");
       return;
     }
