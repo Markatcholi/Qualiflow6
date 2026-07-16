@@ -331,7 +331,7 @@ export default function CapaPage() {
 
   const overdueCapas = list.filter((x) => {
     return (
-      x.status !== "closed" &&
+      x.status != "closed" && x.status != "cancelled" &&
       x.due_date &&
       x.due_date <
         new Date()
@@ -655,6 +655,9 @@ export default function CapaPage() {
             <option value="closed">
               Closed
             </option>
+            <option value="cancelled">
+              Canceled
+            </option>
           </select>
 
           <select
@@ -787,8 +790,8 @@ export default function CapaPage() {
                   }}
                 >
                   <Badge
-                    label={item.status === "closed" ? "Closed" : "Open"}
-                    color={item.status === "closed" ? "#15803d" : "#2563eb"}
+                    label={item.status === "closed" ? "Closed" : item.status === "cancelled" ? "Canceled" : "Open"}
+                    color={item.status === "closed" ? "#15803d" : item.status === "cancelled" ? "#6b7280" : "#2563eb"}
                   />
                 </div>
               </div>
