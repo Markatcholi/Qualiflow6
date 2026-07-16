@@ -626,8 +626,8 @@ function EffectivenessPlanSection({ record }: { record: any }) {
           ["Success Criteria", record.effectiveness_success_criteria],
           ["Data to Collect", record.effectiveness_data_to_collect],
           ["Sample Size", record.effectiveness_sample_size],
-          ["Verification Owner", record.effectiveness_owner],
-          ["Verification Due Date", record.effectiveness_due_date],
+          ["Verification Owner", record.verification_owner],
+          ["Verification Due Date", record.verification_due_date],
           ["Required Objective Evidence", record.required_objective_evidence],
         ]}
       />
