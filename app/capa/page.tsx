@@ -117,6 +117,31 @@ export default function CapaPage() {
       return;
     }
 
+    const normalizedOwner = String(owner || "").trim().toLowerCase();
+
+    if (!normalizedOwner) {
+      alert("CAPA owner is required.");
+      return;
+    }
+
+    const { data: ownerUser, error: ownerValidationError } = await supabase
+      .from("user_roles")
+      .select("user_email")
+      .eq("user_email", normalizedOwner)
+      .maybeSingle();
+
+    if (ownerValidationError) {
+      alert(ownerValidationError.message);
+      return;
+    }
+
+    if (!ownerUser?.user_email) {
+      alert(
+        "The selected CAPA owner is not a valid QualiSphere user. Please select a valid user before creating this CAPA."
+      );
+      return;
+    }
+
     const { data, error } = await supabase
       .from("capas")
       .insert({
@@ -129,9 +154,11 @@ export default function CapaPage() {
         product_impact: productImpact || null,
         process_impact: processImpact || null,
         patient_safety_impact: patientImpact || null,
-        owner,
+        owner: normalizedOwner,
+        owner_email: normalizedOwner,
+        created_by: userEmail || normalizedOwner,
         due_date: dueDate || null,
-        status: "pending_initiation_approval",
+        status: "initiation",
         initiation_approval_status: "not_submitted",
         source_type: "direct",
         capa_source: capaSource,
