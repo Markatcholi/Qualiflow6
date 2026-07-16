@@ -399,7 +399,7 @@ export default function CapaApprovalReviewPage() {
       {visibleSections.includes("evaluation") ? <EvaluationSection record={record} /> : null}
       {visibleSections.includes("investigation") ? <InvestigationSection record={record} /> : null}
       {visibleSections.includes("root_cause") ? <RootCauseSection record={record} /> : null}
-      {visibleSections.includes("action_plan") ? <ActionPlanSection record={record} tasks={capaTasks} /> : null}
+      {visibleSections.includes("action_plan") ? <ActionPlanSection record={record} /> : null}
       {visibleSections.includes("implementation") ? <ImplementationSection record={record} tasks={capaTasks} /> : null}
       {visibleSections.includes("effectiveness_plan") ? <EffectivenessPlanSection record={record} /> : null}
       {visibleSections.includes("effectiveness") ? <EffectivenessVerificationSection record={record} /> : null}
@@ -578,20 +578,24 @@ function RootCauseSection({ record }: { record: any }) {
   );
 }
 
-function ActionPlanSection({ record, tasks }: { record: any; tasks: any[] }) {
+function ActionPlanSection({ record }: { record: any }) {
+  const actionPlanLabel =
+    String(record?.capa_type || "").toLowerCase() === "preventive"
+      ? "Preventive Action Plan"
+      : "Corrective Action Plan";
+
   return (
     <ReviewSection title="5. Action Plan Proposal">
       <ReadOnlyGrid
         rows={[
-          ["Action Plan", record.action_plan || record.corrective_action],
+          [actionPlanLabel, record.corrective_action_plan],
           ["Action Owner", record.action_owner],
           ["Action Due Date", record.action_due_date],
-          ["Verification Method", record.action_verification_method],
-          ["Required Resources / Evidence", record.required_resources],
+          ["Verification Method", record.verification_method],
+          ["Required Resources", record.required_resources],
+          ["Required Evidence", record.required_evidence],
         ]}
       />
-
-      <TaskTable tasks={tasks} title="Assigned Action / Implementation Tasks" />
     </ReviewSection>
   );
 }
