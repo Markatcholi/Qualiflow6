@@ -1980,10 +1980,10 @@ This approval becomes part of the official electronic quality record.`,
   };
 
   const cancelCapa = async () => {
-    if (!canEditRecord) return;
-
-    if (!canApprove) {
-      alert("Only an approver or VP Quality can cancel a CAPA.");
+    if (!canCancelCapa) {
+      alert(
+        "Only the CAPA owner, CAPA coordinator, administrator, or VP Quality can cancel this CAPA."
+      );
       return;
     }
 
@@ -3833,8 +3833,8 @@ This approval becomes part of the official electronic quality record.`,
                   <select
                     value={cancelReason}
                     onChange={(e) => setCancelReason(e.target.value)}
-                    disabled={!canEditRecord}
-                    style={inputStyle(!canEditRecord)}
+                    disabled={!canCancelCapa}
+                    style={inputStyle(!canCancelCapa)}
                   >
                     <option value="">Select</option>
                     <option value="initiated_in_error">Initiated in Error</option>
@@ -3849,16 +3849,16 @@ This approval becomes part of the official electronic quality record.`,
                   <textarea
                     value={cancellationJustification}
                     onChange={(e) => setCancellationJustification(e.target.value)}
-                    disabled={!canEditRecord}
+                    disabled={!canCancelCapa}
                     rows={3}
-                    style={textareaStyle(!canEditRecord)}
+                    style={textareaStyle(!canCancelCapa)}
                   />
                 </Field>
               </div>
 
               <button
                 onClick={cancelCapa}
-                disabled={isLocked || !canApprove}
+                disabled={!canCancelCapa}
                 style={dangerButtonStyle}
               >
                 Cancel and Lock CAPA
