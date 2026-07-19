@@ -43,6 +43,27 @@ type TestMethodItem = {
   is_active: boolean | null;
 };
 
+type SecurityRoleDefinition = {
+  code: string;
+  label: string;
+  category: string;
+  description: string | null;
+  is_assignable: boolean | null;
+};
+
+type UserRoleAssignment = {
+  id: string;
+  user_email: string;
+  role_code: string;
+  assigned_by: string | null;
+  assigned_at: string | null;
+};
+
+type UserDirectoryItem = {
+  user_email: string;
+  primary_role: string;
+};
+
 type OosLimitItem = {
   id: string;
   investigation_source: string;
@@ -60,6 +81,14 @@ export default function MasterDataPage() {
   const [loading, setLoading] = useState(true);
   const [userEmail, setUserEmail] = useState("");
   const [userRole, setUserRole] = useState("");
+  const [securityRoles, setSecurityRoles] = useState<SecurityRoleDefinition[]>([]);
+  const [userDirectory, setUserDirectory] = useState<UserDirectoryItem[]>([]);
+  const [userRoleAssignments, setUserRoleAssignments] = useState<UserRoleAssignment[]>([]);
+  const [selectedUserEmail, setSelectedUserEmail] = useState("");
+  const [selectedSecurityRole, setSelectedSecurityRole] = useState("");
+  const [newUserEmail, setNewUserEmail] = useState("");
+  const [newUserPrimaryRole, setNewUserPrimaryRole] = useState("user");
+  const [savingRoleAssignment, setSavingRoleAssignment] = useState(false);
 
   const [partNumbers, setPartNumbers] = useState<SimpleItem[]>([]);
   const [dispositions, setDispositions] = useState<SimpleItem[]>([]);
@@ -164,6 +193,48 @@ export default function MasterDataPage() {
     setLoading(false);
   };
 
+  const fetchUserAdministration = async () => {
+    const [roleDefinitionsRes, usersRes, assignmentsRes] = await Promise.all([
+      supabase
+        .from("security_roles")
+        .select("code,label,category,description,is_assignable")
+        .order("category")
+        .order("label"),
+      supabase
+        .from("user_roles")
+        .select("user_email,role")
+        .order("user_email"),
+      supabase
+        .from("user_security_roles")
+        .select("id,user_email,role_code,assigned_by,assigned_at")
+        .order("user_email")
+        .order("role_code"),
+    ]);
+
+    if (roleDefinitionsRes.error) {
+      console.warn("Unable to load security role definitions:", roleDefinitionsRes.error.message);
+    } else {
+      setSecurityRoles((roleDefinitionsRes.data as SecurityRoleDefinition[]) || []);
+    }
+
+    if (usersRes.error) {
+      console.warn("Unable to load user directory:", usersRes.error.message);
+    } else {
+      setUserDirectory(
+        (usersRes.data || []).map((item: any) => ({
+          user_email: String(item.user_email || "").trim().toLowerCase(),
+          primary_role: String(item.role || "user"),
+        }))
+      );
+    }
+
+    if (assignmentsRes.error) {
+      console.warn("Unable to load role assignments:", assignmentsRes.error.message);
+    } else {
+      setUserRoleAssignments((assignmentsRes.data as UserRoleAssignment[]) || []);
+    }
+  };
+
   const fetchAll = async () => {
     const [
       partRes,
@@ -219,6 +290,7 @@ export default function MasterDataPage() {
   useEffect(() => {
     fetchUserRole();
     fetchAll();
+    fetchUserAdministration();
   }, []);
 
   const insertSimple = async (table: string, code: string, label: string, reset: () => void) => {
@@ -444,6 +516,122 @@ export default function MasterDataPage() {
     fetchAll();
   };
 
+  const isRoleAdministrator =
+    userRole === "vp_quality" ||
+    userRole === "admin" ||
+    userRole === "administrator";
+
+  const addUserToDirectory = async () => {
+    if (!isRoleAdministrator) {
+      alert("Only an Administrator or VP Quality may create user directory records.");
+      return;
+    }
+
+    const normalizedEmail = newUserEmail.trim().toLowerCase();
+    if (!normalizedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+      alert("Enter a valid user email address.");
+      return;
+    }
+
+    const { error } = await supabase.from("user_roles").upsert(
+      {
+        user_email: normalizedEmail,
+        role: newUserPrimaryRole || "user",
+      },
+      { onConflict: "user_email" }
+    );
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    setNewUserEmail("");
+    setNewUserPrimaryRole("user");
+    await fetchUserAdministration();
+  };
+
+  const updatePrimaryRole = async (email: string, role: string) => {
+    if (!isRoleAdministrator) {
+      alert("Only an Administrator or VP Quality may update primary roles.");
+      return;
+    }
+
+    const { error } = await supabase
+      .from("user_roles")
+      .update({ role })
+      .eq("user_email", email);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    await fetchUserAdministration();
+  };
+
+  const assignSecurityRole = async () => {
+    if (!isRoleAdministrator) {
+      alert("Only an Administrator or VP Quality may assign security roles.");
+      return;
+    }
+
+    if (!selectedUserEmail || !selectedSecurityRole) {
+      alert("Select both a user and a security role.");
+      return;
+    }
+
+    setSavingRoleAssignment(true);
+    const { error } = await supabase.from("user_security_roles").upsert(
+      {
+        user_email: selectedUserEmail,
+        role_code: selectedSecurityRole,
+        assigned_by: userEmail,
+        assigned_at: new Date().toISOString(),
+      },
+      { onConflict: "user_email,role_code" }
+    );
+    setSavingRoleAssignment(false);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    setSelectedSecurityRole("");
+    await fetchUserAdministration();
+  };
+
+  const removeSecurityRole = async (assignmentId: string) => {
+    if (!isRoleAdministrator) {
+      alert("Only an Administrator or VP Quality may remove security roles.");
+      return;
+    }
+
+    const confirmed = window.confirm("Remove this security role assignment?");
+    if (!confirmed) return;
+
+    const { error } = await supabase
+      .from("user_security_roles")
+      .delete()
+      .eq("id", assignmentId);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    await fetchUserAdministration();
+  };
+
+  const assignmentsForUser = (email: string) =>
+    userRoleAssignments.filter(
+      (assignment) => assignment.user_email.toLowerCase() === email.toLowerCase()
+    );
+
+  const roleLabel = (roleCode: string) =>
+    securityRoles.find((role) => role.code === roleCode)?.label || roleCode;
+
   const sectionStyle: React.CSSProperties = {
     border: "1px solid #ccc",
     padding: "16px",
@@ -468,11 +656,16 @@ export default function MasterDataPage() {
     return <main style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>Loading...</main>;
   }
 
-  if (!userRole?.includes("approver") && !userRole?.includes("vp_quality")) {
+  if (
+    !userRole?.includes("approver") &&
+    !userRole?.includes("vp_quality") &&
+    userRole !== "admin" &&
+    userRole !== "administrator"
+  ) {
     return (
       <main style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
         <h1>Access Denied</h1>
-        <p>Only approvers or VP of Quality can access Admin Master Data.</p>
+        <p>Only authorized Quality or System Administration roles can access Admin Master Data.</p>
         <p><strong>Logged-in Email:</strong> {userEmail || "none"}</p>
         <p><strong>Your Role:</strong> {userRole || "none"}</p>
         <a href="/dashboard">Back to Dashboard</a>
@@ -556,6 +749,49 @@ export default function MasterDataPage() {
               marginBottom: "8px",
             }}
           >
+            ACCESS GOVERNANCE
+          </div>
+
+          <h2 style={{ marginTop: 0 }}>User Administration</h2>
+
+          <p style={{ color: "#4b5563" }}>
+            Maintain the QualiSphere user directory and assign enterprise or module-specific security roles.
+          </p>
+
+          <a
+            href="#user-administration"
+            style={{
+              display: "inline-block",
+              marginTop: "10px",
+              background: "#7c3aed",
+              color: "white",
+              padding: "10px 14px",
+              borderRadius: "8px",
+              textDecoration: "none",
+              fontWeight: 700,
+            }}
+          >
+            Open User Administration
+          </a>
+        </div>
+
+        <div
+          style={{
+            border: "1px solid #d1d5db",
+            borderRadius: "12px",
+            padding: "20px",
+            background: "#f8fafc",
+          }}
+        >
+          <div
+            style={{
+              fontSize: "12px",
+              fontWeight: 800,
+              color: "#6b7280",
+              letterSpacing: "0.08em",
+              marginBottom: "8px",
+            }}
+          >
             APPROVAL GOVERNANCE
           </div>
 
@@ -581,6 +817,147 @@ export default function MasterDataPage() {
           >
             Open Approval Matrix Templates
           </Link>
+        </div>
+      </div>
+
+      <div id="user-administration" style={sectionStyle}>
+        <h2>User Administration</h2>
+        <p style={{ color: "#4b5563" }}>
+          Security roles are permanent access authorities. CAPA Owner, CAPA Reviewer, and Task Owner remain record-specific workflow assignments and are not granted here.
+        </p>
+
+        {!isRoleAdministrator ? (
+          <p style={{ padding: "12px", background: "#fef3c7", borderRadius: "8px" }}>
+            Read only. Only an Administrator or VP Quality may change user or role assignments.
+          </p>
+        ) : (
+          <>
+            <h3>Add User Directory Record</h3>
+            <input
+              value={newUserEmail}
+              onChange={(event) => setNewUserEmail(event.target.value)}
+              placeholder="User email"
+              style={inputStyle}
+            />
+            <select
+              value={newUserPrimaryRole}
+              onChange={(event) => setNewUserPrimaryRole(event.target.value)}
+              style={selectStyle}
+            >
+              <option value="user">User</option>
+              <option value="approver">Approver</option>
+              <option value="administrator">Administrator</option>
+              <option value="vp_quality">VP Quality</option>
+            </select>
+            <button onClick={addUserToDirectory}>Add / Update User</button>
+
+            <h3 style={{ marginTop: "24px" }}>Assign Security Role</h3>
+            <select
+              value={selectedUserEmail}
+              onChange={(event) => setSelectedUserEmail(event.target.value)}
+              style={selectStyle}
+            >
+              <option value="">Select user</option>
+              {userDirectory.map((user) => (
+                <option key={user.user_email} value={user.user_email}>
+                  {user.user_email}
+                </option>
+              ))}
+            </select>
+            <select
+              value={selectedSecurityRole}
+              onChange={(event) => setSelectedSecurityRole(event.target.value)}
+              style={selectStyle}
+            >
+              <option value="">Select security role</option>
+              {securityRoles
+                .filter((role) => role.is_assignable !== false)
+                .map((role) => (
+                  <option key={role.code} value={role.code}>
+                    {role.label} — {role.category}
+                  </option>
+                ))}
+            </select>
+            <button onClick={assignSecurityRole} disabled={savingRoleAssignment}>
+              {savingRoleAssignment ? "Assigning..." : "Assign Role"}
+            </button>
+          </>
+        )}
+
+        <div style={{ overflowX: "auto", marginTop: "20px" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr>
+                <th style={{ textAlign: "left", padding: "10px", borderBottom: "1px solid #d1d5db" }}>User</th>
+                <th style={{ textAlign: "left", padding: "10px", borderBottom: "1px solid #d1d5db" }}>Primary Role</th>
+                <th style={{ textAlign: "left", padding: "10px", borderBottom: "1px solid #d1d5db" }}>Assigned Security Roles</th>
+              </tr>
+            </thead>
+            <tbody>
+              {userDirectory.map((user) => (
+                <tr key={user.user_email}>
+                  <td style={{ padding: "10px", borderBottom: "1px solid #e5e7eb" }}>{user.user_email}</td>
+                  <td style={{ padding: "10px", borderBottom: "1px solid #e5e7eb" }}>
+                    {isRoleAdministrator ? (
+                      <select
+                        value={user.primary_role}
+                        onChange={(event) => updatePrimaryRole(user.user_email, event.target.value)}
+                        style={{ ...selectStyle, marginBottom: 0 }}
+                      >
+                        <option value="user">User</option>
+                        <option value="approver">Approver</option>
+                        <option value="administrator">Administrator</option>
+                        <option value="vp_quality">VP Quality</option>
+                      </select>
+                    ) : (
+                      user.primary_role
+                    )}
+                  </td>
+                  <td style={{ padding: "10px", borderBottom: "1px solid #e5e7eb" }}>
+                    {assignmentsForUser(user.user_email).length === 0 ? (
+                      <span style={{ color: "#6b7280" }}>No additional roles</span>
+                    ) : (
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                        {assignmentsForUser(user.user_email).map((assignment) => (
+                          <span
+                            key={assignment.id}
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "6px",
+                              background: "#ede9fe",
+                              color: "#5b21b6",
+                              padding: "6px 8px",
+                              borderRadius: "999px",
+                              fontWeight: 700,
+                            }}
+                          >
+                            {roleLabel(assignment.role_code)}
+                            {isRoleAdministrator ? (
+                              <button
+                                onClick={() => removeSecurityRole(assignment.id)}
+                                style={{ border: "none", background: "transparent", cursor: "pointer", fontWeight: 900 }}
+                                title="Remove role"
+                              >
+                                ×
+                              </button>
+                            ) : null}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div style={{ marginTop: "20px", padding: "14px", background: "#f8fafc", borderRadius: "8px" }}>
+          <h3 style={{ marginTop: 0 }}>CAPA Workflow Assignments</h3>
+          <p><strong>CAPA Owner:</strong> Assigned on each CAPA record and transferable through controlled ownership reassignment.</p>
+          <p><strong>CAPA Reviewer:</strong> Assigned per approval gate through the CAPA approval matrix or manual approver selection.</p>
+          <p><strong>Task Owner:</strong> Assigned to individual implementation tasks.</p>
         </div>
       </div>
 
