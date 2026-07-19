@@ -104,6 +104,7 @@ export default function EnterpriseCapaWorkflowPage() {
 
   const [userEmail, setUserEmail] = useState("");
   const [userRole, setUserRole] = useState("");
+  const [userSecurityRoles, setUserSecurityRoles] = useState<string[]>([]);
 
   const [activeSection, setActiveSection] = useState("initiation");
   const [expandedSections, setExpandedSections] = useState<string[]>([
@@ -126,6 +127,10 @@ export default function EnterpriseCapaWorkflowPage() {
   const [ownerReassignmentReason, setOwnerReassignmentReason] = useState("");
   const [ownerSignatureEmail, setOwnerSignatureEmail] = useState("");
   const [reassigningOwner, setReassigningOwner] = useState(false);
+  const [returnTargetPhase, setReturnTargetPhase] = useState("");
+  const [workflowReturnReason, setWorkflowReturnReason] = useState("");
+  const [workflowReturnSignatureEmail, setWorkflowReturnSignatureEmail] = useState("");
+  const [returningWorkflow, setReturningWorkflow] = useState(false);
 
   const [newTask, setNewTask] = useState({
     task_type: "corrective_action",
@@ -204,15 +209,30 @@ export default function EnterpriseCapaWorkflowPage() {
     !effectivenessPlanApproved || closureApproved || !canEditRecord;
 
   const normalizedUserRole = String(userRole || "").trim().toLowerCase();
-  const canApprove =
-    normalizedUserRole === "approver" ||
-    normalizedUserRole === "vp_quality";
+  const normalizedSecurityRoles = userSecurityRoles.map((role) =>
+    String(role || "").trim().toLowerCase()
+  );
+  const hasSecurityRole = (...roles: string[]) =>
+    roles.some(
+      (role) =>
+        normalizedUserRole === role || normalizedSecurityRoles.includes(role)
+    );
 
-  const canAdministrativelyReassign =
-    normalizedUserRole === "admin" ||
-    normalizedUserRole === "administrator" ||
-    normalizedUserRole === "coordinator" ||
-    normalizedUserRole === "vp_quality";
+  const canApprove = hasSecurityRole("approver", "vp_quality");
+
+  const canAdministrativelyReassign = hasSecurityRole(
+    "admin",
+    "administrator",
+    "coordinator",
+    "capa_administrator",
+    "capa_coordinator",
+    "vp_quality"
+  );
+
+  const canReturnCapaWorkflow =
+    !isLocked &&
+    investigationApproved &&
+    hasSecurityRole("capa_administrator", "capa_coordinator", "vp_quality");
 
   const canManageOwnerBeforeInitiationApproval =
     !isLocked &&
@@ -227,16 +247,27 @@ export default function EnterpriseCapaWorkflowPage() {
     const email = userData?.user?.email || "";
     setUserEmail(email);
     setOwnerSignatureEmail(email);
+    setWorkflowReturnSignatureEmail(email);
 
     if (!email) return;
 
-    const { data } = await supabase
-      .from("user_roles")
-      .select("role")
-      .eq("user_email", email)
-      .maybeSingle();
+    const normalizedEmail = email.trim().toLowerCase();
+    const [{ data: legacyRole }, { data: assignedRoles }] = await Promise.all([
+      supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_email", normalizedEmail)
+        .maybeSingle(),
+      supabase
+        .from("user_security_roles")
+        .select("role_code")
+        .eq("user_email", normalizedEmail),
+    ]);
 
-    setUserRole(data?.role || "");
+    setUserRole(legacyRole?.role || "");
+    setUserSecurityRoles(
+      (assignedRoles || []).map((item: any) => String(item.role_code || ""))
+    );
   };
 
   const fetchRecord = async () => {
@@ -1255,7 +1286,7 @@ This approval becomes part of the official electronic quality record.`,
   };
 
   const updateField = (field: string, value: any) => {
-    if (!canCancelCapa) {
+    if (!canEditRecord) {
       alert("Only the CAPA owner can edit this in-process record. Approved or closed records require a controlled workflow return.");
       return;
     }
@@ -1977,6 +2008,251 @@ This approval becomes part of the official electronic quality record.`,
     setOwnerReassignmentReason("");
     alert("CAPA ownership reassigned.");
     await fetchRecord();
+  };
+
+  const returnCapaToPreviousPhase = async () => {
+    if (!canReturnCapaWorkflow) {
+      alert(
+        "Only a CAPA Coordinator, CAPA Administrator, or VP Quality may return an approved CAPA to an earlier phase."
+      );
+      return;
+    }
+
+    if (!returnTargetPhase) {
+      alert("Select the phase to which the CAPA should be returned.");
+      return;
+    }
+
+    if (!workflowReturnReason.trim()) {
+      alert("Workflow return rationale is required.");
+      return;
+    }
+
+    if (
+      String(workflowReturnSignatureEmail || "").trim().toLowerCase() !==
+      currentUserEmail
+    ) {
+      alert("Electronic signature email does not match the logged-in user.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Electronic Signature:\n\nI authorize this controlled CAPA workflow return and understand that downstream approvals and pending work will be invalidated as applicable."
+    );
+
+    if (!confirmed) return;
+
+    const now = new Date().toISOString();
+    const targetConfiguration: Record<string, any> = {
+      initiation: {
+        status: "initiation",
+        initiation_approval_status: "not_submitted",
+        initiation_submitted_by: null,
+        initiation_submitted_at: null,
+        initiation_approved_by: null,
+        initiation_approved_at: null,
+        initiation_approval_comments: null,
+        investigation_approval_status: "not_submitted",
+        action_plan_approval_status: "not_submitted",
+        effectiveness_plan_approval_status: "not_submitted",
+        closure_approval_status: "not_submitted",
+        implemented_by: null,
+        implemented_at: null,
+      },
+      evaluation: {
+        status: "evaluation",
+        investigation_approval_status: "not_submitted",
+        investigation_submitted_by: null,
+        investigation_submitted_at: null,
+        investigation_approved_by: null,
+        investigation_approved_at: null,
+        investigation_approval_comments: null,
+        action_plan_approval_status: "not_submitted",
+        effectiveness_plan_approval_status: "not_submitted",
+        closure_approval_status: "not_submitted",
+        implemented_by: null,
+        implemented_at: null,
+      },
+      investigation: {
+        status: "investigation",
+        investigation_approval_status: "not_submitted",
+        investigation_submitted_by: null,
+        investigation_submitted_at: null,
+        investigation_approved_by: null,
+        investigation_approved_at: null,
+        investigation_approval_comments: null,
+        action_plan_approval_status: "not_submitted",
+        effectiveness_plan_approval_status: "not_submitted",
+        closure_approval_status: "not_submitted",
+        implemented_by: null,
+        implemented_at: null,
+      },
+      action_plan: {
+        status: "action_plan",
+        action_plan_approval_status: "not_submitted",
+        action_plan_submitted_by: null,
+        action_plan_submitted_at: null,
+        action_plan_approved_by: null,
+        action_plan_approved_at: null,
+        action_plan_approval_comments: null,
+        effectiveness_plan_approval_status: "not_submitted",
+        closure_approval_status: "not_submitted",
+        implemented_by: null,
+        implemented_at: null,
+      },
+      implementation: {
+        status: "implementation",
+        effectiveness_plan_approval_status: "not_submitted",
+        effectiveness_plan_submitted_by: null,
+        effectiveness_plan_submitted_at: null,
+        effectiveness_plan_approved_by: null,
+        effectiveness_plan_approved_at: null,
+        effectiveness_plan_approval_comments: null,
+        closure_approval_status: "not_submitted",
+        implemented_by: null,
+        implemented_at: null,
+      },
+      effectiveness_plan: {
+        status: "effectiveness_review",
+        effectiveness_plan_approval_status: "not_submitted",
+        effectiveness_plan_submitted_by: null,
+        effectiveness_plan_submitted_at: null,
+        effectiveness_plan_approved_by: null,
+        effectiveness_plan_approved_at: null,
+        effectiveness_plan_approval_comments: null,
+        closure_approval_status: "not_submitted",
+      },
+      effectiveness_verification: {
+        status: "effectiveness_verification",
+        closure_approval_status: "not_submitted",
+        closure_submitted_by: null,
+        closure_submitted_at: null,
+        closure_approved_by: null,
+        closure_approved_at: null,
+        closure_approval_comments: null,
+      },
+    };
+
+    const updatePayload = targetConfiguration[returnTargetPhase];
+    if (!updatePayload) {
+      alert("The selected return phase is not valid.");
+      return;
+    }
+
+    setReturningWorkflow(true);
+
+    const { error: returnLogError } = await supabase
+      .from("capa_workflow_returns")
+      .insert({
+        capa_id: id,
+        capa_number: record?.capa_number || null,
+        from_status: record?.status || null,
+        target_phase: returnTargetPhase,
+        rationale: workflowReturnReason.trim(),
+        returned_by: currentUserEmail,
+        returned_at: now,
+        signature_meaning:
+          "I authorize this controlled CAPA workflow return and understand that downstream approvals and pending work will be invalidated as applicable.",
+      });
+
+    if (returnLogError) {
+      setReturningWorkflow(false);
+      alert(returnLogError.message);
+      return;
+    }
+
+    const { error: updateError } = await supabase
+      .from("capas")
+      .update({
+        ...updatePayload,
+        is_locked: false,
+        locked_by: null,
+        locked_at: null,
+        workflow_returned_by: currentUserEmail,
+        workflow_returned_at: now,
+        workflow_return_target: returnTargetPhase,
+        workflow_return_reason: workflowReturnReason.trim(),
+      })
+      .eq("id", id);
+
+    if (updateError) {
+      setReturningWorkflow(false);
+      alert(updateError.message);
+      return;
+    }
+
+    const phaseTaskTypes: Record<string, string[]> = {
+      initiation: [
+        "capa_initiation_approval",
+        "capa_investigation_approval",
+        "capa_action_plan_approval",
+        "capa_implementation_task",
+        "capa_effectiveness_plan_approval",
+        "capa_closure_approval",
+      ],
+      evaluation: [
+        "capa_investigation_approval",
+        "capa_action_plan_approval",
+        "capa_implementation_task",
+        "capa_effectiveness_plan_approval",
+        "capa_closure_approval",
+      ],
+      investigation: [
+        "capa_investigation_approval",
+        "capa_action_plan_approval",
+        "capa_implementation_task",
+        "capa_effectiveness_plan_approval",
+        "capa_closure_approval",
+      ],
+      action_plan: [
+        "capa_action_plan_approval",
+        "capa_implementation_task",
+        "capa_effectiveness_plan_approval",
+        "capa_closure_approval",
+      ],
+      implementation: [
+        "capa_implementation_task",
+        "capa_effectiveness_plan_approval",
+        "capa_closure_approval",
+      ],
+      effectiveness_plan: [
+        "capa_effectiveness_plan_approval",
+        "capa_closure_approval",
+      ],
+      effectiveness_verification: ["capa_closure_approval"],
+    };
+
+    const taskTypesToCancel = phaseTaskTypes[returnTargetPhase] || [];
+    if (taskTypesToCancel.length > 0) {
+      await supabase
+        .from("approval_tasks")
+        .update({
+          status: "cancelled",
+          comments: `Cancelled by controlled workflow return to ${returnTargetPhase}. Rationale: ${workflowReturnReason.trim()}`,
+        })
+        .eq("entity_type", "capa")
+        .eq("entity_id", id)
+        .eq("status", "pending")
+        .in("task_type", taskTypesToCancel);
+    }
+
+    await addAuditLog(
+      "capa_workflow_returned",
+      `CAPA returned from ${record?.status || "unknown"} to ${returnTargetPhase}. Rationale: ${workflowReturnReason.trim()}. Electronic signature verified for ${currentUserEmail}.`
+    );
+
+    await notifyCapaOwner({
+      title: "CAPA Returned for Revision",
+      message: `${record?.capa_number || "CAPA"} was returned to ${returnTargetPhase.replaceAll("_", " ")} by ${currentUserEmail}. Rationale: ${workflowReturnReason.trim()}`,
+      notificationType: "capa_workflow_returned",
+      severity: "high",
+    });
+
+    setReturningWorkflow(false);
+    setReturnTargetPhase("");
+    setWorkflowReturnReason("");
+    alert("CAPA returned to the selected phase. Downstream pending tasks were cancelled and the CAPA owner was notified.");
+    await Promise.all([fetchRecord(), fetchApprovalTasks(), fetchTasks()]);
   };
 
   const cancelCapa = async () => {
@@ -3819,6 +4095,75 @@ This approval becomes part of the official electronic quality record.`,
           </WorkflowCard>
 
           
+
+          {canReturnCapaWorkflow ? (
+            <WorkflowCard
+              sectionKey="workflow-return"
+              title="Controlled Workflow Return"
+              subtitle="Return an approved CAPA to an earlier phase. Available only to the CAPA Coordinator, CAPA Administrator, and VP Quality after Investigation approval."
+              expanded={expandedSections.includes("workflow-return")}
+              onToggle={() => toggleSection("workflow-return")}
+            >
+              <div style={lockedNoticeStyle}>
+                Approved history is preserved. The selected phase is reopened, applicable downstream approvals are reset, and pending downstream tasks are cancelled.
+              </div>
+
+              <div style={formGridStyle}>
+                <Field label="Return CAPA To">
+                  <select
+                    value={returnTargetPhase}
+                    onChange={(event) => setReturnTargetPhase(event.target.value)}
+                    style={inputStyle(false)}
+                  >
+                    <option value="">Select phase</option>
+                    <option value="initiation">Initiation</option>
+                    <option value="evaluation">Evaluation</option>
+                    <option value="investigation">Investigation</option>
+                    <option value="action_plan">Action Plan Proposal</option>
+                    <option value="implementation">Implementation</option>
+                    {record?.implemented_by ? (
+                      <option value="effectiveness_plan">Effectiveness Plan</option>
+                    ) : null}
+                    {effectivenessPlanApproved ? (
+                      <option value="effectiveness_verification">Effectiveness Verification</option>
+                    ) : null}
+                  </select>
+                </Field>
+
+                <Field label="Workflow Return Rationale">
+                  <textarea
+                    value={workflowReturnReason}
+                    onChange={(event) => setWorkflowReturnReason(event.target.value)}
+                    rows={4}
+                    style={textareaStyle(false)}
+                    placeholder="Explain why the approved CAPA must be returned and what requires revision."
+                  />
+                </Field>
+
+                <Field label="Electronic Signature Email">
+                  <input
+                    type="email"
+                    value={workflowReturnSignatureEmail}
+                    onChange={(event) =>
+                      setWorkflowReturnSignatureEmail(event.target.value)
+                    }
+                    style={inputStyle(false)}
+                  />
+                  <div style={helperTextStyle}>
+                    Must match the logged-in user: {currentUserEmail || "unknown"}
+                  </div>
+                </Field>
+              </div>
+
+              <button
+                onClick={returnCapaToPreviousPhase}
+                disabled={returningWorkflow}
+                style={buttonDisabledStyle(returningWorkflow)}
+              >
+                {returningWorkflow ? "Returning CAPA..." : "Return CAPA to Selected Phase"}
+              </button>
+            </WorkflowCard>
+          ) : null}
 
           {!isLocked ? (
             <WorkflowCard
