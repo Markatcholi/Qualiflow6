@@ -62,6 +62,9 @@ type UserRoleAssignment = {
 type UserDirectoryItem = {
   user_email: string;
   primary_role: string;
+  job_title: string;
+  department: string;
+  account_status: string;
 };
 
 type OosLimitItem = {
@@ -87,7 +90,9 @@ export default function MasterDataPage() {
   const [selectedUserEmail, setSelectedUserEmail] = useState("");
   const [selectedSecurityRole, setSelectedSecurityRole] = useState("");
   const [newUserEmail, setNewUserEmail] = useState("");
-  const [newUserPrimaryRole, setNewUserPrimaryRole] = useState("user");
+  const [newUserJobTitle, setNewUserJobTitle] = useState("");
+  const [newUserDepartment, setNewUserDepartment] = useState("");
+  const [newUserStatus, setNewUserStatus] = useState("active");
   const [savingRoleAssignment, setSavingRoleAssignment] = useState(false);
 
   const [partNumbers, setPartNumbers] = useState<SimpleItem[]>([]);
@@ -202,7 +207,7 @@ export default function MasterDataPage() {
         .order("label"),
       supabase
         .from("user_roles")
-        .select("user_email,role")
+        .select("user_email,role,job_title,department,account_status")
         .order("user_email"),
       supabase
         .from("user_security_roles")
@@ -224,6 +229,9 @@ export default function MasterDataPage() {
         (usersRes.data || []).map((item: any) => ({
           user_email: String(item.user_email || "").trim().toLowerCase(),
           primary_role: String(item.role || "user"),
+          job_title: String(item.job_title || ""),
+          department: String(item.department || ""),
+          account_status: String(item.account_status || "active"),
         }))
       );
     }
@@ -533,10 +541,17 @@ export default function MasterDataPage() {
       return;
     }
 
+    const existingUser = userDirectory.find(
+      (user) => user.user_email.toLowerCase() === normalizedEmail
+    );
+
     const { error } = await supabase.from("user_roles").upsert(
       {
         user_email: normalizedEmail,
-        role: newUserPrimaryRole || "user",
+        role: existingUser?.primary_role || "user",
+        job_title: newUserJobTitle.trim() || null,
+        department: newUserDepartment.trim() || null,
+        account_status: newUserStatus || "active",
       },
       { onConflict: "user_email" }
     );
@@ -547,19 +562,24 @@ export default function MasterDataPage() {
     }
 
     setNewUserEmail("");
-    setNewUserPrimaryRole("user");
+    setNewUserJobTitle("");
+    setNewUserDepartment("");
+    setNewUserStatus("active");
     await fetchUserAdministration();
   };
 
-  const updatePrimaryRole = async (email: string, role: string) => {
+  const updateUserProfile = async (
+    email: string,
+    changes: { job_title?: string | null; department?: string | null; account_status?: string }
+  ) => {
     if (!isRoleAdministrator) {
-      alert("Only an Administrator or VP Quality may update primary roles.");
+      alert("Only an Administrator or VP Quality may update user profiles.");
       return;
     }
 
     const { error } = await supabase
       .from("user_roles")
-      .update({ role })
+      .update(changes)
       .eq("user_email", email);
 
     if (error) {
@@ -755,7 +775,7 @@ export default function MasterDataPage() {
           <h2 style={{ marginTop: 0 }}>User Administration</h2>
 
           <p style={{ color: "#4b5563" }}>
-            Maintain the QualiSphere user directory and assign enterprise or module-specific security roles.
+            Maintain user profiles, job titles, departments, account status, and module access.
           </p>
 
           <a
@@ -823,7 +843,7 @@ export default function MasterDataPage() {
       <div id="user-administration" style={sectionStyle}>
         <h2>User Administration</h2>
         <p style={{ color: "#4b5563" }}>
-          Security roles are permanent access authorities. CAPA Owner, CAPA Reviewer, and Task Owner remain record-specific workflow assignments and are not granted here.
+          Job title and department describe the person. Module Access controls what the user may do in QualiSphere. CAPA Owner, CAPA Reviewer, and Task Owner remain record-specific workflow assignments and are not granted here.
         </p>
 
         {!isRoleAdministrator ? (
@@ -832,26 +852,36 @@ export default function MasterDataPage() {
           </p>
         ) : (
           <>
-            <h3>Add User Directory Record</h3>
+            <h3>Add or Update User Profile</h3>
             <input
               value={newUserEmail}
               onChange={(event) => setNewUserEmail(event.target.value)}
               placeholder="User email"
               style={inputStyle}
             />
+            <input
+              value={newUserJobTitle}
+              onChange={(event) => setNewUserJobTitle(event.target.value)}
+              placeholder="Job title"
+              style={inputStyle}
+            />
+            <input
+              value={newUserDepartment}
+              onChange={(event) => setNewUserDepartment(event.target.value)}
+              placeholder="Department"
+              style={inputStyle}
+            />
             <select
-              value={newUserPrimaryRole}
-              onChange={(event) => setNewUserPrimaryRole(event.target.value)}
+              value={newUserStatus}
+              onChange={(event) => setNewUserStatus(event.target.value)}
               style={selectStyle}
             >
-              <option value="user">User</option>
-              <option value="approver">Approver</option>
-              <option value="administrator">Administrator</option>
-              <option value="vp_quality">VP Quality</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
             </select>
             <button onClick={addUserToDirectory}>Add / Update User</button>
 
-            <h3 style={{ marginTop: "24px" }}>Assign Security Role</h3>
+            <h3 style={{ marginTop: "24px" }}>Assign Module Access</h3>
             <select
               value={selectedUserEmail}
               onChange={(event) => setSelectedUserEmail(event.target.value)}
@@ -869,7 +899,7 @@ export default function MasterDataPage() {
               onChange={(event) => setSelectedSecurityRole(event.target.value)}
               style={selectStyle}
             >
-              <option value="">Select security role</option>
+              <option value="">Select module access role</option>
               {securityRoles
                 .filter((role) => role.is_assignable !== false)
                 .map((role) => (
@@ -879,7 +909,7 @@ export default function MasterDataPage() {
                 ))}
             </select>
             <button onClick={assignSecurityRole} disabled={savingRoleAssignment}>
-              {savingRoleAssignment ? "Assigning..." : "Assign Role"}
+              {savingRoleAssignment ? "Assigning..." : "Assign Access"}
             </button>
           </>
         )}
@@ -889,8 +919,10 @@ export default function MasterDataPage() {
             <thead>
               <tr>
                 <th style={{ textAlign: "left", padding: "10px", borderBottom: "1px solid #d1d5db" }}>User</th>
-                <th style={{ textAlign: "left", padding: "10px", borderBottom: "1px solid #d1d5db" }}>Primary Role</th>
-                <th style={{ textAlign: "left", padding: "10px", borderBottom: "1px solid #d1d5db" }}>Assigned Security Roles</th>
+                <th style={{ textAlign: "left", padding: "10px", borderBottom: "1px solid #d1d5db" }}>Job Title</th>
+                <th style={{ textAlign: "left", padding: "10px", borderBottom: "1px solid #d1d5db" }}>Department</th>
+                <th style={{ textAlign: "left", padding: "10px", borderBottom: "1px solid #d1d5db" }}>Status</th>
+                <th style={{ textAlign: "left", padding: "10px", borderBottom: "1px solid #d1d5db" }}>Module Access</th>
               </tr>
             </thead>
             <tbody>
@@ -899,23 +931,75 @@ export default function MasterDataPage() {
                   <td style={{ padding: "10px", borderBottom: "1px solid #e5e7eb" }}>{user.user_email}</td>
                   <td style={{ padding: "10px", borderBottom: "1px solid #e5e7eb" }}>
                     {isRoleAdministrator ? (
+                      <input
+                        value={user.job_title}
+                        placeholder="Job title"
+                        onChange={(event) =>
+                          setUserDirectory((current) =>
+                            current.map((item) =>
+                              item.user_email === user.user_email
+                                ? { ...item, job_title: event.target.value }
+                                : item
+                            )
+                          )
+                        }
+                        onBlur={(event) =>
+                          updateUserProfile(user.user_email, {
+                            job_title: event.target.value.trim() || null,
+                          })
+                        }
+                        style={{ ...inputStyle, marginBottom: 0, width: "190px" }}
+                      />
+                    ) : (
+                      user.job_title || "Not specified"
+                    )}
+                  </td>
+                  <td style={{ padding: "10px", borderBottom: "1px solid #e5e7eb" }}>
+                    {isRoleAdministrator ? (
+                      <input
+                        value={user.department}
+                        placeholder="Department"
+                        onChange={(event) =>
+                          setUserDirectory((current) =>
+                            current.map((item) =>
+                              item.user_email === user.user_email
+                                ? { ...item, department: event.target.value }
+                                : item
+                            )
+                          )
+                        }
+                        onBlur={(event) =>
+                          updateUserProfile(user.user_email, {
+                            department: event.target.value.trim() || null,
+                          })
+                        }
+                        style={{ ...inputStyle, marginBottom: 0, width: "160px" }}
+                      />
+                    ) : (
+                      user.department || "Not specified"
+                    )}
+                  </td>
+                  <td style={{ padding: "10px", borderBottom: "1px solid #e5e7eb" }}>
+                    {isRoleAdministrator ? (
                       <select
-                        value={user.primary_role}
-                        onChange={(event) => updatePrimaryRole(user.user_email, event.target.value)}
-                        style={{ ...selectStyle, marginBottom: 0 }}
+                        value={user.account_status}
+                        onChange={(event) =>
+                          updateUserProfile(user.user_email, {
+                            account_status: event.target.value,
+                          })
+                        }
+                        style={{ ...selectStyle, marginBottom: 0, minWidth: "120px" }}
                       >
-                        <option value="user">User</option>
-                        <option value="approver">Approver</option>
-                        <option value="administrator">Administrator</option>
-                        <option value="vp_quality">VP Quality</option>
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
                       </select>
                     ) : (
-                      user.primary_role
+                      user.account_status
                     )}
                   </td>
                   <td style={{ padding: "10px", borderBottom: "1px solid #e5e7eb" }}>
                     {assignmentsForUser(user.user_email).length === 0 ? (
-                      <span style={{ color: "#6b7280" }}>No additional roles</span>
+                      <span style={{ color: "#6b7280" }}>No module access assigned</span>
                     ) : (
                       <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
                         {assignmentsForUser(user.user_email).map((assignment) => (
@@ -954,7 +1038,7 @@ export default function MasterDataPage() {
         </div>
 
         <div style={{ marginTop: "20px", padding: "14px", background: "#f8fafc", borderRadius: "8px" }}>
-          <h3 style={{ marginTop: 0 }}>CAPA Workflow Assignments</h3>
+          <h3 style={{ marginTop: 0 }}>Workflow Assignments</h3>
           <p><strong>CAPA Owner:</strong> Assigned on each CAPA record and transferable through controlled ownership reassignment.</p>
           <p><strong>CAPA Reviewer:</strong> Assigned per approval gate through the CAPA approval matrix or manual approver selection.</p>
           <p><strong>Task Owner:</strong> Assigned to individual implementation tasks.</p>
