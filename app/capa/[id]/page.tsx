@@ -5,7 +5,11 @@ import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "../../../lib/supabaseClient";
-import { createNotification, createRoleNotifications, normalizeEmail } from "../../../lib/notifications";
+import {
+  createNotification,
+  createRoleNotifications,
+  normalizeEmail,
+} from "../../../lib/notifications";
 
 type WorkflowStage = {
   key: string;
@@ -82,20 +86,24 @@ export default function EnterpriseCapaWorkflowPage() {
   const [tasks, setTasks] = useState<CapaTask[]>([]);
   const [gateApprovers, setGateApprovers] = useState<CapaGateApprover[]>([]);
   const [approvalTasks, setApprovalTasks] = useState<CapaApprovalTask[]>([]);
-  const [approvalMatrixTemplates, setApprovalMatrixTemplates] = useState<any[]>([]);
+  const [approvalMatrixTemplates, setApprovalMatrixTemplates] = useState<any[]>(
+    [],
+  );
   const [availableOwnerUsers, setAvailableOwnerUsers] = useState<string[]>([]);
   const [selectedApprovalMatrixByGate, setSelectedApprovalMatrixByGate] =
     useState<Record<string, string>>({});
-  const [manualApproverEmailByGate, setManualApproverEmailByGate] =
-    useState<Record<string, string>>({});
+  const [manualApproverEmailByGate, setManualApproverEmailByGate] = useState<
+    Record<string, string>
+  >({});
   const [manualApproverFunctionByGate, setManualApproverFunctionByGate] =
     useState<Record<string, string>>({});
   const [manualApproverJobTitleByGate, setManualApproverJobTitleByGate] =
     useState<Record<string, string>>({});
   const [manualApproverDueDateByGate, setManualApproverDueDateByGate] =
     useState<Record<string, string>>({});
-  const [manualApproverRoleByGate, setManualApproverRoleByGate] =
-    useState<Record<string, string>>({});
+  const [manualApproverRoleByGate, setManualApproverRoleByGate] = useState<
+    Record<string, string>
+  >({});
   const [manualApproverRequiredByGate, setManualApproverRequiredByGate] =
     useState<Record<string, boolean>>({});
   const [loadingApprovals, setLoadingApprovals] = useState(false);
@@ -117,8 +125,10 @@ export default function EnterpriseCapaWorkflowPage() {
     useState("");
   const [actionPlanApprovalComments, setActionPlanApprovalComments] =
     useState("");
-  const [effectivenessPlanApprovalComments, setEffectivenessPlanApprovalComments] =
-    useState("");
+  const [
+    effectivenessPlanApprovalComments,
+    setEffectivenessPlanApprovalComments,
+  ] = useState("");
   const [closureApprovalComments, setClosureApprovalComments] = useState("");
   const [cancelReason, setCancelReason] = useState("");
   const [cancellationJustification, setCancellationJustification] =
@@ -129,7 +139,8 @@ export default function EnterpriseCapaWorkflowPage() {
   const [reassigningOwner, setReassigningOwner] = useState(false);
   const [returnTargetPhase, setReturnTargetPhase] = useState("");
   const [workflowReturnReason, setWorkflowReturnReason] = useState("");
-  const [workflowReturnSignatureEmail, setWorkflowReturnSignatureEmail] = useState("");
+  const [workflowReturnSignatureEmail, setWorkflowReturnSignatureEmail] =
+    useState("");
   const [returningWorkflow, setReturningWorkflow] = useState(false);
 
   const [newTask, setNewTask] = useState({
@@ -147,13 +158,21 @@ export default function EnterpriseCapaWorkflowPage() {
     record?.status === "closed" ||
     record?.status === "cancelled";
 
-  const currentUserEmail = String(userEmail || "").trim().toLowerCase();
+  const currentUserEmail = String(userEmail || "")
+    .trim()
+    .toLowerCase();
   const recordOwnerEmail =
-    String(record?.owner_email || "").trim().toLowerCase() ||
+    String(record?.owner_email || "")
+      .trim()
+      .toLowerCase() ||
     (String(record?.owner || "").includes("@")
-      ? String(record?.owner || "").trim().toLowerCase()
+      ? String(record?.owner || "")
+          .trim()
+          .toLowerCase()
       : "") ||
-    String(record?.created_by || "").trim().toLowerCase();
+    String(record?.created_by || "")
+      .trim()
+      .toLowerCase();
 
   const isRecordOwner =
     Boolean(currentUserEmail) &&
@@ -172,35 +191,58 @@ export default function EnterpriseCapaWorkflowPage() {
     approvalTasks.some(
       (task) =>
         task.task_type === gateTaskType &&
-        (task.status || "").toLowerCase() === "approved"
+        (task.status || "").toLowerCase() === "approved",
     );
 
-  const initiationApproved =
-    record?.initiation_approval_status === "approved" ||
-    hasApprovedGateTask("capa_initiation_approval");
+  // The CAPA record is the current workflow state of truth. Approval tasks are
+  // used only as a legacy fallback when a gate status has never been populated.
+  // This prevents historical approved tasks from re-locking a phase after a
+  // controlled workflow return resets the current gate to not_submitted.
+  const isGateCurrentlyApproved = (gateStatus: any, gateTaskType: string) => {
+    const normalizedGateStatus = String(gateStatus || "")
+      .trim()
+      .toLowerCase();
 
-  const investigationApproved =
-    record?.investigation_approval_status === "approved" ||
-    hasApprovedGateTask("capa_investigation_approval");
+    if (normalizedGateStatus) {
+      return normalizedGateStatus === "approved";
+    }
 
-  const actionPlanApproved =
-    record?.action_plan_approval_status === "approved" ||
-    hasApprovedGateTask("capa_action_plan_approval");
+    return hasApprovedGateTask(gateTaskType);
+  };
 
-  const effectivenessPlanApproved =
-    record?.effectiveness_plan_approval_status === "approved" ||
-    hasApprovedGateTask("capa_effectiveness_plan_approval");
+  const initiationApproved = isGateCurrentlyApproved(
+    record?.initiation_approval_status,
+    "capa_initiation_approval",
+  );
+
+  const investigationApproved = isGateCurrentlyApproved(
+    record?.investigation_approval_status,
+    "capa_investigation_approval",
+  );
+
+  const actionPlanApproved = isGateCurrentlyApproved(
+    record?.action_plan_approval_status,
+    "capa_action_plan_approval",
+  );
+
+  const effectivenessPlanApproved = isGateCurrentlyApproved(
+    record?.effectiveness_plan_approval_status,
+    "capa_effectiveness_plan_approval",
+  );
 
   const closureApproved = record?.closure_approval_status === "approved";
 
   // Approved workflow sections are immutable by default.
   // A prior section can only be changed later through a controlled workflow return.
   const initiationLocked = initiationApproved || !canEditRecord;
-  const evaluationLocked = !initiationApproved || investigationApproved || !canEditRecord;
-  const investigationLocked = !initiationApproved || investigationApproved || !canEditRecord;
+  const evaluationLocked =
+    !initiationApproved || investigationApproved || !canEditRecord;
+  const investigationLocked =
+    !initiationApproved || investigationApproved || !canEditRecord;
   const actionPlanPlanningLocked =
     !investigationApproved || actionPlanApproved || !canEditRecord;
-  const implementationTaskAssignmentLocked = !actionPlanApproved || !canEditRecord;
+  const implementationTaskAssignmentLocked =
+    !actionPlanApproved || !canEditRecord;
   const implementationLocked =
     !actionPlanApproved || Boolean(record?.implemented_by) || !canEditRecord;
   const effectivenessPlanLocked =
@@ -208,14 +250,18 @@ export default function EnterpriseCapaWorkflowPage() {
   const effectivenessVerificationLocked =
     !effectivenessPlanApproved || closureApproved || !canEditRecord;
 
-  const normalizedUserRole = String(userRole || "").trim().toLowerCase();
+  const normalizedUserRole = String(userRole || "")
+    .trim()
+    .toLowerCase();
   const normalizedSecurityRoles = userSecurityRoles.map((role) =>
-    String(role || "").trim().toLowerCase()
+    String(role || "")
+      .trim()
+      .toLowerCase(),
   );
   const hasSecurityRole = (...roles: string[]) =>
     roles.some(
       (role) =>
-        normalizedUserRole === role || normalizedSecurityRoles.includes(role)
+        normalizedUserRole === role || normalizedSecurityRoles.includes(role),
     );
 
   const canApprove = hasSecurityRole("approver", "vp_quality");
@@ -226,7 +272,7 @@ export default function EnterpriseCapaWorkflowPage() {
     "coordinator",
     "capa_administrator",
     "capa_coordinator",
-    "vp_quality"
+    "vp_quality",
   );
 
   const canReturnCapaWorkflow =
@@ -266,7 +312,7 @@ export default function EnterpriseCapaWorkflowPage() {
 
     setUserRole(legacyRole?.role || "");
     setUserSecurityRoles(
-      (assignedRoles || []).map((item: any) => String(item.role_code || ""))
+      (assignedRoles || []).map((item: any) => String(item.role_code || "")),
     );
   };
 
@@ -292,25 +338,25 @@ export default function EnterpriseCapaWorkflowPage() {
     setInitiationApprovalComments(
       data?.initiation_approval_comments ||
         data?.initiation_rejection_comments ||
-        ""
+        "",
     );
     setInvestigationApprovalComments(
       data?.investigation_approval_comments ||
         data?.investigation_rejection_comments ||
-        ""
+        "",
     );
     setActionPlanApprovalComments(
       data?.action_plan_approval_comments ||
         data?.action_plan_rejection_comments ||
-        ""
+        "",
     );
     setEffectivenessPlanApprovalComments(
       data?.effectiveness_plan_approval_comments ||
         data?.effectiveness_plan_rejection_comments ||
-        ""
+        "",
     );
     setClosureApprovalComments(
-      data?.closure_approval_comments || data?.closure_rejection_comments || ""
+      data?.closure_approval_comments || data?.closure_rejection_comments || "",
     );
     setCancelReason(data?.cancel_reason || "");
     setCancellationJustification(data?.cancellation_justification || "");
@@ -356,7 +402,7 @@ export default function EnterpriseCapaWorkflowPage() {
     if (directoryRes.error || accessRes.error) {
       console.warn(
         "Unable to load CAPA-enabled users:",
-        directoryRes.error?.message || accessRes.error?.message
+        directoryRes.error?.message || accessRes.error?.message,
       );
       setAvailableOwnerUsers([]);
       return;
@@ -364,22 +410,34 @@ export default function EnterpriseCapaWorkflowPage() {
 
     const accessEmails = new Set(
       (accessRes.data || []).map((item: any) =>
-        String(item.user_email || "").trim().toLowerCase()
-      )
+        String(item.user_email || "")
+          .trim()
+          .toLowerCase(),
+      ),
     );
 
     const eligibleUsers = (directoryRes.data || [])
       .filter((item: any) => {
-        const email = String(item.user_email || "").trim().toLowerCase();
-        const primaryRole = String(item.role || "").trim().toLowerCase();
-        const status = String(item.account_status || "active").trim().toLowerCase();
+        const email = String(item.user_email || "")
+          .trim()
+          .toLowerCase();
+        const primaryRole = String(item.role || "")
+          .trim()
+          .toLowerCase();
+        const status = String(item.account_status || "active")
+          .trim()
+          .toLowerCase();
         return (
           status !== "inactive" &&
           (accessEmails.has(email) ||
             ["admin", "administrator", "vp_quality"].includes(primaryRole))
         );
       })
-      .map((item: any) => String(item.user_email || "").trim().toLowerCase())
+      .map((item: any) =>
+        String(item.user_email || "")
+          .trim()
+          .toLowerCase(),
+      )
       .filter(Boolean);
 
     setAvailableOwnerUsers(Array.from(new Set(eligibleUsers)));
@@ -398,9 +456,13 @@ export default function EnterpriseCapaWorkflowPage() {
 
     const capaTemplates = (data || []).filter((template: any) => {
       const templateModule = String(
-        template?.module || template?.module_name || template?.template_module || ""
+        template?.module ||
+          template?.module_name ||
+          template?.template_module ||
+          "",
       ).toLowerCase();
-      const isActive = template?.is_active !== false && template?.active !== false;
+      const isActive =
+        template?.is_active !== false && template?.active !== false;
 
       return (
         isActive &&
@@ -414,9 +476,9 @@ export default function EnterpriseCapaWorkflowPage() {
     setApprovalMatrixTemplates(
       capaTemplates.sort((a: any, b: any) =>
         String(a.template_name || a.name || "").localeCompare(
-          String(b.template_name || b.name || "")
-        )
-      )
+          String(b.template_name || b.name || ""),
+        ),
+      ),
     );
   };
 
@@ -481,7 +543,6 @@ export default function EnterpriseCapaWorkflowPage() {
     });
   };
 
-
   const approvalGateLabels: Record<ApprovalGateKey, string> = {
     initiation: "Initiation Approval",
     investigation: "Investigation Approval",
@@ -492,7 +553,6 @@ export default function EnterpriseCapaWorkflowPage() {
 
   const getCapaApprovalTaskType = (gate: ApprovalGateKey) =>
     `capa_${gate}_approval`;
-
 
   const approvalGateStatusFields: Record<ApprovalGateKey, any> = {
     initiation: {
@@ -573,7 +633,9 @@ export default function EnterpriseCapaWorkflowPage() {
   };
 
   const normalizeApproverEmail = (email: any) =>
-    String(email || "").trim().toLowerCase();
+    String(email || "")
+      .trim()
+      .toLowerCase();
 
   const isValidEmailFormat = (email: string) =>
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
@@ -582,11 +644,13 @@ export default function EnterpriseCapaWorkflowPage() {
     gateApprovers.filter((approver) => approver.approval_gate === gate);
 
   const getGateApprovalTasks = (gate: ApprovalGateKey) =>
-    approvalTasks.filter((task) => task.task_type === getCapaApprovalTaskType(gate));
+    approvalTasks.filter(
+      (task) => task.task_type === getCapaApprovalTaskType(gate),
+    );
 
   const getPendingGateApprovalTasks = (gate: ApprovalGateKey) =>
     getGateApprovalTasks(gate).filter(
-      (task) => (task.status || "pending") === "pending"
+      (task) => (task.status || "pending") === "pending",
     );
 
   const hasActiveGateApprovalTasks = (gate: ApprovalGateKey) =>
@@ -600,15 +664,20 @@ export default function EnterpriseCapaWorkflowPage() {
 
   const validateApproverEmails = async (emails: string[]) => {
     const normalizedEmails = Array.from(
-      new Set(emails.map((email) => normalizeApproverEmail(email)).filter(Boolean))
+      new Set(
+        emails.map((email) => normalizeApproverEmail(email)).filter(Boolean),
+      ),
     );
 
     if (normalizedEmails.length === 0) {
-      return { valid: false, message: "At least one approver email is required." };
+      return {
+        valid: false,
+        message: "At least one approver email is required.",
+      };
     }
 
     const invalidFormatEmails = normalizedEmails.filter(
-      (email) => !isValidEmailFormat(email)
+      (email) => !isValidEmailFormat(email),
     );
 
     if (invalidFormatEmails.length > 0) {
@@ -649,29 +718,33 @@ export default function EnterpriseCapaWorkflowPage() {
 
     const accessEmails = new Set(
       (accessRes.data || []).map((item: any) =>
-        normalizeApproverEmail(item.user_email)
-      )
+        normalizeApproverEmail(item.user_email),
+      ),
     );
 
     const validSystemUsers = new Set(
       (data || [])
         .filter((item: any) => {
           const email = normalizeApproverEmail(item.user_email);
-          const primaryRole = String(item.role || "").trim().toLowerCase();
-          const status = String(item.account_status || "active").trim().toLowerCase();
+          const primaryRole = String(item.role || "")
+            .trim()
+            .toLowerCase();
+          const status = String(item.account_status || "active")
+            .trim()
+            .toLowerCase();
           return (
             status !== "inactive" &&
             (accessEmails.has(email) ||
               ["approver", "admin", "administrator", "vp_quality"].includes(
-                primaryRole
+                primaryRole,
               ))
           );
         })
-        .map((item: any) => normalizeApproverEmail(item.user_email))
+        .map((item: any) => normalizeApproverEmail(item.user_email)),
     );
 
     const unknownUsers = normalizedEmails.filter(
-      (email) => !validSystemUsers.has(email)
+      (email) => !validSystemUsers.has(email),
     );
 
     if (unknownUsers.length > 0) {
@@ -732,7 +805,9 @@ export default function EnterpriseCapaWorkflowPage() {
       approver_function: String(approverFunction || "").trim(),
       approver_job_title: String(approverJobTitle || "Approver").trim(),
       approver_due_date: row?.approver_due_date || row?.due_date || null,
-      approver_role: String(approverRole || approverJobTitle || "Approver").trim(),
+      approver_role: String(
+        approverRole || approverJobTitle || "Approver",
+      ).trim(),
       approval_order: Number(approvalOrder) || index + 1,
       is_required: true,
     };
@@ -759,7 +834,9 @@ export default function EnterpriseCapaWorkflowPage() {
 
       if (data && data.length > 0) {
         return data
-          .map((row: any, index: number) => normalizeMatrixApproverRow(row, index))
+          .map((row: any, index: number) =>
+            normalizeMatrixApproverRow(row, index),
+          )
           .filter((row: any) => row.approver_email);
       }
     }
@@ -769,7 +846,9 @@ export default function EnterpriseCapaWorkflowPage() {
 
   const loadApproversFromMatrix = async (gate: ApprovalGateKey) => {
     if (hasActiveGateApprovalTasks(gate)) {
-      alert("Approvers cannot be changed while this approval package has active tasks.");
+      alert(
+        "Approvers cannot be changed while this approval package has active tasks.",
+      );
       return;
     }
 
@@ -788,7 +867,7 @@ export default function EnterpriseCapaWorkflowPage() {
     }
 
     const validation = await validateApproverEmails(
-      matrixRows.map((row: any) => row.approver_email)
+      matrixRows.map((row: any) => row.approver_email),
     );
 
     if (!validation.valid) {
@@ -797,7 +876,7 @@ export default function EnterpriseCapaWorkflowPage() {
     }
 
     const confirmed = window.confirm(
-      "Load approvers from this approval matrix? Existing configured approvers for this gate will be replaced."
+      "Load approvers from this approval matrix? Existing configured approvers for this gate will be replaced.",
     );
 
     if (!confirmed) return;
@@ -815,7 +894,8 @@ export default function EnterpriseCapaWorkflowPage() {
       approval_gate: gate,
       approver_email: row.approver_email,
       approver_function: row.approver_function || null,
-      approver_job_title: row.approver_job_title || row.approver_role || "Approver",
+      approver_job_title:
+        row.approver_job_title || row.approver_role || "Approver",
       approver_due_date: row.approver_due_date || null,
       approver_role: row.approver_role || row.approver_job_title || "Approver",
       approval_status: "configured",
@@ -826,7 +906,9 @@ export default function EnterpriseCapaWorkflowPage() {
       created_by: userEmail || "unknown",
     }));
 
-    const { error } = await supabase.from("capa_gate_approvers").insert(rowsToInsert);
+    const { error } = await supabase
+      .from("capa_gate_approvers")
+      .insert(rowsToInsert);
 
     if (error) {
       setLoadingApprovals(false);
@@ -835,11 +917,14 @@ export default function EnterpriseCapaWorkflowPage() {
     }
 
     const matrixField = approvalGateStatusFields[gate].matrixId;
-    await supabase.from("capas").update({ [matrixField]: templateId }).eq("id", id);
+    await supabase
+      .from("capas")
+      .update({ [matrixField]: templateId })
+      .eq("id", id);
 
     await addAuditLog(
       "approval_matrix_loaded",
-      `${approvalGateLabels[gate]} loaded ${rowsToInsert.length} approver(s) from approval matrix.`
+      `${approvalGateLabels[gate]} loaded ${rowsToInsert.length} approver(s) from approval matrix.`,
     );
 
     setLoadingApprovals(false);
@@ -848,14 +933,24 @@ export default function EnterpriseCapaWorkflowPage() {
 
   const addManualApprover = async (gate: ApprovalGateKey) => {
     if (hasActiveGateApprovalTasks(gate)) {
-      alert("Approvers cannot be changed while this approval package has active tasks.");
+      alert(
+        "Approvers cannot be changed while this approval package has active tasks.",
+      );
       return;
     }
 
-    const approverEmail = normalizeApproverEmail(manualApproverEmailByGate[gate]);
-    const approverFunction = String(manualApproverFunctionByGate[gate] || "").trim();
-    const approverJobTitle = String(manualApproverJobTitleByGate[gate] || "").trim();
-    const approverDueDate = String(manualApproverDueDateByGate[gate] || "").trim();
+    const approverEmail = normalizeApproverEmail(
+      manualApproverEmailByGate[gate],
+    );
+    const approverFunction = String(
+      manualApproverFunctionByGate[gate] || "",
+    ).trim();
+    const approverJobTitle = String(
+      manualApproverJobTitleByGate[gate] || "",
+    ).trim();
+    const approverDueDate = String(
+      manualApproverDueDateByGate[gate] || "",
+    ).trim();
 
     if (!approverFunction) {
       alert("Function is required.");
@@ -879,7 +974,8 @@ export default function EnterpriseCapaWorkflowPage() {
 
     if (
       getGateApprovers(gate).some(
-        (approver) => normalizeApproverEmail(approver.approver_email) === approverEmail
+        (approver) =>
+          normalizeApproverEmail(approver.approver_email) === approverEmail,
       )
     ) {
       alert("This approver is already configured for this approval gate.");
@@ -897,8 +993,8 @@ export default function EnterpriseCapaWorkflowPage() {
       getGateApprovers(gate).length > 0
         ? Math.max(
             ...getGateApprovers(gate).map(
-              (approver) => Number(approver.approval_order) || 0
-            )
+              (approver) => Number(approver.approval_order) || 0,
+            ),
           ) + 1
         : 1;
 
@@ -924,7 +1020,7 @@ export default function EnterpriseCapaWorkflowPage() {
 
     await addAuditLog(
       "manual_approver_added",
-      `${approvalGateLabels[gate]} approver added: ${approverFunction} / ${approverJobTitle} / ${approverEmail} / due ${approverDueDate}`
+      `${approvalGateLabels[gate]} approver added: ${approverFunction} / ${approverJobTitle} / ${approverEmail} / due ${approverDueDate}`,
     );
 
     setManualApproverEmailByGate((prev) => ({ ...prev, [gate]: "" }));
@@ -937,13 +1033,20 @@ export default function EnterpriseCapaWorkflowPage() {
     await refreshApprovalEngine();
   };
 
-  const removeGateApprover = async (gate: ApprovalGateKey, approverId: string) => {
+  const removeGateApprover = async (
+    gate: ApprovalGateKey,
+    approverId: string,
+  ) => {
     if (hasActiveGateApprovalTasks(gate)) {
-      alert("Approvers cannot be changed while this approval package has active tasks.");
+      alert(
+        "Approvers cannot be changed while this approval package has active tasks.",
+      );
       return;
     }
 
-    const confirmed = window.confirm("Remove this approver from the approval gate?");
+    const confirmed = window.confirm(
+      "Remove this approver from the approval gate?",
+    );
     if (!confirmed) return;
 
     const { error } = await supabase
@@ -958,13 +1061,16 @@ export default function EnterpriseCapaWorkflowPage() {
 
     await addAuditLog(
       "manual_approver_removed",
-      `${approvalGateLabels[gate]} approver removed.`
+      `${approvalGateLabels[gate]} approver removed.`,
     );
 
     await refreshApprovalEngine();
   };
 
-  const submitGateForApproval = async (gate: ApprovalGateKey, comments: string) => {
+  const submitGateForApproval = async (
+    gate: ApprovalGateKey,
+    comments: string,
+  ) => {
     const configuredApprovers = getGateApprovers(gate);
 
     if (configuredApprovers.length === 0) {
@@ -973,7 +1079,7 @@ export default function EnterpriseCapaWorkflowPage() {
     }
 
     const validation = await validateApproverEmails(
-      configuredApprovers.map((approver) => approver.approver_email)
+      configuredApprovers.map((approver) => approver.approver_email),
     );
 
     if (!validation.valid) {
@@ -998,12 +1104,12 @@ export default function EnterpriseCapaWorkflowPage() {
       task_title: `${approver.approver_job_title || approver.approver_role || "Approver"} — ${
         record?.capa_number || "CAPA"
       } ${approvalGateLabels[gate]}`,
-      required_function:
-        `${approver.approver_function || "Function Not Specified"} - ${
-          approver.approver_job_title || approver.approver_role || "Approver"
-        }`,
+      required_function: `${approver.approver_function || "Function Not Specified"} - ${
+        approver.approver_job_title || approver.approver_role || "Approver"
+      }`,
       approver_function: approver.approver_function || null,
-      approver_job_title: approver.approver_job_title || approver.approver_role || null,
+      approver_job_title:
+        approver.approver_job_title || approver.approver_role || null,
       due_date: approver.approver_due_date || null,
       assigned_to_email: normalizeApproverEmail(approver.approver_email),
       assigned_by_email: userEmail || "unknown",
@@ -1062,7 +1168,7 @@ This approval becomes part of the official electronic quality record.`,
 
     await addAuditLog(
       "approval_package_submitted",
-      `${approvalGateLabels[gate]} submitted to My Approval Tasks with ${taskRows.length} approver task(s).`
+      `${approvalGateLabels[gate]} submitted to My Approval Tasks with ${taskRows.length} approver task(s).`,
     );
 
     await refreshApprovalEngine();
@@ -1071,7 +1177,10 @@ This approval becomes part of the official electronic quality record.`,
 
   // CAPA approvals are completed from /my-approval-tasks.
 
-  const approveGateAutomatically = async (gate: ApprovalGateKey, comments: string) => {
+  const approveGateAutomatically = async (
+    gate: ApprovalGateKey,
+    comments: string,
+  ) => {
     const now = new Date().toISOString();
     const fields = approvalGateStatusFields[gate];
 
@@ -1113,7 +1222,7 @@ This approval becomes part of the official electronic quality record.`,
 
     await addAuditLog(
       "approval_gate_auto_approved",
-      `${approvalGateLabels[gate]} completed. All required approval tasks are approved.`
+      `${approvalGateLabels[gate]} completed. All required approval tasks are approved.`,
     );
 
     await notifyCapaOwner({
@@ -1127,7 +1236,10 @@ This approval becomes part of the official electronic quality record.`,
     await refreshApprovalEngine();
   };
 
-  const rejectGateApproval = async (gate: ApprovalGateKey, comments: string) => {
+  const rejectGateApproval = async (
+    gate: ApprovalGateKey,
+    comments: string,
+  ) => {
     if (!canApprove) {
       alert("Only an approver or VP Quality can reject approval packages.");
       return;
@@ -1139,7 +1251,7 @@ This approval becomes part of the official electronic quality record.`,
     }
 
     const confirmed = window.confirm(
-      `Reject ${approvalGateLabels[gate]} and return for revision?`
+      `Reject ${approvalGateLabels[gate]} and return for revision?`,
     );
     if (!confirmed) return;
 
@@ -1175,7 +1287,7 @@ This approval becomes part of the official electronic quality record.`,
 
     await addAuditLog(
       "approval_gate_rejected",
-      `${approvalGateLabels[gate]} rejected. Comments: ${comments}`
+      `${approvalGateLabels[gate]} rejected. Comments: ${comments}`,
     );
 
     await notifyCapaOwner({
@@ -1189,43 +1301,44 @@ This approval becomes part of the official electronic quality record.`,
     await refreshApprovalEngine();
   };
 
-
   const getNormalizedRiskValue = (value: any) =>
-    String(value || "").trim().toLowerCase();
+    String(value || "")
+      .trim()
+      .toLowerCase();
 
   const calculateCapaRiskLevel = (
     severityValue: any,
     occurrenceValue: any,
-    detectionValue: any
+    detectionValue: any,
   ) => {
     const severityScore =
       getNormalizedRiskValue(severityValue) === "critical"
         ? 4
         : getNormalizedRiskValue(severityValue) === "high"
-        ? 3
-        : getNormalizedRiskValue(severityValue) === "medium"
-        ? 2
-        : getNormalizedRiskValue(severityValue) === "low"
-        ? 1
-        : 0;
+          ? 3
+          : getNormalizedRiskValue(severityValue) === "medium"
+            ? 2
+            : getNormalizedRiskValue(severityValue) === "low"
+              ? 1
+              : 0;
 
     const occurrenceScore =
       getNormalizedRiskValue(occurrenceValue) === "high"
         ? 3
         : getNormalizedRiskValue(occurrenceValue) === "medium"
-        ? 2
-        : getNormalizedRiskValue(occurrenceValue) === "low"
-        ? 1
-        : 0;
+          ? 2
+          : getNormalizedRiskValue(occurrenceValue) === "low"
+            ? 1
+            : 0;
 
     const detectionScore =
       getNormalizedRiskValue(detectionValue) === "low_detection"
         ? 3
         : getNormalizedRiskValue(detectionValue) === "medium_detection"
-        ? 2
-        : getNormalizedRiskValue(detectionValue) === "high_detection"
-        ? 1
-        : 0;
+          ? 2
+          : getNormalizedRiskValue(detectionValue) === "high_detection"
+            ? 1
+            : 0;
 
     const totalScore = severityScore + occurrenceScore + detectionScore;
 
@@ -1249,10 +1362,9 @@ This approval becomes part of the official electronic quality record.`,
     return calculateCapaRiskLevel(
       record?.severity,
       record?.occurrence_rating,
-      record?.detection_rating
+      record?.detection_rating,
     );
   };
-
 
   const notifyCapaOwner = async ({
     title,
@@ -1340,21 +1452,21 @@ This approval becomes part of the official electronic quality record.`,
     setExpandedSections((prev) =>
       prev.includes(key)
         ? prev.filter((section) => section !== key)
-        : [...prev, key]
+        : [...prev, key],
     );
   };
 
   const expandSection = (key: string) => {
     setActiveSection(key);
 
-    setExpandedSections((prev) =>
-      prev.includes(key) ? prev : [...prev, key]
-    );
+    setExpandedSections((prev) => (prev.includes(key) ? prev : [...prev, key]));
   };
 
   const updateField = (field: string, value: any) => {
     if (!canEditRecord) {
-      alert("Only the CAPA owner can edit this in-process record. Approved or closed records require a controlled workflow return.");
+      alert(
+        "Only the CAPA owner can edit this in-process record. Approved or closed records require a controlled workflow return.",
+      );
       return;
     }
 
@@ -1391,15 +1503,19 @@ This approval becomes part of the official electronic quality record.`,
 
   const saveAll = async () => {
     if (!canEditRecord) {
-      alert("Only the CAPA owner can edit this in-process record. Approved or closed records require a controlled workflow return.");
+      alert(
+        "Only the CAPA owner can edit this in-process record. Approved or closed records require a controlled workflow return.",
+      );
       return;
     }
 
     const { error } = await supabase
       .from("capas")
       .update({
-        problem_description: record.problem_description || record.problem_statement || null,
-        problem_statement: record.problem_description || record.problem_statement || null,
+        problem_description:
+          record.problem_description || record.problem_statement || null,
+        problem_statement:
+          record.problem_description || record.problem_statement || null,
         capa_type: record.capa_type || null,
         capa_source: record.capa_source || null,
         capa_justification: record.capa_justification || null,
@@ -1453,7 +1569,8 @@ This approval becomes part of the official electronic quality record.`,
         product_quality_impact: record.product_quality_impact || null,
         regulatory_impact: record.regulatory_impact || null,
         risk_rationale: record.risk_rationale || null,
-        risk_assessment: record.risk_rationale || record.risk_assessment || null,
+        risk_assessment:
+          record.risk_rationale || record.risk_assessment || null,
 
         corrective_action_plan: record.corrective_action_plan || null,
         action_plan: record.corrective_action_plan || null,
@@ -1463,8 +1580,10 @@ This approval becomes part of the official electronic quality record.`,
         required_resources: record.required_resources || null,
         required_evidence: record.required_evidence || null,
         verification_method: record.verification_method || null,
-        effectiveness_success_criteria: record.effectiveness_success_criteria || null,
-        effectiveness_data_to_collect: record.effectiveness_data_to_collect || null,
+        effectiveness_success_criteria:
+          record.effectiveness_success_criteria || null,
+        effectiveness_data_to_collect:
+          record.effectiveness_data_to_collect || null,
         effectiveness_sample_size: record.effectiveness_sample_size || null,
         verification_owner: record.verification_owner || null,
         verification_due_date: record.verification_due_date || null,
@@ -1476,7 +1595,9 @@ This approval becomes part of the official electronic quality record.`,
         implementation_details: record.implementation_details || null,
         implementation: record.implementation_details || null,
         implementation_evidence:
-          record.implementation_evidence || record.implementation_details || null,
+          record.implementation_evidence ||
+          record.implementation_details ||
+          null,
 
         monitoring_method: record.monitoring_method || null,
         monitoring_period: record.monitoring_period || null,
@@ -1504,13 +1625,15 @@ This approval becomes part of the official electronic quality record.`,
 
   const createTask = async () => {
     if (!canEditRecord) {
-      alert("Only the CAPA owner can edit this in-process record. Approved or closed records require a controlled workflow return.");
+      alert(
+        "Only the CAPA owner can edit this in-process record. Approved or closed records require a controlled workflow return.",
+      );
       return;
     }
 
     if (implementationTaskAssignmentLocked) {
       alert(
-        "Implementation task assignment is available only after action plan approval."
+        "Implementation task assignment is available only after action plan approval.",
       );
       return;
     }
@@ -1524,7 +1647,7 @@ This approval becomes part of the official electronic quality record.`,
 
     if (!taskOwnerEmail) {
       alert(
-        "Task owner email is required. Notifications are sent to this email address."
+        "Task owner email is required. Notifications are sent to this email address.",
       );
       return;
     }
@@ -1580,7 +1703,7 @@ This approval becomes part of the official electronic quality record.`,
 
     await addAuditLog(
       "task_created",
-      `CAPA implementation task created and routed to My Approval Tasks: ${newTask.task_title}`
+      `CAPA implementation task created and routed to My Approval Tasks: ${newTask.task_title}`,
     );
 
     await createNotification({
@@ -1622,7 +1745,9 @@ This approval becomes part of the official electronic quality record.`,
 
   const updateTaskStatus = async (task: CapaTask, status: string) => {
     if (!canEditRecord) {
-      alert("Only the CAPA owner can edit this in-process record. Approved or closed records require a controlled workflow return.");
+      alert(
+        "Only the CAPA owner can edit this in-process record. Approved or closed records require a controlled workflow return.",
+      );
       return;
     }
 
@@ -1638,15 +1763,20 @@ This approval becomes part of the official electronic quality record.`,
 
     await addAuditLog(
       "task_status_changed",
-      `CAPA task status changed to ${status}: ${task.task_title}`
+      `CAPA task status changed to ${status}: ${task.task_title}`,
     );
 
     if (status === "blocked" || status === "pending_review") {
       await createNotification({
-        userEmail: normalizeEmail(task.owner_email) || normalizeEmail(task.owner),
-        title: status === "blocked" ? "CAPA Task Blocked" : "CAPA Task Pending Review",
+        userEmail:
+          normalizeEmail(task.owner_email) || normalizeEmail(task.owner),
+        title:
+          status === "blocked"
+            ? "CAPA Task Blocked"
+            : "CAPA Task Pending Review",
         message: `Task "${task.task_title}" is now ${status}.`,
-        notificationType: status === "blocked" ? "task_blocked" : "task_pending_review",
+        notificationType:
+          status === "blocked" ? "task_blocked" : "task_pending_review",
         severity: status === "blocked" ? "high" : "medium",
         relatedRecordId: id,
         relatedModule: "capa",
@@ -1672,7 +1802,7 @@ This approval becomes part of the official electronic quality record.`,
     }
 
     const confirmed = window.confirm(
-      "Electronic Signature:\n\nI confirm this CAPA task was completed and completion evidence was reviewed."
+      "Electronic Signature:\n\nI confirm this CAPA task was completed and completion evidence was reviewed.",
     );
 
     if (!confirmed) return;
@@ -1698,7 +1828,7 @@ This approval becomes part of the official electronic quality record.`,
 
     await addAuditLog(
       "task_completed_signed",
-      `CAPA task completed with electronic signature: ${task.task_title}`
+      `CAPA task completed with electronic signature: ${task.task_title}`,
     );
 
     setTaskEvidence((prev) => ({
@@ -1717,7 +1847,9 @@ This approval becomes part of the official electronic quality record.`,
     }
 
     if (!record?.capa_justification) {
-      return alert("CAPA justification is required before initiation approval.");
+      return alert(
+        "CAPA justification is required before initiation approval.",
+      );
     }
 
     if (!record?.capa_type) {
@@ -1726,7 +1858,10 @@ This approval becomes part of the official electronic quality record.`,
 
     await saveAll();
 
-    const submitted = await submitGateForApproval("initiation", initiationApprovalComments);
+    const submitted = await submitGateForApproval(
+      "initiation",
+      initiationApprovalComments,
+    );
     if (submitted) {
       alert("CAPA initiation package submitted for approval.");
     }
@@ -1741,14 +1876,20 @@ This approval becomes part of the official electronic quality record.`,
   const submitInvestigationApproval = async () => {
     if (!canEditRecord) return;
 
-    if (!initiationApproved) return alert("Initiation approval is required before investigation approval.");
+    if (!initiationApproved)
+      return alert(
+        "Initiation approval is required before investigation approval.",
+      );
     if (!record?.scope_summary) return alert("Scope summary is required.");
-    if (!record?.interim_controls_required) return alert("Interim Controls Required must be answered.");
+    if (!record?.interim_controls_required)
+      return alert("Interim Controls Required must be answered.");
     if (
       record?.interim_controls_required === "yes" &&
       !record?.containment_action
     ) {
-      return alert("Interim control description is required when interim controls are required.");
+      return alert(
+        "Interim control description is required when interim controls are required.",
+      );
     }
     if (
       record?.interim_controls_required === "no" &&
@@ -1768,7 +1909,10 @@ This approval becomes part of the official electronic quality record.`,
 
     await saveAll();
 
-    const submitted = await submitGateForApproval("investigation", investigationApprovalComments);
+    const submitted = await submitGateForApproval(
+      "investigation",
+      investigationApprovalComments,
+    );
     if (submitted) {
       alert("Investigation package submitted for approval.");
     }
@@ -1784,7 +1928,9 @@ This approval becomes part of the official electronic quality record.`,
     if (!canEditRecord) return;
 
     if (!investigationApproved) {
-      return alert("Investigation approval is required before action plan approval.");
+      return alert(
+        "Investigation approval is required before action plan approval.",
+      );
     }
 
     if (!record?.corrective_action_plan) {
@@ -1805,7 +1951,10 @@ This approval becomes part of the official electronic quality record.`,
 
     await saveAll();
 
-    const submitted = await submitGateForApproval("action_plan", actionPlanApprovalComments);
+    const submitted = await submitGateForApproval(
+      "action_plan",
+      actionPlanApprovalComments,
+    );
     if (submitted) {
       alert("Action plan package submitted for approval.");
     }
@@ -1822,10 +1971,16 @@ This approval becomes part of the official electronic quality record.`,
     if (!canEditRecord) return;
 
     if (!record?.implemented_by) {
-      return alert("Implementation must be completed before effectiveness plan approval.");
+      return alert(
+        "Implementation must be completed before effectiveness plan approval.",
+      );
     }
 
-    if (!record?.verification_method && !record?.monitoring_method && !record?.effectiveness_plan) {
+    if (
+      !record?.verification_method &&
+      !record?.monitoring_method &&
+      !record?.effectiveness_plan
+    ) {
       return alert("Verification method is required.");
     }
 
@@ -1845,7 +2000,7 @@ This approval becomes part of the official electronic quality record.`,
 
     const submitted = await submitGateForApproval(
       "effectiveness_plan",
-      effectivenessPlanApprovalComments
+      effectivenessPlanApprovalComments,
     );
 
     if (submitted) {
@@ -1854,14 +2009,23 @@ This approval becomes part of the official electronic quality record.`,
   };
 
   const approveEffectivenessPlan = async () => {
-    await completeGateApproval("effectiveness_plan", effectivenessPlanApprovalComments);
+    await completeGateApproval(
+      "effectiveness_plan",
+      effectivenessPlanApprovalComments,
+    );
   };
 
   const rejectEffectivenessPlan = async () => {
-    await rejectGateApproval("effectiveness_plan", effectivenessPlanApprovalComments);
+    await rejectGateApproval(
+      "effectiveness_plan",
+      effectivenessPlanApprovalComments,
+    );
   };
 
-  const completeGateApproval = async (_gate: ApprovalGateKey, _comments: string) => {
+  const completeGateApproval = async (
+    _gate: ApprovalGateKey,
+    _comments: string,
+  ) => {
     alert("CAPA approvals are completed from My Approval Tasks.");
   };
 
@@ -1870,7 +2034,7 @@ This approval becomes part of the official electronic quality record.`,
       alert(
         record?.implemented_by
           ? "Implementation is already complete and locked."
-          : "Implementation is locked until action plan approval is complete."
+          : "Implementation is locked until action plan approval is complete.",
       );
       return;
     }
@@ -1907,7 +2071,7 @@ This approval becomes part of the official electronic quality record.`,
 
     await addAuditLog(
       "implementation_completed",
-      "CAPA implementation completed and moved to effectiveness review."
+      "CAPA implementation completed and moved to effectiveness review.",
     );
 
     alert("Implementation marked complete.");
@@ -1942,7 +2106,9 @@ This approval becomes part of the official electronic quality record.`,
     }
 
     if (!tasksComplete) {
-      alert("All CAPA execution tasks must be completed before closure approval.");
+      alert(
+        "All CAPA execution tasks must be completed before closure approval.",
+      );
       return;
     }
 
@@ -1960,14 +2126,17 @@ This approval becomes part of the official electronic quality record.`,
       !record.effectiveness_followup_action
     ) {
       alert(
-        "Follow-up action is required for partially effective or not effective CAPAs."
+        "Follow-up action is required for partially effective or not effective CAPAs.",
       );
       return;
     }
 
     await saveAll();
 
-    const submitted = await submitGateForApproval("closure", closureApprovalComments);
+    const submitted = await submitGateForApproval(
+      "closure",
+      closureApprovalComments,
+    );
     if (submitted) {
       alert("CAPA submitted for closure approval.");
     }
@@ -1975,7 +2144,9 @@ This approval becomes part of the official electronic quality record.`,
 
   const approveClosure = async () => {
     if (!tasksComplete) {
-      alert("All CAPA execution tasks must be completed before closure approval.");
+      alert(
+        "All CAPA execution tasks must be completed before closure approval.",
+      );
       return;
     }
 
@@ -1990,7 +2161,9 @@ This approval becomes part of the official electronic quality record.`,
       return;
     }
 
-    const normalizedNewOwner = String(newOwnerEmail || "").trim().toLowerCase();
+    const normalizedNewOwner = String(newOwnerEmail || "")
+      .trim()
+      .toLowerCase();
 
     if (!normalizedNewOwner) {
       alert("Select a new CAPA owner.");
@@ -2015,12 +2188,13 @@ This approval becomes part of the official electronic quality record.`,
 
     if (!validOwner?.user_email) {
       alert(
-        "The selected CAPA owner is not a valid QualiSphere user. Please select a valid user."
+        "The selected CAPA owner is not a valid QualiSphere user. Please select a valid user.",
       );
       return;
     }
 
-    const administrativeOverride = !isRecordOwner && canAdministrativelyReassign;
+    const administrativeOverride =
+      !isRecordOwner && canAdministrativelyReassign;
 
     if (administrativeOverride) {
       if (!ownerReassignmentReason.trim()) {
@@ -2029,15 +2203,16 @@ This approval becomes part of the official electronic quality record.`,
       }
 
       if (
-        String(ownerSignatureEmail || "").trim().toLowerCase() !==
-        currentUserEmail
+        String(ownerSignatureEmail || "")
+          .trim()
+          .toLowerCase() !== currentUserEmail
       ) {
         alert("Electronic signature email does not match the logged-in user.");
         return;
       }
 
       const confirmed = window.confirm(
-        "Electronic Signature:\n\nI authorize this administrative CAPA ownership reassignment."
+        "Electronic Signature:\n\nI authorize this administrative CAPA ownership reassignment.",
       );
 
       if (!confirmed) return;
@@ -2068,7 +2243,7 @@ This approval becomes part of the official electronic quality record.`,
       administrativeOverride
         ? "capa_owner_administratively_reassigned"
         : "capa_owner_reassigned",
-      auditDetails
+      auditDetails,
     );
 
     setNewOwnerEmail("");
@@ -2080,7 +2255,7 @@ This approval becomes part of the official electronic quality record.`,
   const returnCapaToPreviousPhase = async () => {
     if (!canReturnCapaWorkflow) {
       alert(
-        "Only a CAPA Coordinator, CAPA Administrator, or VP Quality may return an approved CAPA to an earlier phase."
+        "Only a CAPA Coordinator, CAPA Administrator, or VP Quality may return an approved CAPA to an earlier phase.",
       );
       return;
     }
@@ -2096,20 +2271,24 @@ This approval becomes part of the official electronic quality record.`,
     }
 
     if (
-      String(workflowReturnSignatureEmail || "").trim().toLowerCase() !==
-      currentUserEmail
+      String(workflowReturnSignatureEmail || "")
+        .trim()
+        .toLowerCase() !== currentUserEmail
     ) {
       alert("Electronic signature email does not match the logged-in user.");
       return;
     }
 
     const confirmed = window.confirm(
-      "Electronic Signature:\n\nI authorize this controlled CAPA workflow return and understand that downstream approvals and pending work will be invalidated as applicable."
+      "Electronic Signature:\n\nI authorize this controlled CAPA workflow return and understand that downstream approvals and pending work will be invalidated as applicable.",
     );
 
     if (!confirmed) return;
 
     const now = new Date().toISOString();
+    const signatureDateDisplay = new Date(now).toLocaleString();
+    const workflowReturnSignatureMeaning = `I authorize this controlled CAPA workflow return and understand that downstream approvals and pending work will be invalidated as applicable. Electronically signed by ${currentUserEmail} on ${signatureDateDisplay}.`;
+
     const targetConfiguration: Record<string, any> = {
       initiation: {
         status: "initiation",
@@ -2218,8 +2397,7 @@ This approval becomes part of the official electronic quality record.`,
         rationale: workflowReturnReason.trim(),
         returned_by: currentUserEmail,
         returned_at: now,
-        signature_meaning:
-          "I authorize this controlled CAPA workflow return and understand that downstream approvals and pending work will be invalidated as applicable.",
+        signature_meaning: workflowReturnSignatureMeaning,
       });
 
     if (returnLogError) {
@@ -2305,7 +2483,7 @@ This approval becomes part of the official electronic quality record.`,
 
     await addAuditLog(
       "capa_workflow_returned",
-      `CAPA returned from ${record?.status || "unknown"} to ${returnTargetPhase}. Rationale: ${workflowReturnReason.trim()}. Electronic signature verified for ${currentUserEmail}.`
+      `CAPA returned from ${record?.status || "unknown"} to ${returnTargetPhase}. Rationale: ${workflowReturnReason.trim()}. Electronic signature verified for ${currentUserEmail}. Signature date: ${signatureDateDisplay} (${now}).`,
     );
 
     await notifyCapaOwner({
@@ -2318,14 +2496,16 @@ This approval becomes part of the official electronic quality record.`,
     setReturningWorkflow(false);
     setReturnTargetPhase("");
     setWorkflowReturnReason("");
-    alert("CAPA returned to the selected phase. Downstream pending tasks were cancelled and the CAPA owner was notified.");
+    alert(
+      "CAPA returned to the selected phase. Downstream pending tasks were cancelled and the CAPA owner was notified.",
+    );
     await Promise.all([fetchRecord(), fetchApprovalTasks(), fetchTasks()]);
   };
 
   const cancelCapa = async () => {
     if (!canCancelCapa) {
       alert(
-        "Only the CAPA owner, CAPA coordinator, administrator, or VP Quality can cancel this CAPA."
+        "Only the CAPA owner, CAPA coordinator, administrator, or VP Quality can cancel this CAPA.",
       );
       return;
     }
@@ -2336,7 +2516,7 @@ This approval becomes part of the official electronic quality record.`,
     }
 
     const confirmed = window.confirm(
-      "Cancel this CAPA and lock the record?\n\nCancelled CAPAs remain part of the quality record and cannot be edited after cancellation."
+      "Cancel this CAPA and lock the record?\n\nCancelled CAPAs remain part of the quality record and cannot be edited after cancellation.",
     );
 
     if (!confirmed) return;
@@ -2364,7 +2544,7 @@ This approval becomes part of the official electronic quality record.`,
 
     await addAuditLog(
       "capa_cancelled_locked",
-      `CAPA cancelled and locked. Reason: ${cancelReason}. Justification: ${cancellationJustification}`
+      `CAPA cancelled and locked. Reason: ${cancelReason}. Justification: ${cancellationJustification}`,
     );
 
     alert("CAPA cancelled and locked.");
@@ -2384,12 +2564,12 @@ This approval becomes part of the official electronic quality record.`,
         label: "Evaluation",
         completed: Boolean(
           record?.scope_summary &&
-            record?.interim_controls_required &&
-            (record?.interim_controls_required === "yes"
-              ? record?.containment_action
-              : record?.no_interim_controls_justification) &&
-            record?.severity &&
-            getEffectiveRiskLevel()
+          record?.interim_controls_required &&
+          (record?.interim_controls_required === "yes"
+            ? record?.containment_action
+            : record?.no_interim_controls_justification) &&
+          record?.severity &&
+          getEffectiveRiskLevel(),
         ),
         locked: evaluationLocked,
       },
@@ -2397,7 +2577,7 @@ This approval becomes part of the official electronic quality record.`,
         key: "investigation",
         label: "Investigation",
         completed: Boolean(
-          record?.investigation_findings || record?.investigation_summary
+          record?.investigation_findings || record?.investigation_summary,
         ),
         locked: investigationLocked,
       },
@@ -2416,19 +2596,25 @@ This approval becomes part of the official electronic quality record.`,
       {
         key: "implementation",
         label: "Implementation",
-        completed: Boolean(record?.implemented_by || record?.implementation_details),
+        completed: Boolean(
+          record?.implemented_by || record?.implementation_details,
+        ),
         locked: implementationLocked,
       },
       {
         key: "effectivenessplan",
         label: "Effectiveness Plan",
-        completed: Boolean(record?.verification_method && record?.effectiveness_success_criteria),
+        completed: Boolean(
+          record?.verification_method && record?.effectiveness_success_criteria,
+        ),
         locked: effectivenessPlanLocked,
       },
       {
         key: "effectiveness",
         label: "Effectiveness Verification",
-        completed: Boolean(record?.effectiveness_rating && record?.effectiveness_check),
+        completed: Boolean(
+          record?.effectiveness_rating && record?.effectiveness_check,
+        ),
         locked: effectivenessVerificationLocked,
       },
     ],
@@ -2447,7 +2633,7 @@ This approval becomes part of the official electronic quality record.`,
       effectivenessVerificationLocked,
       tasks,
       tasksComplete,
-    ]
+    ],
   );
 
   const workflowHealth = getWorkflowHealth(record, overdueTasks.length);
@@ -2495,10 +2681,9 @@ This approval becomes part of the official electronic quality record.`,
             {record.title || "Untitled CAPA"}
           </h1>
           <p style={subtleText}>
-            Initiation → Evaluation → Investigation →
-            Root Cause Determination → Action Plan →
-            Implementation → Effectiveness Plan →
-            Effectiveness Verification → Closure.
+            Initiation → Evaluation → Investigation → Root Cause Determination →
+            Action Plan → Implementation → Effectiveness Plan → Effectiveness
+            Verification → Closure.
           </p>
         </div>
 
@@ -2540,7 +2725,10 @@ This approval becomes part of the official electronic quality record.`,
 
         <div style={badgeRowStyle}>
           <Badge label={record.status || "unknown"} color="#2563eb" />
-          <Badge label={`Risk: ${record.risk_level || "Not Rated"}`} color={riskColor} />
+          <Badge
+            label={`Risk: ${record.risk_level || "Not Rated"}`}
+            color={riskColor}
+          />
           <Badge
             label={`Severity: ${record.severity || "Not Rated"}`}
             color={getRiskColor(record.severity)}
@@ -2569,9 +2757,7 @@ This approval becomes part of the official electronic quality record.`,
       {isLocked ? (
         <section style={lockedBannerStyle}>
           🔒 CAPA RECORD LOCKED —{" "}
-          {record.status === "cancelled"
-            ? "Cancelled"
-            : "Approved and closed"}{" "}
+          {record.status === "cancelled" ? "Cancelled" : "Approved and closed"}{" "}
           quality record.
         </section>
       ) : null}
@@ -2589,18 +2775,27 @@ This approval becomes part of the official electronic quality record.`,
         <SummaryCard label="Due Date" value={record.due_date} />
         <SummaryCard label="Supplier" value={record.supplier_name} />
         <SummaryCard label="Linked NCMR" value={record.linked_ncmr_title} />
-        <SummaryCard label="CAPA Type" value={record.capa_type || record.capa_classification} />
-        <SummaryCard label="Effectiveness" value={record.effectiveness_rating} />
+        <SummaryCard
+          label="CAPA Type"
+          value={record.capa_type || record.capa_classification}
+        />
+        <SummaryCard
+          label="Effectiveness"
+          value={record.effectiveness_rating}
+        />
       </section>
 
       {canManageOwnerBeforeInitiationApproval ? (
         <section style={ownerManagementStyle} className="no-print">
           <div>
             <h3 style={{ margin: "0 0 6px 0" }}>
-              {isRecordOwner ? "Reassign CAPA Owner" : "Administrative Owner Reassignment"}
+              {isRecordOwner
+                ? "Reassign CAPA Owner"
+                : "Administrative Owner Reassignment"}
             </h3>
             <p style={{ margin: 0, color: "#64748b" }}>
-              Available only before Initiation Approval. Reassignment changes ownership only and preserves the CAPA workflow and history.
+              Available only before Initiation Approval. Reassignment changes
+              ownership only and preserves the CAPA workflow and history.
             </p>
           </div>
 
@@ -2615,7 +2810,8 @@ This approval becomes part of the official electronic quality record.`,
                 {availableOwnerUsers
                   .filter(
                     (candidate) =>
-                      candidate !== String(recordOwnerEmail || "").toLowerCase()
+                      candidate !==
+                      String(recordOwnerEmail || "").toLowerCase(),
                   )
                   .map((candidate) => (
                     <option key={candidate} value={candidate}>
@@ -2678,16 +2874,16 @@ This approval becomes part of the official electronic quality record.`,
                   stage.completed
                     ? "#15803d"
                     : stage.locked
-                    ? "#9ca3af"
-                    : "#d97706"
+                      ? "#9ca3af"
+                      : "#d97706"
                 }`,
                 background: activeSection === stage.key ? "#eff6ff" : "white",
               }}
             >
               <div style={{ fontWeight: 700 }}>
                 {expandedSections.includes(stage.key) ? "▼" : "▶"}{" "}
-                {stage.completed ? "✓" : stage.locked ? "🔒" : "•"}{" "}
-                {index + 1}. {stage.label}
+                {stage.completed ? "✓" : stage.locked ? "🔒" : "•"} {index + 1}.{" "}
+                {stage.label}
               </div>
               <div
                 style={{
@@ -2699,8 +2895,8 @@ This approval becomes part of the official electronic quality record.`,
                 {stage.completed
                   ? "Complete"
                   : stage.locked
-                  ? "Locked"
-                  : stage.status || "Pending"}
+                    ? "Locked"
+                    : stage.status || "Pending"}
               </div>
             </button>
           ))}
@@ -2745,7 +2941,9 @@ This approval becomes part of the official electronic quality record.`,
 
             <Field label="Problem Statement">
               <textarea
-                value={record.problem_description || record.problem_statement || ""}
+                value={
+                  record.problem_description || record.problem_statement || ""
+                }
                 onChange={(e) =>
                   updateField("problem_description", e.target.value)
                 }
@@ -2772,8 +2970,12 @@ This approval becomes part of the official electronic quality record.`,
             <div style={formGridStyle}>
               <Field label="Product Impact">
                 <textarea
-                  value={record.product_impact || record.product_quality_impact || ""}
-                  onChange={(e) => updateField("product_impact", e.target.value)}
+                  value={
+                    record.product_impact || record.product_quality_impact || ""
+                  }
+                  onChange={(e) =>
+                    updateField("product_impact", e.target.value)
+                  }
                   onBlur={(e) => saveField("product_impact", e.target.value)}
                   disabled={initiationLocked}
                   rows={3}
@@ -2784,7 +2986,9 @@ This approval becomes part of the official electronic quality record.`,
               <Field label="Process Impact">
                 <textarea
                   value={record.process_impact || record.affected_process || ""}
-                  onChange={(e) => updateField("process_impact", e.target.value)}
+                  onChange={(e) =>
+                    updateField("process_impact", e.target.value)
+                  }
                   onBlur={(e) => saveField("process_impact", e.target.value)}
                   disabled={initiationLocked}
                   rows={3}
@@ -2808,67 +3012,103 @@ This approval becomes part of the official electronic quality record.`,
               </Field>
             </div>
 
-
-<ApprovalInlinePanel
-            sectionKey="initiationapproval-inline"
-            gateKey="initiation"
-            title="Approvers / Submit Initiation for Approval"
-            description="Quality approval confirms the CAPA is justified and may proceed to evaluation and investigation."
-            status={record.initiation_approval_status || "not_submitted"}
-            comments={initiationApprovalComments}
-            setComments={setInitiationApprovalComments}
-            submittedBy={record.initiation_submitted_by}
-            submittedAt={record.initiation_submitted_at}
-            approvedBy={record.initiation_approved_by}
-            approvedAt={record.initiation_approved_at}
-            rejectedBy={record.initiation_rejected_by}
-            rejectedAt={record.initiation_rejected_at}
-            disabled={!canEditRecord}
-            canApprove={canApprove}
-            expanded={expandedSections.includes("initiationapproval")}
-            onToggle={() => toggleSection("initiationapproval")}
-            approvalMatrixTemplates={approvalMatrixTemplates}
-            selectedApprovalMatrixId={selectedApprovalMatrixByGate["initiation"] || ""}
-            setSelectedApprovalMatrixId={(value) =>
-              setSelectedApprovalMatrixByGate((prev) => ({ ...prev, initiation: value }))
-            }
-            manualApproverEmail={manualApproverEmailByGate["initiation"] || ""}
-            setManualApproverEmail={(value) =>
-              setManualApproverEmailByGate((prev) => ({ ...prev, initiation: value }))
-            }
-              manualApproverFunction={manualApproverFunctionByGate["initiation"] || ""}
+            <ApprovalInlinePanel
+              sectionKey="initiationapproval-inline"
+              gateKey="initiation"
+              title="Approvers / Submit Initiation for Approval"
+              description="Quality approval confirms the CAPA is justified and may proceed to evaluation and investigation."
+              status={record.initiation_approval_status || "not_submitted"}
+              comments={initiationApprovalComments}
+              setComments={setInitiationApprovalComments}
+              submittedBy={record.initiation_submitted_by}
+              submittedAt={record.initiation_submitted_at}
+              approvedBy={record.initiation_approved_by}
+              approvedAt={record.initiation_approved_at}
+              rejectedBy={record.initiation_rejected_by}
+              rejectedAt={record.initiation_rejected_at}
+              disabled={!canEditRecord}
+              canApprove={canApprove}
+              expanded={expandedSections.includes("initiationapproval")}
+              onToggle={() => toggleSection("initiationapproval")}
+              approvalMatrixTemplates={approvalMatrixTemplates}
+              selectedApprovalMatrixId={
+                selectedApprovalMatrixByGate["initiation"] || ""
+              }
+              setSelectedApprovalMatrixId={(value) =>
+                setSelectedApprovalMatrixByGate((prev) => ({
+                  ...prev,
+                  initiation: value,
+                }))
+              }
+              manualApproverEmail={
+                manualApproverEmailByGate["initiation"] || ""
+              }
+              setManualApproverEmail={(value) =>
+                setManualApproverEmailByGate((prev) => ({
+                  ...prev,
+                  initiation: value,
+                }))
+              }
+              manualApproverFunction={
+                manualApproverFunctionByGate["initiation"] || ""
+              }
               setManualApproverFunction={(value) =>
-                setManualApproverFunctionByGate((prev) => ({ ...prev, initiation: value }))
+                setManualApproverFunctionByGate((prev) => ({
+                  ...prev,
+                  initiation: value,
+                }))
               }
-              manualApproverJobTitle={manualApproverJobTitleByGate["initiation"] || ""}
+              manualApproverJobTitle={
+                manualApproverJobTitleByGate["initiation"] || ""
+              }
               setManualApproverJobTitle={(value) =>
-                setManualApproverJobTitleByGate((prev) => ({ ...prev, initiation: value }))
+                setManualApproverJobTitleByGate((prev) => ({
+                  ...prev,
+                  initiation: value,
+                }))
               }
-              manualApproverDueDate={manualApproverDueDateByGate["initiation"] || ""}
+              manualApproverDueDate={
+                manualApproverDueDateByGate["initiation"] || ""
+              }
               setManualApproverDueDate={(value) =>
-                setManualApproverDueDateByGate((prev) => ({ ...prev, initiation: value }))
+                setManualApproverDueDateByGate((prev) => ({
+                  ...prev,
+                  initiation: value,
+                }))
               }
-            manualApproverRole={manualApproverRoleByGate["initiation"] || manualApproverJobTitleByGate["initiation"] || ""}
-            setManualApproverRole={(value) =>
-              setManualApproverRoleByGate((prev) => ({ ...prev, initiation: value }))
-            }
-            manualApproverRequired={manualApproverRequiredByGate["initiation"] !== false}
-            setManualApproverRequired={(value) =>
-              setManualApproverRequiredByGate((prev) => ({ ...prev, initiation: value }))
-            }
-            configuredApprovers={getGateApprovers("initiation")}
-            approvalTasks={getGateApprovalTasks("initiation")}
-            loadingApprovals={loadingApprovals}
-            onLoadMatrix={() => loadApproversFromMatrix("initiation")}
-            onAddManualApprover={() => addManualApprover("initiation")}
-            onRemoveApprover={(approverId) => removeGateApprover("initiation", approverId)}
-            onSubmit={submitInitiationApproval}
-            onApprove={approveInitiation}
-            onReject={rejectInitiation}
-          />
+              manualApproverRole={
+                manualApproverRoleByGate["initiation"] ||
+                manualApproverJobTitleByGate["initiation"] ||
+                ""
+              }
+              setManualApproverRole={(value) =>
+                setManualApproverRoleByGate((prev) => ({
+                  ...prev,
+                  initiation: value,
+                }))
+              }
+              manualApproverRequired={
+                manualApproverRequiredByGate["initiation"] !== false
+              }
+              setManualApproverRequired={(value) =>
+                setManualApproverRequiredByGate((prev) => ({
+                  ...prev,
+                  initiation: value,
+                }))
+              }
+              configuredApprovers={getGateApprovers("initiation")}
+              approvalTasks={getGateApprovalTasks("initiation")}
+              loadingApprovals={loadingApprovals}
+              onLoadMatrix={() => loadApproversFromMatrix("initiation")}
+              onAddManualApprover={() => addManualApprover("initiation")}
+              onRemoveApprover={(approverId) =>
+                removeGateApprover("initiation", approverId)
+              }
+              onSubmit={submitInitiationApproval}
+              onApprove={approveInitiation}
+              onReject={rejectInitiation}
+            />
           </WorkflowCard>
-
-          
 
           <WorkflowCard
             sectionKey="evaluation"
@@ -2879,7 +3119,9 @@ This approval becomes part of the official electronic quality record.`,
             onToggle={() => toggleSection("evaluation")}
           >
             {evaluationLocked && !isLocked ? (
-              <p style={subtleText}>Initiation approval is required before Evaluation can be edited.</p>
+              <p style={subtleText}>
+                Initiation approval is required before Evaluation can be edited.
+              </p>
             ) : null}
 
             <h3>Scope</h3>
@@ -2898,7 +3140,9 @@ This approval becomes part of the official electronic quality record.`,
               <Field label="Affected Product">
                 <input
                   value={record.affected_product || ""}
-                  onChange={(e) => updateField("affected_product", e.target.value)}
+                  onChange={(e) =>
+                    updateField("affected_product", e.target.value)
+                  }
                   onBlur={(e) => saveField("affected_product", e.target.value)}
                   disabled={evaluationLocked}
                   style={inputStyle(evaluationLocked)}
@@ -2918,7 +3162,9 @@ This approval becomes part of the official electronic quality record.`,
               <Field label="Affected Process">
                 <input
                   value={record.affected_process || ""}
-                  onChange={(e) => updateField("affected_process", e.target.value)}
+                  onChange={(e) =>
+                    updateField("affected_process", e.target.value)
+                  }
                   onBlur={(e) => saveField("affected_process", e.target.value)}
                   disabled={evaluationLocked}
                   style={inputStyle(evaluationLocked)}
@@ -2928,7 +3174,9 @@ This approval becomes part of the official electronic quality record.`,
               <Field label="Affected Supplier">
                 <input
                   value={record.affected_supplier || record.supplier_name || ""}
-                  onChange={(e) => updateField("affected_supplier", e.target.value)}
+                  onChange={(e) =>
+                    updateField("affected_supplier", e.target.value)
+                  }
                   onBlur={(e) => saveField("affected_supplier", e.target.value)}
                   disabled={evaluationLocked}
                   style={inputStyle(evaluationLocked)}
@@ -2939,7 +3187,9 @@ This approval becomes part of the official electronic quality record.`,
             <Field label="Potential Impact">
               <textarea
                 value={record.potential_impact || ""}
-                onChange={(e) => updateField("potential_impact", e.target.value)}
+                onChange={(e) =>
+                  updateField("potential_impact", e.target.value)
+                }
                 onBlur={(e) => saveField("potential_impact", e.target.value)}
                 disabled={evaluationLocked}
                 rows={3}
@@ -2970,8 +3220,12 @@ This approval becomes part of the official electronic quality record.`,
                   <Field label="Interim Control Description">
                     <textarea
                       value={record.containment_action || ""}
-                      onChange={(e) => updateField("containment_action", e.target.value)}
-                      onBlur={(e) => saveField("containment_action", e.target.value)}
+                      onChange={(e) =>
+                        updateField("containment_action", e.target.value)
+                      }
+                      onBlur={(e) =>
+                        saveField("containment_action", e.target.value)
+                      }
                       disabled={evaluationLocked}
                       rows={4}
                       style={textareaStyle(evaluationLocked)}
@@ -2981,8 +3235,12 @@ This approval becomes part of the official electronic quality record.`,
                   <Field label="Interim Control Owner">
                     <input
                       value={record.containment_owner || ""}
-                      onChange={(e) => updateField("containment_owner", e.target.value)}
-                      onBlur={(e) => saveField("containment_owner", e.target.value)}
+                      onChange={(e) =>
+                        updateField("containment_owner", e.target.value)
+                      }
+                      onBlur={(e) =>
+                        saveField("containment_owner", e.target.value)
+                      }
                       disabled={evaluationLocked}
                       style={inputStyle(evaluationLocked)}
                     />
@@ -3013,10 +3271,16 @@ This approval becomes part of the official electronic quality record.`,
                 <textarea
                   value={record.no_interim_controls_justification || ""}
                   onChange={(e) =>
-                    updateField("no_interim_controls_justification", e.target.value)
+                    updateField(
+                      "no_interim_controls_justification",
+                      e.target.value,
+                    )
                   }
                   onBlur={(e) =>
-                    saveField("no_interim_controls_justification", e.target.value)
+                    saveField(
+                      "no_interim_controls_justification",
+                      e.target.value,
+                    )
                   }
                   disabled={evaluationLocked}
                   rows={3}
@@ -3142,7 +3406,7 @@ This approval becomes part of the official electronic quality record.`,
                 {calculateCapaRiskLevel(
                   record.severity,
                   record.occurrence_rating,
-                  record.detection_rating
+                  record.detection_rating,
                 ) || "Not Calculated"}
               </div>
             )}
@@ -3184,10 +3448,16 @@ This approval becomes part of the official electronic quality record.`,
                       <textarea
                         value={record.risk_override_justification || ""}
                         onChange={(e) =>
-                          updateField("risk_override_justification", e.target.value)
+                          updateField(
+                            "risk_override_justification",
+                            e.target.value,
+                          )
                         }
                         onBlur={(e) =>
-                          saveField("risk_override_justification", e.target.value)
+                          saveField(
+                            "risk_override_justification",
+                            e.target.value,
+                          )
                         }
                         disabled={evaluationLocked}
                         rows={3}
@@ -3217,7 +3487,9 @@ This approval becomes part of the official electronic quality record.`,
 
               <Field label="Product Quality Impact">
                 <textarea
-                  value={record.product_quality_impact || record.product_impact || ""}
+                  value={
+                    record.product_quality_impact || record.product_impact || ""
+                  }
                   onChange={(e) =>
                     updateField("product_quality_impact", e.target.value)
                   }
@@ -3233,7 +3505,9 @@ This approval becomes part of the official electronic quality record.`,
               <Field label="Regulatory Impact">
                 <textarea
                   value={record.regulatory_impact || ""}
-                  onChange={(e) => updateField("regulatory_impact", e.target.value)}
+                  onChange={(e) =>
+                    updateField("regulatory_impact", e.target.value)
+                  }
                   onBlur={(e) => saveField("regulatory_impact", e.target.value)}
                   disabled={evaluationLocked}
                   rows={3}
@@ -3244,7 +3518,9 @@ This approval becomes part of the official electronic quality record.`,
               <Field label="Risk Rationale">
                 <textarea
                   value={record.risk_rationale || record.risk_assessment || ""}
-                  onChange={(e) => updateField("risk_rationale", e.target.value)}
+                  onChange={(e) =>
+                    updateField("risk_rationale", e.target.value)
+                  }
                   onBlur={(e) => saveField("risk_rationale", e.target.value)}
                   disabled={evaluationLocked}
                   rows={3}
@@ -3288,7 +3564,9 @@ This approval becomes part of the official electronic quality record.`,
               <Field label="Evidence Reviewed">
                 <textarea
                   value={record.evidence_reviewed || ""}
-                  onChange={(e) => updateField("evidence_reviewed", e.target.value)}
+                  onChange={(e) =>
+                    updateField("evidence_reviewed", e.target.value)
+                  }
                   onBlur={(e) => saveField("evidence_reviewed", e.target.value)}
                   disabled={investigationLocked}
                   rows={3}
@@ -3376,7 +3654,9 @@ This approval becomes part of the official electronic quality record.`,
                   onChange={(e) =>
                     updateField("contributing_factors", e.target.value)
                   }
-                  onBlur={(e) => saveField("contributing_factors", e.target.value)}
+                  onBlur={(e) =>
+                    saveField("contributing_factors", e.target.value)
+                  }
                   disabled={investigationLocked}
                   rows={3}
                   style={textareaStyle(investigationLocked)}
@@ -3401,7 +3681,9 @@ This approval becomes part of the official electronic quality record.`,
               <Field label="Systemic Impact">
                 <textarea
                   value={record.systemic_impact || ""}
-                  onChange={(e) => updateField("systemic_impact", e.target.value)}
+                  onChange={(e) =>
+                    updateField("systemic_impact", e.target.value)
+                  }
                   onBlur={(e) => saveField("systemic_impact", e.target.value)}
                   disabled={investigationLocked}
                   rows={3}
@@ -3410,67 +3692,103 @@ This approval becomes part of the official electronic quality record.`,
               </Field>
             </div>
 
-
-<ApprovalInlinePanel
-            sectionKey="investigationapproval-inline"
-            gateKey="investigation"
-            title="Approvers / Submit Investigation for Approval"
-            description="Approver reviews scope, containment, investigation, root cause, risk assessment, and severity before implementation begins."
-            status={record.investigation_approval_status || "not_submitted"}
-            comments={investigationApprovalComments}
-            setComments={setInvestigationApprovalComments}
-            submittedBy={record.investigation_submitted_by}
-            submittedAt={record.investigation_submitted_at}
-            approvedBy={record.investigation_approved_by}
-            approvedAt={record.investigation_approved_at}
-            rejectedBy={record.investigation_rejected_by}
-            rejectedAt={record.investigation_rejected_at}
-            disabled={investigationLocked}
-            canApprove={canApprove}
-            expanded={expandedSections.includes("investigationapproval")}
-            onToggle={() => toggleSection("investigationapproval")}
-            approvalMatrixTemplates={approvalMatrixTemplates}
-            selectedApprovalMatrixId={selectedApprovalMatrixByGate["investigation"] || ""}
-            setSelectedApprovalMatrixId={(value) =>
-              setSelectedApprovalMatrixByGate((prev) => ({ ...prev, investigation: value }))
-            }
-            manualApproverEmail={manualApproverEmailByGate["investigation"] || ""}
-            setManualApproverEmail={(value) =>
-              setManualApproverEmailByGate((prev) => ({ ...prev, investigation: value }))
-            }
-              manualApproverFunction={manualApproverFunctionByGate["investigation"] || ""}
+            <ApprovalInlinePanel
+              sectionKey="investigationapproval-inline"
+              gateKey="investigation"
+              title="Approvers / Submit Investigation for Approval"
+              description="Approver reviews scope, containment, investigation, root cause, risk assessment, and severity before implementation begins."
+              status={record.investigation_approval_status || "not_submitted"}
+              comments={investigationApprovalComments}
+              setComments={setInvestigationApprovalComments}
+              submittedBy={record.investigation_submitted_by}
+              submittedAt={record.investigation_submitted_at}
+              approvedBy={record.investigation_approved_by}
+              approvedAt={record.investigation_approved_at}
+              rejectedBy={record.investigation_rejected_by}
+              rejectedAt={record.investigation_rejected_at}
+              disabled={investigationLocked}
+              canApprove={canApprove}
+              expanded={expandedSections.includes("investigationapproval")}
+              onToggle={() => toggleSection("investigationapproval")}
+              approvalMatrixTemplates={approvalMatrixTemplates}
+              selectedApprovalMatrixId={
+                selectedApprovalMatrixByGate["investigation"] || ""
+              }
+              setSelectedApprovalMatrixId={(value) =>
+                setSelectedApprovalMatrixByGate((prev) => ({
+                  ...prev,
+                  investigation: value,
+                }))
+              }
+              manualApproverEmail={
+                manualApproverEmailByGate["investigation"] || ""
+              }
+              setManualApproverEmail={(value) =>
+                setManualApproverEmailByGate((prev) => ({
+                  ...prev,
+                  investigation: value,
+                }))
+              }
+              manualApproverFunction={
+                manualApproverFunctionByGate["investigation"] || ""
+              }
               setManualApproverFunction={(value) =>
-                setManualApproverFunctionByGate((prev) => ({ ...prev, investigation: value }))
+                setManualApproverFunctionByGate((prev) => ({
+                  ...prev,
+                  investigation: value,
+                }))
               }
-              manualApproverJobTitle={manualApproverJobTitleByGate["investigation"] || ""}
+              manualApproverJobTitle={
+                manualApproverJobTitleByGate["investigation"] || ""
+              }
               setManualApproverJobTitle={(value) =>
-                setManualApproverJobTitleByGate((prev) => ({ ...prev, investigation: value }))
+                setManualApproverJobTitleByGate((prev) => ({
+                  ...prev,
+                  investigation: value,
+                }))
               }
-              manualApproverDueDate={manualApproverDueDateByGate["investigation"] || ""}
+              manualApproverDueDate={
+                manualApproverDueDateByGate["investigation"] || ""
+              }
               setManualApproverDueDate={(value) =>
-                setManualApproverDueDateByGate((prev) => ({ ...prev, investigation: value }))
+                setManualApproverDueDateByGate((prev) => ({
+                  ...prev,
+                  investigation: value,
+                }))
               }
-            manualApproverRole={manualApproverRoleByGate["investigation"] || manualApproverJobTitleByGate["investigation"] || ""}
-            setManualApproverRole={(value) =>
-              setManualApproverRoleByGate((prev) => ({ ...prev, investigation: value }))
-            }
-            manualApproverRequired={manualApproverRequiredByGate["investigation"] !== false}
-            setManualApproverRequired={(value) =>
-              setManualApproverRequiredByGate((prev) => ({ ...prev, investigation: value }))
-            }
-            configuredApprovers={getGateApprovers("investigation")}
-            approvalTasks={getGateApprovalTasks("investigation")}
-            loadingApprovals={loadingApprovals}
-            onLoadMatrix={() => loadApproversFromMatrix("investigation")}
-            onAddManualApprover={() => addManualApprover("investigation")}
-            onRemoveApprover={(approverId) => removeGateApprover("investigation", approverId)}
-            onSubmit={submitInvestigationApproval}
-            onApprove={approveInvestigation}
-            onReject={rejectInvestigation}
-          />
+              manualApproverRole={
+                manualApproverRoleByGate["investigation"] ||
+                manualApproverJobTitleByGate["investigation"] ||
+                ""
+              }
+              setManualApproverRole={(value) =>
+                setManualApproverRoleByGate((prev) => ({
+                  ...prev,
+                  investigation: value,
+                }))
+              }
+              manualApproverRequired={
+                manualApproverRequiredByGate["investigation"] !== false
+              }
+              setManualApproverRequired={(value) =>
+                setManualApproverRequiredByGate((prev) => ({
+                  ...prev,
+                  investigation: value,
+                }))
+              }
+              configuredApprovers={getGateApprovers("investigation")}
+              approvalTasks={getGateApprovalTasks("investigation")}
+              loadingApprovals={loadingApprovals}
+              onLoadMatrix={() => loadApproversFromMatrix("investigation")}
+              onAddManualApprover={() => addManualApprover("investigation")}
+              onRemoveApprover={(approverId) =>
+                removeGateApprover("investigation", approverId)
+              }
+              onSubmit={submitInvestigationApproval}
+              onApprove={approveInvestigation}
+              onReject={rejectInvestigation}
+            />
           </WorkflowCard>
-
-          
 
           <WorkflowCard
             sectionKey="actionplan"
@@ -3483,13 +3801,21 @@ This approval becomes part of the official electronic quality record.`,
             {actionPlanPlanningLocked && !isLocked ? <LockNotice /> : null}
 
             <div style={formGridStyle}>
-              <Field label={record.capa_type === "preventive" ? "Preventive Action Plan" : "Corrective Action Plan"}>
+              <Field
+                label={
+                  record.capa_type === "preventive"
+                    ? "Preventive Action Plan"
+                    : "Corrective Action Plan"
+                }
+              >
                 <textarea
                   value={record.corrective_action_plan || ""}
                   onChange={(e) =>
                     updateField("corrective_action_plan", e.target.value)
                   }
-                  onBlur={(e) => saveField("corrective_action_plan", e.target.value)}
+                  onBlur={(e) =>
+                    saveField("corrective_action_plan", e.target.value)
+                  }
                   disabled={actionPlanPlanningLocked}
                   rows={4}
                   style={textareaStyle(actionPlanPlanningLocked)}
@@ -3522,8 +3848,12 @@ This approval becomes part of the official electronic quality record.`,
               <Field label="Verification Method">
                 <textarea
                   value={record.verification_method || ""}
-                  onChange={(e) => updateField("verification_method", e.target.value)}
-                  onBlur={(e) => saveField("verification_method", e.target.value)}
+                  onChange={(e) =>
+                    updateField("verification_method", e.target.value)
+                  }
+                  onBlur={(e) =>
+                    saveField("verification_method", e.target.value)
+                  }
                   disabled={actionPlanPlanningLocked}
                   rows={3}
                   style={textareaStyle(actionPlanPlanningLocked)}
@@ -3533,8 +3863,12 @@ This approval becomes part of the official electronic quality record.`,
               <Field label="Required Resources">
                 <textarea
                   value={record.required_resources || ""}
-                  onChange={(e) => updateField("required_resources", e.target.value)}
-                  onBlur={(e) => saveField("required_resources", e.target.value)}
+                  onChange={(e) =>
+                    updateField("required_resources", e.target.value)
+                  }
+                  onBlur={(e) =>
+                    saveField("required_resources", e.target.value)
+                  }
                   disabled={actionPlanPlanningLocked}
                   rows={3}
                   style={textareaStyle(actionPlanPlanningLocked)}
@@ -3544,7 +3878,9 @@ This approval becomes part of the official electronic quality record.`,
               <Field label="Required Evidence">
                 <textarea
                   value={record.required_evidence || ""}
-                  onChange={(e) => updateField("required_evidence", e.target.value)}
+                  onChange={(e) =>
+                    updateField("required_evidence", e.target.value)
+                  }
                   onBlur={(e) => saveField("required_evidence", e.target.value)}
                   disabled={actionPlanPlanningLocked}
                   rows={3}
@@ -3553,63 +3889,102 @@ This approval becomes part of the official electronic quality record.`,
               </Field>
             </div>
 
-<ApprovalInlinePanel
-            sectionKey="actionplanapproval-inline"
-            gateKey="action_plan"
-            title="Approvers / Submit Action Plan for Approval"
-            description="Approve the proposed action plan, implementation task assignments, and effectiveness plan before execution."
-            status={record.action_plan_approval_status || "not_submitted"}
-            comments={actionPlanApprovalComments}
-            setComments={setActionPlanApprovalComments}
-            submittedBy={record.action_plan_submitted_by}
-            submittedAt={record.action_plan_submitted_at}
-            approvedBy={record.action_plan_approved_by}
-            approvedAt={record.action_plan_approved_at}
-            rejectedBy={record.action_plan_rejected_by}
-            rejectedAt={record.action_plan_rejected_at}
-            disabled={!canEditRecord}
-            canApprove={canApprove}
-            expanded={expandedSections.includes("actionplanapproval")}
-            onToggle={() => toggleSection("actionplanapproval")}
-            approvalMatrixTemplates={approvalMatrixTemplates}
-            selectedApprovalMatrixId={selectedApprovalMatrixByGate["action_plan"] || ""}
-            setSelectedApprovalMatrixId={(value) =>
-              setSelectedApprovalMatrixByGate((prev) => ({ ...prev, action_plan: value }))
-            }
-            manualApproverEmail={manualApproverEmailByGate["action_plan"] || ""}
-            setManualApproverEmail={(value) =>
-              setManualApproverEmailByGate((prev) => ({ ...prev, action_plan: value }))
-            }
-              manualApproverFunction={manualApproverFunctionByGate["action_plan"] || ""}
+            <ApprovalInlinePanel
+              sectionKey="actionplanapproval-inline"
+              gateKey="action_plan"
+              title="Approvers / Submit Action Plan for Approval"
+              description="Approve the proposed action plan, implementation task assignments, and effectiveness plan before execution."
+              status={record.action_plan_approval_status || "not_submitted"}
+              comments={actionPlanApprovalComments}
+              setComments={setActionPlanApprovalComments}
+              submittedBy={record.action_plan_submitted_by}
+              submittedAt={record.action_plan_submitted_at}
+              approvedBy={record.action_plan_approved_by}
+              approvedAt={record.action_plan_approved_at}
+              rejectedBy={record.action_plan_rejected_by}
+              rejectedAt={record.action_plan_rejected_at}
+              disabled={!canEditRecord}
+              canApprove={canApprove}
+              expanded={expandedSections.includes("actionplanapproval")}
+              onToggle={() => toggleSection("actionplanapproval")}
+              approvalMatrixTemplates={approvalMatrixTemplates}
+              selectedApprovalMatrixId={
+                selectedApprovalMatrixByGate["action_plan"] || ""
+              }
+              setSelectedApprovalMatrixId={(value) =>
+                setSelectedApprovalMatrixByGate((prev) => ({
+                  ...prev,
+                  action_plan: value,
+                }))
+              }
+              manualApproverEmail={
+                manualApproverEmailByGate["action_plan"] || ""
+              }
+              setManualApproverEmail={(value) =>
+                setManualApproverEmailByGate((prev) => ({
+                  ...prev,
+                  action_plan: value,
+                }))
+              }
+              manualApproverFunction={
+                manualApproverFunctionByGate["action_plan"] || ""
+              }
               setManualApproverFunction={(value) =>
-                setManualApproverFunctionByGate((prev) => ({ ...prev, action_plan: value }))
+                setManualApproverFunctionByGate((prev) => ({
+                  ...prev,
+                  action_plan: value,
+                }))
               }
-              manualApproverJobTitle={manualApproverJobTitleByGate["action_plan"] || ""}
+              manualApproverJobTitle={
+                manualApproverJobTitleByGate["action_plan"] || ""
+              }
               setManualApproverJobTitle={(value) =>
-                setManualApproverJobTitleByGate((prev) => ({ ...prev, action_plan: value }))
+                setManualApproverJobTitleByGate((prev) => ({
+                  ...prev,
+                  action_plan: value,
+                }))
               }
-              manualApproverDueDate={manualApproverDueDateByGate["action_plan"] || ""}
+              manualApproverDueDate={
+                manualApproverDueDateByGate["action_plan"] || ""
+              }
               setManualApproverDueDate={(value) =>
-                setManualApproverDueDateByGate((prev) => ({ ...prev, action_plan: value }))
+                setManualApproverDueDateByGate((prev) => ({
+                  ...prev,
+                  action_plan: value,
+                }))
               }
-            manualApproverRole={manualApproverRoleByGate["action_plan"] || manualApproverJobTitleByGate["action_plan"] || ""}
-            setManualApproverRole={(value) =>
-              setManualApproverRoleByGate((prev) => ({ ...prev, action_plan: value }))
-            }
-            manualApproverRequired={manualApproverRequiredByGate["action_plan"] !== false}
-            setManualApproverRequired={(value) =>
-              setManualApproverRequiredByGate((prev) => ({ ...prev, action_plan: value }))
-            }
-            configuredApprovers={getGateApprovers("action_plan")}
-            approvalTasks={getGateApprovalTasks("action_plan")}
-            loadingApprovals={loadingApprovals}
-            onLoadMatrix={() => loadApproversFromMatrix("action_plan")}
-            onAddManualApprover={() => addManualApprover("action_plan")}
-            onRemoveApprover={(approverId) => removeGateApprover("action_plan", approverId)}
-            onSubmit={submitActionPlanApproval}
-            onApprove={approveActionPlan}
-            onReject={rejectActionPlan}
-          />
+              manualApproverRole={
+                manualApproverRoleByGate["action_plan"] ||
+                manualApproverJobTitleByGate["action_plan"] ||
+                ""
+              }
+              setManualApproverRole={(value) =>
+                setManualApproverRoleByGate((prev) => ({
+                  ...prev,
+                  action_plan: value,
+                }))
+              }
+              manualApproverRequired={
+                manualApproverRequiredByGate["action_plan"] !== false
+              }
+              setManualApproverRequired={(value) =>
+                setManualApproverRequiredByGate((prev) => ({
+                  ...prev,
+                  action_plan: value,
+                }))
+              }
+              configuredApprovers={getGateApprovers("action_plan")}
+              approvalTasks={getGateApprovalTasks("action_plan")}
+              loadingApprovals={loadingApprovals}
+              onLoadMatrix={() => loadApproversFromMatrix("action_plan")}
+              onAddManualApprover={() => addManualApprover("action_plan")}
+              onRemoveApprover={(approverId) =>
+                removeGateApprover("action_plan", approverId)
+              }
+              onSubmit={submitActionPlanApproval}
+              onApprove={approveActionPlan}
+              onReject={rejectActionPlan}
+            />
           </WorkflowCard>
 
           <WorkflowCard
@@ -3620,7 +3995,9 @@ This approval becomes part of the official electronic quality record.`,
             expanded={expandedSections.includes("implementationtasks")}
             onToggle={() => toggleSection("implementationtasks")}
           >
-            {implementationTaskAssignmentLocked && !isLocked ? <LockNotice /> : null}
+            {implementationTaskAssignmentLocked && !isLocked ? (
+              <LockNotice />
+            ) : null}
 
             {!implementationTaskAssignmentLocked ? (
               <>
@@ -3633,7 +4010,9 @@ This approval becomes part of the official electronic quality record.`,
                       }
                       style={inputStyle(false)}
                     >
-                      <option value="corrective_action">Corrective Action</option>
+                      <option value="corrective_action">
+                        Corrective Action
+                      </option>
                       <option value="implementation">Implementation</option>
                       <option value="effectiveness">Effectiveness</option>
                       <option value="follow_up">Follow-up</option>
@@ -3699,7 +4078,9 @@ This approval becomes part of the official electronic quality record.`,
 
             <div style={{ marginTop: "20px" }}>
               {tasks.length === 0 ? (
-                <p style={subtleText}>No CAPA execution tasks have been added.</p>
+                <p style={subtleText}>
+                  No CAPA execution tasks have been added.
+                </p>
               ) : (
                 tasks.map((task) => (
                   <TaskCard
@@ -3724,12 +4105,7 @@ This approval becomes part of the official electronic quality record.`,
                 ))
               )}
             </div>
-
-
-
           </WorkflowCard>
-
-          
 
           <WorkflowCard
             sectionKey="implementation"
@@ -3792,7 +4168,9 @@ This approval becomes part of the official electronic quality record.`,
                 onChange={(e) =>
                   updateField("implementation_details", e.target.value)
                 }
-                onBlur={(e) => saveField("implementation_details", e.target.value)}
+                onBlur={(e) =>
+                  saveField("implementation_details", e.target.value)
+                }
                 disabled={implementationLocked}
                 rows={4}
                 style={textareaStyle(implementationLocked)}
@@ -3834,9 +4212,18 @@ This approval becomes part of the official electronic quality record.`,
             <div style={formGridStyle}>
               <Field label="Verification Method">
                 <textarea
-                  value={record.verification_method || record.monitoring_method || record.effectiveness_plan || ""}
-                  onChange={(e) => updateField("verification_method", e.target.value)}
-                  onBlur={(e) => saveField("verification_method", e.target.value)}
+                  value={
+                    record.verification_method ||
+                    record.monitoring_method ||
+                    record.effectiveness_plan ||
+                    ""
+                  }
+                  onChange={(e) =>
+                    updateField("verification_method", e.target.value)
+                  }
+                  onBlur={(e) =>
+                    saveField("verification_method", e.target.value)
+                  }
                   disabled={effectivenessPlanLocked}
                   rows={3}
                   style={textareaStyle(effectivenessPlanLocked)}
@@ -3847,7 +4234,10 @@ This approval becomes part of the official electronic quality record.`,
                 <textarea
                   value={record.effectiveness_success_criteria || ""}
                   onChange={(e) =>
-                    updateField("effectiveness_success_criteria", e.target.value)
+                    updateField(
+                      "effectiveness_success_criteria",
+                      e.target.value,
+                    )
                   }
                   onBlur={(e) =>
                     saveField("effectiveness_success_criteria", e.target.value)
@@ -3890,8 +4280,12 @@ This approval becomes part of the official electronic quality record.`,
               <Field label="Verification Owner">
                 <input
                   value={record.verification_owner || ""}
-                  onChange={(e) => updateField("verification_owner", e.target.value)}
-                  onBlur={(e) => saveField("verification_owner", e.target.value)}
+                  onChange={(e) =>
+                    updateField("verification_owner", e.target.value)
+                  }
+                  onBlur={(e) =>
+                    saveField("verification_owner", e.target.value)
+                  }
                   disabled={effectivenessPlanLocked}
                   style={inputStyle(effectivenessPlanLocked)}
                 />
@@ -3931,7 +4325,9 @@ This approval becomes part of the official electronic quality record.`,
               gateKey="effectiveness_plan"
               title="Approvers / Submit Effectiveness Plan for Approval"
               description="Approve the effectiveness plan before effectiveness verification begins."
-              status={record.effectiveness_plan_approval_status || "not_submitted"}
+              status={
+                record.effectiveness_plan_approval_status || "not_submitted"
+              }
               comments={effectivenessPlanApprovalComments}
               setComments={setEffectivenessPlanApprovalComments}
               submittedBy={record.effectiveness_plan_submitted_by}
@@ -3945,35 +4341,45 @@ This approval becomes part of the official electronic quality record.`,
               expanded={expandedSections.includes("effectivenessplanapproval")}
               onToggle={() => toggleSection("effectivenessplanapproval")}
               approvalMatrixTemplates={approvalMatrixTemplates}
-              selectedApprovalMatrixId={selectedApprovalMatrixByGate["effectiveness_plan"] || ""}
+              selectedApprovalMatrixId={
+                selectedApprovalMatrixByGate["effectiveness_plan"] || ""
+              }
               setSelectedApprovalMatrixId={(value) =>
                 setSelectedApprovalMatrixByGate((prev) => ({
                   ...prev,
                   effectiveness_plan: value,
                 }))
               }
-              manualApproverEmail={manualApproverEmailByGate["effectiveness_plan"] || ""}
+              manualApproverEmail={
+                manualApproverEmailByGate["effectiveness_plan"] || ""
+              }
               setManualApproverEmail={(value) =>
                 setManualApproverEmailByGate((prev) => ({
                   ...prev,
                   effectiveness_plan: value,
                 }))
               }
-              manualApproverFunction={manualApproverFunctionByGate["effectiveness_plan"] || ""}
+              manualApproverFunction={
+                manualApproverFunctionByGate["effectiveness_plan"] || ""
+              }
               setManualApproverFunction={(value) =>
                 setManualApproverFunctionByGate((prev) => ({
                   ...prev,
                   effectiveness_plan: value,
                 }))
               }
-              manualApproverJobTitle={manualApproverJobTitleByGate["effectiveness_plan"] || ""}
+              manualApproverJobTitle={
+                manualApproverJobTitleByGate["effectiveness_plan"] || ""
+              }
               setManualApproverJobTitle={(value) =>
                 setManualApproverJobTitleByGate((prev) => ({
                   ...prev,
                   effectiveness_plan: value,
                 }))
               }
-              manualApproverDueDate={manualApproverDueDateByGate["effectiveness_plan"] || ""}
+              manualApproverDueDate={
+                manualApproverDueDateByGate["effectiveness_plan"] || ""
+              }
               setManualApproverDueDate={(value) =>
                 setManualApproverDueDateByGate((prev) => ({
                   ...prev,
@@ -3991,7 +4397,9 @@ This approval becomes part of the official electronic quality record.`,
                   effectiveness_plan: value,
                 }))
               }
-              manualApproverRequired={manualApproverRequiredByGate["effectiveness_plan"] !== false}
+              manualApproverRequired={
+                manualApproverRequiredByGate["effectiveness_plan"] !== false
+              }
               setManualApproverRequired={(value) =>
                 setManualApproverRequiredByGate((prev) => ({
                   ...prev,
@@ -4002,7 +4410,9 @@ This approval becomes part of the official electronic quality record.`,
               approvalTasks={getGateApprovalTasks("effectiveness_plan")}
               loadingApprovals={loadingApprovals}
               onLoadMatrix={() => loadApproversFromMatrix("effectiveness_plan")}
-              onAddManualApprover={() => addManualApprover("effectiveness_plan")}
+              onAddManualApprover={() =>
+                addManualApprover("effectiveness_plan")
+              }
               onRemoveApprover={(approverId) =>
                 removeGateApprover("effectiveness_plan", approverId)
               }
@@ -4035,7 +4445,9 @@ This approval becomes part of the official electronic quality record.`,
                   onChange={(e) =>
                     updateField("effectiveness_check", e.target.value)
                   }
-                  onBlur={(e) => saveField("effectiveness_check", e.target.value)}
+                  onBlur={(e) =>
+                    saveField("effectiveness_check", e.target.value)
+                  }
                   disabled={effectivenessVerificationLocked}
                   rows={4}
                   style={textareaStyle(effectivenessVerificationLocked)}
@@ -4054,7 +4466,9 @@ This approval becomes part of the official electronic quality record.`,
                 >
                   <option value="">Select</option>
                   <option value="effective">Effective</option>
-                  <option value="partially_effective">Partially Effective</option>
+                  <option value="partially_effective">
+                    Partially Effective
+                  </option>
                   <option value="not_effective">Not Effective</option>
                 </select>
               </Field>
@@ -4082,9 +4496,9 @@ This approval becomes part of the official electronic quality record.`,
               </Field>
             </div>
 
-            {(record.effectiveness_rating === "partially_effective" ||
-              record.effectiveness_rating === "not_effective" ||
-              record.followup_capa_required === "yes") ? (
+            {record.effectiveness_rating === "partially_effective" ||
+            record.effectiveness_rating === "not_effective" ||
+            record.followup_capa_required === "yes" ? (
               <Field label="Follow-up Action">
                 <textarea
                   value={record.effectiveness_followup_action || ""}
@@ -4101,67 +4515,101 @@ This approval becomes part of the official electronic quality record.`,
               </Field>
             ) : null}
 
-
-<ApprovalInlinePanel
-            sectionKey="closureapproval-inline"
-            gateKey="closure"
-            title="Approvers / Submit Closure for Approval"
-            description="Final approval confirms implementation, task completion, effectiveness verification, and closure readiness. Approval locks the record."
-            status={record.closure_approval_status || "not_submitted"}
-            comments={closureApprovalComments}
-            setComments={setClosureApprovalComments}
-            submittedBy={record.closure_submitted_by}
-            submittedAt={record.closure_submitted_at}
-            approvedBy={record.closure_approved_by || record.signed_by}
-            approvedAt={record.closure_approved_at || record.signed_at}
-            rejectedBy={record.closure_rejected_by}
-            rejectedAt={record.closure_rejected_at}
-            disabled={!canEditRecord}
-            canApprove={canApprove}
-            expanded={expandedSections.includes("closure")}
-            onToggle={() => toggleSection("closure")}
-            approvalMatrixTemplates={approvalMatrixTemplates}
-            selectedApprovalMatrixId={selectedApprovalMatrixByGate["closure"] || ""}
-            setSelectedApprovalMatrixId={(value) =>
-              setSelectedApprovalMatrixByGate((prev) => ({ ...prev, closure: value }))
-            }
-            manualApproverEmail={manualApproverEmailByGate["closure"] || ""}
-            setManualApproverEmail={(value) =>
-              setManualApproverEmailByGate((prev) => ({ ...prev, closure: value }))
-            }
-              manualApproverFunction={manualApproverFunctionByGate["closure"] || ""}
+            <ApprovalInlinePanel
+              sectionKey="closureapproval-inline"
+              gateKey="closure"
+              title="Approvers / Submit Closure for Approval"
+              description="Final approval confirms implementation, task completion, effectiveness verification, and closure readiness. Approval locks the record."
+              status={record.closure_approval_status || "not_submitted"}
+              comments={closureApprovalComments}
+              setComments={setClosureApprovalComments}
+              submittedBy={record.closure_submitted_by}
+              submittedAt={record.closure_submitted_at}
+              approvedBy={record.closure_approved_by || record.signed_by}
+              approvedAt={record.closure_approved_at || record.signed_at}
+              rejectedBy={record.closure_rejected_by}
+              rejectedAt={record.closure_rejected_at}
+              disabled={!canEditRecord}
+              canApprove={canApprove}
+              expanded={expandedSections.includes("closure")}
+              onToggle={() => toggleSection("closure")}
+              approvalMatrixTemplates={approvalMatrixTemplates}
+              selectedApprovalMatrixId={
+                selectedApprovalMatrixByGate["closure"] || ""
+              }
+              setSelectedApprovalMatrixId={(value) =>
+                setSelectedApprovalMatrixByGate((prev) => ({
+                  ...prev,
+                  closure: value,
+                }))
+              }
+              manualApproverEmail={manualApproverEmailByGate["closure"] || ""}
+              setManualApproverEmail={(value) =>
+                setManualApproverEmailByGate((prev) => ({
+                  ...prev,
+                  closure: value,
+                }))
+              }
+              manualApproverFunction={
+                manualApproverFunctionByGate["closure"] || ""
+              }
               setManualApproverFunction={(value) =>
-                setManualApproverFunctionByGate((prev) => ({ ...prev, closure: value }))
+                setManualApproverFunctionByGate((prev) => ({
+                  ...prev,
+                  closure: value,
+                }))
               }
-              manualApproverJobTitle={manualApproverJobTitleByGate["closure"] || ""}
+              manualApproverJobTitle={
+                manualApproverJobTitleByGate["closure"] || ""
+              }
               setManualApproverJobTitle={(value) =>
-                setManualApproverJobTitleByGate((prev) => ({ ...prev, closure: value }))
+                setManualApproverJobTitleByGate((prev) => ({
+                  ...prev,
+                  closure: value,
+                }))
               }
-              manualApproverDueDate={manualApproverDueDateByGate["closure"] || ""}
+              manualApproverDueDate={
+                manualApproverDueDateByGate["closure"] || ""
+              }
               setManualApproverDueDate={(value) =>
-                setManualApproverDueDateByGate((prev) => ({ ...prev, closure: value }))
+                setManualApproverDueDateByGate((prev) => ({
+                  ...prev,
+                  closure: value,
+                }))
               }
-            manualApproverRole={manualApproverRoleByGate["closure"] || manualApproverJobTitleByGate["closure"] || ""}
-            setManualApproverRole={(value) =>
-              setManualApproverRoleByGate((prev) => ({ ...prev, closure: value }))
-            }
-            manualApproverRequired={manualApproverRequiredByGate["closure"] !== false}
-            setManualApproverRequired={(value) =>
-              setManualApproverRequiredByGate((prev) => ({ ...prev, closure: value }))
-            }
-            configuredApprovers={getGateApprovers("closure")}
-            approvalTasks={getGateApprovalTasks("closure")}
-            loadingApprovals={loadingApprovals}
-            onLoadMatrix={() => loadApproversFromMatrix("closure")}
-            onAddManualApprover={() => addManualApprover("closure")}
-            onRemoveApprover={(approverId) => removeGateApprover("closure", approverId)}
-            onSubmit={submitClosureApproval}
-            onApprove={approveClosure}
-            onReject={rejectClosure}
-          />
+              manualApproverRole={
+                manualApproverRoleByGate["closure"] ||
+                manualApproverJobTitleByGate["closure"] ||
+                ""
+              }
+              setManualApproverRole={(value) =>
+                setManualApproverRoleByGate((prev) => ({
+                  ...prev,
+                  closure: value,
+                }))
+              }
+              manualApproverRequired={
+                manualApproverRequiredByGate["closure"] !== false
+              }
+              setManualApproverRequired={(value) =>
+                setManualApproverRequiredByGate((prev) => ({
+                  ...prev,
+                  closure: value,
+                }))
+              }
+              configuredApprovers={getGateApprovers("closure")}
+              approvalTasks={getGateApprovalTasks("closure")}
+              loadingApprovals={loadingApprovals}
+              onLoadMatrix={() => loadApproversFromMatrix("closure")}
+              onAddManualApprover={() => addManualApprover("closure")}
+              onRemoveApprover={(approverId) =>
+                removeGateApprover("closure", approverId)
+              }
+              onSubmit={submitClosureApproval}
+              onApprove={approveClosure}
+              onReject={rejectClosure}
+            />
           </WorkflowCard>
-
-          
 
           {canReturnCapaWorkflow ? (
             <WorkflowCard
@@ -4172,14 +4620,18 @@ This approval becomes part of the official electronic quality record.`,
               onToggle={() => toggleSection("workflow-return")}
             >
               <div style={lockedNoticeStyle}>
-                Approved history is preserved. The selected phase is reopened, applicable downstream approvals are reset, and pending downstream tasks are cancelled.
+                Approved history is preserved. The selected phase is reopened,
+                applicable downstream approvals are reset, and pending
+                downstream tasks are cancelled.
               </div>
 
               <div style={formGridStyle}>
                 <Field label="Return CAPA To">
                   <select
                     value={returnTargetPhase}
-                    onChange={(event) => setReturnTargetPhase(event.target.value)}
+                    onChange={(event) =>
+                      setReturnTargetPhase(event.target.value)
+                    }
                     style={inputStyle(false)}
                   >
                     <option value="">Select phase</option>
@@ -4189,10 +4641,14 @@ This approval becomes part of the official electronic quality record.`,
                     <option value="action_plan">Action Plan Proposal</option>
                     <option value="implementation">Implementation</option>
                     {record?.implemented_by ? (
-                      <option value="effectiveness_plan">Effectiveness Plan</option>
+                      <option value="effectiveness_plan">
+                        Effectiveness Plan
+                      </option>
                     ) : null}
                     {effectivenessPlanApproved ? (
-                      <option value="effectiveness_verification">Effectiveness Verification</option>
+                      <option value="effectiveness_verification">
+                        Effectiveness Verification
+                      </option>
                     ) : null}
                   </select>
                 </Field>
@@ -4200,7 +4656,9 @@ This approval becomes part of the official electronic quality record.`,
                 <Field label="Workflow Return Rationale">
                   <textarea
                     value={workflowReturnReason}
-                    onChange={(event) => setWorkflowReturnReason(event.target.value)}
+                    onChange={(event) =>
+                      setWorkflowReturnReason(event.target.value)
+                    }
                     rows={4}
                     style={textareaStyle(false)}
                     placeholder="Explain why the approved CAPA must be returned and what requires revision."
@@ -4217,7 +4675,20 @@ This approval becomes part of the official electronic quality record.`,
                     style={inputStyle(false)}
                   />
                   <div style={helperTextStyle}>
-                    Must match the logged-in user: {currentUserEmail || "unknown"}
+                    Must match the logged-in user:{" "}
+                    {currentUserEmail || "unknown"}
+                  </div>
+                </Field>
+
+                <Field label="Electronic Signature Date">
+                  <input
+                    value="Recorded automatically when Return CAPA is executed"
+                    readOnly
+                    style={inputStyle(true)}
+                  />
+                  <div style={helperTextStyle}>
+                    The system records the exact date and time with the signed
+                    return event.
                   </div>
                 </Field>
               </div>
@@ -4227,7 +4698,9 @@ This approval becomes part of the official electronic quality record.`,
                 disabled={returningWorkflow}
                 style={buttonDisabledStyle(returningWorkflow)}
               >
-                {returningWorkflow ? "Returning CAPA..." : "Return CAPA to Selected Phase"}
+                {returningWorkflow
+                  ? "Returning CAPA..."
+                  : "Return CAPA to Selected Phase"}
               </button>
             </WorkflowCard>
           ) : null}
@@ -4249,10 +4722,14 @@ This approval becomes part of the official electronic quality record.`,
                     style={inputStyle(!canCancelCapa)}
                   >
                     <option value="">Select</option>
-                    <option value="initiated_in_error">Initiated in Error</option>
+                    <option value="initiated_in_error">
+                      Initiated in Error
+                    </option>
                     <option value="duplicate">Duplicate CAPA</option>
                     <option value="merged">Merged into Another CAPA</option>
-                    <option value="issue_not_confirmed">Issue Not Confirmed</option>
+                    <option value="issue_not_confirmed">
+                      Issue Not Confirmed
+                    </option>
                     <option value="superseded">Superseded</option>
                   </select>
                 </Field>
@@ -4260,7 +4737,9 @@ This approval becomes part of the official electronic quality record.`,
                 <Field label="Cancellation Justification">
                   <textarea
                     value={cancellationJustification}
-                    onChange={(e) => setCancellationJustification(e.target.value)}
+                    onChange={(e) =>
+                      setCancellationJustification(e.target.value)
+                    }
                     disabled={!canCancelCapa}
                     rows={3}
                     style={textareaStyle(!canCancelCapa)}
@@ -4279,7 +4758,9 @@ This approval becomes part of the official electronic quality record.`,
           ) : null}
 
           <section style={workflowCardStyle}>
-            <h2 style={{ marginTop: 0 }}>Electronic Signature / Lock Evidence</h2>
+            <h2 style={{ marginTop: 0 }}>
+              Electronic Signature / Lock Evidence
+            </h2>
             <div style={summaryGridStyle}>
               <SummaryCard label="Signed By" value={record.signed_by} />
               <SummaryCard label="Signed At" value={record.signed_at} />
@@ -4319,10 +4800,22 @@ This approval becomes part of the official electronic quality record.`,
 
         <aside style={sidebarStyle}>
           <SidebarCard title="Governance Intelligence">
-            <SidebarItem label="Risk Level" value={record.risk_level || "Not Rated"} />
-            <SidebarItem label="Severity" value={record.severity || "Not Rated"} />
-            <SidebarItem label="Recurrence" value={record.recurrence_count || 0} />
-            <SidebarItem label="Supplier Risk" value={record.supplier_risk || "N/A"} />
+            <SidebarItem
+              label="Risk Level"
+              value={record.risk_level || "Not Rated"}
+            />
+            <SidebarItem
+              label="Severity"
+              value={record.severity || "Not Rated"}
+            />
+            <SidebarItem
+              label="Recurrence"
+              value={record.recurrence_count || 0}
+            />
+            <SidebarItem
+              label="Supplier Risk"
+              value={record.supplier_risk || "N/A"}
+            />
           </SidebarCard>
 
           <SidebarCard title="Execution Tasks">
@@ -4342,7 +4835,9 @@ This approval becomes part of the official electronic quality record.`,
             />
             <SidebarItem
               label="Effectiveness Plan"
-              value={record.effectiveness_plan_approval_status || "Not Submitted"}
+              value={
+                record.effectiveness_plan_approval_status || "Not Submitted"
+              }
             />
             <SidebarItem
               label="Closure"
@@ -4352,7 +4847,10 @@ This approval becomes part of the official electronic quality record.`,
           </SidebarCard>
 
           <SidebarCard title="Related Records">
-            <SidebarItem label="Supplier" value={record.supplier_name || "N/A"} />
+            <SidebarItem
+              label="Supplier"
+              value={record.supplier_name || "N/A"}
+            />
             <SidebarItem
               label="Linked NCMR"
               value={record.linked_ncmr_title || "N/A"}
@@ -4619,7 +5117,13 @@ function ApprovalInlinePanel({
         </div>
 
         {configuredApprovers.length > 0 ? (
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
+          <table
+            style={{
+              width: "100%",
+              borderCollapse: "collapse",
+              fontSize: "13px",
+            }}
+          >
             <thead>
               <tr>
                 <th style={tableHeaderStyle}>Order</th>
@@ -4632,11 +5136,21 @@ function ApprovalInlinePanel({
             <tbody>
               {configuredApprovers.map((approver) => (
                 <tr key={approver.id}>
-                  <td style={tableCellStyle}>{approver.approval_order || "-"}</td>
-                  <td style={tableCellStyle}>{approver.approver_function || "N/A"}</td>
-                  <td style={tableCellStyle}>{approver.approver_job_title || approver.approver_role || "N/A"}</td>
+                  <td style={tableCellStyle}>
+                    {approver.approval_order || "-"}
+                  </td>
+                  <td style={tableCellStyle}>
+                    {approver.approver_function || "N/A"}
+                  </td>
+                  <td style={tableCellStyle}>
+                    {approver.approver_job_title ||
+                      approver.approver_role ||
+                      "N/A"}
+                  </td>
                   <td style={tableCellStyle}>{approver.approver_email}</td>
-                  <td style={tableCellStyle}>{approver.approver_due_date || "N/A"}</td>
+                  <td style={tableCellStyle}>
+                    {approver.approver_due_date || "N/A"}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -4656,7 +5170,8 @@ function ApprovalInlinePanel({
       </Field>
 
       <p style={{ ...subtleText, marginTop: "12px" }}>
-        Adding an approver only prepares the approval package. The package is not routed until you click Submit for Approval.
+        Adding an approver only prepares the approval package. The package is
+        not routed until you click Submit for Approval.
       </p>
 
       <button onClick={onSubmit} style={primaryButtonStyle}>
@@ -4700,7 +5215,9 @@ function TaskCard({
         background: "#ffffff",
       }}
     >
-      <h4 style={{ margin: "0 0 6px 0" }}>{task.task_title || "Implementation Task"}</h4>
+      <h4 style={{ margin: "0 0 6px 0" }}>
+        {task.task_title || "Implementation Task"}
+      </h4>
 
       <div style={{ color: "#6b7280", marginBottom: "8px" }}>
         {formatTaskType(task.task_type)}
@@ -4736,7 +5253,8 @@ function TaskCard({
         </div>
       ) : (
         <p style={{ ...subtleText, marginTop: "12px", marginBottom: 0 }}>
-          This task is routed to the assignee's My Tasks work queue for execution.
+          This task is routed to the assignee's My Tasks work queue for
+          execution.
         </p>
       )}
     </div>
@@ -4816,7 +5334,13 @@ function LockNotice() {
   );
 }
 
-function SidebarCard({ title, children }: { title: string; children: ReactNode }) {
+function SidebarCard({
+  title,
+  children,
+}: {
+  title: string;
+  children: ReactNode;
+}) {
   return (
     <div style={sidebarCardStyle}>
       <h3 style={{ marginTop: 0 }}>{title}</h3>
@@ -4841,7 +5365,6 @@ function isTaskOverdue(task: CapaTask) {
   const today = new Date().toISOString().slice(0, 10);
   return task.due_date < today;
 }
-
 
 const tableHeaderStyle: CSSProperties = {
   textAlign: "left",
@@ -4868,7 +5391,9 @@ function getWorkflowHealth(record: any, overdueTaskCount: number) {
     return { label: "Elevated", color: "#dc2626" };
   }
 
-  const risk = String(record?.risk_level || record?.severity || "").toLowerCase();
+  const risk = String(
+    record?.risk_level || record?.severity || "",
+  ).toLowerCase();
 
   if (risk === "critical") return { label: "Critical", color: "#991b1b" };
   if (risk === "high") return { label: "Elevated", color: "#dc2626" };
@@ -5075,7 +5600,6 @@ const buttonRowStyle: CSSProperties = {
   flexWrap: "wrap",
 };
 
-
 const primaryLinkStyle: CSSProperties = {
   display: "inline-block",
   background: "#2563eb",
@@ -5153,7 +5677,6 @@ const readOnlyBannerStyle: CSSProperties = {
   marginBottom: "16px",
   fontWeight: 800,
 };
-
 
 const lockedNoticeStyle: CSSProperties = {
   padding: "10px",
