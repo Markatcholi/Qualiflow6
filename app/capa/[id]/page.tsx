@@ -84,6 +84,7 @@ export default function EnterpriseCapaWorkflowPage() {
 
   const [record, setRecord] = useState<any>(null);
   const [tasks, setTasks] = useState<CapaTask[]>([]);
+  const [tasksLoaded, setTasksLoaded] = useState(false);
   const [gateApprovers, setGateApprovers] = useState<CapaGateApprover[]>([]);
   const [approvalTasks, setApprovalTasks] = useState<CapaApprovalTask[]>([]);
   const [approvalMatrixTemplates, setApprovalMatrixTemplates] = useState<any[]>(
@@ -241,10 +242,18 @@ export default function EnterpriseCapaWorkflowPage() {
     !initiationApproved || investigationApproved || !canEditRecord;
   const actionPlanPlanningLocked =
     !investigationApproved || actionPlanApproved || !canEditRecord;
+  const implementationTaskAssignmentActive =
+    actionPlanApproved &&
+    String(record?.status || "").toLowerCase() ===
+      "implementation_task_assignment";
   const implementationTaskAssignmentLocked =
-    !actionPlanApproved || !canEditRecord;
+    !implementationTaskAssignmentActive || !canEditRecord;
   const implementationLocked =
-    !actionPlanApproved || Boolean(record?.implemented_by) || !canEditRecord;
+    !actionPlanApproved ||
+    String(record?.status || "").toLowerCase() ===
+      "implementation_task_assignment" ||
+    Boolean(record?.implemented_by) ||
+    !canEditRecord;
   const effectivenessPlanLocked =
     !record?.implemented_by || effectivenessPlanApproved || !canEditRecord;
   const effectivenessVerificationLocked =
@@ -379,6 +388,7 @@ export default function EnterpriseCapaWorkflowPage() {
     }
 
     setTasks((data as CapaTask[]) || []);
+    setTasksLoaded(true);
   };
 
   const fetchAvailableOwnerUsers = async () => {
@@ -533,6 +543,35 @@ export default function EnterpriseCapaWorkflowPage() {
     }
   }, [id]);
 
+  useEffect(() => {
+    const normalizePostApprovalStage = async () => {
+      if (
+        !tasksLoaded ||
+        !record ||
+        !actionPlanApproved ||
+        record?.implemented_by ||
+        tasks.length > 0 ||
+        String(record?.status || "").toLowerCase() !== "implementation"
+      ) {
+        return;
+      }
+
+      const { error } = await supabase
+        .from("capas")
+        .update({ status: "implementation_task_assignment" })
+        .eq("id", id)
+        .eq("status", "implementation");
+
+      if (!error) {
+        setRecord((prev: any) =>
+          prev ? { ...prev, status: "implementation_task_assignment" } : prev,
+        );
+      }
+    };
+
+    normalizePostApprovalStage();
+  }, [id, record?.status, record?.implemented_by, actionPlanApproved, tasksLoaded, tasks.length]);
+
   const addAuditLog = async (action: string, details: string) => {
     await supabase.from("audit_logs").insert({
       entity_type: "capa",
@@ -595,7 +634,7 @@ export default function EnterpriseCapaWorkflowPage() {
       rejectedBy: "action_plan_rejected_by",
       rejectedAt: "action_plan_rejected_at",
       rejectionComments: "action_plan_rejection_comments",
-      nextStatus: "implementation",
+      nextStatus: "implementation_task_assignment",
       pendingStatus: "pending_action_plan_approval",
       rejectedStatus: "action_plan",
       matrixId: "action_plan_approval_matrix_id",
@@ -1662,7 +1701,7 @@ This approval becomes part of the official electronic quality record.`,
         owner: taskOwnerEmail,
         owner_email: taskOwnerEmail,
         due_date: newTask.due_date || null,
-        status: "open",
+        status: "assigned",
         created_by: userEmail || "unknown",
         sequence_order: tasks.length + 1,
       })
@@ -1674,62 +1713,10 @@ This approval becomes part of the official electronic quality record.`,
       return;
     }
 
-    const { data: centralTask, error: approvalTaskError } = await supabase
-      .from("approval_tasks")
-      .insert({
-        entity_type: "capa",
-        entity_id: id,
-        record_number: record?.capa_number || null,
-        task_type: "capa_implementation_task",
-        task_title: newTask.task_title,
-        required_function: newTask.task_title,
-        due_date: newTask.due_date || null,
-        assigned_to_email: taskOwnerEmail,
-        assigned_by_email: userEmail || "unknown",
-        status: "pending",
-        required: true,
-        comments:
-          newTask.task_description ||
-          `Please complete the assigned CAPA implementation task for ${record?.capa_number || "this CAPA"}.`,
-        capa_task_id: capaTask?.id,
-      })
-      .select()
-      .single();
-
-    if (approvalTaskError) {
-      alert(approvalTaskError.message);
-      return;
-    }
-
     await addAuditLog(
-      "task_created",
-      `CAPA implementation task created and routed to My Approval Tasks: ${newTask.task_title}`,
+      "implementation_task_assigned",
+      `CAPA implementation task assigned during task assignment: ${newTask.task_title}`,
     );
-
-    await createNotification({
-      userEmail: taskOwnerEmail,
-      title: "CAPA Implementation Task Assigned",
-      message: `You have been assigned a CAPA implementation task: ${newTask.task_title}`,
-      notificationType: "capa_implementation_task_assigned",
-      severity: "medium",
-      relatedRecordId: id,
-      relatedModule: "capa",
-      relatedUrl: `/my-approval-tasks`,
-      createdBy: userEmail,
-      deduplicationKey: `CAPA_IMPLEMENTATION_TASK_${id}_${centralTask?.id || newTask.task_title}_${taskOwnerEmail}`,
-    });
-
-    if (centralTask?.id) {
-      await supabase.from("notification_queue").insert({
-        recipient_email: taskOwnerEmail,
-        subject: `CAPA implementation task assigned: ${record?.capa_number || "CAPA"}`,
-        body: `You have been assigned a CAPA implementation task for ${record?.capa_number || "this CAPA"}. Please open My Approval Tasks.`,
-        entity_type: "capa",
-        entity_id: id,
-        task_id: centralTask.id,
-        status: "pending",
-      });
-    }
 
     setNewTask({
       task_type: "corrective_action",
@@ -1743,7 +1730,155 @@ This approval becomes part of the official electronic quality record.`,
     fetchApprovalTasks();
   };
 
+  const startImplementation = async () => {
+    if (implementationTaskAssignmentLocked) {
+      alert("Implementation can only be started from the active Implementation Task Assignment phase.");
+      return;
+    }
+
+    if (tasks.length === 0) {
+      alert("Add at least one implementation task before starting Implementation.");
+      return;
+    }
+
+    const incompleteAssignments = tasks.filter(
+      (task) =>
+        !String(task.task_title || "").trim() ||
+        !String(task.task_description || "").trim() ||
+        !normalizeEmail(task.owner_email || task.owner) ||
+        !String(task.due_date || "").trim(),
+    );
+
+    if (incompleteAssignments.length > 0) {
+      alert(
+        "Every implementation task must include a title, description, owner email, and due date before Implementation can begin.",
+      );
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Start Implementation?\n\nTask assignment will become read-only and assigned task owners will be notified.",
+    );
+    if (!confirmed) return;
+
+    const now = new Date().toISOString();
+    const { data: existingCentralTasks } = await supabase
+      .from("approval_tasks")
+      .select("capa_task_id")
+      .eq("entity_type", "capa")
+      .eq("entity_id", id)
+      .eq("task_type", "capa_implementation_task");
+
+    const existingTaskIds = new Set(
+      (existingCentralTasks || [])
+        .map((item: any) => String(item.capa_task_id || ""))
+        .filter(Boolean),
+    );
+
+    const tasksToActivate = tasks.filter((task) => !existingTaskIds.has(task.id));
+    let insertedCentralTasks: any[] = [];
+
+    if (tasksToActivate.length > 0) {
+      const centralRows = tasksToActivate.map((task) => ({
+        entity_type: "capa",
+        entity_id: id,
+        record_number: record?.capa_number || null,
+        task_type: "capa_implementation_task",
+        task_title: task.task_title,
+        required_function: task.task_title,
+        due_date: task.due_date,
+        assigned_to_email: normalizeEmail(task.owner_email || task.owner),
+        assigned_by_email: userEmail || "unknown",
+        status: "pending",
+        required: true,
+        comments:
+          task.task_description ||
+          `Please complete the assigned CAPA implementation task for ${record?.capa_number || "this CAPA"}.`,
+        capa_task_id: task.id,
+      }));
+
+      const { data, error } = await supabase
+        .from("approval_tasks")
+        .insert(centralRows)
+        .select();
+
+      if (error) {
+        alert(error.message);
+        return;
+      }
+      insertedCentralTasks = data || [];
+    }
+
+    const { error: taskStatusError } = await supabase
+      .from("capa_tasks")
+      .update({ status: "open" })
+      .eq("capa_id", id)
+      .in("status", ["assigned", "draft"]);
+
+    if (taskStatusError) {
+      alert(taskStatusError.message);
+      return;
+    }
+
+    const { error: capaError } = await supabase
+      .from("capas")
+      .update({ status: "implementation" })
+      .eq("id", id);
+
+    if (capaError) {
+      alert(capaError.message);
+      return;
+    }
+
+    for (const task of tasks) {
+      const taskOwnerEmail = normalizeEmail(task.owner_email || task.owner);
+      if (!taskOwnerEmail) continue;
+      const centralTask = insertedCentralTasks.find(
+        (item: any) => String(item.capa_task_id || "") === task.id,
+      );
+
+      await createNotification({
+        userEmail: taskOwnerEmail,
+        title: "CAPA Implementation Task Activated",
+        message: `Implementation has started. Complete the assigned task: ${task.task_title || "CAPA task"}`,
+        notificationType: "capa_implementation_task_activated",
+        severity: "medium",
+        relatedRecordId: id,
+        relatedModule: "capa",
+        relatedUrl: "/my-approval-tasks",
+        createdBy: userEmail,
+        deduplicationKey: `CAPA_IMPLEMENTATION_STARTED_${id}_${task.id}_${taskOwnerEmail}`,
+      });
+
+      if (centralTask?.id) {
+        await supabase.from("notification_queue").insert({
+          recipient_email: taskOwnerEmail,
+          subject: `CAPA implementation started: ${record?.capa_number || "CAPA"}`,
+          body: `Implementation has started for ${record?.capa_number || "this CAPA"}. Please complete your assigned task in My Approval Tasks.`,
+          entity_type: "capa",
+          entity_id: id,
+          task_id: centralTask.id,
+          status: "pending",
+        });
+      }
+    }
+
+    await addAuditLog(
+      "implementation_started",
+      `Implementation Task Assignment completed with ${tasks.length} assigned task(s). Implementation started on ${now}.`,
+    );
+
+    alert("Implementation started. Task assignment is now read-only and task owners were notified.");
+    await Promise.all([fetchRecord(), fetchTasks(), fetchApprovalTasks()]);
+    expandSection("implementation");
+  };
+
   const updateTaskStatus = async (task: CapaTask, status: string) => {
+    if (implementationLocked) {
+      alert("Task execution is available only after Implementation has started.");
+      return;
+    }
+
     if (!canEditRecord) {
       alert(
         "Only the CAPA owner can edit this in-process record. Approved or closed records require a controlled workflow return.",
@@ -2047,6 +2182,10 @@ This approval becomes part of the official electronic quality record.`,
       return alert("Action plan is required.");
     }
 
+    if (tasks.length === 0 || tasks.some((task) => task.status !== "complete")) {
+      return alert("All assigned implementation tasks must be completed before Implementation can be marked complete.");
+    }
+
     if (!record?.implementation_details) {
       return alert("Implementation evidence is required.");
     }
@@ -2080,7 +2219,7 @@ This approval becomes part of the official electronic quality record.`,
 
   const incompleteTasks = tasks.filter((task) => task.status !== "complete");
   const overdueTasks = tasks.filter((task) => isTaskOverdue(task));
-  const tasksComplete = tasks.length === 0 || incompleteTasks.length === 0;
+  const tasksComplete = tasks.length > 0 && incompleteTasks.length === 0;
 
   const submitClosureApproval = async () => {
     if (!canEditRecord) return;
@@ -2346,6 +2485,18 @@ This approval becomes part of the official electronic quality record.`,
         implemented_by: null,
         implemented_at: null,
       },
+      implementation_task_assignment: {
+        status: "implementation_task_assignment",
+        effectiveness_plan_approval_status: "not_submitted",
+        effectiveness_plan_submitted_by: null,
+        effectiveness_plan_submitted_at: null,
+        effectiveness_plan_approved_by: null,
+        effectiveness_plan_approved_at: null,
+        effectiveness_plan_approval_comments: null,
+        closure_approval_status: "not_submitted",
+        implemented_by: null,
+        implemented_at: null,
+      },
       implementation: {
         status: "implementation",
         effectiveness_plan_approval_status: "not_submitted",
@@ -2451,6 +2602,11 @@ This approval becomes part of the official electronic quality record.`,
       ],
       action_plan: [
         "capa_action_plan_approval",
+        "capa_implementation_task",
+        "capa_effectiveness_plan_approval",
+        "capa_closure_approval",
+      ],
+      implementation_task_assignment: [
         "capa_implementation_task",
         "capa_effectiveness_plan_approval",
         "capa_closure_approval",
@@ -2594,6 +2750,12 @@ This approval becomes part of the official electronic quality record.`,
         locked: actionPlanPlanningLocked,
       },
       {
+        key: "implementationtasks",
+        label: "Implementation Task Assignment",
+        completed: actionPlanApproved && tasks.length > 0 && !implementationTaskAssignmentActive,
+        locked: implementationTaskAssignmentLocked,
+      },
+      {
         key: "implementation",
         label: "Implementation",
         completed: Boolean(
@@ -2623,6 +2785,8 @@ This approval becomes part of the official electronic quality record.`,
       initiationApproved,
       investigationApproved,
       actionPlanApproved,
+      tasks,
+      implementationTaskAssignmentActive,
       effectivenessPlanApproved,
       closureApproved,
       evaluationLocked,
@@ -4086,7 +4250,7 @@ This approval becomes part of the official electronic quality record.`,
                   <TaskCard
                     key={task.id}
                     task={task}
-                    locked={implementationLocked}
+                    locked={true}
                     evidence={taskEvidence[task.id] || ""}
                     setEvidence={(value) =>
                       setTaskEvidence((prev) => ({
@@ -4105,6 +4269,22 @@ This approval becomes part of the official electronic quality record.`,
                 ))
               )}
             </div>
+
+            {!implementationTaskAssignmentLocked ? (
+              <div style={{ marginTop: "20px" }}>
+                <button
+                  onClick={startImplementation}
+                  disabled={tasks.length === 0}
+                  style={buttonDisabledStyle(tasks.length === 0)}
+                >
+                  Start Implementation
+                </button>
+                <div style={helperTextStyle}>
+                  Requires at least one task. Every task must have a title,
+                  description, owner email, and due date.
+                </div>
+              </div>
+            ) : null}
           </WorkflowCard>
 
           <WorkflowCard
@@ -4119,7 +4299,9 @@ This approval becomes part of the official electronic quality record.`,
               <p style={subtleText}>
                 {record?.implemented_by
                   ? "Implementation is complete and locked. Use controlled workflow return if revision is required."
-                  : "Action plan approval is required before Implementation can be edited."}
+                  : String(record?.status || "").toLowerCase() === "implementation_task_assignment"
+                    ? "Complete Implementation Task Assignment and select Start Implementation before execution begins."
+                    : "Action plan approval is required before Implementation can be edited."}
               </p>
             ) : null}
 
@@ -4156,6 +4338,30 @@ This approval becomes part of the official electronic quality record.`,
                   disabled={implementationLocked}
                 />
               </Field>
+            </div>
+
+            <div style={{ marginTop: "20px", marginBottom: "20px" }}>
+              <h3 style={{ marginBottom: "8px" }}>Implementation Task Completion</h3>
+              {tasks.length === 0 ? (
+                <p style={subtleText}>No implementation tasks were assigned.</p>
+              ) : (
+                tasks.map((task) => (
+                  <TaskCard
+                    key={`implementation-${task.id}`}
+                    task={task}
+                    locked={implementationLocked}
+                    evidence={taskEvidence[task.id] || ""}
+                    setEvidence={(value) =>
+                      setTaskEvidence((prev) => ({ ...prev, [task.id]: value }))
+                    }
+                    isOverdue={isTaskOverdue(task)}
+                    onStart={() => updateTaskStatus(task, "in_progress")}
+                    onBlock={() => updateTaskStatus(task, "blocked")}
+                    onPendingReview={() => updateTaskStatus(task, "pending_review")}
+                    onComplete={() => completeTask(task)}
+                  />
+                ))
+              )}
             </div>
 
             <Field label="Implementation Evidence">
@@ -4639,6 +4845,9 @@ This approval becomes part of the official electronic quality record.`,
                     <option value="evaluation">Evaluation</option>
                     <option value="investigation">Investigation</option>
                     <option value="action_plan">Action Plan Proposal</option>
+                    <option value="implementation_task_assignment">
+                      Implementation Task Assignment
+                    </option>
                     <option value="implementation">Implementation</option>
                     {record?.implemented_by ? (
                       <option value="effectiveness_plan">
