@@ -935,7 +935,7 @@ export default function EnterpriseCapaWorkflowPage() {
       approver_function: row.approver_function || null,
       approver_job_title:
         row.approver_job_title || row.approver_role || "Approver",
-      approver_due_date: row.approver_due_date || null,
+      approver_due_date: null,
       approver_role: row.approver_role || row.approver_job_title || "Approver",
       approval_status: "configured",
       approval_order: row.approval_order || index + 1,
@@ -1072,6 +1072,46 @@ export default function EnterpriseCapaWorkflowPage() {
     await refreshApprovalEngine();
   };
 
+  const updateGateApproverDueDate = async (
+    gate: ApprovalGateKey,
+    approverId: string,
+    dueDate: string,
+  ) => {
+    if (hasActiveGateApprovalTasks(gate)) {
+      alert(
+        "Due dates cannot be changed while this approval package has active tasks.",
+      );
+      return;
+    }
+
+    // Update locally first so the date picker responds immediately.
+    setGateApprovers((prev) =>
+      prev.map((approver) =>
+        approver.id === approverId
+          ? { ...approver, approver_due_date: dueDate || null }
+          : approver,
+      ),
+    );
+
+    const { error } = await supabase
+      .from("capa_gate_approvers")
+      .update({ approver_due_date: dueDate || null })
+      .eq("id", approverId)
+      .eq("capa_id", id)
+      .eq("approval_gate", gate);
+
+    if (error) {
+      alert(error.message);
+      await fetchGateApprovers();
+      return;
+    }
+
+    await addAuditLog(
+      "approver_due_date_updated",
+      `${approvalGateLabels[gate]} approver due date updated to ${dueDate || "blank"}.`,
+    );
+  };
+
   const removeGateApprover = async (
     gate: ApprovalGateKey,
     approverId: string,
@@ -1083,8 +1123,12 @@ export default function EnterpriseCapaWorkflowPage() {
       return;
     }
 
+    const approverToRemove = getGateApprovers(gate).find(
+      (approver) => approver.id === approverId,
+    );
+
     const confirmed = window.confirm(
-      "Remove this approver from the approval gate?",
+      `Remove ${approverToRemove?.approver_email || "this approver"} from the approval gate?`,
     );
     if (!confirmed) return;
 
@@ -1098,9 +1142,28 @@ export default function EnterpriseCapaWorkflowPage() {
       return;
     }
 
+    const remainingApprovers = getGateApprovers(gate)
+      .filter((approver) => approver.id !== approverId)
+      .sort(
+        (a, b) =>
+          Number(a.approval_order || 0) - Number(b.approval_order || 0),
+      );
+
+    // Keep the displayed approval sequence contiguous after removal.
+    if (remainingApprovers.length > 0) {
+      await Promise.all(
+        remainingApprovers.map((approver, index) =>
+          supabase
+            .from("capa_gate_approvers")
+            .update({ approval_order: index + 1 })
+            .eq("id", approver.id),
+        ),
+      );
+    }
+
     await addAuditLog(
-      "manual_approver_removed",
-      `${approvalGateLabels[gate]} approver removed.`,
+      "approval_gate_approver_removed",
+      `${approvalGateLabels[gate]} approver removed: ${approverToRemove?.approver_email || approverId}.`,
     );
 
     await refreshApprovalEngine();
@@ -1114,6 +1177,19 @@ export default function EnterpriseCapaWorkflowPage() {
 
     if (configuredApprovers.length === 0) {
       alert("Configure at least one approver before submitting for approval.");
+      return false;
+    }
+
+    const approversMissingDueDates = configuredApprovers.filter(
+      (approver) => !String(approver.approver_due_date || "").trim(),
+    );
+
+    if (approversMissingDueDates.length > 0) {
+      alert(
+        `Approval due dates are required for all approvers before submitting the approval package.\n\nMissing due date:\n${approversMissingDueDates
+          .map((approver) => approver.approver_email)
+          .join("\n")}`,
+      );
       return false;
     }
 
@@ -3265,6 +3341,9 @@ This approval becomes part of the official electronic quality record.`,
               loadingApprovals={loadingApprovals}
               onLoadMatrix={() => loadApproversFromMatrix("initiation")}
               onAddManualApprover={() => addManualApprover("initiation")}
+              onUpdateApproverDueDate={(approverId, dueDate) =>
+                updateGateApproverDueDate("initiation", approverId, dueDate)
+              }
               onRemoveApprover={(approverId) =>
                 removeGateApprover("initiation", approverId)
               }
@@ -3945,6 +4024,9 @@ This approval becomes part of the official electronic quality record.`,
               loadingApprovals={loadingApprovals}
               onLoadMatrix={() => loadApproversFromMatrix("investigation")}
               onAddManualApprover={() => addManualApprover("investigation")}
+              onUpdateApproverDueDate={(approverId, dueDate) =>
+                updateGateApproverDueDate("investigation", approverId, dueDate)
+              }
               onRemoveApprover={(approverId) =>
                 removeGateApprover("investigation", approverId)
               }
@@ -4142,6 +4224,9 @@ This approval becomes part of the official electronic quality record.`,
               loadingApprovals={loadingApprovals}
               onLoadMatrix={() => loadApproversFromMatrix("action_plan")}
               onAddManualApprover={() => addManualApprover("action_plan")}
+              onUpdateApproverDueDate={(approverId, dueDate) =>
+                updateGateApproverDueDate("action_plan", approverId, dueDate)
+              }
               onRemoveApprover={(approverId) =>
                 removeGateApprover("action_plan", approverId)
               }
@@ -4619,6 +4704,13 @@ This approval becomes part of the official electronic quality record.`,
               onAddManualApprover={() =>
                 addManualApprover("effectiveness_plan")
               }
+              onUpdateApproverDueDate={(approverId, dueDate) =>
+                updateGateApproverDueDate(
+                  "effectiveness_plan",
+                  approverId,
+                  dueDate,
+                )
+              }
               onRemoveApprover={(approverId) =>
                 removeGateApprover("effectiveness_plan", approverId)
               }
@@ -4808,6 +4900,9 @@ This approval becomes part of the official electronic quality record.`,
               loadingApprovals={loadingApprovals}
               onLoadMatrix={() => loadApproversFromMatrix("closure")}
               onAddManualApprover={() => addManualApprover("closure")}
+              onUpdateApproverDueDate={(approverId, dueDate) =>
+                updateGateApproverDueDate("closure", approverId, dueDate)
+              }
               onRemoveApprover={(approverId) =>
                 removeGateApprover("closure", approverId)
               }
@@ -5161,6 +5256,7 @@ function ApprovalInlinePanel({
   loadingApprovals,
   onLoadMatrix,
   onAddManualApprover,
+  onUpdateApproverDueDate,
   onRemoveApprover,
   onToggle,
   onSubmit,
@@ -5203,6 +5299,7 @@ function ApprovalInlinePanel({
   loadingApprovals: boolean;
   onLoadMatrix: () => void;
   onAddManualApprover: () => void;
+  onUpdateApproverDueDate: (approverId: string, dueDate: string) => void;
   onRemoveApprover: (approverId: string) => void;
   onToggle: () => void;
   onSubmit: () => void;
@@ -5340,6 +5437,7 @@ function ApprovalInlinePanel({
                 <th style={tableHeaderStyle}>Job Title</th>
                 <th style={tableHeaderStyle}>User</th>
                 <th style={tableHeaderStyle}>Due Date</th>
+                <th style={tableHeaderStyle}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -5358,7 +5456,24 @@ function ApprovalInlinePanel({
                   </td>
                   <td style={tableCellStyle}>{approver.approver_email}</td>
                   <td style={tableCellStyle}>
-                    {approver.approver_due_date || "N/A"}
+                    <input
+                      type="date"
+                      value={approver.approver_due_date || ""}
+                      onChange={(event) =>
+                        onUpdateApproverDueDate(approver.id, event.target.value)
+                      }
+                      aria-label={`Due date for ${approver.approver_email}`}
+                      style={{ ...inputStyle(false), minWidth: "145px" }}
+                    />
+                  </td>
+                  <td style={tableCellStyle}>
+                    <button
+                      type="button"
+                      onClick={() => onRemoveApprover(approver.id)}
+                      style={dangerButtonStyle}
+                    >
+                      Remove
+                    </button>
                   </td>
                 </tr>
               ))}
