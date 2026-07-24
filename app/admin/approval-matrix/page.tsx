@@ -19,6 +19,7 @@ type ApprovalMatrixReviewer = {
   id: string;
   template_id: string;
   reviewer_type: string;
+  approver_function: string | null;
   reviewer_role: string | null;
   reviewer_email: string | null;
   required_reviewer: boolean | null;
@@ -38,6 +39,22 @@ const MODULE_OPTIONS = [
 ];
 
 const REVIEWER_TYPES = ["collaboration", "formal_review", "approver"];
+
+const FUNCTION_OPTIONS = [
+  "Quality",
+  "Quality Systems",
+  "Supplier Quality",
+  "Manufacturing",
+  "Operations",
+  "Engineering",
+  "Validation",
+  "Regulatory",
+  "Clinical",
+  "Training",
+  "Management",
+  "Executive",
+  "Other",
+];
 
 export default function ApprovalMatrixAdminPage() {
   const [loading, setLoading] = useState(true);
@@ -60,6 +77,7 @@ export default function ApprovalMatrixAdminPage() {
 
   const [newReviewer, setNewReviewer] = useState({
     reviewer_type: "formal_review",
+    approver_function: "",
     reviewer_role: "",
     reviewer_email: "",
     required_reviewer: true,
@@ -180,6 +198,7 @@ export default function ApprovalMatrixAdminPage() {
   const resetReviewerForm = () => {
     setNewReviewer({
       reviewer_type: "formal_review",
+      approver_function: "",
       reviewer_role: "",
       reviewer_email: "",
       required_reviewer: true,
@@ -281,8 +300,18 @@ export default function ApprovalMatrixAdminPage() {
       return false;
     }
 
-    if (!newReviewer.reviewer_role.trim() && !newReviewer.reviewer_email.trim()) {
-      alert("Reviewer role or reviewer email is required.");
+    if (!newReviewer.approver_function.trim()) {
+      alert("Function is required.");
+      return false;
+    }
+
+    if (!newReviewer.reviewer_role.trim()) {
+      alert("Job title is required.");
+      return false;
+    }
+
+    if (!newReviewer.reviewer_email.trim()) {
+      alert("Reviewer email is required.");
       return false;
     }
 
@@ -305,7 +334,8 @@ export default function ApprovalMatrixAdminPage() {
     const { error } = await supabase.from("approval_matrix_reviewers").insert({
       template_id: selectedTemplateId,
       reviewer_type: newReviewer.reviewer_type,
-      reviewer_role: newReviewer.reviewer_role.trim() || null,
+      approver_function: newReviewer.approver_function.trim(),
+      reviewer_role: newReviewer.reviewer_role.trim(),
       reviewer_email: reviewerEmail || null,
       required_reviewer: newReviewer.required_reviewer,
       sequence_order: sequence,
@@ -320,6 +350,7 @@ export default function ApprovalMatrixAdminPage() {
 
     setNewReviewer({
       reviewer_type: "formal_review",
+      approver_function: "",
       reviewer_role: "",
       reviewer_email: "",
       required_reviewer: true,
@@ -588,16 +619,29 @@ export default function ApprovalMatrixAdminPage() {
                     </select>
                   </Field>
 
-                  <Field label="Reviewer Role">
+                  <Field label="Function">
+                    <select
+                      value={newReviewer.approver_function}
+                      onChange={(e) => setNewReviewer({ ...newReviewer, approver_function: e.target.value })}
+                      style={inputStyle}
+                    >
+                      <option value="">Select function</option>
+                      {FUNCTION_OPTIONS.map((functionName) => (
+                        <option key={functionName} value={functionName}>{functionName}</option>
+                      ))}
+                    </select>
+                  </Field>
+
+                  <Field label="Job Title">
                     <input
                       value={newReviewer.reviewer_role}
                       onChange={(e) => setNewReviewer({ ...newReviewer, reviewer_role: e.target.value })}
-                      placeholder="Quality Manager"
+                      placeholder="Quality Engineer"
                       style={inputStyle}
                     />
                   </Field>
 
-                  <Field label="Reviewer Email Optional">
+                  <Field label="Reviewer Email">
                     <input
                       type="email"
                       value={newReviewer.reviewer_email}
@@ -664,7 +708,8 @@ export default function ApprovalMatrixAdminPage() {
                   <tr>
                     <th style={thStyle}>Sequence</th>
                     <th style={thStyle}>Review Phase</th>
-                    <th style={thStyle}>Reviewer Role</th>
+                    <th style={thStyle}>Function</th>
+                    <th style={thStyle}>Job Title</th>
                     <th style={thStyle}>Reviewer Email</th>
                     <th style={thStyle}>Required</th>
                     <th style={thStyle}>Status</th>
@@ -674,13 +719,14 @@ export default function ApprovalMatrixAdminPage() {
                 <tbody>
                   {selectedReviewers.length === 0 ? (
                     <tr>
-                      <td colSpan={7} style={tdStyle}>No reviewers have been added to this template.</td>
+                      <td colSpan={8} style={tdStyle}>No reviewers have been added to this template.</td>
                     </tr>
                   ) : (
                     selectedReviewers.map((reviewer) => (
                       <tr key={reviewer.id}>
                         <td style={tdStyle}>{reviewer.sequence_order || 1}</td>
                         <td style={tdStyle}>{getReviewerTypeLabel(reviewer.reviewer_type)}</td>
+                        <td style={tdStyle}>{reviewer.approver_function || "Not assigned"}</td>
                         <td style={tdStyle}>{reviewer.reviewer_role || "N/A"}</td>
                         <td style={tdStyle}>{reviewer.reviewer_email || "Assigned at workflow"}</td>
                         <td style={tdStyle}>{reviewer.required_reviewer ? "Yes" : "No"}</td>
