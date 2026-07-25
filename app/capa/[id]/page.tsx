@@ -2783,96 +2783,104 @@ This approval becomes part of the official electronic quality record.`,
     fetchRecord();
   };
 
+  const workflowProgressIndex = useMemo(() => {
+    const normalizedStatus = String(record?.status || "")
+      .trim()
+      .toLowerCase();
+
+    const statusStageIndex: Record<string, number> = {
+      initiation: 0,
+      pending_initiation_approval: 0,
+      evaluation: 1,
+      investigation: 2,
+      pending_investigation_approval: 2,
+      action_plan: 4,
+      pending_action_plan_approval: 4,
+      implementation_task_assignment: 5,
+      implementation: 6,
+      effectiveness_review: 7,
+      effectiveness_plan: 7,
+      pending_effectiveness_plan_approval: 7,
+      effectiveness_verification: 8,
+      pending_closure_approval: 8,
+      closed: 9,
+      cancelled: 9,
+    };
+
+    return statusStageIndex[normalizedStatus] ?? 0;
+  }, [record?.status]);
+
+  // Workflow progress is driven by the CAPA record status, not by retained
+  // section content. A controlled return keeps the historical data available
+  // for revision, while resetting the returned phase and every downstream
+  // phase to incomplete in the progress rail.
   const stages: WorkflowStage[] = useMemo(
     () => [
       {
         key: "initiation",
         label: "Initiation",
-        completed: initiationApproved,
+        completed: workflowProgressIndex > 0,
         locked: initiationLocked,
       },
       {
         key: "evaluation",
         label: "Evaluation",
-        completed: Boolean(
-          record?.scope_summary &&
-          record?.interim_controls_required &&
-          (record?.interim_controls_required === "yes"
-            ? record?.containment_action
-            : record?.no_interim_controls_justification) &&
-          record?.severity &&
-          getEffectiveRiskLevel(),
-        ),
+        completed: workflowProgressIndex > 1,
         locked: evaluationLocked,
       },
       {
         key: "investigation",
         label: "Investigation",
-        completed: Boolean(
-          record?.investigation_findings || record?.investigation_summary,
-        ),
+        completed: workflowProgressIndex > 2,
         locked: investigationLocked,
       },
       {
         key: "rootcause",
         label: "Root Cause Determination",
-        completed: Boolean(record?.root_cause),
+        completed: workflowProgressIndex > 3,
         locked: investigationLocked,
       },
       {
         key: "actionplan",
         label: "Action Plan Proposal",
-        completed: Boolean(record?.corrective_action_plan),
+        completed: workflowProgressIndex > 4,
         locked: actionPlanPlanningLocked,
       },
       {
         key: "implementationtasks",
         label: "Implementation Task Assignment",
-        completed: actionPlanApproved && tasks.length > 0 && !implementationTaskAssignmentActive,
+        completed: workflowProgressIndex > 5,
         locked: implementationTaskAssignmentLocked,
       },
       {
         key: "implementation",
         label: "Implementation",
-        completed: Boolean(
-          record?.implemented_by || record?.implementation_details,
-        ),
+        completed: workflowProgressIndex > 6,
         locked: implementationLocked,
       },
       {
         key: "effectivenessplan",
         label: "Effectiveness Plan",
-        completed: Boolean(
-          record?.verification_method && record?.effectiveness_success_criteria,
-        ),
+        completed: workflowProgressIndex > 7,
         locked: effectivenessPlanLocked,
       },
       {
         key: "effectiveness",
         label: "Effectiveness Verification",
-        completed: Boolean(
-          record?.effectiveness_rating && record?.effectiveness_check,
-        ),
+        completed: workflowProgressIndex > 8,
         locked: effectivenessVerificationLocked,
       },
     ],
     [
-      record,
-      initiationApproved,
-      investigationApproved,
-      actionPlanApproved,
-      tasks,
-      implementationTaskAssignmentActive,
-      effectivenessPlanApproved,
-      closureApproved,
+      workflowProgressIndex,
+      initiationLocked,
       evaluationLocked,
       investigationLocked,
       actionPlanPlanningLocked,
+      implementationTaskAssignmentLocked,
       implementationLocked,
       effectivenessPlanLocked,
       effectivenessVerificationLocked,
-      tasks,
-      tasksComplete,
     ],
   );
 
