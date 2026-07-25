@@ -143,6 +143,7 @@ export default function EnterpriseCapaWorkflowPage() {
   const [workflowReturnSignatureEmail, setWorkflowReturnSignatureEmail] =
     useState("");
   const [returningWorkflow, setReturningWorkflow] = useState(false);
+  const [startingImplementation, setStartingImplementation] = useState(false);
 
   const [newTask, setNewTask] = useState({
     task_type: "corrective_action",
@@ -242,16 +243,34 @@ export default function EnterpriseCapaWorkflowPage() {
     !initiationApproved || investigationApproved || !canEditRecord;
   const actionPlanPlanningLocked =
     !investigationApproved || actionPlanApproved || !canEditRecord;
+  const activeImplementationQueueTasks = approvalTasks.filter(
+    (task) =>
+      task.task_type === "capa_implementation_task" &&
+      !["cancelled", "rejected"].includes(
+        String(task.status || "").trim().toLowerCase(),
+      ),
+  );
+  const implementationTaskExecutionStarted =
+    activeImplementationQueueTasks.length > 0 ||
+    tasks.some((task) =>
+      ["open", "in_progress", "blocked", "pending_review", "completed"].includes(
+        String(task.status || "").trim().toLowerCase(),
+      ),
+    );
+  const normalizedRecordStatus = String(record?.status || "")
+    .trim()
+    .toLowerCase();
   const implementationTaskAssignmentActive =
     actionPlanApproved &&
-    String(record?.status || "").toLowerCase() ===
-      "implementation_task_assignment";
+    !record?.implemented_by &&
+    (normalizedRecordStatus === "implementation_task_assignment" ||
+      (normalizedRecordStatus === "implementation" &&
+        !implementationTaskExecutionStarted));
   const implementationTaskAssignmentLocked =
     !implementationTaskAssignmentActive || !canEditRecord;
   const implementationLocked =
     !actionPlanApproved ||
-    String(record?.status || "").toLowerCase() ===
-      "implementation_task_assignment" ||
+    !implementationTaskExecutionStarted ||
     Boolean(record?.implemented_by) ||
     !canEditRecord;
   const effectivenessPlanLocked =
@@ -546,11 +565,12 @@ export default function EnterpriseCapaWorkflowPage() {
   useEffect(() => {
     const normalizePostApprovalStage = async () => {
       if (
+        startingImplementation ||
         !tasksLoaded ||
         !record ||
         !actionPlanApproved ||
         record?.implemented_by ||
-        tasks.length > 0 ||
+        implementationTaskExecutionStarted ||
         String(record?.status || "").toLowerCase() !== "implementation"
       ) {
         return;
@@ -570,7 +590,15 @@ export default function EnterpriseCapaWorkflowPage() {
     };
 
     normalizePostApprovalStage();
-  }, [id, record?.status, record?.implemented_by, actionPlanApproved, tasksLoaded, tasks.length]);
+  }, [
+    id,
+    record?.status,
+    record?.implemented_by,
+    actionPlanApproved,
+    tasksLoaded,
+    implementationTaskExecutionStarted,
+    startingImplementation,
+  ]);
 
   const addAuditLog = async (action: string, details: string) => {
     await supabase.from("audit_logs").insert({
@@ -1370,6 +1398,7 @@ This approval becomes part of the official electronic quality record.`,
     );
     if (!confirmed) return;
 
+    setStartingImplementation(true);
     const now = new Date().toISOString();
     const fields = approvalGateStatusFields[gate];
 
@@ -1879,6 +1908,7 @@ This approval becomes part of the official electronic quality record.`,
         .select();
 
       if (error) {
+        setStartingImplementation(false);
         alert(error.message);
         return;
       }
@@ -1892,6 +1922,7 @@ This approval becomes part of the official electronic quality record.`,
       .in("status", ["assigned", "draft"]);
 
     if (taskStatusError) {
+      setStartingImplementation(false);
       alert(taskStatusError.message);
       return;
     }
@@ -1902,6 +1933,7 @@ This approval becomes part of the official electronic quality record.`,
       .eq("id", id);
 
     if (capaError) {
+      setStartingImplementation(false);
       alert(capaError.message);
       return;
     }
@@ -1946,6 +1978,7 @@ This approval becomes part of the official electronic quality record.`,
 
     alert("Implementation started. Task assignment is now read-only and task owners were notified.");
     await Promise.all([fetchRecord(), fetchTasks(), fetchApprovalTasks()]);
+    setStartingImplementation(false);
     expandSection("implementation");
   };
 
@@ -4253,7 +4286,13 @@ This approval becomes part of the official electronic quality record.`,
             onToggle={() => toggleSection("implementationtasks")}
           >
             {implementationTaskAssignmentLocked && !isLocked ? (
-              <LockNotice />
+              <div style={lockedNoticeStyle}>
+                {!actionPlanApproved
+                  ? "Action Plan approval is required before implementation tasks can be assigned."
+                  : implementationTaskExecutionStarted
+                    ? "Implementation has started. Task assignment is read-only."
+                    : "Implementation Task Assignment is not the active workflow phase."}
+              </div>
             ) : null}
 
             {!implementationTaskAssignmentLocked ? (
@@ -4344,6 +4383,7 @@ This approval becomes part of the official electronic quality record.`,
                     key={task.id}
                     task={task}
                     locked={true}
+                    routed={implementationTaskExecutionStarted}
                     evidence={taskEvidence[task.id] || ""}
                     setEvidence={(value) =>
                       setTaskEvidence((prev) => ({
@@ -4367,10 +4407,14 @@ This approval becomes part of the official electronic quality record.`,
               <div style={{ marginTop: "20px" }}>
                 <button
                   onClick={startImplementation}
-                  disabled={tasks.length === 0}
-                  style={buttonDisabledStyle(tasks.length === 0)}
+                  disabled={tasks.length === 0 || startingImplementation}
+                  style={buttonDisabledStyle(
+                    tasks.length === 0 || startingImplementation,
+                  )}
                 >
-                  Start Implementation
+                  {startingImplementation
+                    ? "Starting Implementation..."
+                    : "Start Implementation"}
                 </button>
                 <div style={helperTextStyle}>
                   Requires at least one task. Every task must have a title,
@@ -5516,6 +5560,7 @@ function ApprovalInlinePanel({
 function TaskCard({
   task,
   locked,
+  routed,
   evidence,
   setEvidence,
   isOverdue,
@@ -5526,6 +5571,7 @@ function TaskCard({
 }: {
   task: CapaTask;
   locked: boolean;
+  routed: boolean;
   evidence: string;
   setEvidence: (value: string) => void;
   isOverdue: boolean;
@@ -5585,8 +5631,9 @@ function TaskCard({
         </div>
       ) : (
         <p style={{ ...subtleText, marginTop: "12px", marginBottom: 0 }}>
-          This task is routed to the assignee's My Tasks work queue for
-          execution.
+          {routed
+            ? "This task is routed to the assignee's My Tasks work queue for execution."
+            : "This task will be routed to the assignee's My Tasks work queue when Start Implementation is confirmed."}
         </p>
       )}
     </div>
