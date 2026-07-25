@@ -82,7 +82,7 @@ const gateStatusFields: Record<
     rejectedBy: "action_plan_rejected_by",
     rejectedAt: "action_plan_rejected_at",
     rejectionComments: "action_plan_rejection_comments",
-    approvedRecordStatus: "implementation",
+    approvedRecordStatus: "implementation_task_assignment",
     rejectedRecordStatus: "action_plan",
   },
   implementation: {
