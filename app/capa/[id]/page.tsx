@@ -154,6 +154,7 @@ export default function EnterpriseCapaWorkflowPage() {
   });
 
   const [taskEvidence, setTaskEvidence] = useState<Record<string, string>>({});
+  const [uploadingImplementationEvidence, setUploadingImplementationEvidence] = useState(false);
 
   const isLocked =
     record?.is_locked === true ||
@@ -2271,6 +2272,78 @@ This approval becomes part of the official electronic quality record.`,
     _comments: string,
   ) => {
     alert("CAPA approvals are completed from My Approval Tasks.");
+  };
+
+  const uploadImplementationEvidenceFile = async (file: File | null) => {
+    if (!file) return;
+
+    if (implementationLocked) {
+      alert("Implementation evidence attachments cannot be changed while Implementation is locked.");
+      return;
+    }
+
+    const maxFileSize = 25 * 1024 * 1024;
+    if (file.size > maxFileSize) {
+      alert("The attachment must be 25 MB or smaller.");
+      return;
+    }
+
+    setUploadingImplementationEvidence(true);
+
+    try {
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const filePath = `${id}/implementation/${Date.now()}-${crypto.randomUUID()}-${safeName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("capa-evidence")
+        .upload(filePath, file, {
+          cacheControl: "3600",
+          upsert: false,
+          contentType: file.type || undefined,
+        });
+
+      if (uploadError) throw uploadError;
+
+      const { data: publicUrlData } = supabase.storage
+        .from("capa-evidence")
+        .getPublicUrl(filePath);
+
+      const attachmentUrl = publicUrlData.publicUrl;
+
+      const { error: updateError } = await supabase
+        .from("capas")
+        .update({
+          implementation_evidence_file_name: file.name,
+          implementation_evidence_file_path: filePath,
+          implementation_evidence_file_url: attachmentUrl,
+        })
+        .eq("id", id);
+
+      if (updateError) {
+        await supabase.storage.from("capa-evidence").remove([filePath]);
+        throw updateError;
+      }
+
+      setRecord((prev: any) =>
+        prev
+          ? {
+              ...prev,
+              implementation_evidence_file_name: file.name,
+              implementation_evidence_file_path: filePath,
+              implementation_evidence_file_url: attachmentUrl,
+            }
+          : prev,
+      );
+
+      await addAuditLog(
+        "implementation_evidence_attached",
+        `Implementation evidence file attached: ${file.name}`,
+      );
+    } catch (error: any) {
+      alert(error?.message || "Unable to upload the implementation evidence attachment.");
+    } finally {
+      setUploadingImplementationEvidence(false);
+    }
   };
 
   const markImplemented = async () => {
@@ -4487,6 +4560,7 @@ This approval becomes part of the official electronic quality record.`,
                     key={`implementation-${task.id}`}
                     task={task}
                     locked={implementationLocked}
+                    routed={implementationTaskExecutionStarted}
                     evidence={taskEvidence[task.id] || ""}
                     setEvidence={(value) =>
                       setTaskEvidence((prev) => ({ ...prev, [task.id]: value }))
@@ -4518,6 +4592,39 @@ This approval becomes part of the official electronic quality record.`,
                 rows={4}
                 style={textareaStyle(implementationLocked)}
               />
+            </Field>
+
+            <Field label="Implementation Evidence Attachment (Optional)">
+              <input
+                type="file"
+                disabled={implementationLocked || uploadingImplementationEvidence}
+                onChange={(event) => {
+                  const file = event.target.files?.[0] || null;
+                  void uploadImplementationEvidenceFile(file);
+                  event.currentTarget.value = "";
+                }}
+                style={inputStyle(
+                  implementationLocked || uploadingImplementationEvidence,
+                )}
+              />
+              <div style={helperTextStyle}>
+                Attach supporting evidence such as a validation report, revised procedure,
+                training record, photograph, or other implementation record. Maximum 25 MB.
+              </div>
+              {uploadingImplementationEvidence ? (
+                <p style={subtleText}>Uploading attachment...</p>
+              ) : null}
+              {record?.implementation_evidence_file_url ? (
+                <p style={{ marginTop: "8px", marginBottom: 0 }}>
+                  <a
+                    href={record.implementation_evidence_file_url}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Open {record.implementation_evidence_file_name || "implementation evidence attachment"}
+                  </a>
+                </p>
+              ) : null}
             </Field>
 
             <button
@@ -5580,7 +5687,7 @@ function TaskCard({
   onPendingReview: () => void;
   onComplete: () => void;
 }) {
-  const complete = task.status === "completed";
+  const complete = ["complete", "completed"].includes(String(task.status || "").toLowerCase());
 
   return (
     <div
