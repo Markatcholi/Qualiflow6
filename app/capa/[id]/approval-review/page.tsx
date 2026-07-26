@@ -12,6 +12,14 @@ type ApprovalGate =
   | "effectiveness_plan"
   | "closure";
 
+type EvidenceAttachment = {
+  name?: string;
+  path?: string;
+  url?: string;
+  uploaded_at?: string;
+  uploaded_by?: string;
+};
+
 const gateLabels: Record<ApprovalGate, string> = {
   initiation: "Initiation Approval",
   investigation: "Investigation Approval",
@@ -522,6 +530,11 @@ function InitiationSection({ record }: { record: any }) {
           ["Due Date", record.due_date],
         ]}
       />
+
+      <EvidenceAttachments
+        title="Initiation Supporting Evidence"
+        value={record.initiation_supporting_evidence}
+      />
     </ReviewSection>
   );
 }
@@ -574,6 +587,11 @@ function RootCauseSection({ record }: { record: any }) {
           ["Systemic Impact", record.systemic_impact],
         ]}
       />
+
+      <EvidenceAttachments
+        title="Root Cause Supporting Evidence"
+        value={record.root_cause_supporting_evidence}
+      />
     </ReviewSection>
   );
 }
@@ -608,8 +626,12 @@ function ImplementationSection({ record, tasks }: { record: any; tasks: any[] })
           ["Implementation Notes", record.implementation || record.implementation_details],
           ["Implemented By", record.implemented_by],
           ["Implemented At", record.implemented_at],
-          ["Implementation Evidence", record.implementation_evidence],
         ]}
+      />
+
+      <EvidenceAttachments
+        title="Implementation Evidence"
+        value={record.implementation_evidence}
       />
 
       <TaskTable tasks={tasks} title="Task Completion Evidence" />
@@ -723,13 +745,148 @@ function TaskTable({ tasks, title }: { tasks: any[]; title: string }) {
                 <td style={tdStyle}>{task.owner_email || task.owner || "N/A"}</td>
                 <td style={tdStyle}>{task.due_date || "N/A"}</td>
                 <td style={tdStyle}>{task.status || "N/A"}</td>
-                <td style={tdStyle}>{task.completion_evidence || "N/A"}</td>
+                <td style={tdStyle}>
+                  <InlineEvidenceAttachments value={task.completion_evidence} />
+                </td>
                 <td style={tdStyle}>{task.completed_by || "N/A"}</td>
                 <td style={tdStyle}>{formatDate(task.completed_at)}</td>
               </tr>
             ))}
           </tbody>
         </table>
+      )}
+    </div>
+  );
+}
+
+
+function normalizeEvidenceAttachments(value: any): EvidenceAttachment[] {
+  if (Array.isArray(value)) {
+    return value
+      .map((item: any) => {
+        if (typeof item === "string") {
+          return {
+            name: item.split("/").pop() || item,
+            url: item,
+          };
+        }
+
+        if (item && typeof item === "object") {
+          return {
+            name: item.name || item.file_name || item.filename || "Attachment",
+            path: item.path || item.file_path,
+            url: item.url || item.public_url || item.download_url,
+            uploaded_at: item.uploaded_at,
+            uploaded_by: item.uploaded_by,
+          };
+        }
+
+        return null;
+      })
+      .filter(Boolean) as EvidenceAttachment[];
+  }
+
+  if (typeof value === "string" && value.trim()) {
+    try {
+      return normalizeEvidenceAttachments(JSON.parse(value));
+    } catch {
+      return [
+        {
+          name: value.split("/").pop() || "Attachment",
+          url: value,
+        },
+      ];
+    }
+  }
+
+  if (value && typeof value === "object") {
+    return normalizeEvidenceAttachments([value]);
+  }
+
+  return [];
+}
+
+function EvidenceAttachments({
+  title,
+  value,
+}: {
+  title: string;
+  value: any;
+}) {
+  const attachments = normalizeEvidenceAttachments(value);
+
+  return (
+    <div style={evidenceSectionStyle}>
+      <h3 style={{ margin: "0 0 10px 0" }}>{title}</h3>
+
+      {attachments.length === 0 ? (
+        <p style={emptyEvidenceTextStyle}>No supporting evidence attached.</p>
+      ) : (
+        <div style={evidenceListStyle}>
+          {attachments.map((attachment, index) => (
+            <div
+              key={`${attachment.path || attachment.url || attachment.name}-${index}`}
+              style={evidenceRowStyle}
+            >
+              <div style={{ minWidth: 0 }}>
+                <div style={evidenceNameStyle}>
+                  {attachment.name || `Attachment ${index + 1}`}
+                </div>
+
+                {attachment.uploaded_by || attachment.uploaded_at ? (
+                  <div style={evidenceMetaStyle}>
+                    {attachment.uploaded_by
+                      ? `Uploaded by ${attachment.uploaded_by}`
+                      : ""}
+                    {attachment.uploaded_by && attachment.uploaded_at ? " • " : ""}
+                    {attachment.uploaded_at
+                      ? formatDate(attachment.uploaded_at)
+                      : ""}
+                  </div>
+                ) : null}
+              </div>
+
+              {attachment.url ? (
+                <a
+                  href={attachment.url}
+                  download={attachment.name || undefined}
+                  style={downloadLinkStyle}
+                >
+                  Download File
+                </a>
+              ) : (
+                <span style={missingEvidenceStyle}>File link unavailable</span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function InlineEvidenceAttachments({ value }: { value: any }) {
+  const attachments = normalizeEvidenceAttachments(value);
+
+  if (attachments.length === 0) return <>N/A</>;
+
+  return (
+    <div style={{ display: "grid", gap: "6px" }}>
+      {attachments.map((attachment, index) =>
+        attachment.url ? (
+          <a
+            key={`${attachment.path || attachment.url || attachment.name}-${index}`}
+            href={attachment.url}
+            download={attachment.name || undefined}
+            style={inlineDownloadLinkStyle}
+          >
+            {attachment.name || `Download attachment ${index + 1}`}
+          </a>
+        ) : (
+          <span key={`${attachment.name}-${index}`}>
+            {attachment.name || `Attachment ${index + 1}`}
+          </span>
+        )
       )}
     </div>
   );
@@ -901,6 +1058,69 @@ const secondaryButtonStyle: React.CSSProperties = {
   padding: "10px 16px",
   fontWeight: 800,
   cursor: "pointer",
+};
+
+
+const evidenceSectionStyle: React.CSSProperties = {
+  marginTop: "18px",
+  borderTop: "1px solid #e5e7eb",
+  paddingTop: "16px",
+};
+
+const evidenceListStyle: React.CSSProperties = {
+  display: "grid",
+  gap: "10px",
+};
+
+const evidenceRowStyle: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: "14px",
+  flexWrap: "wrap",
+  border: "1px solid #e5e7eb",
+  borderRadius: "10px",
+  padding: "12px",
+  background: "#f9fafb",
+};
+
+const evidenceNameStyle: React.CSSProperties = {
+  fontWeight: 800,
+  overflowWrap: "anywhere",
+};
+
+const evidenceMetaStyle: React.CSSProperties = {
+  marginTop: "4px",
+  color: "#6b7280",
+  fontSize: "12px",
+};
+
+const emptyEvidenceTextStyle: React.CSSProperties = {
+  color: "#6b7280",
+  margin: 0,
+};
+
+const downloadLinkStyle: React.CSSProperties = {
+  display: "inline-block",
+  background: "#2563eb",
+  color: "#ffffff",
+  textDecoration: "none",
+  borderRadius: "9px",
+  padding: "8px 12px",
+  fontWeight: 800,
+  whiteSpace: "nowrap",
+};
+
+const inlineDownloadLinkStyle: React.CSSProperties = {
+  color: "#1d4ed8",
+  fontWeight: 800,
+  textDecoration: "underline",
+  overflowWrap: "anywhere",
+};
+
+const missingEvidenceStyle: React.CSSProperties = {
+  color: "#991b1b",
+  fontWeight: 700,
 };
 
 const tableStyle: React.CSSProperties = {
