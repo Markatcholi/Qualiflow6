@@ -152,6 +152,14 @@ export default function EnterpriseCapaWorkflowPage() {
     owner: "",
     due_date: "",
   });
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [editingTask, setEditingTask] = useState({
+    task_type: "corrective_action",
+    task_title: "",
+    task_description: "",
+    owner: "",
+    due_date: "",
+  });
 
   const [taskEvidence, setTaskEvidence] = useState<Record<string, string>>({});
   const [uploadingImplementationEvidence, setUploadingImplementationEvidence] = useState(false);
@@ -1834,6 +1842,107 @@ This approval becomes part of the official electronic quality record.`,
 
     fetchTasks();
     fetchApprovalTasks();
+  };
+
+  const beginEditTask = (task: CapaTask) => {
+    if (implementationTaskAssignmentLocked || implementationTaskExecutionStarted) {
+      alert("Implementation tasks can only be edited before Start Implementation.");
+      return;
+    }
+
+    setEditingTaskId(task.id);
+    setEditingTask({
+      task_type: task.task_type || "corrective_action",
+      task_title: task.task_title || "",
+      task_description: task.task_description || "",
+      owner: task.owner_email || task.owner || "",
+      due_date: task.due_date || "",
+    });
+  };
+
+  const cancelEditTask = () => {
+    setEditingTaskId(null);
+    setEditingTask({
+      task_type: "corrective_action",
+      task_title: "",
+      task_description: "",
+      owner: "",
+      due_date: "",
+    });
+  };
+
+  const saveEditedTask = async (task: CapaTask) => {
+    if (implementationTaskAssignmentLocked || implementationTaskExecutionStarted) {
+      alert("Implementation tasks can only be edited before Start Implementation.");
+      return;
+    }
+
+    const taskTitle = editingTask.task_title.trim();
+    const taskDescription = editingTask.task_description.trim();
+    const taskOwnerEmail = normalizeEmail(editingTask.owner);
+    const dueDate = editingTask.due_date.trim();
+
+    if (!taskTitle) return alert("Task title is required.");
+    if (!taskDescription) return alert("Task description is required.");
+    if (!taskOwnerEmail) return alert("Task owner email is required.");
+    if (!dueDate) return alert("Task due date is required.");
+
+    const { error } = await supabase
+      .from("capa_tasks")
+      .update({
+        task_type: editingTask.task_type,
+        task_title: taskTitle,
+        task_description: taskDescription,
+        owner: taskOwnerEmail,
+        owner_email: taskOwnerEmail,
+        due_date: dueDate,
+      })
+      .eq("id", task.id)
+      .eq("capa_id", id);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    await addAuditLog(
+      "implementation_task_updated_before_start",
+      `Implementation task updated before Start Implementation: ${taskTitle}`,
+    );
+
+    cancelEditTask();
+    await fetchTasks();
+  };
+
+  const deletePlannedTask = async (task: CapaTask) => {
+    if (implementationTaskAssignmentLocked || implementationTaskExecutionStarted) {
+      alert("Implementation tasks can only be deleted before Start Implementation.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Delete the planned implementation task "${task.task_title || "Implementation Task"}"?\n\nThis task has not been routed to the owner and will be permanently removed from the draft implementation plan.`,
+    );
+    if (!confirmed) return;
+
+    const { error } = await supabase
+      .from("capa_tasks")
+      .delete()
+      .eq("id", task.id)
+      .eq("capa_id", id);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    await addAuditLog(
+      "implementation_task_deleted_before_start",
+      `Planned implementation task deleted before Start Implementation: ${task.task_title || task.id}`,
+    );
+
+    if (editingTaskId === task.id) cancelEditTask();
+    await fetchTasks();
   };
 
   const startImplementation = async () => {
@@ -4471,6 +4580,17 @@ This approval becomes part of the official electronic quality record.`,
                       updateTaskStatus(task, "pending_review")
                     }
                     onComplete={() => completeTask(task)}
+                    canManagePlanning={
+                      !implementationTaskAssignmentLocked &&
+                      !implementationTaskExecutionStarted
+                    }
+                    editing={editingTaskId === task.id}
+                    editingTask={editingTaskId === task.id ? editingTask : null}
+                    setEditingTask={setEditingTask}
+                    onEdit={() => beginEditTask(task)}
+                    onCancelEdit={cancelEditTask}
+                    onSaveEdit={() => saveEditedTask(task)}
+                    onDelete={() => deletePlannedTask(task)}
                   />
                 ))
               )}
@@ -5675,6 +5795,14 @@ function TaskCard({
   onBlock,
   onPendingReview,
   onComplete,
+  canManagePlanning = false,
+  editing = false,
+  editingTask = null,
+  setEditingTask,
+  onEdit,
+  onCancelEdit,
+  onSaveEdit,
+  onDelete,
 }: {
   task: CapaTask;
   locked: boolean;
@@ -5686,6 +5814,26 @@ function TaskCard({
   onBlock: () => void;
   onPendingReview: () => void;
   onComplete: () => void;
+  canManagePlanning?: boolean;
+  editing?: boolean;
+  editingTask?: {
+    task_type: string;
+    task_title: string;
+    task_description: string;
+    owner: string;
+    due_date: string;
+  } | null;
+  setEditingTask?: (value: {
+    task_type: string;
+    task_title: string;
+    task_description: string;
+    owner: string;
+    due_date: string;
+  }) => void;
+  onEdit?: () => void;
+  onCancelEdit?: () => void;
+  onSaveEdit?: () => void;
+  onDelete?: () => void;
 }) {
   const complete = ["complete", "completed"].includes(String(task.status || "").toLowerCase());
 
@@ -5700,9 +5848,107 @@ function TaskCard({
         background: "#ffffff",
       }}
     >
-      <h4 style={{ margin: "0 0 6px 0" }}>
-        {task.task_title || "Implementation Task"}
-      </h4>
+      {editing && editingTask && setEditingTask ? (
+        <div style={{ display: "grid", gap: "12px" }}>
+          <Field label="Task Type">
+            <select
+              value={editingTask.task_type}
+              onChange={(event) =>
+                setEditingTask({ ...editingTask, task_type: event.target.value })
+              }
+              style={inputStyle(false)}
+            >
+              <option value="corrective_action">Corrective Action</option>
+              <option value="preventive_action">Preventive Action</option>
+              <option value="correction">Correction</option>
+              <option value="containment">Containment</option>
+              <option value="verification">Verification</option>
+              <option value="other">Other</option>
+            </select>
+          </Field>
+
+          <Field label="Task Title">
+            <input
+              value={editingTask.task_title}
+              onChange={(event) =>
+                setEditingTask({ ...editingTask, task_title: event.target.value })
+              }
+              style={inputStyle(false)}
+            />
+          </Field>
+
+          <Field label="Task Description">
+            <textarea
+              value={editingTask.task_description}
+              onChange={(event) =>
+                setEditingTask({
+                  ...editingTask,
+                  task_description: event.target.value,
+                })
+              }
+              rows={3}
+              style={textareaStyle(false)}
+            />
+          </Field>
+
+          <div style={formGridStyle}>
+            <Field label="Task Owner Email">
+              <input
+                type="email"
+                value={editingTask.owner}
+                onChange={(event) =>
+                  setEditingTask({ ...editingTask, owner: event.target.value })
+                }
+                style={inputStyle(false)}
+              />
+            </Field>
+
+            <Field label="Due Date">
+              <input
+                type="date"
+                value={editingTask.due_date}
+                onChange={(event) =>
+                  setEditingTask({ ...editingTask, due_date: event.target.value })
+                }
+                style={inputStyle(false)}
+              />
+            </Field>
+          </div>
+
+          <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+            <button type="button" onClick={onSaveEdit} style={primaryButtonStyle}>
+              Save Task
+            </button>
+            <button type="button" onClick={onCancelEdit} style={secondaryButtonStyle}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              gap: "12px",
+              alignItems: "flex-start",
+            }}
+          >
+            <h4 style={{ margin: "0 0 6px 0" }}>
+              {task.task_title || "Implementation Task"}
+            </h4>
+
+            {canManagePlanning ? (
+              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                <button type="button" onClick={onEdit} style={secondaryButtonStyle}>
+                  Edit
+                </button>
+                <button type="button" onClick={onDelete} style={dangerButtonStyle}>
+                  Delete
+                </button>
+              </div>
+            ) : null}
+          </div>
 
       <div style={{ color: "#6b7280", marginBottom: "8px" }}>
         {formatTaskType(task.task_type)}
@@ -5742,6 +5988,8 @@ function TaskCard({
             ? "This task is routed to the assignee's My Tasks work queue for execution."
             : "This task will be routed to the assignee's My Tasks work queue when Start Implementation is confirmed."}
         </p>
+      )}
+        </>
       )}
     </div>
   );
