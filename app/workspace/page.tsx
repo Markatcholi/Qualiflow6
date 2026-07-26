@@ -667,7 +667,7 @@ function getOwnedCapaWorkLabel(capa: any) {
   if (capa.action_plan_approval_status === "rejected") return "Revise Action Plan";
 
   if (capa.action_plan_approval_status === "approved" && !capa.implemented_by) {
-    return "Complete Implementation";
+    return "Continue CAPA";
   }
 
   if (capa.implemented_by && capa.effectiveness_plan_approval_status !== "approved") {
