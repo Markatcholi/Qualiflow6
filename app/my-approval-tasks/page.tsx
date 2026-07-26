@@ -655,6 +655,14 @@ function getOwnedCapaWorkLabel(capa: any) {
   if (capa.action_plan_approval_status === "rejected") return "Revise Action Plan";
 
   if (capa.action_plan_approval_status === "approved" && !capa.implemented_by) {
+    const workflowStatus = String(capa.status || "")
+      .trim()
+      .toLowerCase();
+
+    if (workflowStatus === "implementation_task_assignment") {
+      return "Assign Implementation Tasks";
+    }
+
     return "Complete Implementation";
   }
 
