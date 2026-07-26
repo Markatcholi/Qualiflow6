@@ -61,6 +61,14 @@ type CapaGateApprover = {
   created_at: string | null;
 };
 
+type EvidenceAttachment = {
+  name: string;
+  path: string;
+  url: string;
+  uploaded_at: string;
+  uploaded_by: string;
+};
+
 type CapaApprovalTask = {
   id: string;
   entity_type: string | null;
@@ -163,6 +171,8 @@ export default function EnterpriseCapaWorkflowPage() {
 
   const [taskEvidence, setTaskEvidence] = useState<Record<string, string>>({});
   const [uploadingImplementationEvidence, setUploadingImplementationEvidence] = useState(false);
+  const [uploadingSupportingEvidencePhase, setUploadingSupportingEvidencePhase] =
+    useState<"initiation" | "root_cause" | "">("");
 
   const isLocked =
     record?.is_locked === true ||
@@ -2383,6 +2393,300 @@ This approval becomes part of the official electronic quality record.`,
     alert("CAPA approvals are completed from My Approval Tasks.");
   };
 
+  const normalizeEvidenceAttachments = (value: any): EvidenceAttachment[] => {
+    if (Array.isArray(value)) {
+      return value.filter(
+        (item: any) =>
+          item &&
+          typeof item === "object" &&
+          String(item.url || "").trim(),
+      );
+    }
+
+    if (typeof value === "string" && value.trim()) {
+      try {
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed)
+          ? parsed.filter(
+              (item: any) =>
+                item &&
+                typeof item === "object" &&
+                String(item.url || "").trim(),
+            )
+          : [];
+      } catch {
+        return [];
+      }
+    }
+
+    return [];
+  };
+
+  const uploadSupportingEvidenceFiles = async ({
+    files,
+    phase,
+    field,
+    locked,
+    auditAction,
+  }: {
+    files: FileList | null;
+    phase: "initiation" | "root_cause";
+    field: "initiation_supporting_evidence" | "root_cause_supporting_evidence";
+    locked: boolean;
+    auditAction: string;
+  }) => {
+    const selectedFiles = Array.from(files || []);
+    if (selectedFiles.length === 0) return;
+
+    if (locked) {
+      alert("Supporting evidence attachments cannot be changed while this phase is locked.");
+      return;
+    }
+
+    const maxFileSize = 25 * 1024 * 1024;
+    const oversizedFiles = selectedFiles.filter((file) => file.size > maxFileSize);
+
+    if (oversizedFiles.length > 0) {
+      alert(
+        `Each attachment must be 25 MB or smaller.\n\nToo large:\n${oversizedFiles
+          .map((file) => file.name)
+          .join("\n")}`,
+      );
+      return;
+    }
+
+    setUploadingSupportingEvidencePhase(phase);
+
+    const uploadedPaths: string[] = [];
+
+    try {
+      const existingAttachments = normalizeEvidenceAttachments(record?.[field]);
+      const newAttachments: EvidenceAttachment[] = [];
+
+      for (const file of selectedFiles) {
+        const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+        const filePath = `${id}/${phase}/${Date.now()}-${crypto.randomUUID()}-${safeName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from("capa-evidence")
+          .upload(filePath, file, {
+            cacheControl: "3600",
+            upsert: false,
+            contentType: file.type || undefined,
+          });
+
+        if (uploadError) throw uploadError;
+        uploadedPaths.push(filePath);
+
+        const { data: publicUrlData } = supabase.storage
+          .from("capa-evidence")
+          .getPublicUrl(filePath);
+
+        newAttachments.push({
+          name: file.name,
+          path: filePath,
+          url: publicUrlData.publicUrl,
+          uploaded_at: new Date().toISOString(),
+          uploaded_by: userEmail || "unknown",
+        });
+      }
+
+      const updatedAttachments = [...existingAttachments, ...newAttachments];
+
+      const { error: updateError } = await supabase
+        .from("capas")
+        .update({ [field]: updatedAttachments })
+        .eq("id", id);
+
+      if (updateError) {
+        if (uploadedPaths.length > 0) {
+          await supabase.storage.from("capa-evidence").remove(uploadedPaths);
+        }
+        throw updateError;
+      }
+
+      setRecord((prev: any) =>
+        prev ? { ...prev, [field]: updatedAttachments } : prev,
+      );
+
+      await addAuditLog(
+        auditAction,
+        `${newAttachments.length} supporting evidence file(s) attached: ${newAttachments
+          .map((attachment) => attachment.name)
+          .join(", ")}`,
+      );
+    } catch (error: any) {
+      alert(error?.message || "Unable to upload the supporting evidence attachment(s).");
+    } finally {
+      setUploadingSupportingEvidencePhase("");
+    }
+  };
+
+  const removeSupportingEvidenceFile = async ({
+    attachment,
+    phase,
+    field,
+    locked,
+    auditAction,
+  }: {
+    attachment: EvidenceAttachment;
+    phase: "initiation" | "root_cause";
+    field: "initiation_supporting_evidence" | "root_cause_supporting_evidence";
+    locked: boolean;
+    auditAction: string;
+  }) => {
+    if (locked) {
+      alert("Supporting evidence attachments cannot be changed while this phase is locked.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Remove "${attachment.name}" from this CAPA phase?`,
+    );
+    if (!confirmed) return;
+
+    setUploadingSupportingEvidencePhase(phase);
+
+    try {
+      const existingAttachments = normalizeEvidenceAttachments(record?.[field]);
+      const updatedAttachments = existingAttachments.filter(
+        (item) => item.path !== attachment.path,
+      );
+
+      const { error: updateError } = await supabase
+        .from("capas")
+        .update({ [field]: updatedAttachments })
+        .eq("id", id);
+
+      if (updateError) throw updateError;
+
+      if (attachment.path) {
+        const { error: storageError } = await supabase.storage
+          .from("capa-evidence")
+          .remove([attachment.path]);
+
+        if (storageError) {
+          console.warn(
+            "The CAPA record was updated, but the storage object could not be removed:",
+            storageError.message,
+          );
+        }
+      }
+
+      setRecord((prev: any) =>
+        prev ? { ...prev, [field]: updatedAttachments } : prev,
+      );
+
+      await addAuditLog(
+        auditAction,
+        `Supporting evidence file removed: ${attachment.name}`,
+      );
+    } catch (error: any) {
+      alert(error?.message || "Unable to remove the supporting evidence attachment.");
+    } finally {
+      setUploadingSupportingEvidencePhase("");
+    }
+  };
+
+  const renderSupportingEvidenceField = ({
+    label,
+    phase,
+    field,
+    locked,
+    helperText,
+  }: {
+    label: string;
+    phase: "initiation" | "root_cause";
+    field: "initiation_supporting_evidence" | "root_cause_supporting_evidence";
+    locked: boolean;
+    helperText: string;
+  }) => {
+    const attachments = normalizeEvidenceAttachments(record?.[field]);
+    const uploading = uploadingSupportingEvidencePhase === phase;
+
+    return (
+      <Field label={label}>
+        <input
+          type="file"
+          multiple
+          accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.jpg,.jpeg,.png,.tif,.tiff"
+          disabled={locked || uploading}
+          onChange={(event) => {
+            void uploadSupportingEvidenceFiles({
+              files: event.target.files,
+              phase,
+              field,
+              locked,
+              auditAction: `${phase}_supporting_evidence_attached`,
+            });
+            event.currentTarget.value = "";
+          }}
+          style={inputStyle(locked || uploading)}
+        />
+
+        <div style={helperTextStyle}>
+          {helperText} Multiple files are allowed. Maximum 25 MB per file.
+        </div>
+
+        {uploading ? <p style={subtleText}>Uploading attachment(s)...</p> : null}
+
+        {attachments.length > 0 ? (
+          <div style={{ display: "grid", gap: "8px", marginTop: "10px" }}>
+            {attachments.map((attachment, index) => (
+              <div
+                key={`${attachment.path}-${index}`}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: "12px",
+                  flexWrap: "wrap",
+                  border: "1px solid #e5e7eb",
+                  borderRadius: "10px",
+                  padding: "9px 11px",
+                  background: "#f8fafc",
+                }}
+              >
+                <a href={attachment.url} target="_blank" rel="noreferrer">
+                  {attachment.name || `Attachment ${index + 1}`}
+                </a>
+
+                {!locked ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void removeSupportingEvidenceFile({
+                        attachment,
+                        phase,
+                        field,
+                        locked,
+                        auditAction: `${phase}_supporting_evidence_removed`,
+                      })
+                    }
+                    disabled={uploading}
+                    style={{
+                      border: "1px solid #fecaca",
+                      background: "#ffffff",
+                      color: "#b91c1c",
+                      borderRadius: "8px",
+                      padding: "5px 9px",
+                      fontWeight: 800,
+                      cursor: uploading ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    Remove
+                  </button>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p style={subtleText}>No supporting evidence files attached.</p>
+        )}
+      </Field>
+    );
+  };
+
   const uploadImplementationEvidenceFile = async (file: File | null) => {
     if (!file) return;
 
@@ -3475,6 +3779,15 @@ This approval becomes part of the official electronic quality record.`,
               </Field>
             </div>
 
+            {renderSupportingEvidenceField({
+              label: "Initiation Supporting Evidence (Optional)",
+              phase: "initiation",
+              field: "initiation_supporting_evidence",
+              locked: initiationLocked,
+              helperText:
+                "Attach source records such as an NCMR, complaint, audit finding, supplier communication, inspection report, customer correspondence, or photograph.",
+            })}
+
             <ApprovalInlinePanel
               sectionKey="initiationapproval-inline"
               gateKey="initiation"
@@ -4157,6 +4470,15 @@ This approval becomes part of the official electronic quality record.`,
                 />
               </Field>
             </div>
+
+            {renderSupportingEvidenceField({
+              label: "Root Cause Supporting Evidence (Optional)",
+              phase: "root_cause",
+              field: "root_cause_supporting_evidence",
+              locked: investigationLocked,
+              helperText:
+                "Attach root cause analysis evidence such as a 5 Why worksheet, fishbone diagram, fault tree, investigation report, test result, statistical analysis, laboratory report, or supplier investigation.",
+            })}
 
             <ApprovalInlinePanel
               sectionKey="investigationapproval-inline"
