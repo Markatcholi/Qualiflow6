@@ -666,7 +666,35 @@ function getOwnedCapaWorkLabel(capa: any) {
     return "Complete Implementation";
   }
 
-  if (capa.implemented_by && capa.effectiveness_plan_approval_status !== "approved") {
+  if (
+    capa.implemented_by &&
+    capa.implementation_approval_status !== "approved"
+  ) {
+    const implementationApprovalStatus = String(
+      capa.implementation_approval_status || "not_submitted",
+    )
+      .trim()
+      .toLowerCase();
+
+    if (
+      implementationApprovalStatus === "pending" ||
+      String(capa.status || "").toLowerCase() ===
+        "pending_implementation_approval"
+    ) {
+      return "Implementation Approval Pending";
+    }
+
+    if (implementationApprovalStatus === "rejected") {
+      return "Revise Implementation";
+    }
+
+    return "Submit Implementation for Approval";
+  }
+
+  if (
+    capa.implementation_approval_status === "approved" &&
+    capa.effectiveness_plan_approval_status !== "approved"
+  ) {
     return "Complete / Submit Effectiveness Plan";
   }
 
