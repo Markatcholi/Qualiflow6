@@ -631,7 +631,21 @@ function ImplementationSection({ record, tasks }: { record: any; tasks: any[] })
 
       <EvidenceAttachments
         title="Implementation Evidence"
-        value={record.implementation_evidence}
+        value={
+          normalizeEvidenceAttachments(record.implementation_evidence).length > 0
+            ? record.implementation_evidence
+            : record.implementation_evidence_file_url
+              ? [
+                  {
+                    name:
+                      record.implementation_evidence_file_name ||
+                      "Implementation Evidence",
+                    path: record.implementation_evidence_file_path || "",
+                    url: record.implementation_evidence_file_url,
+                  },
+                ]
+              : []
+        }
       />
 
       <TaskTable tasks={tasks} title="Task Completion Evidence" />
