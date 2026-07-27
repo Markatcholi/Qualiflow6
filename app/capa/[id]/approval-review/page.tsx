@@ -619,38 +619,123 @@ function ActionPlanSection({ record }: { record: any }) {
 }
 
 function ImplementationSection({ record, tasks }: { record: any; tasks: any[] }) {
+  const implementationAttachments = record.implementation_evidence_file_url
+    ? [
+        {
+          name:
+            record.implementation_evidence_file_name ||
+            "Implementation Evidence Attachment",
+          path: record.implementation_evidence_file_path || "",
+          url: record.implementation_evidence_file_url,
+        },
+      ]
+    : normalizeEvidenceAttachments(record.implementation_evidence_attachments);
+
   return (
     <ReviewSection title="6. Implementation">
       <ReadOnlyGrid
         rows={[
-          ["Implementation Notes", record.implementation || record.implementation_details],
-          ["Implemented By", record.implemented_by],
-          ["Implemented At", record.implemented_at],
+          ["Procedure Updated", record.procedure_updated],
+          ["Training Required", record.training_required],
+          ["Validation Required", record.validation_required],
         ]}
       />
 
+      <TaskCompletionCards tasks={tasks} />
+
+      <div style={ownerMirrorFieldStyle}>
+        <div style={fieldLabelStyle}>Implementation Evidence</div>
+        <div style={ownerMirrorTextStyle}>
+          {formatValue(
+            record.implementation_details ||
+              record.implementation ||
+              (typeof record.implementation_evidence === "string"
+                ? record.implementation_evidence
+                : ""),
+          )}
+        </div>
+      </div>
+
       <EvidenceAttachments
-        title="Implementation Evidence"
-        value={
-          normalizeEvidenceAttachments(record.implementation_evidence).length > 0
-            ? record.implementation_evidence
-            : record.implementation_evidence_file_url
-              ? [
-                  {
-                    name:
-                      record.implementation_evidence_file_name ||
-                      "Implementation Evidence",
-                    path: record.implementation_evidence_file_path || "",
-                    url: record.implementation_evidence_file_url,
-                  },
-                ]
-              : []
-        }
+        title="Implementation Evidence Attachment (Optional)"
+        value={implementationAttachments}
       />
 
-      <TaskTable tasks={tasks} title="Task Completion Evidence" />
+      <ReadOnlyGrid
+        rows={[
+          ["Implemented By", record.implemented_by],
+          ["Implemented At", record.implemented_at],
+          [
+            "Implementation Approval Status",
+            record.implementation_approval_status,
+          ],
+        ]}
+      />
     </ReviewSection>
   );
+}
+
+function TaskCompletionCards({ tasks }: { tasks: any[] }) {
+  return (
+    <div style={{ marginTop: "20px", marginBottom: "20px" }}>
+      <h3 style={{ marginBottom: "8px" }}>Implementation Task Completion</h3>
+
+      {tasks.length === 0 ? (
+        <p style={{ color: "#6b7280" }}>No implementation tasks were assigned.</p>
+      ) : (
+        <div style={{ display: "grid", gap: "12px" }}>
+          {tasks.map((task) => (
+            <div key={task.id} style={taskCardStyle}>
+              <div style={taskCardAccentStyle}>
+                <div style={{ fontWeight: 900 }}>
+                  {task.task_title || "Implementation Task"}
+                </div>
+                <div style={taskTypeStyle}>
+                  {formatTaskType(task.task_type)}
+                </div>
+                {task.task_description ? (
+                  <div style={{ marginTop: "6px" }}>
+                    {task.task_description}
+                  </div>
+                ) : null}
+              </div>
+
+              <ReadOnlyGrid
+                rows={[
+                  ["Owner", task.owner_email || task.owner],
+                  ["Due Date", task.due_date],
+                  ["Status", task.status],
+                  ["Completed By", task.completed_by],
+                ]}
+              />
+
+              <div style={completionSignatureStyle}>
+                <strong>Completion Signature</strong>
+                <p>
+                  {task.signature_meaning ||
+                    "CAPA implementation task completed from My Approval Tasks."}
+                </p>
+                <p>
+                  Completed by {formatValue(task.completed_by)} at{" "}
+                  {formatDate(task.completed_at)}
+                </p>
+                <div>
+                  <strong>Evidence:</strong>{" "}
+                  <InlineEvidenceAttachments value={task.completion_evidence} />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function formatTaskType(value: any) {
+  return String(value || "Implementation")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
 function EffectivenessPlanSection({ record }: { record: any }) {
@@ -1074,6 +1159,44 @@ const secondaryButtonStyle: React.CSSProperties = {
   cursor: "pointer",
 };
 
+
+const ownerMirrorFieldStyle: React.CSSProperties = {
+  marginTop: "18px",
+};
+
+const ownerMirrorTextStyle: React.CSSProperties = {
+  minHeight: "90px",
+  border: "1px solid #d1d5db",
+  borderRadius: "10px",
+  padding: "12px",
+  background: "#f9fafb",
+  whiteSpace: "pre-wrap",
+};
+
+const taskCardStyle: React.CSSProperties = {
+  border: "1px solid #d1d5db",
+  borderLeft: "6px solid #16a34a",
+  borderRadius: "12px",
+  padding: "14px",
+  background: "#ffffff",
+};
+
+const taskCardAccentStyle: React.CSSProperties = {
+  marginBottom: "12px",
+};
+
+const taskTypeStyle: React.CSSProperties = {
+  color: "#6b7280",
+  marginTop: "3px",
+};
+
+const completionSignatureStyle: React.CSSProperties = {
+  marginTop: "12px",
+  border: "1px solid #d1d5db",
+  borderRadius: "10px",
+  padding: "12px",
+  background: "#f9fafb",
+};
 
 const evidenceSectionStyle: React.CSSProperties = {
   marginTop: "18px",
