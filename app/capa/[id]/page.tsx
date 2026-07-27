@@ -42,6 +42,7 @@ type ApprovalGateKey =
   | "initiation"
   | "investigation"
   | "action_plan"
+  | "implementation"
   | "effectiveness_plan"
   | "closure";
 
@@ -133,6 +134,8 @@ export default function EnterpriseCapaWorkflowPage() {
   const [investigationApprovalComments, setInvestigationApprovalComments] =
     useState("");
   const [actionPlanApprovalComments, setActionPlanApprovalComments] =
+    useState("");
+  const [implementationApprovalComments, setImplementationApprovalComments] =
     useState("");
   const [
     effectivenessPlanApprovalComments,
@@ -246,6 +249,11 @@ export default function EnterpriseCapaWorkflowPage() {
     "capa_action_plan_approval",
   );
 
+  const implementationApproved = isGateCurrentlyApproved(
+    record?.implementation_approval_status,
+    "capa_implementation_approval",
+  );
+
   const effectivenessPlanApproved = isGateCurrentlyApproved(
     record?.effectiveness_plan_approval_status,
     "capa_effectiveness_plan_approval",
@@ -293,7 +301,7 @@ export default function EnterpriseCapaWorkflowPage() {
     Boolean(record?.implemented_by) ||
     !canEditRecord;
   const effectivenessPlanLocked =
-    !record?.implemented_by || effectivenessPlanApproved || !canEditRecord;
+    !implementationApproved || effectivenessPlanApproved || !canEditRecord;
   const effectivenessVerificationLocked =
     !effectivenessPlanApproved || closureApproved || !canEditRecord;
 
@@ -395,6 +403,11 @@ export default function EnterpriseCapaWorkflowPage() {
     setActionPlanApprovalComments(
       data?.action_plan_approval_comments ||
         data?.action_plan_rejection_comments ||
+        "",
+    );
+    setImplementationApprovalComments(
+      data?.implementation_approval_comments ||
+        data?.implementation_rejection_comments ||
         "",
     );
     setEffectivenessPlanApprovalComments(
@@ -633,6 +646,7 @@ export default function EnterpriseCapaWorkflowPage() {
     initiation: "Initiation Approval",
     investigation: "Investigation Approval",
     action_plan: "Action Plan Approval",
+    implementation: "Implementation Approval",
     effectiveness_plan: "Effectiveness Plan Approval",
     closure: "Closure Approval",
   };
@@ -685,6 +699,21 @@ export default function EnterpriseCapaWorkflowPage() {
       pendingStatus: "pending_action_plan_approval",
       rejectedStatus: "action_plan",
       matrixId: "action_plan_approval_matrix_id",
+    },
+    implementation: {
+      status: "implementation_approval_status",
+      submittedBy: "implementation_submitted_by",
+      submittedAt: "implementation_submitted_at",
+      approvedBy: "implementation_approved_by",
+      approvedAt: "implementation_approved_at",
+      approvalComments: "implementation_approval_comments",
+      rejectedBy: "implementation_rejected_by",
+      rejectedAt: "implementation_rejected_at",
+      rejectionComments: "implementation_rejection_comments",
+      nextStatus: "effectiveness_plan",
+      pendingStatus: "pending_implementation_approval",
+      rejectedStatus: "implementation",
+      matrixId: "implementation_approval_matrix_id",
     },
     effectiveness_plan: {
       status: "effectiveness_plan_approval_status",
@@ -2331,12 +2360,57 @@ This approval becomes part of the official electronic quality record.`,
     await rejectGateApproval("action_plan", actionPlanApprovalComments);
   };
 
-  const submitEffectivenessPlanApproval = async () => {
+  const submitImplementationApproval = async () => {
     if (!canEditRecord) return;
 
     if (!record?.implemented_by) {
       return alert(
-        "Implementation must be completed before effectiveness plan approval.",
+        "Implementation must be completed before it can be submitted for approval.",
+      );
+    }
+
+    if (!record?.implementation_details) {
+      return alert("Implementation evidence is required.");
+    }
+
+    if (tasks.length === 0 || tasks.some((task) => task.status !== "complete")) {
+      return alert(
+        "All assigned implementation tasks must be complete before Implementation Approval.",
+      );
+    }
+
+    await saveAll();
+
+    const submitted = await submitGateForApproval(
+      "implementation",
+      implementationApprovalComments,
+    );
+
+    if (submitted) {
+      alert("Implementation package submitted for approval.");
+    }
+  };
+
+  const approveImplementation = async () => {
+    await completeGateApproval(
+      "implementation",
+      implementationApprovalComments,
+    );
+  };
+
+  const rejectImplementation = async () => {
+    await rejectGateApproval(
+      "implementation",
+      implementationApprovalComments,
+    );
+  };
+
+  const submitEffectivenessPlanApproval = async () => {
+    if (!canEditRecord) return;
+
+    if (!implementationApproved) {
+      return alert(
+        "Implementation Approval is required before Effectiveness Plan approval.",
       );
     }
 
@@ -2794,7 +2868,8 @@ This approval becomes part of the official electronic quality record.`,
       .update({
         implemented_by: userEmail || "unknown",
         implemented_at: now,
-        status: "effectiveness_review",
+        implementation_approval_status: "not_submitted",
+        status: "implementation_review",
       })
       .eq("id", id);
 
@@ -2805,10 +2880,10 @@ This approval becomes part of the official electronic quality record.`,
 
     await addAuditLog(
       "implementation_completed",
-      "CAPA implementation completed and moved to effectiveness review.",
+      "CAPA implementation completed and is ready for formal Implementation Approval.",
     );
 
-    alert("Implementation marked complete.");
+    alert("Implementation marked complete. Configure approvers and submit the Implementation package for approval.");
     fetchRecord();
   };
 
@@ -3034,6 +3109,7 @@ This approval becomes part of the official electronic quality record.`,
         initiation_approval_comments: null,
         investigation_approval_status: "not_submitted",
         action_plan_approval_status: "not_submitted",
+        implementation_approval_status: "not_submitted",
         effectiveness_plan_approval_status: "not_submitted",
         closure_approval_status: "not_submitted",
         implemented_by: null,
@@ -3048,6 +3124,7 @@ This approval becomes part of the official electronic quality record.`,
         investigation_approved_at: null,
         investigation_approval_comments: null,
         action_plan_approval_status: "not_submitted",
+        implementation_approval_status: "not_submitted",
         effectiveness_plan_approval_status: "not_submitted",
         closure_approval_status: "not_submitted",
         implemented_by: null,
@@ -3062,6 +3139,7 @@ This approval becomes part of the official electronic quality record.`,
         investigation_approved_at: null,
         investigation_approval_comments: null,
         action_plan_approval_status: "not_submitted",
+        implementation_approval_status: "not_submitted",
         effectiveness_plan_approval_status: "not_submitted",
         closure_approval_status: "not_submitted",
         implemented_by: null,
@@ -3075,6 +3153,7 @@ This approval becomes part of the official electronic quality record.`,
         action_plan_approved_by: null,
         action_plan_approved_at: null,
         action_plan_approval_comments: null,
+        implementation_approval_status: "not_submitted",
         effectiveness_plan_approval_status: "not_submitted",
         closure_approval_status: "not_submitted",
         implemented_by: null,
@@ -3082,6 +3161,12 @@ This approval becomes part of the official electronic quality record.`,
       },
       implementation_task_assignment: {
         status: "implementation_task_assignment",
+        implementation_approval_status: "not_submitted",
+        implementation_submitted_by: null,
+        implementation_submitted_at: null,
+        implementation_approved_by: null,
+        implementation_approved_at: null,
+        implementation_approval_comments: null,
         effectiveness_plan_approval_status: "not_submitted",
         effectiveness_plan_submitted_by: null,
         effectiveness_plan_submitted_at: null,
@@ -3094,6 +3179,12 @@ This approval becomes part of the official electronic quality record.`,
       },
       implementation: {
         status: "implementation",
+        implementation_approval_status: "not_submitted",
+        implementation_submitted_by: null,
+        implementation_submitted_at: null,
+        implementation_approved_by: null,
+        implementation_approved_at: null,
+        implementation_approval_comments: null,
         effectiveness_plan_approval_status: "not_submitted",
         effectiveness_plan_submitted_by: null,
         effectiveness_plan_submitted_at: null,
@@ -3105,7 +3196,13 @@ This approval becomes part of the official electronic quality record.`,
         implemented_at: null,
       },
       effectiveness_plan: {
-        status: "effectiveness_review",
+        status: "effectiveness_plan",
+        implementation_approval_status: "not_submitted",
+        implementation_submitted_by: null,
+        implementation_submitted_at: null,
+        implementation_approved_by: null,
+        implementation_approved_at: null,
+        implementation_approval_comments: null,
         effectiveness_plan_approval_status: "not_submitted",
         effectiveness_plan_submitted_by: null,
         effectiveness_plan_submitted_at: null,
@@ -3178,6 +3275,7 @@ This approval becomes part of the official electronic quality record.`,
         "capa_investigation_approval",
         "capa_action_plan_approval",
         "capa_implementation_task",
+        "capa_implementation_approval",
         "capa_effectiveness_plan_approval",
         "capa_closure_approval",
       ],
@@ -3185,6 +3283,7 @@ This approval becomes part of the official electronic quality record.`,
         "capa_investigation_approval",
         "capa_action_plan_approval",
         "capa_implementation_task",
+        "capa_implementation_approval",
         "capa_effectiveness_plan_approval",
         "capa_closure_approval",
       ],
@@ -3192,22 +3291,26 @@ This approval becomes part of the official electronic quality record.`,
         "capa_investigation_approval",
         "capa_action_plan_approval",
         "capa_implementation_task",
+        "capa_implementation_approval",
         "capa_effectiveness_plan_approval",
         "capa_closure_approval",
       ],
       action_plan: [
         "capa_action_plan_approval",
         "capa_implementation_task",
+        "capa_implementation_approval",
         "capa_effectiveness_plan_approval",
         "capa_closure_approval",
       ],
       implementation_task_assignment: [
         "capa_implementation_task",
+        "capa_implementation_approval",
         "capa_effectiveness_plan_approval",
         "capa_closure_approval",
       ],
       implementation: [
         "capa_implementation_task",
+        "capa_implementation_approval",
         "capa_effectiveness_plan_approval",
         "capa_closure_approval",
       ],
@@ -3317,13 +3420,14 @@ This approval becomes part of the official electronic quality record.`,
       pending_action_plan_approval: 4,
       implementation_task_assignment: 5,
       implementation: 6,
-      effectiveness_review: 7,
-      effectiveness_plan: 7,
-      pending_effectiveness_plan_approval: 7,
-      effectiveness_verification: 8,
-      pending_closure_approval: 8,
-      closed: 9,
-      cancelled: 9,
+      implementation_review: 7,
+      pending_implementation_approval: 7,
+      effectiveness_plan: 8,
+      pending_effectiveness_plan_approval: 8,
+      effectiveness_verification: 9,
+      pending_closure_approval: 9,
+      closed: 10,
+      cancelled: 10,
     };
 
     return statusStageIndex[normalizedStatus] ?? 0;
@@ -3378,15 +3482,21 @@ This approval becomes part of the official electronic quality record.`,
         locked: implementationLocked,
       },
       {
+        key: "implementationapproval",
+        label: "Implementation Approval",
+        completed: workflowProgressIndex > 7,
+        locked: !record?.implemented_by || implementationApproved || !canEditRecord,
+      },
+      {
         key: "effectivenessplan",
         label: "Effectiveness Plan",
-        completed: workflowProgressIndex > 7,
+        completed: workflowProgressIndex > 8,
         locked: effectivenessPlanLocked,
       },
       {
         key: "effectiveness",
         label: "Effectiveness Verification",
-        completed: workflowProgressIndex > 8,
+        completed: workflowProgressIndex > 9,
         locked: effectivenessVerificationLocked,
       },
     ],
@@ -3398,6 +3508,9 @@ This approval becomes part of the official electronic quality record.`,
       actionPlanPlanningLocked,
       implementationTaskAssignmentLocked,
       implementationLocked,
+      implementationApproved,
+      canEditRecord,
+      record?.implemented_by,
       effectivenessPlanLocked,
       effectivenessVerificationLocked,
     ],
@@ -3449,8 +3562,8 @@ This approval becomes part of the official electronic quality record.`,
           </h1>
           <p style={subtleText}>
             Initiation → Evaluation → Investigation → Root Cause Determination →
-            Action Plan → Implementation → Effectiveness Plan → Effectiveness
-            Verification → Closure.
+            Action Plan → Implementation → Implementation Approval →
+            Effectiveness Plan → Effectiveness Verification → Closure.
           </p>
         </div>
 
@@ -5083,6 +5196,114 @@ This approval becomes part of the official electronic quality record.`,
                 {record.implemented_at || "N/A"}
               </p>
             ) : null}
+
+            <ApprovalInlinePanel
+              sectionKey="implementationapproval-inline"
+              gateKey="implementation"
+              title="10. Approvers / Submit Implementation for Approval"
+              description="Review completed implementation tasks, implementation evidence, and supporting records before the Effectiveness Plan begins."
+              status={record.implementation_approval_status || "not_submitted"}
+              comments={implementationApprovalComments}
+              setComments={setImplementationApprovalComments}
+              submittedBy={record.implementation_submitted_by}
+              submittedAt={record.implementation_submitted_at}
+              approvedBy={record.implementation_approved_by}
+              approvedAt={record.implementation_approved_at}
+              rejectedBy={record.implementation_rejected_by}
+              rejectedAt={record.implementation_rejected_at}
+              disabled={
+                !canEditRecord ||
+                !record.implemented_by ||
+                implementationApproved
+              }
+              canApprove={canApprove}
+              expanded={expandedSections.includes("implementationapproval")}
+              onToggle={() => toggleSection("implementationapproval")}
+              approvalMatrixTemplates={approvalMatrixTemplates}
+              selectedApprovalMatrixId={
+                selectedApprovalMatrixByGate["implementation"] || ""
+              }
+              setSelectedApprovalMatrixId={(value) =>
+                setSelectedApprovalMatrixByGate((prev) => ({
+                  ...prev,
+                  implementation: value,
+                }))
+              }
+              manualApproverEmail={
+                manualApproverEmailByGate["implementation"] || ""
+              }
+              setManualApproverEmail={(value) =>
+                setManualApproverEmailByGate((prev) => ({
+                  ...prev,
+                  implementation: value,
+                }))
+              }
+              manualApproverFunction={
+                manualApproverFunctionByGate["implementation"] || ""
+              }
+              setManualApproverFunction={(value) =>
+                setManualApproverFunctionByGate((prev) => ({
+                  ...prev,
+                  implementation: value,
+                }))
+              }
+              manualApproverJobTitle={
+                manualApproverJobTitleByGate["implementation"] || ""
+              }
+              setManualApproverJobTitle={(value) =>
+                setManualApproverJobTitleByGate((prev) => ({
+                  ...prev,
+                  implementation: value,
+                }))
+              }
+              manualApproverDueDate={
+                manualApproverDueDateByGate["implementation"] || ""
+              }
+              setManualApproverDueDate={(value) =>
+                setManualApproverDueDateByGate((prev) => ({
+                  ...prev,
+                  implementation: value,
+                }))
+              }
+              manualApproverRole={
+                manualApproverRoleByGate["implementation"] ||
+                manualApproverJobTitleByGate["implementation"] ||
+                ""
+              }
+              setManualApproverRole={(value) =>
+                setManualApproverRoleByGate((prev) => ({
+                  ...prev,
+                  implementation: value,
+                }))
+              }
+              manualApproverRequired={
+                manualApproverRequiredByGate["implementation"] !== false
+              }
+              setManualApproverRequired={(value) =>
+                setManualApproverRequiredByGate((prev) => ({
+                  ...prev,
+                  implementation: value,
+                }))
+              }
+              configuredApprovers={getGateApprovers("implementation")}
+              approvalTasks={getGateApprovalTasks("implementation")}
+              loadingApprovals={loadingApprovals}
+              onLoadMatrix={() => loadApproversFromMatrix("implementation")}
+              onAddManualApprover={() => addManualApprover("implementation")}
+              onUpdateApproverDueDate={(approverId, dueDate) =>
+                updateGateApproverDueDate(
+                  "implementation",
+                  approverId,
+                  dueDate,
+                )
+              }
+              onRemoveApprover={(approverId) =>
+                removeGateApprover("implementation", approverId)
+              }
+              onSubmit={submitImplementationApproval}
+              onApprove={approveImplementation}
+              onReject={rejectImplementation}
+            />
           </WorkflowCard>
 
           <WorkflowCard
@@ -5097,7 +5318,7 @@ This approval becomes part of the official electronic quality record.`,
               <p style={subtleText}>
                 {effectivenessPlanApproved
                   ? "Effectiveness Plan is approved and locked. Use controlled workflow return if revision is required."
-                  : "Implementation must be marked complete before the Effectiveness Plan can be edited."}
+                  : "Implementation Approval is required before the Effectiveness Plan can be edited."}
               </p>
             ) : null}
 
