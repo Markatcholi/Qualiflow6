@@ -128,6 +128,8 @@ export default function EnterpriseCapaWorkflowPage() {
   const [expandedSections, setExpandedSections] = useState<string[]>([
     "initiation",
   ]);
+  const [showProgressBar, setShowProgressBar] = useState(true);
+  const [showIntelligenceBar, setShowIntelligenceBar] = useState(true);
 
   const [initiationApprovalComments, setInitiationApprovalComments] =
     useState("");
@@ -581,6 +583,27 @@ export default function EnterpriseCapaWorkflowPage() {
 
     setApprovalTasks((data as CapaApprovalTask[]) || []);
   };
+
+  useEffect(() => {
+    try {
+      const savedProgress = window.localStorage.getItem(
+        "capa_show_progress_bar",
+      );
+      const savedIntelligence = window.localStorage.getItem(
+        "capa_show_intelligence_bar",
+      );
+
+      if (savedProgress !== null) {
+        setShowProgressBar(savedProgress === "true");
+      }
+
+      if (savedIntelligence !== null) {
+        setShowIntelligenceBar(savedIntelligence === "true");
+      }
+    } catch {
+      // Local storage is optional. Default to showing both bars.
+    }
+  }, []);
 
   useEffect(() => {
     if (id) {
@@ -1635,6 +1658,36 @@ This approval becomes part of the official electronic quality record.`,
       relatedModule: "capa",
       relatedUrl: `/capa/${id}`,
       createdBy: userEmail,
+    });
+  };
+
+  const toggleProgressBar = () => {
+    setShowProgressBar((current) => {
+      const next = !current;
+      try {
+        window.localStorage.setItem(
+          "capa_show_progress_bar",
+          String(next),
+        );
+      } catch {
+        // Ignore storage failures.
+      }
+      return next;
+    });
+  };
+
+  const toggleIntelligenceBar = () => {
+    setShowIntelligenceBar((current) => {
+      const next = !current;
+      try {
+        window.localStorage.setItem(
+          "capa_show_intelligence_bar",
+          String(next),
+        );
+      } catch {
+        // Ignore storage failures.
+      }
+      return next;
     });
   };
 
@@ -3415,28 +3468,26 @@ This approval becomes part of the official electronic quality record.`,
       pending_initiation_approval: 0,
       evaluation: 1,
       investigation: 2,
-      pending_investigation_approval: 2,
+      pending_investigation_approval: 3,
       action_plan: 4,
       pending_action_plan_approval: 4,
       implementation_task_assignment: 5,
-      implementation: 6,
-      implementation_review: 7,
-      pending_implementation_approval: 7,
-      effectiveness_plan: 8,
-      pending_effectiveness_plan_approval: 8,
-      effectiveness_verification: 9,
-      pending_closure_approval: 9,
-      closed: 10,
-      cancelled: 10,
+      implementation: 5,
+      implementation_review: 5,
+      pending_implementation_approval: 5,
+      effectiveness_plan: 6,
+      pending_effectiveness_plan_approval: 6,
+      effectiveness_verification: 7,
+      pending_closure_approval: 8,
+      closed: 9,
+      cancelled: 9,
     };
 
     return statusStageIndex[normalizedStatus] ?? 0;
   }, [record?.status]);
 
-  // Workflow progress is driven by the CAPA record status, not by retained
-  // section content. A controlled return keeps the historical data available
-  // for revision, while resetting the returned phase and every downstream
-  // phase to incomplete in the progress rail.
+  // The progress rail shows the nine CAPA phases only. Approval gates and
+  // implementation task assignment remain inside their parent phase.
   const stages: WorkflowStage[] = useMemo(
     () => [
       {
@@ -3470,34 +3521,30 @@ This approval becomes part of the official electronic quality record.`,
         locked: actionPlanPlanningLocked,
       },
       {
-        key: "implementationtasks",
-        label: "Implementation Task Assignment",
-        completed: workflowProgressIndex > 5,
-        locked: implementationTaskAssignmentLocked,
-      },
-      {
         key: "implementation",
         label: "Implementation",
-        completed: workflowProgressIndex > 6,
-        locked: implementationLocked,
-      },
-      {
-        key: "implementationapproval",
-        label: "Implementation Approval",
-        completed: workflowProgressIndex > 7,
-        locked: !record?.implemented_by || implementationApproved || !canEditRecord,
+        completed: workflowProgressIndex > 5,
+        locked:
+          !actionPlanApproved ||
+          (implementationApproved && !canEditRecord),
       },
       {
         key: "effectivenessplan",
         label: "Effectiveness Plan",
-        completed: workflowProgressIndex > 8,
+        completed: workflowProgressIndex > 6,
         locked: effectivenessPlanLocked,
       },
       {
         key: "effectiveness",
         label: "Effectiveness Verification",
-        completed: workflowProgressIndex > 9,
+        completed: workflowProgressIndex > 7,
         locked: effectivenessVerificationLocked,
+      },
+      {
+        key: "closure",
+        label: "Closure",
+        completed: workflowProgressIndex > 8,
+        locked: closureApproved || !canEditRecord,
       },
     ],
     [
@@ -3506,13 +3553,12 @@ This approval becomes part of the official electronic quality record.`,
       evaluationLocked,
       investigationLocked,
       actionPlanPlanningLocked,
-      implementationTaskAssignmentLocked,
-      implementationLocked,
+      actionPlanApproved,
       implementationApproved,
       canEditRecord,
-      record?.implemented_by,
       effectivenessPlanLocked,
       effectivenessVerificationLocked,
+      closureApproved,
     ],
   );
 
@@ -3562,12 +3608,21 @@ This approval becomes part of the official electronic quality record.`,
           </h1>
           <p style={subtleText}>
             Initiation → Evaluation → Investigation → Root Cause Determination →
-            Action Plan → Implementation → Implementation Approval →
-            Effectiveness Plan → Effectiveness Verification → Closure.
+            Action Plan → Implementation → Effectiveness Plan →
+            Effectiveness Verification → Closure. Approval gates are completed
+            within their applicable CAPA phase.
           </p>
         </div>
 
         <div style={buttonRowStyle} className="no-print">
+          <button onClick={toggleProgressBar} style={secondaryButtonStyle}>
+            {showProgressBar ? "Hide Progress Bar" : "Show Progress Bar"}
+          </button>
+          <button onClick={toggleIntelligenceBar} style={secondaryButtonStyle}>
+            {showIntelligenceBar
+              ? "Hide Intelligence Bar"
+              : "Show Intelligence Bar"}
+          </button>
           <button onClick={() => window.print()} style={secondaryButtonStyle}>
             Print Workflow
           </button>
@@ -3740,7 +3795,20 @@ This approval becomes part of the official electronic quality record.`,
         </section>
       ) : null}
 
-      <div style={workspaceStyle}>
+      <div
+        style={{
+          ...workspaceStyle,
+          gridTemplateColumns:
+            showProgressBar && showIntelligenceBar
+              ? "280px minmax(0, 1fr) 280px"
+              : showProgressBar
+                ? "280px minmax(0, 1fr)"
+                : showIntelligenceBar
+                  ? "minmax(0, 1fr) 280px"
+                  : "minmax(0, 1fr)",
+        }}
+      >
+        {showProgressBar ? (
         <aside style={railStyle} className="no-print">
           <h3 style={{ marginTop: 0 }}>Workflow Progress</h3>
 
@@ -3781,8 +3849,9 @@ This approval becomes part of the official electronic quality record.`,
             </button>
           ))}
         </aside>
+        ) : null}
 
-        <div>
+        <div style={{ minWidth: 0 }}>
           <WorkflowCard
             sectionKey="initiation"
             title="1. Initiation"
@@ -4004,7 +4073,7 @@ This approval becomes part of the official electronic quality record.`,
 
           <WorkflowCard
             sectionKey="evaluation"
-            title="3. Evaluation"
+            title="2. Evaluation"
             subtitle="Define scope, interim controls, severity, occurrence, detection, risk assessment, impact, and rationale."
             locked={evaluationLocked}
             expanded={expandedSections.includes("evaluation")}
@@ -4424,7 +4493,7 @@ This approval becomes part of the official electronic quality record.`,
 
           <WorkflowCard
             sectionKey="investigation"
-            title="4. Investigation"
+            title="3. Investigation"
             subtitle="Document objective, evidence reviewed, findings, and conclusion."
             expanded={expandedSections.includes("investigation")}
             onToggle={() => toggleSection("investigation")}
@@ -4504,7 +4573,7 @@ This approval becomes part of the official electronic quality record.`,
 
           <WorkflowCard
             sectionKey="rootcause"
-            title="5. Root Cause Determination"
+            title="4. Root Cause Determination"
             subtitle="Document root cause analysis method, verified root cause, contributing factors, verification, and systemic impact."
             expanded={expandedSections.includes("rootcause")}
             onToggle={() => toggleSection("rootcause")}
@@ -4696,7 +4765,7 @@ This approval becomes part of the official electronic quality record.`,
 
           <WorkflowCard
             sectionKey="actionplan"
-            title="7. Action Plan Proposal"
+            title="5. Action Plan Proposal"
             subtitle="Define the corrective or preventive action plan, owner, due date, required resources, required evidence, and effectiveness plan."
             locked={actionPlanPlanningLocked}
             expanded={expandedSections.includes("actionplan")}
@@ -4896,7 +4965,7 @@ This approval becomes part of the official electronic quality record.`,
 
           <WorkflowCard
             sectionKey="implementationtasks"
-            title="8. Implementation Task Assignment"
+            title="Implementation Planning — Task Assignment"
             subtitle="Assign implementation tasks after the action plan has been approved."
             locked={implementationTaskAssignmentLocked}
             expanded={expandedSections.includes("implementationtasks")}
@@ -5054,7 +5123,7 @@ This approval becomes part of the official electronic quality record.`,
 
           <WorkflowCard
             sectionKey="implementation"
-            title="9. Implementation"
+            title="6. Implementation"
             subtitle="Execute the approved action plan and complete assigned implementation tasks with evidence."
             locked={implementationLocked}
             expanded={expandedSections.includes("implementation")}
@@ -5173,10 +5242,13 @@ This approval becomes part of the official electronic quality record.`,
                 <p style={{ marginTop: "8px", marginBottom: 0 }}>
                   <a
                     href={record.implementation_evidence_file_url}
-                    target="_blank"
-                    rel="noreferrer"
+                    download={
+                      record.implementation_evidence_file_name || undefined
+                    }
                   >
-                    Open {record.implementation_evidence_file_name || "implementation evidence attachment"}
+                    Download{" "}
+                    {record.implementation_evidence_file_name ||
+                      "implementation evidence attachment"}
                   </a>
                 </p>
               ) : null}
@@ -5200,7 +5272,7 @@ This approval becomes part of the official electronic quality record.`,
             <ApprovalInlinePanel
               sectionKey="implementationapproval-inline"
               gateKey="implementation"
-              title="10. Approvers / Submit Implementation for Approval"
+              title="Implementation Approval"
               description="Review completed implementation tasks, implementation evidence, and supporting records before the Effectiveness Plan begins."
               status={record.implementation_approval_status || "not_submitted"}
               comments={implementationApprovalComments}
@@ -5308,7 +5380,7 @@ This approval becomes part of the official electronic quality record.`,
 
           <WorkflowCard
             sectionKey="effectivenessplan"
-            title="11. Effectiveness Plan"
+            title="7. Effectiveness Plan"
             subtitle="Define how CAPA success will be measured before effectiveness verification begins."
             locked={effectivenessPlanLocked}
             expanded={expandedSections.includes("effectivenessplan")}
@@ -5544,7 +5616,7 @@ This approval becomes part of the official electronic quality record.`,
 
           <WorkflowCard
             sectionKey="effectiveness"
-            title="12. Effectiveness Verification"
+            title="8. Effectiveness Verification"
             subtitle="Execute the approved effectiveness plan and document results, recurrence, rating, evidence, and follow-up."
             locked={effectivenessVerificationLocked}
             expanded={expandedSections.includes("effectiveness")}
@@ -5924,7 +5996,8 @@ This approval becomes part of the official electronic quality record.`,
           </section>
         </div>
 
-        <aside style={sidebarStyle}>
+        {showIntelligenceBar ? (
+        <aside style={sidebarStyle} className="no-print">
           <SidebarCard title="Governance Intelligence">
             <SidebarItem
               label="Risk Level"
@@ -5960,6 +6033,10 @@ This approval becomes part of the official electronic quality record.`,
               value={record.investigation_approval_status || "Not Submitted"}
             />
             <SidebarItem
+              label="Implementation"
+              value={record.implementation_approval_status || "Not Submitted"}
+            />
+            <SidebarItem
               label="Effectiveness Plan"
               value={
                 record.effectiveness_plan_approval_status || "Not Submitted"
@@ -5988,6 +6065,7 @@ This approval becomes part of the official electronic quality record.`,
             ) : null}
           </SidebarCard>
         </aside>
+        ) : null}
       </div>
     </main>
   );
