@@ -1,33 +1,58 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "../../../../lib/supabaseClient";
-
 export default function EnterpriseCapaReportPage() {
   const params = useParams<{ id: string }>();
-  const id = params.id;
+  const id = params?.id;
 
-  const [record, setRecord] = useState<any>(null);
-  const [tasks, setTasks] = useState<any[]>([]);
-  const [linkedNcmr, setLinkedNcmr] = useState<any>(null);
+  const [record, setRecord] = useState<CapaRecord | null>(null);
+  const [tasks, setTasks] = useState<CapaTask[]>([]);
+  const [linkedNcmr, setLinkedNcmr] = useState<Record<string, unknown> | null>(
+    null,
+  );
   const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState("");
+
+  const generatedAt = useMemo(() => new Date(), []);
 
   useEffect(() => {
+    let active = true;
+
     const fetchReport = async () => {
+      if (!id) {
+        if (active) {
+          setErrorMessage("CAPA record identifier is missing.");
+          setLoading(false);
+        }
+        return;
+      }
+
+      setLoading(true);
+      setErrorMessage("");
+
       const capaRes = await supabase
         .from("capas")
         .select("*")
         .eq("id", id)
         .maybeSingle();
 
+      if (!active) return;
+
       if (capaRes.error) {
-        alert(capaRes.error.message);
+        setErrorMessage(capaRes.error.message);
         setLoading(false);
         return;
       }
 
-      const capa = capaRes.data;
+      if (!capaRes.data) {
+        setRecord(null);
+        setLoading(false);
+        return;
+      }
+
+      const capa = capaRes.data as CapaRecord;
       setRecord(capa);
 
       const taskRes = await supabase
@@ -36,31 +61,45 @@ export default function EnterpriseCapaReportPage() {
         .eq("capa_id", id)
         .order("created_at", { ascending: true });
 
-      if (!taskRes.error) {
-        setTasks(taskRes.data || []);
+      if (!active) return;
+
+      if (taskRes.error) {
+        setErrorMessage(
+          `CAPA loaded, but execution tasks could not be loaded: ${taskRes.error.message}`,
+        );
+      } else {
+        setTasks((taskRes.data || []) as CapaTask[]);
       }
 
-      if (capa?.ncmr_id) {
+      if (capa.ncmr_id) {
         const ncmrRes = await supabase
           .from("ncmrs")
           .select("*")
           .eq("id", capa.ncmr_id)
           .maybeSingle();
 
+        if (!active) return;
+
         if (!ncmrRes.error) {
-          setLinkedNcmr(ncmrRes.data || null);
+          setLinkedNcmr(
+            (ncmrRes.data as Record<string, unknown> | null) || null,
+          );
         }
       }
 
       setLoading(false);
     };
 
-    if (id) fetchReport();
+    void fetchReport();
+
+    return () => {
+      active = false;
+    };
   }, [id]);
 
   if (loading) {
     return (
-      <main style={{ padding: "24px" }}>
+      <main style={{ padding: "24px", fontFamily: "Arial, sans-serif" }}>
         Loading enterprise CAPA report...
       </main>
     );
@@ -68,480 +107,921 @@ export default function EnterpriseCapaReportPage() {
 
   if (!record) {
     return (
-      <main style={{ padding: "24px" }}>
-        CAPA record not found.
+      <main style={{ padding: "24px", fontFamily: "Arial, sans-serif" }}>
+        <h1 style={{ marginTop: 0 }}>CAPA report unavailable</h1>
+        <p>{errorMessage || "CAPA record not found."}</p>
+        <a href="/capa">Return to CAPA</a>
       </main>
     );
   }
 
   return (
-    <main style={pageStyle}>
-      <div className="no-print" style={{ marginBottom: "20px" }}>
-        <button
-          onClick={() => window.print()}
-          style={buttonStyle}
-        >
+    <CapaEnterpriseReport
+      record={record}
+      tasks={tasks}
+      linkedNcmr={linkedNcmr}
+      generatedAt={generatedAt}
+      warningMessage={errorMessage}
+      onPrint={() => window.print()}
+      backHref={`/capa/${id}`}
+    />
+  );
+}
+
+export type CapaRecord = Record<string, any> & {
+  id?: string;
+  capa_number?: string;
+  status?: string;
+  ncmr_id?: string;
+};
+
+export type CapaTask = Record<string, any> & {
+  id?: string;
+  task_title?: string;
+  task_description?: string;
+  owner?: string;
+  due_date?: string;
+  status?: string;
+  completion_evidence?: string;
+  completed_by?: string;
+  completed_at?: string;
+};
+
+type Props = {
+  record: CapaRecord;
+  tasks: CapaTask[];
+  linkedNcmr: Record<string, unknown> | null;
+  generatedAt: Date;
+  warningMessage?: string;
+  onPrint: () => void;
+  backHref: string;
+};
+
+type ApprovalRow = {
+  stage: string;
+  status: unknown;
+  approver: unknown;
+  approvedAt: unknown;
+  comments?: unknown;
+};
+
+export function CapaEnterpriseReport({
+  record,
+  tasks,
+  linkedNcmr,
+  generatedAt,
+  warningMessage,
+  onPrint,
+  backHref,
+}: Props) {
+  const capaNumber = firstValue(record.capa_number, record.id, "CAPA");
+  const status = firstValue(record.status, "Unknown");
+  const capaType = firstValue(
+    record.capa_type,
+    record.capa_classification,
+    record.classification,
+  );
+  const owner = firstValue(
+    record.owner,
+    record.capa_owner,
+    record.initiated_by,
+  );
+  const initiatedAt = firstValue(
+    record.initiated_at,
+    record.created_at,
+    record.initiation_date,
+  );
+
+  const approvals: ApprovalRow[] = [
+    {
+      stage: "Initiation",
+      status: firstValue(
+        record.initiation_approval_status,
+        record.initiation_status,
+      ),
+      approver: firstValue(
+        record.initiation_approved_by,
+        record.initiation_approver,
+      ),
+      approvedAt: firstValue(
+        record.initiation_approved_at,
+        record.initiation_approval_date,
+      ),
+      comments: firstValue(
+        record.initiation_approval_comments,
+        record.initiation_comments,
+      ),
+    },
+    {
+      stage: "Investigation",
+      status: record.investigation_approval_status,
+      approver: record.investigation_approved_by,
+      approvedAt: record.investigation_approved_at,
+      comments: record.investigation_approval_comments,
+    },
+    {
+      stage: "Action Plan",
+      status: firstValue(
+        record.action_plan_approval_status,
+        record.action_approval_status,
+      ),
+      approver: firstValue(
+        record.action_plan_approved_by,
+        record.action_approved_by,
+      ),
+      approvedAt: firstValue(
+        record.action_plan_approved_at,
+        record.action_approved_at,
+      ),
+      comments: firstValue(
+        record.action_plan_approval_comments,
+        record.action_approval_comments,
+      ),
+    },
+    {
+      stage: "Closure",
+      status: record.closure_approval_status,
+      approver: record.closure_approved_by,
+      approvedAt: record.closure_approved_at,
+      comments: record.closure_approval_comments,
+    },
+  ].filter((row) =>
+    hasMeaningfulValue(row.status, row.approver, row.approvedAt, row.comments),
+  );
+
+  const linkedNcmrNumber = firstValue(
+    linkedNcmr?.ncmr_number,
+    linkedNcmr?.record_number,
+    linkedNcmr?.title,
+    record.ncmr_id,
+  );
+
+  return (
+    <main style={styles.page}>
+      <div className="no-print" style={styles.toolbar}>
+        <button type="button" onClick={onPrint} style={styles.primaryButton}>
           Print / Save PDF
         </button>
-
-        <a
-          href={`/capa/${id}`}
-          style={{ marginLeft: "14px" }}
-        >
+        <a href={backHref} style={styles.backLink}>
           Back to Workflow
         </a>
       </div>
 
-      <header style={headerStyle}>
-        <div>
-          <h1 style={{ margin: 0 }}>
-            Enterprise CAPA Controlled Record
-          </h1>
-
-          <div>
-            <strong>CAPA Number:</strong>{" "}
-            {displayValue(record.capa_number)}
-          </div>
-
-          <div>
-            <strong>Status:</strong>{" "}
-            {displayValue(record.status)}
-          </div>
-
-          <div>
-            <strong>Risk Level:</strong>{" "}
-            {displayValue(record.risk_level)}
-          </div>
-
-          <div>
-            <strong>Severity:</strong>{" "}
-            {displayValue(record.severity)}
-          </div>
+      {warningMessage ? (
+        <div className="no-print" style={styles.warning}>
+          {warningMessage}
         </div>
-
-        <div style={{ textAlign: "right" }}>
-          <div>
-            <strong>Generated:</strong>{" "}
-            {new Date().toISOString()}
-          </div>
-
-          <div>
-            <strong>QMS Record:</strong> CAPA
-          </div>
-
-          <div>
-            <strong>Workflow Health:</strong>{" "}
-            {record.status === "closed"
-              ? "Closed"
-              : "Active"}
-          </div>
-        </div>
-      </header>
-
-      <Section title="1. Intake">
-        <Field label="Title" value={record.title} />
-        <Field label="Problem Description" value={record.problem_description} />
-        <Field label="Detection Source" value={record.detection_source} />
-        <Field label="CAPA Classification" value={record.capa_classification} />
-        <Field label="Owner" value={record.owner} />
-        <Field label="Due Date" value={record.due_date} />
-      </Section>
-
-      <Section title="2. Scope">
-        <Field label="Scope Summary" value={record.scope_summary} />
-        <Field label="Affected Product" value={record.affected_product} />
-        <Field label="Affected Lot" value={record.affected_lot} />
-        <Field label="Affected Process" value={record.affected_process} />
-        <Field label="Affected Supplier" value={record.affected_supplier} />
-        <Field label="Potential Impact" value={record.potential_impact} />
-      </Section>
-
-      <Section title="3. Containment">
-        <Field label="Containment Action" value={record.containment_action} />
-        <Field label="Containment Owner" value={record.containment_owner} />
-        <Field
-          label="Containment Complete"
-          value={record.containment_complete}
-        />
-        <Field
-          label="Residual Risk"
-          value={record.containment_residual_risk}
-        />
-      </Section>
-
-      <Section title="4. Investigation">
-        <Field
-          label="Investigation Objective"
-          value={record.investigation_objective}
-        />
-
-        <Field
-          label="Evidence Reviewed"
-          value={record.evidence_reviewed}
-        />
-
-        <Field
-          label="Investigation Findings"
-          value={
-            record.investigation_findings ||
-            record.investigation_summary
-          }
-        />
-
-        <Field
-          label="Investigation Conclusion"
-          value={record.investigation_conclusion}
-        />
-      </Section>
-
-      <Section title="5. Root Cause">
-        <Field
-          label="Root Cause Method"
-          value={record.root_cause_method}
-        />
-
-        <Field
-          label="Root Cause Summary"
-          value={record.root_cause}
-        />
-
-        <Field
-          label="Contributing Factors"
-          value={record.contributing_factors}
-        />
-
-        <Field
-          label="Root Cause Verification"
-          value={record.root_cause_verification}
-        />
-
-        <Field
-          label="Systemic Impact"
-          value={record.systemic_impact}
-        />
-      </Section>
-
-      <Section title="6. Risk Assessment / Severity">
-        <Field label="Severity" value={record.severity} />
-        <Field
-          label="Occurrence Rating"
-          value={record.occurrence_rating}
-        />
-
-        <Field
-          label="Detection Rating"
-          value={record.detection_rating}
-        />
-
-        <Field
-          label="Risk Level"
-          value={record.risk_level}
-        />
-
-        <Field
-          label="Patient Safety Impact"
-          value={record.patient_safety_impact}
-        />
-
-        <Field
-          label="Product Quality Impact"
-          value={record.product_quality_impact}
-        />
-
-        <Field
-          label="Regulatory Impact"
-          value={record.regulatory_impact}
-        />
-
-        <Field
-          label="Risk Rationale"
-          value={
-            record.risk_rationale ||
-            record.risk_assessment
-          }
-        />
-      </Section>
-
-      <Section title="7. Corrective Action">
-        <Field
-          label="Corrective Action"
-          value={
-            record.corrective_action_plan ||
-            record.corrective_action ||
-            record.action_plan
-          }
-        />
-
-        <Field
-          label="Action Owner"
-          value={record.action_owner}
-        />
-
-        <Field
-          label="Action Due Date"
-          value={record.action_due_date}
-        />
-
-        <Field
-          label="Verification Method"
-          value={record.verification_method}
-        />
-      </Section>
-
-      <Section title="8. CAPA Execution Tasks">
-        {tasks.length === 0 ? (
-          <p>No execution tasks.</p>
-        ) : (
-          <table style={tableStyle}>
-            <thead>
-              <tr>
-                <th style={thStyle}>Task</th>
-                <th style={thStyle}>Owner</th>
-                <th style={thStyle}>Due Date</th>
-                <th style={thStyle}>Status</th>
-                <th style={thStyle}>Evidence</th>
-                <th style={thStyle}>Completed By</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {tasks.map((task) => (
-                <tr key={task.id}>
-                  <td style={tdStyle}>
-                    <strong>{displayValue(task.task_title)}</strong>
-                    <div style={{ fontSize: "12px" }}>
-                      {displayValue(task.task_description)}
-                    </div>
-                  </td>
-
-                  <td style={tdStyle}>
-                    {displayValue(task.owner)}
-                  </td>
-
-                  <td style={tdStyle}>
-                    {displayValue(task.due_date)}
-                  </td>
-
-                  <td style={tdStyle}>
-                    {displayValue(task.status)}
-                  </td>
-
-                  <td style={tdStyle}>
-                    {displayValue(task.completion_evidence)}
-                  </td>
-
-                  <td style={tdStyle}>
-                    {displayValue(task.completed_by)}
-
-                    {task.completed_at ? (
-                      <div style={{ fontSize: "11px" }}>
-                        {task.completed_at}
-                      </div>
-                    ) : null}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </Section>
-
-      <Section title="9. Implementation">
-        <Field
-          label="Procedure Updated"
-          value={record.procedure_updated}
-        />
-
-        <Field
-          label="Training Required"
-          value={record.training_required}
-        />
-
-        <Field
-          label="Validation Required"
-          value={record.validation_required}
-        />
-
-        <Field
-          label="Implementation Evidence"
-          value={
-            record.implementation_details ||
-            record.implementation_evidence
-          }
-        />
-
-        <Field
-          label="Implemented By"
-          value={record.implemented_by}
-        />
-
-        <Field
-          label="Implemented At"
-          value={record.implemented_at}
-        />
-      </Section>
-
-      <Section title="10. Effectiveness Verification">
-        <Field
-          label="Monitoring Method"
-          value={record.monitoring_method}
-        />
-
-        <Field
-          label="Monitoring Period"
-          value={record.monitoring_period}
-        />
-
-        <Field
-          label="Effectiveness Results"
-          value={record.effectiveness_check}
-        />
-
-        <Field
-          label="Effectiveness Rating"
-          value={record.effectiveness_rating}
-        />
-
-        <Field
-          label="Recurrence Detected"
-          value={record.recurrence_detected}
-        />
-
-        <Field
-          label="Follow-up CAPA Required"
-          value={record.followup_capa_required}
-        />
-
-        <Field
-          label="Follow-up Action"
-          value={record.effectiveness_followup_action}
-        />
-      </Section>
-
-      <Section title="11. Approval Governance">
-        <Field
-          label="Investigation Approval Status"
-          value={record.investigation_approval_status}
-        />
-
-        <Field
-          label="Investigation Approved By"
-          value={record.investigation_approved_by}
-        />
-
-        <Field
-          label="Investigation Approved At"
-          value={record.investigation_approved_at}
-        />
-
-        <Field
-          label="Closure Approval Status"
-          value={record.closure_approval_status}
-        />
-
-        <Field
-          label="Closure Approved By"
-          value={record.closure_approved_by}
-        />
-
-        <Field
-          label="Closure Approved At"
-          value={record.closure_approved_at}
-        />
-      </Section>
-
-      <Section title="12. Linked Records">
-        <Field
-          label="Linked NCMR"
-          value={linkedNcmr?.title}
-        />
-
-        <Field
-          label="Linked NCMR ID"
-          value={record.ncmr_id}
-        />
-      </Section>
-
-      <Section title="13. Electronic Signature / Lock Evidence">
-        <Field
-          label="Signed By"
-          value={record.signed_by}
-        />
-
-        <Field
-          label="Signed At"
-          value={record.signed_at}
-        />
-
-        <Field
-          label="Signature Meaning"
-          value={record.signature_meaning}
-        />
-
-        <Field
-          label="Locked By"
-          value={record.locked_by}
-        />
-
-        <Field
-          label="Locked At"
-          value={record.locked_at}
-        />
-
-        <Field
-          label="Closed At"
-          value={record.closed_at}
-        />
-      </Section>
-
-      {record.status === "cancelled" ? (
-        <Section title="14. Cancellation Evidence">
-          <Field
-            label="Cancel Reason"
-            value={record.cancel_reason}
-          />
-
-          <Field
-            label="Cancellation Justification"
-            value={record.cancellation_justification}
-          />
-
-          <Field
-            label="Cancelled By"
-            value={record.cancelled_by}
-          />
-
-          <Field
-            label="Cancelled At"
-            value={record.cancelled_at}
-          />
-        </Section>
       ) : null}
 
-      <footer className="print-footer">
-        CAPA Controlled Record |{" "}
-        {record.capa_number || record.id}
-      </footer>
+      <article style={styles.report}>
+        <CoverPage
+          record={record}
+          capaNumber={capaNumber}
+          status={status}
+          capaType={capaType}
+          owner={owner}
+          initiatedAt={initiatedAt}
+          linkedNcmrNumber={linkedNcmrNumber}
+          generatedAt={generatedAt}
+        />
+
+        <ReportSection
+          number="1"
+          title="Initiation"
+          subtitle="CAPA initiation and quality approval record"
+        >
+          <FieldGrid>
+            <ReportField
+              label="Problem Statement"
+              value={firstValue(
+                record.problem_statement,
+                record.problem_description,
+                record.description,
+              )}
+              wide
+            />
+            <ReportField
+              label="Justification for CAPA"
+              value={firstValue(
+                record.capa_justification,
+                record.justification,
+                record.initiation_justification,
+              )}
+              wide
+            />
+            <ReportField label="CAPA Type" value={capaType} />
+            <ReportField
+              label="Detection Source"
+              value={firstValue(record.detection_source, record.source)}
+            />
+            <ReportField label="CAPA Owner" value={owner} />
+            <ReportField
+              label="Target Due Date"
+              value={firstValue(record.due_date, record.target_due_date)}
+              format="date"
+            />
+            <ReportField
+              label="Product Impact"
+              value={firstValue(
+                record.product_impact,
+                record.product_quality_impact,
+                record.affected_product,
+              )}
+              wide
+            />
+            <ReportField
+              label="Process Impact"
+              value={firstValue(
+                record.process_impact,
+                record.affected_process,
+              )}
+              wide
+            />
+            <ReportField
+              label="Patient Impact"
+              value={firstValue(
+                record.patient_impact,
+                record.patient_safety_impact,
+              )}
+              wide
+            />
+          </FieldGrid>
+
+          <ApprovalCard
+            title="Initiation Approval"
+            status={firstValue(
+              record.initiation_approval_status,
+              record.initiation_status,
+            )}
+            approvedBy={firstValue(
+              record.initiation_approved_by,
+              record.initiation_approver,
+            )}
+            approvedAt={firstValue(
+              record.initiation_approved_at,
+              record.initiation_approval_date,
+            )}
+            comments={firstValue(
+              record.initiation_approval_comments,
+              record.initiation_comments,
+            )}
+          />
+        </ReportSection>
+
+        <ReportSection
+          number="2"
+          title="Evaluation"
+          subtitle="Scope, interim controls, and risk assessment"
+        >
+          <FieldGrid>
+            <ReportField
+              label="Scope"
+              value={firstValue(
+                record.scope,
+                record.scope_summary,
+                record.evaluation_scope,
+              )}
+              wide
+            />
+            <ReportField
+              label="Interim Control Required"
+              value={firstValue(
+                record.interim_control_required,
+                record.containment_required,
+              )}
+            />
+            <ReportField
+              label="Interim Control Rationale"
+              value={firstValue(
+                record.interim_control_rationale,
+                record.containment_rationale,
+              )}
+              wide
+            />
+            <ReportField
+              label="Interim Control / Containment"
+              value={firstValue(
+                record.interim_control,
+                record.interim_control_description,
+                record.containment_action,
+              )}
+              wide
+            />
+            <ReportField
+              label="Interim Control Owner"
+              value={firstValue(
+                record.interim_control_owner,
+                record.containment_owner,
+              )}
+            />
+            <ReportField
+              label="Interim Control Complete"
+              value={firstValue(
+                record.interim_control_complete,
+                record.containment_complete,
+              )}
+            />
+          </FieldGrid>
+
+          <Subsection title="Risk Assessment">
+            <FieldGrid>
+              <ReportField label="Severity" value={record.severity} />
+              <ReportField
+                label="Occurrence"
+                value={firstValue(
+                  record.occurrence,
+                  record.occurrence_rating,
+                )}
+              />
+              <ReportField
+                label="Detection"
+                value={firstValue(
+                  record.detection,
+                  record.detection_rating,
+                )}
+              />
+              <ReportField label="Risk Level" value={record.risk_level} />
+              <ReportField
+                label="Risk Rationale"
+                value={firstValue(
+                  record.risk_rationale,
+                  record.risk_assessment,
+                )}
+                wide
+              />
+            </FieldGrid>
+          </Subsection>
+        </ReportSection>
+
+        <ReportSection
+          number="3"
+          title="Investigation"
+          subtitle="Investigation plan, findings, and root-cause determination"
+        >
+          <FieldGrid>
+            <ReportField
+              label="Investigation Plan"
+              value={firstValue(
+                record.investigation_plan,
+                record.investigation_objective,
+                record.investigation_notes,
+              )}
+              wide
+            />
+            <ReportField
+              label="Evidence Reviewed"
+              value={record.evidence_reviewed}
+              wide
+            />
+            <ReportField
+              label="Investigation Findings"
+              value={firstValue(
+                record.investigation_findings,
+                record.investigation_summary,
+              )}
+              wide
+            />
+            <ReportField
+              label="Investigation Conclusion"
+              value={record.investigation_conclusion}
+              wide
+            />
+          </FieldGrid>
+
+          <Subsection title="Root Cause Determination">
+            <FieldGrid>
+              <ReportField
+                label="Root Cause Method"
+                value={record.root_cause_method}
+              />
+              <ReportField
+                label="Root Cause"
+                value={firstValue(
+                  record.root_cause,
+                  record.root_cause_summary,
+                )}
+                wide
+              />
+              <ReportField
+                label="Contributing Factors"
+                value={record.contributing_factors}
+                wide
+              />
+              <ReportField
+                label="Root Cause Verification"
+                value={record.root_cause_verification}
+                wide
+              />
+              <ReportField
+                label="Systemic Impact"
+                value={record.systemic_impact}
+                wide
+              />
+            </FieldGrid>
+          </Subsection>
+
+          <ApprovalCard
+            title="Investigation Approval"
+            status={record.investigation_approval_status}
+            approvedBy={record.investigation_approved_by}
+            approvedAt={record.investigation_approved_at}
+            comments={record.investigation_approval_comments}
+          />
+        </ReportSection>
+
+        <ReportSection
+          number="4"
+          title="Action Plan Proposal"
+          subtitle="Approved corrective or preventive action plan"
+        >
+          <FieldGrid>
+            <ReportField
+              label={
+                String(capaType).toLowerCase().includes("prevent")
+                  ? "Preventive Action Plan"
+                  : "Corrective Action Plan"
+              }
+              value={firstValue(
+                record.action_plan,
+                record.corrective_action_plan,
+                record.corrective_action,
+                record.preventive_action_plan,
+                record.preventive_action,
+              )}
+              wide
+            />
+            <ReportField
+              label="Action Owner"
+              value={record.action_owner}
+            />
+            <ReportField
+              label="Action Due Date"
+              value={record.action_due_date}
+              format="date"
+            />
+            <ReportField
+              label="Verification Method"
+              value={record.verification_method}
+              wide
+            />
+            <ReportField
+              label="Required Resources"
+              value={firstValue(
+                record.required_resources,
+                record.resources_required,
+              )}
+              wide
+            />
+            <ReportField
+              label="Required Evidence"
+              value={firstValue(
+                record.required_evidence,
+                record.evidence_required,
+              )}
+              wide
+            />
+          </FieldGrid>
+
+          <ApprovalCard
+            title="Action Plan Approval"
+            status={firstValue(
+              record.action_plan_approval_status,
+              record.action_approval_status,
+            )}
+            approvedBy={firstValue(
+              record.action_plan_approved_by,
+              record.action_approved_by,
+            )}
+            approvedAt={firstValue(
+              record.action_plan_approved_at,
+              record.action_approved_at,
+            )}
+            comments={firstValue(
+              record.action_plan_approval_comments,
+              record.action_approval_comments,
+            )}
+          />
+        </ReportSection>
+
+        <ReportSection
+          number="5"
+          title="Implementation"
+          subtitle="Execution of approved actions and completion evidence"
+        >
+          <FieldGrid>
+            <ReportField
+              label="Implementation Summary"
+              value={firstValue(
+                record.implementation_summary,
+                record.implementation_details,
+                record.implementation_notes,
+              )}
+              wide
+            />
+            <ReportField
+              label="Implementation Evidence"
+              value={record.implementation_evidence}
+              wide
+            />
+            <ReportField
+              label="Implemented By"
+              value={record.implemented_by}
+            />
+            <ReportField
+              label="Implemented At"
+              value={record.implemented_at}
+              format="datetime"
+            />
+            <ReportField
+              label="Procedure Updated"
+              value={record.procedure_updated}
+            />
+            <ReportField
+              label="Training Required"
+              value={record.training_required}
+            />
+            <ReportField
+              label="Validation Required"
+              value={record.validation_required}
+            />
+          </FieldGrid>
+
+          <Subsection title="Implementation Tasks">
+            <TaskTable tasks={tasks} />
+          </Subsection>
+        </ReportSection>
+
+        <ReportSection
+          number="6"
+          title="Effectiveness Plan"
+          subtitle="Predefined method, acceptance criteria, and timing"
+        >
+          <FieldGrid>
+            <ReportField
+              label="Effectiveness Plan"
+              value={firstValue(
+                record.effectiveness_plan,
+                record.monitoring_plan,
+              )}
+              wide
+            />
+            <ReportField
+              label="Verification Method"
+              value={firstValue(
+                record.effectiveness_method,
+                record.monitoring_method,
+              )}
+              wide
+            />
+            <ReportField
+              label="Acceptance Criteria"
+              value={firstValue(
+                record.effectiveness_criteria,
+                record.success_criteria,
+                record.acceptance_criteria,
+              )}
+              wide
+            />
+            <ReportField
+              label="Monitoring Period"
+              value={record.monitoring_period}
+            />
+            <ReportField
+              label="Planned Verification Date"
+              value={firstValue(
+                record.effectiveness_due_date,
+                record.effectiveness_verification_date,
+              )}
+              format="date"
+            />
+          </FieldGrid>
+        </ReportSection>
+
+        <ReportSection
+          number="7"
+          title="Effectiveness Verification"
+          subtitle="Verification result and recurrence assessment"
+        >
+          <FieldGrid>
+            <ReportField
+              label="Verification Results"
+              value={firstValue(
+                record.effectiveness_results,
+                record.effectiveness_check,
+                record.effectiveness_verification,
+              )}
+              wide
+            />
+            <ReportField
+              label="Result"
+              value={firstValue(
+                record.effectiveness_result,
+                record.effectiveness_rating,
+                record.effectiveness_status,
+              )}
+            />
+            <ReportField
+              label="Verified By"
+              value={firstValue(
+                record.effectiveness_verified_by,
+                record.effectiveness_reviewed_by,
+              )}
+            />
+            <ReportField
+              label="Verified At"
+              value={firstValue(
+                record.effectiveness_verified_at,
+                record.effectiveness_reviewed_at,
+              )}
+              format="datetime"
+            />
+            <ReportField
+              label="Recurrence Detected"
+              value={record.recurrence_detected}
+            />
+            <ReportField
+              label="Follow-up CAPA Required"
+              value={record.followup_capa_required}
+            />
+            <ReportField
+              label="Follow-up Action"
+              value={record.effectiveness_followup_action}
+              wide
+            />
+          </FieldGrid>
+        </ReportSection>
+
+        <ReportSection
+          number="8"
+          title="Closure"
+          subtitle="Final disposition and closure approval"
+        >
+          <FieldGrid>
+            <ReportField
+              label="Closure Summary"
+              value={firstValue(
+                record.closure_summary,
+                record.closure_notes,
+                record.final_summary,
+              )}
+              wide
+            />
+            <ReportField
+              label="Closure Decision"
+              value={firstValue(
+                record.closure_decision,
+                record.closure_disposition,
+              )}
+            />
+            <ReportField
+              label="Closed By"
+              value={firstValue(record.closed_by, record.locked_by)}
+            />
+            <ReportField
+              label="Closed At"
+              value={firstValue(record.closed_at, record.locked_at)}
+              format="datetime"
+            />
+          </FieldGrid>
+
+          <ApprovalCard
+            title="Closure Approval"
+            status={record.closure_approval_status}
+            approvedBy={record.closure_approved_by}
+            approvedAt={record.closure_approved_at}
+            comments={record.closure_approval_comments}
+          />
+
+          {String(record.status || "").toLowerCase() === "cancelled" ? (
+            <Subsection title="Cancellation Evidence">
+              <FieldGrid>
+                <ReportField
+                  label="Cancel Reason"
+                  value={record.cancel_reason}
+                />
+                <ReportField
+                  label="Cancellation Justification"
+                  value={record.cancellation_justification}
+                  wide
+                />
+                <ReportField
+                  label="Cancelled By"
+                  value={record.cancelled_by}
+                />
+                <ReportField
+                  label="Cancelled At"
+                  value={record.cancelled_at}
+                  format="datetime"
+                />
+              </FieldGrid>
+            </Subsection>
+          ) : null}
+        </ReportSection>
+
+        <ReportSection
+          number="9"
+          title="Approval History"
+          subtitle="Consolidated workflow approval evidence"
+        >
+          <ApprovalHistoryTable approvals={approvals} />
+        </ReportSection>
+
+        <ReportSection
+          number="10"
+          title="Electronic Signatures"
+          subtitle="Electronic signature and record-lock evidence"
+        >
+          <FieldGrid>
+            <ReportField label="Signed By" value={record.signed_by} />
+            <ReportField
+              label="Signed At"
+              value={record.signed_at}
+              format="datetime"
+            />
+            <ReportField
+              label="Signature Meaning"
+              value={record.signature_meaning}
+              wide
+            />
+            <ReportField label="Locked By" value={record.locked_by} />
+            <ReportField
+              label="Locked At"
+              value={record.locked_at}
+              format="datetime"
+            />
+          </FieldGrid>
+        </ReportSection>
+
+        <ReportSection
+          number="11"
+          title="Linked Records"
+          subtitle="Source and related quality records"
+        >
+          <FieldGrid>
+            <ReportField
+              label="Linked NCMR"
+              value={linkedNcmrNumber}
+            />
+            <ReportField
+              label="Linked NCMR ID"
+              value={record.ncmr_id}
+            />
+            <ReportField
+              label="Source Record"
+              value={firstValue(
+                record.source_record_number,
+                record.related_record_number,
+              )}
+            />
+            <ReportField
+              label="Detection Source"
+              value={record.detection_source}
+            />
+          </FieldGrid>
+        </ReportSection>
+
+        <ReportSection
+          number="12"
+          title="Attachments and Evidence"
+          subtitle="Supporting evidence recorded in the CAPA"
+        >
+          <FieldGrid>
+            <ReportField
+              label="Evidence Reviewed"
+              value={record.evidence_reviewed}
+              wide
+            />
+            <ReportField
+              label="Implementation Evidence"
+              value={record.implementation_evidence}
+              wide
+            />
+            <ReportField
+              label="Effectiveness Evidence"
+              value={firstValue(
+                record.effectiveness_evidence,
+                record.effectiveness_verification_evidence,
+              )}
+              wide
+            />
+            <ReportField
+              label="Attachments"
+              value={firstValue(
+                record.attachments,
+                record.attachment_urls,
+                record.supporting_documents,
+              )}
+              wide
+            />
+          </FieldGrid>
+        </ReportSection>
+
+        <ReportSection
+          number="13"
+          title="Record Lifecycle Summary"
+          subtitle="Key lifecycle dates captured on the controlled record"
+        >
+          <FieldGrid>
+            <ReportField
+              label="Created By"
+              value={firstValue(record.created_by, record.initiated_by)}
+            />
+            <ReportField
+              label="Created At"
+              value={record.created_at}
+              format="datetime"
+            />
+            <ReportField
+              label="Last Updated"
+              value={record.updated_at}
+              format="datetime"
+            />
+            <ReportField
+              label="Current Status"
+              value={status}
+            />
+            <ReportField
+              label="Closed At"
+              value={record.closed_at}
+              format="datetime"
+            />
+            <ReportField
+              label="Record Identifier"
+              value={record.id}
+            />
+          </FieldGrid>
+          <p style={styles.note}>
+            This section summarizes lifecycle fields stored on the CAPA record.
+            A complete audit-trail event listing should be added only when the
+            report page is connected to the application's audit-trail table.
+          </p>
+        </ReportSection>
+      </article>
+
+      <div className="print-footer" style={styles.printFooter}>
+        <span>{String(capaNumber)}</span>
+        <span>QualiSphere Enterprise QMS</span>
+        <span>Printed {formatDateTime(generatedAt)}</span>
+      </div>
 
       <style jsx global>{`
+        * {
+          box-sizing: border-box;
+        }
+
+        body {
+          margin: 0;
+          background: #eef1f5;
+        }
+
+        @page {
+          size: Letter;
+          margin: 0.55in 0.5in 0.7in;
+        }
+
         @media print {
+          body {
+            background: white !important;
+          }
+
           .no-print {
-            display: none;
+            display: none !important;
+          }
+
+          .report-shell {
+            box-shadow: none !important;
+            margin: 0 !important;
+            max-width: none !important;
+          }
+
+          .report-cover {
+            min-height: 9.2in !important;
+            page-break-after: always;
+          }
+
+          .report-section {
+            break-inside: auto;
+            page-break-inside: auto;
+          }
+
+          .avoid-break,
+          table,
+          tr {
+            break-inside: avoid;
+            page-break-inside: avoid;
           }
 
           .print-footer {
+            display: flex !important;
             position: fixed;
-            bottom: 0;
-            width: 100%;
-            font-size: 10px;
-          }
-
-          table {
-            page-break-inside: avoid;
-          }
-
-          section {
-            page-break-inside: avoid;
+            left: 0.5in;
+            right: 0.5in;
+            bottom: 0.18in;
+            justify-content: space-between;
+            border-top: 1px solid #9ca3af;
+            padding-top: 4px;
+            font-size: 8px !important;
+            background: white;
           }
         }
       `}</style>
@@ -549,79 +1029,713 @@ export default function EnterpriseCapaReportPage() {
   );
 }
 
-function Section({
-  title,
-  children,
+function CoverPage({
+  record,
+  capaNumber,
+  status,
+  capaType,
+  owner,
+  initiatedAt,
+  linkedNcmrNumber,
+  generatedAt,
 }: {
-  title: string;
-  children: any;
+  record: CapaRecord;
+  capaNumber: unknown;
+  status: unknown;
+  capaType: unknown;
+  owner: unknown;
+  initiatedAt: unknown;
+  linkedNcmrNumber: unknown;
+  generatedAt: Date;
 }) {
   return (
-    <section style={sectionStyle}>
-      <h2>{title}</h2>
-      {children}
+    <section className="report-cover" style={styles.cover}>
+      <div style={styles.brandRow}>
+        <div style={styles.logoBox}>
+          {firstValue(record.organization_logo_url, record.logo_url) ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={String(
+                firstValue(record.organization_logo_url, record.logo_url),
+              )}
+              alt="Organization logo"
+              style={styles.logo}
+            />
+          ) : (
+            <span style={styles.logoPlaceholder}>QUALISPHERE</span>
+          )}
+        </div>
+
+        <div style={styles.brandText}>
+          <div style={styles.organizationName}>
+            {displayValue(
+              firstValue(
+                record.organization_name,
+                record.company_name,
+                "QualiSphere",
+              ),
+            )}
+          </div>
+          <div style={styles.platformName}>QualiSphere Enterprise QMS</div>
+        </div>
+      </div>
+
+      <div style={styles.coverTitleBlock}>
+        <div style={styles.controlledRecordLabel}>CONTROLLED QUALITY RECORD</div>
+        <h1 style={styles.coverTitle}>CAPA Report</h1>
+        <div style={styles.coverNumber}>{displayValue(capaNumber)}</div>
+      </div>
+
+      <div style={styles.coverMetadata}>
+        <MetadataRow label="Status" value={status} />
+        <MetadataRow label="CAPA Type" value={capaType} />
+        <MetadataRow label="Owner" value={owner} />
+        <MetadataRow
+          label="Initiated"
+          value={formatDate(initiatedAt)}
+        />
+        <MetadataRow
+          label="Closed"
+          value={formatDate(record.closed_at)}
+        />
+        <MetadataRow label="Linked NCMR" value={linkedNcmrNumber} />
+        <MetadataRow
+          label="Report Generated"
+          value={formatDateTime(generatedAt)}
+        />
+      </div>
+
+      <div style={styles.coverStatement}>
+        This report is the controlled record of the CAPA workflow and presents
+        the information by approved workflow stage.
+      </div>
     </section>
   );
 }
 
-function Field({
+function ReportSection({
+  number,
+  title,
+  subtitle,
+  children,
+}: {
+  number: string;
+  title: string;
+  subtitle?: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="report-section" style={styles.section}>
+      <div style={styles.sectionHeader}>
+        <div style={styles.sectionNumber}>{number}</div>
+        <div>
+          <h2 style={styles.sectionTitle}>{title}</h2>
+          {subtitle ? (
+            <div style={styles.sectionSubtitle}>{subtitle}</div>
+          ) : null}
+        </div>
+      </div>
+      <div style={styles.sectionBody}>{children}</div>
+    </section>
+  );
+}
+
+function Subsection({
+  title,
+  children,
+}: {
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="avoid-break" style={styles.subsection}>
+      <h3 style={styles.subsectionTitle}>{title}</h3>
+      {children}
+    </div>
+  );
+}
+
+function FieldGrid({ children }: { children: ReactNode }) {
+  return <div style={styles.fieldGrid}>{children}</div>;
+}
+
+function ReportField({
+  label,
+  value,
+  wide = false,
+  format,
+}: {
+  label: string;
+  value: unknown;
+  wide?: boolean;
+  format?: "date" | "datetime";
+}) {
+  let rendered = displayValue(value);
+
+  if (hasMeaningfulValue(value)) {
+    if (format === "date") rendered = formatDate(value);
+    if (format === "datetime") rendered = formatDateTime(value);
+  }
+
+  return (
+    <div
+      className="avoid-break"
+      style={{
+        ...styles.field,
+        ...(wide ? styles.fieldWide : {}),
+      }}
+    >
+      <div style={styles.fieldLabel}>{label}</div>
+      <div style={styles.fieldValue}>{rendered}</div>
+    </div>
+  );
+}
+
+function ApprovalCard({
+  title,
+  status,
+  approvedBy,
+  approvedAt,
+  comments,
+}: {
+  title: string;
+  status: unknown;
+  approvedBy: unknown;
+  approvedAt: unknown;
+  comments?: unknown;
+}) {
+  return (
+    <div className="avoid-break" style={styles.approvalCard}>
+      <div style={styles.approvalTitle}>{title}</div>
+      <div style={styles.approvalGrid}>
+        <MiniField label="Decision" value={status} />
+        <MiniField label="Approved By" value={approvedBy} />
+        <MiniField
+          label="Date / Time"
+          value={
+            hasMeaningfulValue(approvedAt)
+              ? formatDateTime(approvedAt)
+              : "N/A"
+          }
+        />
+      </div>
+      {hasMeaningfulValue(comments) ? (
+        <div style={styles.approvalComments}>
+          <strong>Comments:</strong> {displayValue(comments)}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function MiniField({
   label,
   value,
 }: {
   label: string;
-  value: any;
+  value: unknown;
 }) {
   return (
-    <p>
-      <strong>{label}:</strong>{" "}
-      {displayValue(value)}
-    </p>
+    <div>
+      <div style={styles.miniLabel}>{label}</div>
+      <div style={styles.miniValue}>{displayValue(value)}</div>
+    </div>
   );
 }
 
-function displayValue(v: any) {
-  return v === null ||
-    v === undefined ||
-    v === ""
-    ? "N/A"
-    : String(v);
+function TaskTable({ tasks }: { tasks: CapaTask[] }) {
+  if (tasks.length === 0) {
+    return <p style={styles.emptyText}>No implementation tasks recorded.</p>;
+  }
+
+  return (
+    <div style={styles.tableWrap}>
+      <table style={styles.table}>
+        <thead>
+          <tr>
+            <th style={styles.th}>Task</th>
+            <th style={styles.th}>Owner</th>
+            <th style={styles.th}>Due Date</th>
+            <th style={styles.th}>Status</th>
+            <th style={styles.th}>Evidence</th>
+            <th style={styles.th}>Completion</th>
+          </tr>
+        </thead>
+        <tbody>
+          {tasks.map((task, index) => (
+            <tr key={String(task.id || index)}>
+              <td style={styles.td}>
+                <strong>
+                  {displayValue(
+                    firstValue(task.task_title, task.title),
+                  )}
+                </strong>
+                {hasMeaningfulValue(
+                  firstValue(task.task_description, task.description),
+                ) ? (
+                  <div style={styles.tableSecondary}>
+                    {displayValue(
+                      firstValue(
+                        task.task_description,
+                        task.description,
+                      ),
+                    )}
+                  </div>
+                ) : null}
+              </td>
+              <td style={styles.td}>
+                {displayValue(
+                  firstValue(task.owner, task.assigned_to),
+                )}
+              </td>
+              <td style={styles.td}>{formatDate(task.due_date)}</td>
+              <td style={styles.td}>{displayValue(task.status)}</td>
+              <td style={styles.td}>
+                {displayValue(task.completion_evidence)}
+              </td>
+              <td style={styles.td}>
+                {displayValue(task.completed_by)}
+                {hasMeaningfulValue(task.completed_at) ? (
+                  <div style={styles.tableSecondary}>
+                    {formatDateTime(task.completed_at)}
+                  </div>
+                ) : null}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
 }
 
-const pageStyle = {
-  padding: "36px",
-  fontFamily: "Arial, sans-serif",
-};
+function ApprovalHistoryTable({
+  approvals,
+}: {
+  approvals: ApprovalRow[];
+}) {
+  if (approvals.length === 0) {
+    return (
+      <p style={styles.emptyText}>
+        No approval summary fields are populated on this CAPA record.
+      </p>
+    );
+  }
 
-const headerStyle = {
-  display: "flex",
-  justifyContent: "space-between",
-  marginBottom: "20px",
-};
+  return (
+    <div style={styles.tableWrap}>
+      <table style={styles.table}>
+        <thead>
+          <tr>
+            <th style={styles.th}>Workflow Stage</th>
+            <th style={styles.th}>Decision</th>
+            <th style={styles.th}>Approver</th>
+            <th style={styles.th}>Date / Time</th>
+            <th style={styles.th}>Comments</th>
+          </tr>
+        </thead>
+        <tbody>
+          {approvals.map((approval) => (
+            <tr key={approval.stage}>
+              <td style={styles.td}>{approval.stage}</td>
+              <td style={styles.td}>
+                {displayValue(approval.status)}
+              </td>
+              <td style={styles.td}>
+                {displayValue(approval.approver)}
+              </td>
+              <td style={styles.td}>
+                {hasMeaningfulValue(approval.approvedAt)
+                  ? formatDateTime(approval.approvedAt)
+                  : "N/A"}
+              </td>
+              <td style={styles.td}>
+                {displayValue(approval.comments)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
-const sectionStyle = {
-  border: "1px solid #ccc",
-  padding: "14px",
-  marginTop: "14px",
-  borderRadius: "8px",
-};
+function MetadataRow({
+  label,
+  value,
+}: {
+  label: string;
+  value: unknown;
+}) {
+  return (
+    <div style={styles.metadataRow}>
+      <div style={styles.metadataLabel}>{label}</div>
+      <div style={styles.metadataValue}>{displayValue(value)}</div>
+    </div>
+  );
+}
 
-const buttonStyle = {
-  padding: "8px 12px",
-};
+function firstValue(...values: unknown[]) {
+  return values.find((value) => hasMeaningfulValue(value));
+}
 
-const tableStyle = {
-  width: "100%",
-  borderCollapse: "collapse" as const,
-};
+function hasMeaningfulValue(...values: unknown[]) {
+  return values.some((value) => {
+    if (value === null || value === undefined || value === "") return false;
+    if (Array.isArray(value)) return value.length > 0;
+    return true;
+  });
+}
 
-const thStyle = {
-  border: "1px solid #ccc",
-  padding: "8px",
-  background: "#f3f4f6",
-  textAlign: "left" as const,
-};
+function displayValue(value: unknown): string {
+  if (!hasMeaningfulValue(value)) return "N/A";
 
-const tdStyle = {
-  border: "1px solid #ccc",
-  padding: "8px",
-};
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+
+  if (Array.isArray(value)) {
+    return value.map((item) => displayValue(item)).join(", ");
+  }
+
+  if (typeof value === "object") {
+    try {
+      return JSON.stringify(value, null, 2);
+    } catch {
+      return String(value);
+    }
+  }
+
+  return String(value);
+}
+
+function formatDate(value: unknown): string {
+  if (!hasMeaningfulValue(value)) return "N/A";
+
+  const date = value instanceof Date ? value : new Date(String(value));
+  if (Number.isNaN(date.getTime())) return displayValue(value);
+
+  return new Intl.DateTimeFormat("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+  }).format(date);
+}
+
+function formatDateTime(value: unknown): string {
+  if (!hasMeaningfulValue(value)) return "N/A";
+
+  const date = value instanceof Date ? value : new Date(String(value));
+  if (Number.isNaN(date.getTime())) return displayValue(value);
+
+  return new Intl.DateTimeFormat("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
+}
+
+const styles: Record<string, CSSProperties> = {
+  page: {
+    minHeight: "100vh",
+    padding: "24px",
+    fontFamily:
+      'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+    color: "#172033",
+  },
+  toolbar: {
+    maxWidth: "1000px",
+    margin: "0 auto 16px",
+    display: "flex",
+    alignItems: "center",
+    gap: "14px",
+  },
+  primaryButton: {
+    border: "1px solid #1f3a5f",
+    background: "#1f3a5f",
+    color: "white",
+    borderRadius: "6px",
+    padding: "9px 14px",
+    cursor: "pointer",
+    fontWeight: 700,
+  },
+  backLink: {
+    color: "#1f3a5f",
+    fontWeight: 600,
+    textDecoration: "none",
+  },
+  warning: {
+    maxWidth: "1000px",
+    margin: "0 auto 16px",
+    padding: "12px 14px",
+    border: "1px solid #d6a100",
+    background: "#fff8db",
+    borderRadius: "6px",
+  },
+  report: {
+    maxWidth: "1000px",
+    margin: "0 auto",
+    background: "white",
+    boxShadow: "0 12px 32px rgba(15, 23, 42, 0.12)",
+  },
+  cover: {
+    minHeight: "1030px",
+    padding: "54px",
+    display: "flex",
+    flexDirection: "column",
+    borderTop: "10px solid #1f3a5f",
+  },
+  brandRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: "20px",
+    paddingBottom: "24px",
+    borderBottom: "1px solid #cbd5e1",
+  },
+  logoBox: {
+    width: "150px",
+    minHeight: "64px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    border: "1px solid #d7dee8",
+    borderRadius: "4px",
+    padding: "8px",
+  },
+  logo: {
+    maxWidth: "132px",
+    maxHeight: "54px",
+    objectFit: "contain",
+  },
+  logoPlaceholder: {
+    fontWeight: 800,
+    letterSpacing: "0.08em",
+    color: "#1f3a5f",
+    fontSize: "12px",
+  },
+  brandText: {
+    flex: 1,
+  },
+  organizationName: {
+    fontSize: "22px",
+    fontWeight: 800,
+    color: "#172033",
+  },
+  platformName: {
+    marginTop: "5px",
+    fontSize: "13px",
+    color: "#5d6878",
+    textTransform: "uppercase",
+    letterSpacing: "0.08em",
+  },
+  coverTitleBlock: {
+    marginTop: "110px",
+  },
+  controlledRecordLabel: {
+    color: "#627086",
+    fontSize: "12px",
+    fontWeight: 800,
+    letterSpacing: "0.16em",
+  },
+  coverTitle: {
+    margin: "12px 0 8px",
+    fontSize: "46px",
+    lineHeight: 1.05,
+    color: "#1f3a5f",
+  },
+  coverNumber: {
+    fontSize: "26px",
+    fontWeight: 700,
+    color: "#374151",
+  },
+  coverMetadata: {
+    marginTop: "64px",
+    borderTop: "1px solid #d7dee8",
+  },
+  metadataRow: {
+    display: "grid",
+    gridTemplateColumns: "190px 1fr",
+    gap: "18px",
+    padding: "12px 0",
+    borderBottom: "1px solid #e5e7eb",
+  },
+  metadataLabel: {
+    color: "#5d6878",
+    fontSize: "12px",
+    fontWeight: 800,
+    textTransform: "uppercase",
+    letterSpacing: "0.06em",
+  },
+  metadataValue: {
+    fontSize: "14px",
+    fontWeight: 600,
+  },
+  coverStatement: {
+    marginTop: "auto",
+    paddingTop: "24px",
+    borderTop: "1px solid #d7dee8",
+    color: "#5d6878",
+    fontSize: "12px",
+    lineHeight: 1.6,
+  },
+  section: {
+    padding: "34px 42px 38px",
+    borderTop: "1px solid #dbe2ea",
+  },
+  sectionHeader: {
+    display: "flex",
+    alignItems: "flex-start",
+    gap: "14px",
+    paddingBottom: "16px",
+    borderBottom: "2px solid #1f3a5f",
+  },
+  sectionNumber: {
+    width: "34px",
+    height: "34px",
+    flex: "0 0 34px",
+    borderRadius: "50%",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "#1f3a5f",
+    color: "white",
+    fontSize: "14px",
+    fontWeight: 800,
+  },
+  sectionTitle: {
+    margin: 0,
+    color: "#1f3a5f",
+    fontSize: "24px",
+  },
+  sectionSubtitle: {
+    marginTop: "4px",
+    color: "#667085",
+    fontSize: "12px",
+  },
+  sectionBody: {
+    paddingTop: "18px",
+  },
+  fieldGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    gap: "12px",
+  },
+  field: {
+    border: "1px solid #dce2e9",
+    borderRadius: "5px",
+    background: "#fbfcfd",
+    padding: "11px 12px",
+    minHeight: "64px",
+  },
+  fieldWide: {
+    gridColumn: "1 / -1",
+  },
+  fieldLabel: {
+    marginBottom: "6px",
+    color: "#596579",
+    fontSize: "10px",
+    fontWeight: 800,
+    textTransform: "uppercase",
+    letterSpacing: "0.06em",
+  },
+  fieldValue: {
+    color: "#172033",
+    fontSize: "13px",
+    lineHeight: 1.5,
+    whiteSpace: "pre-wrap",
+    overflowWrap: "anywhere",
+  },
+  subsection: {
+    marginTop: "18px",
+    padding: "16px",
+    border: "1px solid #d7dee8",
+    borderRadius: "6px",
+  },
+  subsectionTitle: {
+    margin: "0 0 12px",
+    color: "#334155",
+    fontSize: "16px",
+  },
+  approvalCard: {
+    marginTop: "18px",
+    border: "1px solid #bac7d6",
+    borderLeft: "5px solid #1f3a5f",
+    borderRadius: "5px",
+    padding: "14px 16px",
+    background: "#f7f9fc",
+  },
+  approvalTitle: {
+    marginBottom: "12px",
+    color: "#1f3a5f",
+    fontSize: "14px",
+    fontWeight: 800,
+  },
+  approvalGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+    gap: "12px",
+  },
+  miniLabel: {
+    color: "#64748b",
+    fontSize: "9px",
+    fontWeight: 800,
+    textTransform: "uppercase",
+    letterSpacing: "0.05em",
+  },
+  miniValue: {
+    marginTop: "4px",
+    fontSize: "12px",
+    fontWeight: 600,
+  },
+  approvalComments: {
+    marginTop: "12px",
+    paddingTop: "10px",
+    borderTop: "1px solid #d7dee8",
+    fontSize: "12px",
+    whiteSpace: "pre-wrap",
+  },
+  tableWrap: {
+    width: "100%",
+    overflowX: "auto",
+  },
+  table: {
+    width: "100%",
+    borderCollapse: "collapse",
+    fontSize: "11px",
+  },
+  th: {
+    padding: "9px",
+    border: "1px solid #c7d0dc",
+    background: "#e8edf4",
+    color: "#26364d",
+    textAlign: "left",
+    verticalAlign: "top",
+    fontWeight: 800,
+  },
+  td: {
+    padding: "9px",
+    border: "1px solid #d7dee8",
+    verticalAlign: "top",
+    lineHeight: 1.4,
+    overflowWrap: "anywhere",
+  },
+  tableSecondary: {
+    marginTop: "4px",
+    color: "#667085",
+    fontSize: "10px",
+  },
+  emptyText: {
+    margin: 0,
+    color: "#667085",
+    fontStyle: "italic",
+  },
+  note: {
+    margin: "14px 0 0",
+    color: "#667085",
+    fontSize: "11px",
+    lineHeight: 1.5,
+  },
+  printFooter: {
+    display: "none",
+  },
+}
