@@ -265,6 +265,10 @@ function CapaEnterpriseReport({
         <a href={backHref} style={styles.backLink}>
           Back to Workflow
         </a>
+        <span style={styles.printInstruction}>
+          In the print dialog, turn off browser “Headers and footers” so the URL,
+          browser date, and browser page numbers are not added to the controlled report.
+        </span>
       </div>
 
       {warningMessage ? (
@@ -285,6 +289,21 @@ function CapaEnterpriseReport({
           generatedAt={generatedAt}
         />
 
+        <table className="enterprise-report-table" style={styles.reportTable}>
+          <thead>
+            <tr>
+              <td style={styles.reportTableCell}>
+                <InternalReportHeader
+                  record={record}
+                  capaNumber={capaNumber}
+                  status={status}
+                />
+              </td>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td style={styles.reportTableCell}>
         <ReportSection
           number="1"
           title="Initiation"
@@ -956,12 +975,20 @@ function CapaEnterpriseReport({
             report page is connected to the application's audit-trail table.
           </p>
         </ReportSection>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </article>
 
       <div className="print-footer" style={styles.printFooter}>
-        <span>{String(capaNumber)}</span>
-        <span>QualiSphere Enterprise QMS</span>
-        <span>Printed {formatDateTime(generatedAt)}</span>
+        <span style={styles.footerLeft}>
+          {String(capaNumber)} · CONTROLLED QUALITY RECORD
+        </span>
+        <span style={styles.footerCenter}>QualiSphere Enterprise QMS</span>
+        <span style={styles.footerRight}>
+          Generated {formatDateTime(generatedAt)} · <span className="page-counter" />
+        </span>
       </div>
 
       <style jsx global>{`
@@ -976,11 +1003,15 @@ function CapaEnterpriseReport({
 
         @page {
           size: Letter;
-          margin: 0.55in 0.5in 0.7in;
+          margin: 0.42in 0.5in 0.62in;
+          counter-increment: page;
         }
 
         @media print {
+          html,
           body {
+            margin: 0 !important;
+            padding: 0 !important;
             background: white !important;
           }
 
@@ -995,8 +1026,43 @@ function CapaEnterpriseReport({
           }
 
           .report-cover {
-            min-height: 9.2in !important;
-            page-break-after: always;
+            height: 9.72in !important;
+            min-height: 0 !important;
+            padding: 0.36in 0.42in 0.32in !important;
+            overflow: hidden !important;
+            page-break-after: always !important;
+            break-after: page !important;
+          }
+
+          .report-cover > div:nth-child(2) {
+            margin-top: 0.72in !important;
+          }
+
+          .report-cover > div:last-child {
+            padding-top: 12px !important;
+          }
+
+          .enterprise-report-table {
+            width: 100% !important;
+            border-collapse: collapse !important;
+          }
+
+          .enterprise-report-table thead {
+            display: table-header-group !important;
+          }
+
+          .enterprise-report-table tbody {
+            display: table-row-group !important;
+          }
+
+          .enterprise-report-table > thead > tr > td,
+          .enterprise-report-table > tbody > tr > td {
+            padding: 0 !important;
+            border: 0 !important;
+          }
+
+          .internal-report-header {
+            margin-bottom: 0.08in !important;
           }
 
           .report-section {
@@ -1005,27 +1071,90 @@ function CapaEnterpriseReport({
           }
 
           .avoid-break,
-          table,
-          tr {
+          .approval-card,
+          table:not(.enterprise-report-table),
+          table:not(.enterprise-report-table) tr {
             break-inside: avoid;
             page-break-inside: avoid;
           }
 
           .print-footer {
-            display: flex !important;
+            display: grid !important;
+            grid-template-columns: 1.25fr 1fr 1.45fr;
+            align-items: center;
             position: fixed;
             left: 0.5in;
             right: 0.5in;
-            bottom: 0.18in;
-            justify-content: space-between;
-            border-top: 1px solid #9ca3af;
+            bottom: 0.14in;
+            border-top: 1px solid #64748b;
             padding-top: 4px;
-            font-size: 8px !important;
+            font-size: 7.5px !important;
+            line-height: 1.2;
             background: white;
+            z-index: 1000;
+          }
+
+          .page-counter::after {
+            content: "Page " counter(page) " of " counter(pages);
           }
         }
       `}</style>
     </main>
+  );
+}
+
+function InternalReportHeader({
+  record,
+  capaNumber,
+  status,
+}: {
+  record: CapaRecord;
+  capaNumber: unknown;
+  status: unknown;
+}) {
+  const logoUrl = firstValue(record.organization_logo_url, record.logo_url);
+  const organizationName = firstValue(
+    record.organization_name,
+    record.company_name,
+    "QualiSphere",
+  );
+
+  return (
+    <div className="internal-report-header" style={styles.internalHeader}>
+      <div style={styles.internalBrand}>
+        <div style={styles.internalLogoBox}>
+          {logoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={String(logoUrl)}
+              alt="Organization logo"
+              style={styles.internalLogo}
+            />
+          ) : (
+            <span style={styles.internalLogoPlaceholder}>Q</span>
+          )}
+        </div>
+        <div>
+          <div style={styles.internalOrganization}>
+            {displayValue(organizationName)}
+          </div>
+          <div style={styles.internalPlatform}>
+            QualiSphere Enterprise QMS
+          </div>
+        </div>
+      </div>
+
+      <div style={styles.internalRecordBlock}>
+        <div style={styles.internalControlledLabel}>
+          CONTROLLED QUALITY RECORD
+        </div>
+        <div style={styles.internalReportTitle}>CAPA Report</div>
+        <div style={styles.internalRecordMeta}>
+          <span>{displayValue(capaNumber)}</span>
+          <span>STATUS: {displayValue(status)}</span>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -1205,7 +1334,7 @@ function ApprovalCard({
   comments?: unknown;
 }) {
   return (
-    <div className="avoid-break" style={styles.approvalCard}>
+    <div className="avoid-break approval-card" style={styles.approvalCard}>
       <div style={styles.approvalTitle}>{title}</div>
       <div style={styles.approvalGrid}>
         <MiniField label="Decision" value={status} />
@@ -1463,6 +1592,14 @@ const styles: Record<string, CSSProperties> = {
     color: "#1f3a5f",
     fontWeight: 600,
     textDecoration: "none",
+    whiteSpace: "nowrap",
+  },
+  printInstruction: {
+    marginLeft: "auto",
+    maxWidth: "520px",
+    color: "#667085",
+    fontSize: "11px",
+    lineHeight: 1.4,
   },
   warning: {
     maxWidth: "1000px",
@@ -1477,6 +1614,92 @@ const styles: Record<string, CSSProperties> = {
     margin: "0 auto",
     background: "white",
     boxShadow: "0 12px 32px rgba(15, 23, 42, 0.12)",
+  },
+  reportTable: {
+    width: "100%",
+    borderCollapse: "collapse",
+  },
+  reportTableCell: {
+    padding: 0,
+    border: 0,
+  },
+  internalHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "20px",
+    padding: "10px 18px",
+    borderTop: "5px solid #1f3a5f",
+    borderBottom: "1px solid #aeb9c7",
+    background: "white",
+  },
+  internalBrand: {
+    display: "flex",
+    alignItems: "center",
+    gap: "10px",
+    minWidth: 0,
+  },
+  internalLogoBox: {
+    width: "34px",
+    height: "34px",
+    flex: "0 0 34px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    border: "1px solid #cbd5e1",
+    borderRadius: "4px",
+    overflow: "hidden",
+  },
+  internalLogo: {
+    maxWidth: "30px",
+    maxHeight: "30px",
+    objectFit: "contain",
+  },
+  internalLogoPlaceholder: {
+    color: "#1f3a5f",
+    fontSize: "16px",
+    fontWeight: 900,
+  },
+  internalOrganization: {
+    color: "#172033",
+    fontSize: "12px",
+    fontWeight: 800,
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+  },
+  internalPlatform: {
+    marginTop: "2px",
+    color: "#64748b",
+    fontSize: "8px",
+    fontWeight: 700,
+    textTransform: "uppercase",
+    letterSpacing: "0.07em",
+  },
+  internalRecordBlock: {
+    textAlign: "right",
+  },
+  internalControlledLabel: {
+    color: "#64748b",
+    fontSize: "7px",
+    fontWeight: 800,
+    letterSpacing: "0.1em",
+  },
+  internalReportTitle: {
+    marginTop: "2px",
+    color: "#1f3a5f",
+    fontSize: "14px",
+    fontWeight: 900,
+  },
+  internalRecordMeta: {
+    display: "flex",
+    justifyContent: "flex-end",
+    gap: "12px",
+    marginTop: "2px",
+    color: "#334155",
+    fontSize: "8px",
+    fontWeight: 700,
+    textTransform: "uppercase",
   },
   cover: {
     minHeight: "1030px",
@@ -1737,5 +1960,17 @@ const styles: Record<string, CSSProperties> = {
   },
   printFooter: {
     display: "none",
+  },
+  footerLeft: {
+    textAlign: "left",
+    whiteSpace: "nowrap",
+  },
+  footerCenter: {
+    textAlign: "center",
+    whiteSpace: "nowrap",
+  },
+  footerRight: {
+    textAlign: "right",
+    whiteSpace: "nowrap",
   },
 }
