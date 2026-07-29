@@ -128,14 +128,14 @@ export default function EnterpriseCapaReportPage() {
   );
 }
 
-export type CapaRecord = Record<string, any> & {
+type CapaRecord = Record<string, any> & {
   id?: string;
   capa_number?: string;
   status?: string;
   ncmr_id?: string;
 };
 
-export type CapaTask = Record<string, any> & {
+type CapaTask = Record<string, any> & {
   id?: string;
   task_title?: string;
   task_description?: string;
@@ -165,7 +165,7 @@ type ApprovalRow = {
   comments?: unknown;
 };
 
-export function CapaEnterpriseReport({
+function CapaEnterpriseReport({
   record,
   tasks,
   linkedNcmr,
