@@ -982,13 +982,11 @@ function CapaEnterpriseReport({
       </article>
 
       <div className="print-footer" style={styles.printFooter}>
-        <span style={styles.footerLeft}>
-          {String(capaNumber)} · CONTROLLED QUALITY RECORD
-        </span>
-        <span style={styles.footerCenter}>QualiSphere Enterprise QMS</span>
-        <span style={styles.footerRight}>
-          Generated {formatDateTime(generatedAt)} · <span className="page-counter" />
-        </span>
+        <span>{String(capaNumber)}</span>
+        <span style={styles.footerSeparator}>|</span>
+        <span>Printed: {formatCustomerDateTime(generatedAt)}</span>
+        <span style={styles.footerSeparator}>|</span>
+        <span className="page-counter" />
       </div>
 
       <style jsx global>{`
@@ -1079,19 +1077,21 @@ function CapaEnterpriseReport({
           }
 
           .print-footer {
-            display: grid !important;
-            grid-template-columns: 1.25fr 1fr 1.45fr;
+            display: flex !important;
             align-items: center;
+            justify-content: flex-start;
             position: fixed;
             left: 0.5in;
             right: 0.5in;
             bottom: 0.14in;
             border-top: 1px solid #64748b;
             padding-top: 4px;
+            font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
             font-size: 7.5px !important;
             line-height: 1.2;
             background: white;
             z-index: 1000;
+            white-space: nowrap;
           }
 
           .page-counter::after {
@@ -1104,56 +1104,17 @@ function CapaEnterpriseReport({
 }
 
 function InternalReportHeader({
-  record,
   capaNumber,
-  status,
 }: {
   record: CapaRecord;
   capaNumber: unknown;
   status: unknown;
 }) {
-  const logoUrl = firstValue(record.organization_logo_url, record.logo_url);
-  const organizationName = firstValue(
-    record.organization_name,
-    record.company_name,
-    "QualiSphere",
-  );
-
   return (
     <div className="internal-report-header" style={styles.internalHeader}>
-      <div style={styles.internalBrand}>
-        <div style={styles.internalLogoBox}>
-          {logoUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={String(logoUrl)}
-              alt="Organization logo"
-              style={styles.internalLogo}
-            />
-          ) : (
-            <span style={styles.internalLogoPlaceholder}>Q</span>
-          )}
-        </div>
-        <div>
-          <div style={styles.internalOrganization}>
-            {displayValue(organizationName)}
-          </div>
-          <div style={styles.internalPlatform}>
-            QualiSphere Enterprise QMS
-          </div>
-        </div>
-      </div>
-
-      <div style={styles.internalRecordBlock}>
-        <div style={styles.internalControlledLabel}>
-          CONTROLLED QUALITY RECORD
-        </div>
-        <div style={styles.internalReportTitle}>CAPA Report</div>
-        <div style={styles.internalRecordMeta}>
-          <span>{displayValue(capaNumber)}</span>
-          <span>STATUS: {displayValue(status)}</span>
-        </div>
-      </div>
+      <span style={styles.internalHeaderText}>
+        {displayValue(capaNumber)} Controlled Record
+      </span>
     </div>
   );
 }
@@ -1549,6 +1510,26 @@ function formatDate(value: unknown): string {
   }).format(date);
 }
 
+function formatCustomerDateTime(value: unknown): string {
+  if (!hasMeaningfulValue(value)) return "N/A";
+
+  const date = value instanceof Date ? value : new Date(String(value));
+  if (Number.isNaN(date.getTime())) return displayValue(value);
+
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = new Intl.DateTimeFormat("en-US", {
+    month: "short",
+  }).format(date);
+  const year = date.getFullYear();
+  const time = new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).format(date);
+
+  return `${day}-${month}-${year} ${time}`;
+}
+
 function formatDateTime(value: unknown): string {
   if (!hasMeaningfulValue(value)) return "N/A";
 
@@ -1624,82 +1605,17 @@ const styles: Record<string, CSSProperties> = {
     border: 0,
   },
   internalHeader: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: "20px",
-    padding: "10px 18px",
-    borderTop: "5px solid #1f3a5f",
-    borderBottom: "1px solid #aeb9c7",
+    padding: "8px 12px",
+    borderBottom: "1px solid #9ca3af",
     background: "white",
   },
-  internalBrand: {
-    display: "flex",
-    alignItems: "center",
-    gap: "10px",
-    minWidth: 0,
-  },
-  internalLogoBox: {
-    width: "34px",
-    height: "34px",
-    flex: "0 0 34px",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    border: "1px solid #cbd5e1",
-    borderRadius: "4px",
-    overflow: "hidden",
-  },
-  internalLogo: {
-    maxWidth: "30px",
-    maxHeight: "30px",
-    objectFit: "contain",
-  },
-  internalLogoPlaceholder: {
-    color: "#1f3a5f",
-    fontSize: "16px",
-    fontWeight: 900,
-  },
-  internalOrganization: {
-    color: "#172033",
-    fontSize: "12px",
-    fontWeight: 800,
-    whiteSpace: "nowrap",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-  },
-  internalPlatform: {
-    marginTop: "2px",
-    color: "#64748b",
-    fontSize: "8px",
-    fontWeight: 700,
-    textTransform: "uppercase",
-    letterSpacing: "0.07em",
-  },
-  internalRecordBlock: {
-    textAlign: "right",
-  },
-  internalControlledLabel: {
-    color: "#64748b",
-    fontSize: "7px",
-    fontWeight: 800,
-    letterSpacing: "0.1em",
-  },
-  internalReportTitle: {
-    marginTop: "2px",
-    color: "#1f3a5f",
-    fontSize: "14px",
-    fontWeight: 900,
-  },
-  internalRecordMeta: {
-    display: "flex",
-    justifyContent: "flex-end",
-    gap: "12px",
-    marginTop: "2px",
-    color: "#334155",
-    fontSize: "8px",
-    fontWeight: 700,
-    textTransform: "uppercase",
+  internalHeaderText: {
+    color: "#111827",
+    fontFamily:
+      '"SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace',
+    fontSize: "10px",
+    fontWeight: 500,
+    letterSpacing: "0.01em",
   },
   cover: {
     minHeight: "1030px",
@@ -1961,16 +1877,7 @@ const styles: Record<string, CSSProperties> = {
   printFooter: {
     display: "none",
   },
-  footerLeft: {
-    textAlign: "left",
-    whiteSpace: "nowrap",
-  },
-  footerCenter: {
-    textAlign: "center",
-    whiteSpace: "nowrap",
-  },
-  footerRight: {
-    textAlign: "right",
-    whiteSpace: "nowrap",
+  footerSeparator: {
+    padding: "0 6px",
   },
 }
