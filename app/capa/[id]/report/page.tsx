@@ -239,6 +239,16 @@ function CapaEnterpriseReport({
       ),
     },
     {
+      stage: "Effectiveness Plan",
+      status: record.effectiveness_plan_approval_status,
+      approver: record.effectiveness_plan_approved_by,
+      approvedAt: record.effectiveness_plan_approved_at,
+      comments: firstValue(
+        record.effectiveness_plan_approval_comments,
+        record.effectiveness_plan_rejection_comments,
+      ),
+    },
+    {
       stage: "Closure",
       status: record.closure_approval_status,
       approver: record.closure_approved_by,
@@ -391,55 +401,84 @@ function CapaEnterpriseReport({
         <ReportSection
           number="2"
           title="Evaluation"
-          subtitle="Scope, interim controls, and risk assessment"
+          subtitle="Scope, affected entities, interim controls, and risk assessment"
         >
           <FieldGrid>
             <ReportField
-              label="Scope"
+              label="Scope Summary"
               value={firstValue(
-                record.scope,
                 record.scope_summary,
+                record.scope,
                 record.evaluation_scope,
               )}
               wide
             />
             <ReportField
-              label="Interim Control Required"
+              label="Affected Product"
+              value={record.affected_product}
+            />
+            <ReportField
+              label="Affected Lot"
+              value={record.affected_lot}
+            />
+            <ReportField
+              label="Affected Process"
+              value={record.affected_process}
+            />
+            <ReportField
+              label="Affected Supplier"
+              value={record.affected_supplier}
+            />
+            <ReportField
+              label="Potential Impact"
+              value={record.potential_impact}
+              wide
+            />
+
+            <ReportField
+              label="Interim Controls Required"
               value={firstValue(
+                record.interim_controls_required,
                 record.interim_control_required,
                 record.containment_required,
               )}
             />
             <ReportField
-              label="Interim Control Rationale"
+              label="No Interim Controls Justification"
               value={firstValue(
+                record.no_interim_controls_justification,
                 record.interim_control_rationale,
                 record.containment_rationale,
               )}
               wide
             />
             <ReportField
-              label="Interim Control / Containment"
+              label="Interim Control / Containment Action"
               value={firstValue(
+                record.containment_action,
                 record.interim_control,
                 record.interim_control_description,
-                record.containment_action,
               )}
               wide
             />
             <ReportField
               label="Interim Control Owner"
               value={firstValue(
-                record.interim_control_owner,
                 record.containment_owner,
+                record.interim_control_owner,
               )}
             />
             <ReportField
               label="Interim Control Complete"
               value={firstValue(
-                record.interim_control_complete,
                 record.containment_complete,
+                record.interim_control_complete,
               )}
+            />
+            <ReportField
+              label="Residual Risk After Interim Control"
+              value={record.containment_residual_risk}
+              wide
             />
           </FieldGrid>
 
@@ -449,18 +488,33 @@ function CapaEnterpriseReport({
               <ReportField
                 label="Occurrence"
                 value={firstValue(
-                  record.occurrence,
                   record.occurrence_rating,
+                  record.occurrence,
                 )}
               />
               <ReportField
                 label="Detection"
                 value={firstValue(
-                  record.detection,
                   record.detection_rating,
+                  record.detection,
                 )}
               />
               <ReportField label="Risk Level" value={record.risk_level} />
+              <ReportField
+                label="Patient Safety Impact"
+                value={record.patient_safety_impact}
+                wide
+              />
+              <ReportField
+                label="Product Quality Impact"
+                value={record.product_quality_impact}
+                wide
+              />
+              <ReportField
+                label="Regulatory Impact"
+                value={record.regulatory_impact}
+                wide
+              />
               <ReportField
                 label="Risk Rationale"
                 value={firstValue(
@@ -552,7 +606,7 @@ function CapaEnterpriseReport({
         <ReportSection
           number="4"
           title="Action Plan Proposal"
-          subtitle="Approved corrective or preventive action plan"
+          subtitle="Approved corrective or preventive action plan and verification requirements"
         >
           <FieldGrid>
             <ReportField
@@ -562,18 +616,15 @@ function CapaEnterpriseReport({
                   : "Corrective Action Plan"
               }
               value={firstValue(
-                record.action_plan,
                 record.corrective_action_plan,
+                record.action_plan,
                 record.corrective_action,
                 record.preventive_action_plan,
                 record.preventive_action,
               )}
               wide
             />
-            <ReportField
-              label="Action Owner"
-              value={record.action_owner}
-            />
+            <ReportField label="Action Owner" value={record.action_owner} />
             <ReportField
               label="Action Due Date"
               value={record.action_due_date}
@@ -586,39 +637,52 @@ function CapaEnterpriseReport({
             />
             <ReportField
               label="Required Resources"
-              value={firstValue(
-                record.required_resources,
-                record.resources_required,
-              )}
+              value={record.required_resources}
               wide
             />
             <ReportField
               label="Required Evidence"
-              value={firstValue(
-                record.required_evidence,
-                record.evidence_required,
-              )}
+              value={record.required_evidence}
+              wide
+            />
+            <ReportField
+              label="Effectiveness Success Criteria"
+              value={record.effectiveness_success_criteria}
+              wide
+            />
+            <ReportField
+              label="Effectiveness Data to Collect"
+              value={record.effectiveness_data_to_collect}
+              wide
+            />
+            <ReportField
+              label="Effectiveness Sample Size"
+              value={record.effectiveness_sample_size}
+            />
+            <ReportField
+              label="Verification Owner"
+              value={record.verification_owner}
+            />
+            <ReportField
+              label="Verification Due Date"
+              value={record.verification_due_date}
+              format="date"
+            />
+            <ReportField
+              label="Required Objective Evidence"
+              value={record.required_objective_evidence}
               wide
             />
           </FieldGrid>
 
           <ApprovalCard
             title="Action Plan Approval"
-            status={firstValue(
-              record.action_plan_approval_status,
-              record.action_approval_status,
-            )}
-            approvedBy={firstValue(
-              record.action_plan_approved_by,
-              record.action_approved_by,
-            )}
-            approvedAt={firstValue(
-              record.action_plan_approved_at,
-              record.action_approved_at,
-            )}
+            status={record.action_plan_approval_status}
+            approvedBy={record.action_plan_approved_by}
+            approvedAt={record.action_plan_approved_at}
             comments={firstValue(
               record.action_plan_approval_comments,
-              record.action_approval_comments,
+              record.action_plan_rejection_comments,
             )}
           />
         </ReportSection>
@@ -626,30 +690,40 @@ function CapaEnterpriseReport({
         <ReportSection
           number="5"
           title="Implementation"
-          subtitle="Execution of approved actions and completion evidence"
+          subtitle="Execution of approved actions, implementation controls, and completion evidence"
         >
           <FieldGrid>
             <ReportField
-              label="Implementation Summary"
+              label="Implementation Details"
               value={firstValue(
-                record.implementation_summary,
                 record.implementation_details,
+                record.implementation,
+                record.implementation_summary,
                 record.implementation_notes,
               )}
               wide
             />
             <ReportField
               label="Implementation Evidence"
-              value={record.implementation_evidence}
+              value={firstValue(
+                record.implementation_evidence,
+                record.implementation_details,
+              )}
               wide
             />
             <ReportField
               label="Implemented By"
-              value={record.implemented_by}
+              value={firstValue(
+                record.implemented_by,
+                record.implementation_completed_by,
+              )}
             />
             <ReportField
               label="Implemented At"
-              value={record.implemented_at}
+              value={firstValue(
+                record.implemented_at,
+                record.implementation_completed_at,
+              )}
               format="datetime"
             />
             <ReportField
@@ -674,31 +748,15 @@ function CapaEnterpriseReport({
         <ReportSection
           number="6"
           title="Effectiveness Plan"
-          subtitle="Predefined method, acceptance criteria, and timing"
+          subtitle="Approved method, objective evidence, acceptance criteria, ownership, and timing"
         >
           <FieldGrid>
             <ReportField
-              label="Effectiveness Plan"
+              label="Monitoring Method"
               value={firstValue(
+                record.monitoring_method,
                 record.effectiveness_plan,
                 record.monitoring_plan,
-              )}
-              wide
-            />
-            <ReportField
-              label="Verification Method"
-              value={firstValue(
-                record.effectiveness_method,
-                record.monitoring_method,
-              )}
-              wide
-            />
-            <ReportField
-              label="Acceptance Criteria"
-              value={firstValue(
-                record.effectiveness_criteria,
-                record.success_criteria,
-                record.acceptance_criteria,
               )}
               wide
             />
@@ -707,14 +765,59 @@ function CapaEnterpriseReport({
               value={record.monitoring_period}
             />
             <ReportField
-              label="Planned Verification Date"
+              label="Effectiveness Success Criteria"
               value={firstValue(
+                record.effectiveness_success_criteria,
+                record.effectiveness_criteria,
+                record.success_criteria,
+                record.acceptance_criteria,
+              )}
+              wide
+            />
+            <ReportField
+              label="Data to Collect"
+              value={record.effectiveness_data_to_collect}
+              wide
+            />
+            <ReportField
+              label="Sample Size"
+              value={record.effectiveness_sample_size}
+            />
+            <ReportField
+              label="Verification Owner"
+              value={record.verification_owner}
+            />
+            <ReportField
+              label="Verification Due Date"
+              value={firstValue(
+                record.verification_due_date,
                 record.effectiveness_due_date,
                 record.effectiveness_verification_date,
               )}
               format="date"
             />
+            <ReportField
+              label="Required Objective Evidence"
+              value={record.required_objective_evidence}
+              wide
+            />
+            <ReportField
+              label="Verification Method"
+              value={record.verification_method}
+              wide
+            />
           </FieldGrid>
+
+          <ApprovalCard
+            title="Effectiveness Plan Approval"
+            status={record.effectiveness_plan_approval_status}
+            approvedBy={record.effectiveness_plan_approved_by}
+            approvedAt={record.effectiveness_plan_approved_at}
+            comments={firstValue(
+              record.effectiveness_plan_approval_comments,
+              record.effectiveness_plan_rejection_comments,
+            )}
+          />
         </ReportSection>
 
         <ReportSection
@@ -745,6 +848,7 @@ function CapaEnterpriseReport({
               value={firstValue(
                 record.effectiveness_verified_by,
                 record.effectiveness_reviewed_by,
+                record.verification_owner,
               )}
             />
             <ReportField
@@ -752,6 +856,7 @@ function CapaEnterpriseReport({
               value={firstValue(
                 record.effectiveness_verified_at,
                 record.effectiveness_reviewed_at,
+                record.verification_completed_at,
               )}
               format="datetime"
             />
