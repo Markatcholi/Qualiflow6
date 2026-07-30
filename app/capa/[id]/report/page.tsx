@@ -157,13 +157,6 @@ type Props = {
   backHref: string;
 };
 
-type ApprovalRow = {
-  stage: string;
-  status: unknown;
-  approver: unknown;
-  approvedAt: unknown;
-  comments?: unknown;
-};
 
 function CapaEnterpriseReport({
   record,
@@ -192,72 +185,6 @@ function CapaEnterpriseReport({
     record.initiation_date,
   );
 
-  const approvals: ApprovalRow[] = [
-    {
-      stage: "Initiation",
-      status: firstValue(
-        record.initiation_approval_status,
-        record.initiation_status,
-      ),
-      approver: firstValue(
-        record.initiation_approved_by,
-        record.initiation_approver,
-      ),
-      approvedAt: firstValue(
-        record.initiation_approved_at,
-        record.initiation_approval_date,
-      ),
-      comments: firstValue(
-        record.initiation_approval_comments,
-        record.initiation_comments,
-      ),
-    },
-    {
-      stage: "Investigation",
-      status: record.investigation_approval_status,
-      approver: record.investigation_approved_by,
-      approvedAt: record.investigation_approved_at,
-      comments: record.investigation_approval_comments,
-    },
-    {
-      stage: "Action Plan",
-      status: firstValue(
-        record.action_plan_approval_status,
-        record.action_approval_status,
-      ),
-      approver: firstValue(
-        record.action_plan_approved_by,
-        record.action_approved_by,
-      ),
-      approvedAt: firstValue(
-        record.action_plan_approved_at,
-        record.action_approved_at,
-      ),
-      comments: firstValue(
-        record.action_plan_approval_comments,
-        record.action_approval_comments,
-      ),
-    },
-    {
-      stage: "Effectiveness Plan",
-      status: record.effectiveness_plan_approval_status,
-      approver: record.effectiveness_plan_approved_by,
-      approvedAt: record.effectiveness_plan_approved_at,
-      comments: firstValue(
-        record.effectiveness_plan_approval_comments,
-        record.effectiveness_plan_rejection_comments,
-      ),
-    },
-    {
-      stage: "Closure",
-      status: record.closure_approval_status,
-      approver: record.closure_approved_by,
-      approvedAt: record.closure_approved_at,
-      comments: record.closure_approval_comments,
-    },
-  ].filter((row) =>
-    hasMeaningfulValue(row.status, row.approver, row.approvedAt, row.comments),
-  );
 
   const linkedNcmrNumber = firstValue(
     linkedNcmr?.ncmr_number,
@@ -605,8 +532,8 @@ function CapaEnterpriseReport({
 
         <ReportSection
           number="4"
-          title="Action Plan Proposal"
-          subtitle="Approved corrective or preventive action plan and verification requirements"
+          title="Action Plan"
+          subtitle="Proposed corrective or preventive actions and approval evidence"
         >
           <FieldGrid>
             <ReportField
@@ -631,11 +558,6 @@ function CapaEnterpriseReport({
               format="date"
             />
             <ReportField
-              label="Verification Method"
-              value={record.verification_method}
-              wide
-            />
-            <ReportField
               label="Required Resources"
               value={record.required_resources}
               wide
@@ -645,69 +567,59 @@ function CapaEnterpriseReport({
               value={record.required_evidence}
               wide
             />
-            <ReportField
-              label="Effectiveness Success Criteria"
-              value={record.effectiveness_success_criteria}
-              wide
-            />
-            <ReportField
-              label="Effectiveness Data to Collect"
-              value={record.effectiveness_data_to_collect}
-              wide
-            />
-            <ReportField
-              label="Effectiveness Sample Size"
-              value={record.effectiveness_sample_size}
-            />
-            <ReportField
-              label="Verification Owner"
-              value={record.verification_owner}
-            />
-            <ReportField
-              label="Verification Due Date"
-              value={record.verification_due_date}
-              format="date"
-            />
-            <ReportField
-              label="Required Objective Evidence"
-              value={record.required_objective_evidence}
-              wide
-            />
           </FieldGrid>
 
           <ApprovalCard
             title="Action Plan Approval"
-            status={record.action_plan_approval_status}
-            approvedBy={record.action_plan_approved_by}
-            approvedAt={record.action_plan_approved_at}
+            status={firstValue(
+              record.action_plan_approval_status,
+              record.action_approval_status,
+            )}
+            approvedBy={firstValue(
+              record.action_plan_approved_by,
+              record.action_approved_by,
+            )}
+            approvedAt={firstValue(
+              record.action_plan_approved_at,
+              record.action_approved_at,
+            )}
             comments={firstValue(
               record.action_plan_approval_comments,
               record.action_plan_rejection_comments,
+              record.action_approval_comments,
             )}
           />
         </ReportSection>
 
         <ReportSection
           number="5"
+          title="Task Assignment"
+          subtitle="Implementation task ownership, timing, status, and completion evidence"
+        >
+          <TaskTable tasks={tasks} />
+        </ReportSection>
+
+        <ReportSection
+          number="6"
           title="Implementation"
-          subtitle="Execution of approved actions, implementation controls, and completion evidence"
+          subtitle="Execution of approved actions and implementation evidence"
         >
           <FieldGrid>
             <ReportField
-              label="Implementation Details"
+              label="Implementation Evidence"
               value={firstValue(
                 record.implementation_details,
-                record.implementation,
+                record.implementation_evidence,
                 record.implementation_summary,
                 record.implementation_notes,
               )}
               wide
             />
             <ReportField
-              label="Implementation Evidence"
+              label="Implementation Evidence Attachment"
               value={firstValue(
-                record.implementation_evidence,
-                record.implementation_details,
+                record.implementation_evidence_file_name,
+                record.implementation_evidence_file_url,
               )}
               wide
             />
@@ -739,21 +651,18 @@ function CapaEnterpriseReport({
               value={record.validation_required}
             />
           </FieldGrid>
-
-          <Subsection title="Implementation Tasks">
-            <TaskTable tasks={tasks} />
-          </Subsection>
         </ReportSection>
 
         <ReportSection
-          number="6"
+          number="7"
           title="Effectiveness Plan"
-          subtitle="Approved method, objective evidence, acceptance criteria, ownership, and timing"
+          subtitle="Approved verification method, success criteria, evidence, ownership, and timing"
         >
           <FieldGrid>
             <ReportField
-              label="Monitoring Method"
+              label="Verification Method"
               value={firstValue(
+                record.verification_method,
                 record.monitoring_method,
                 record.effectiveness_plan,
                 record.monitoring_plan,
@@ -761,11 +670,7 @@ function CapaEnterpriseReport({
               wide
             />
             <ReportField
-              label="Monitoring Period"
-              value={record.monitoring_period}
-            />
-            <ReportField
-              label="Effectiveness Success Criteria"
+              label="Success Criteria"
               value={firstValue(
                 record.effectiveness_success_criteria,
                 record.effectiveness_criteria,
@@ -782,6 +687,10 @@ function CapaEnterpriseReport({
             <ReportField
               label="Sample Size"
               value={record.effectiveness_sample_size}
+            />
+            <ReportField
+              label="Monitoring Period"
+              value={record.monitoring_period}
             />
             <ReportField
               label="Verification Owner"
@@ -801,11 +710,6 @@ function CapaEnterpriseReport({
               value={record.required_objective_evidence}
               wide
             />
-            <ReportField
-              label="Verification Method"
-              value={record.verification_method}
-              wide
-            />
           </FieldGrid>
 
           <ApprovalCard
@@ -821,9 +725,9 @@ function CapaEnterpriseReport({
         </ReportSection>
 
         <ReportSection
-          number="7"
+          number="8"
           title="Effectiveness Verification"
-          subtitle="Verification result and recurrence assessment"
+          subtitle="Verification results, objective evidence, disposition, and follow-up"
         >
           <FieldGrid>
             <ReportField
@@ -832,6 +736,14 @@ function CapaEnterpriseReport({
                 record.effectiveness_results,
                 record.effectiveness_check,
                 record.effectiveness_verification,
+              )}
+              wide
+            />
+            <ReportField
+              label="Objective Evidence"
+              value={firstValue(
+                record.effectiveness_evidence,
+                record.effectiveness_verification_evidence,
               )}
               wide
             />
@@ -877,9 +789,9 @@ function CapaEnterpriseReport({
         </ReportSection>
 
         <ReportSection
-          number="8"
+          number="9"
           title="Closure"
-          subtitle="Final disposition and closure approval"
+          subtitle="Final disposition, closure approval, signatures, and controlled-record status"
         >
           <FieldGrid>
             <ReportField
@@ -917,22 +829,46 @@ function CapaEnterpriseReport({
             comments={record.closure_approval_comments}
           />
 
+          {hasMeaningfulValue(
+            record.signed_by,
+            record.signed_at,
+            record.signature_meaning,
+            record.locked_by,
+            record.locked_at,
+          ) ? (
+            <Subsection title="Electronic Signature and Record Lock">
+              <FieldGrid>
+                <ReportField label="Signed By" value={record.signed_by} />
+                <ReportField
+                  label="Signed At"
+                  value={record.signed_at}
+                  format="datetime"
+                />
+                <ReportField
+                  label="Signature Meaning"
+                  value={record.signature_meaning}
+                  wide
+                />
+                <ReportField label="Locked By" value={record.locked_by} />
+                <ReportField
+                  label="Locked At"
+                  value={record.locked_at}
+                  format="datetime"
+                />
+              </FieldGrid>
+            </Subsection>
+          ) : null}
+
           {String(record.status || "").toLowerCase() === "cancelled" ? (
             <Subsection title="Cancellation Evidence">
               <FieldGrid>
-                <ReportField
-                  label="Cancel Reason"
-                  value={record.cancel_reason}
-                />
+                <ReportField label="Cancel Reason" value={record.cancel_reason} />
                 <ReportField
                   label="Cancellation Justification"
                   value={record.cancellation_justification}
                   wide
                 />
-                <ReportField
-                  label="Cancelled By"
-                  value={record.cancelled_by}
-                />
+                <ReportField label="Cancelled By" value={record.cancelled_by} />
                 <ReportField
                   label="Cancelled At"
                   value={record.cancelled_at}
@@ -941,145 +877,6 @@ function CapaEnterpriseReport({
               </FieldGrid>
             </Subsection>
           ) : null}
-        </ReportSection>
-
-        <ReportSection
-          number="9"
-          title="Approval History"
-          subtitle="Consolidated workflow approval evidence"
-        >
-          <ApprovalHistoryTable approvals={approvals} />
-        </ReportSection>
-
-        <ReportSection
-          number="10"
-          title="Electronic Signatures"
-          subtitle="Electronic signature and record-lock evidence"
-        >
-          <FieldGrid>
-            <ReportField label="Signed By" value={record.signed_by} />
-            <ReportField
-              label="Signed At"
-              value={record.signed_at}
-              format="datetime"
-            />
-            <ReportField
-              label="Signature Meaning"
-              value={record.signature_meaning}
-              wide
-            />
-            <ReportField label="Locked By" value={record.locked_by} />
-            <ReportField
-              label="Locked At"
-              value={record.locked_at}
-              format="datetime"
-            />
-          </FieldGrid>
-        </ReportSection>
-
-        <ReportSection
-          number="11"
-          title="Linked Records"
-          subtitle="Source and related quality records"
-        >
-          <FieldGrid>
-            <ReportField
-              label="Linked NCMR"
-              value={linkedNcmrNumber}
-            />
-            <ReportField
-              label="Linked NCMR ID"
-              value={record.ncmr_id}
-            />
-            <ReportField
-              label="Source Record"
-              value={firstValue(
-                record.source_record_number,
-                record.related_record_number,
-              )}
-            />
-            <ReportField
-              label="Detection Source"
-              value={record.detection_source}
-            />
-          </FieldGrid>
-        </ReportSection>
-
-        <ReportSection
-          number="12"
-          title="Attachments and Evidence"
-          subtitle="Supporting evidence recorded in the CAPA"
-        >
-          <FieldGrid>
-            <ReportField
-              label="Evidence Reviewed"
-              value={record.evidence_reviewed}
-              wide
-            />
-            <ReportField
-              label="Implementation Evidence"
-              value={record.implementation_evidence}
-              wide
-            />
-            <ReportField
-              label="Effectiveness Evidence"
-              value={firstValue(
-                record.effectiveness_evidence,
-                record.effectiveness_verification_evidence,
-              )}
-              wide
-            />
-            <ReportField
-              label="Attachments"
-              value={firstValue(
-                record.attachments,
-                record.attachment_urls,
-                record.supporting_documents,
-              )}
-              wide
-            />
-          </FieldGrid>
-        </ReportSection>
-
-        <ReportSection
-          number="13"
-          title="Record Lifecycle Summary"
-          subtitle="Key lifecycle dates captured on the controlled record"
-        >
-          <FieldGrid>
-            <ReportField
-              label="Created By"
-              value={firstValue(record.created_by, record.initiated_by)}
-            />
-            <ReportField
-              label="Created At"
-              value={record.created_at}
-              format="datetime"
-            />
-            <ReportField
-              label="Last Updated"
-              value={record.updated_at}
-              format="datetime"
-            />
-            <ReportField
-              label="Current Status"
-              value={status}
-            />
-            <ReportField
-              label="Closed At"
-              value={record.closed_at}
-              format="datetime"
-            />
-            <ReportField
-              label="Record Identifier"
-              value={record.id}
-            />
-          </FieldGrid>
-          <p style={styles.note}>
-            This section summarizes lifecycle fields stored on the CAPA record.
-            A complete audit-trail event listing should be added only when the
-            report page is connected to the application's audit-trail table.
-          </p>
         </ReportSection>
               </td>
             </tr>
@@ -1328,6 +1125,7 @@ function ReportSection({
       <div style={styles.sectionHeader}>
         <div style={styles.sectionNumber}>{number}</div>
         <div>
+          <div style={styles.phaseLabel}>WORKFLOW PHASE {number}</div>
           <h2 style={styles.sectionTitle}>{title}</h2>
           {subtitle ? (
             <div style={styles.sectionSubtitle}>{subtitle}</div>
@@ -1369,12 +1167,11 @@ function ReportField({
   wide?: boolean;
   format?: "date" | "datetime";
 }) {
-  let rendered = displayValue(value);
+  if (!hasMeaningfulValue(value)) return null;
 
-  if (hasMeaningfulValue(value)) {
-    if (format === "date") rendered = formatDate(value);
-    if (format === "datetime") rendered = formatDateTime(value);
-  }
+  let rendered = displayValue(value);
+  if (format === "date") rendered = formatDate(value);
+  if (format === "datetime") rendered = formatDateTime(value);
 
   return (
     <div
@@ -1403,6 +1200,8 @@ function ApprovalCard({
   approvedAt: unknown;
   comments?: unknown;
 }) {
+  if (!hasMeaningfulValue(status, approvedBy, approvedAt, comments)) return null;
+
   return (
     <div className="avoid-break approval-card" style={styles.approvalCard}>
       <div style={styles.approvalTitle}>{title}</div>
@@ -1414,7 +1213,7 @@ function ApprovalCard({
           value={
             hasMeaningfulValue(approvedAt)
               ? formatDateTime(approvedAt)
-              : "N/A"
+              : ""
           }
         />
       </div>
@@ -1444,7 +1243,7 @@ function MiniField({
 
 function TaskTable({ tasks }: { tasks: CapaTask[] }) {
   if (tasks.length === 0) {
-    return <p style={styles.emptyText}>No implementation tasks recorded.</p>;
+    return <p style={styles.emptyText}>No task assignments recorded.</p>;
   }
 
   return (
@@ -1499,57 +1298,6 @@ function TaskTable({ tasks }: { tasks: CapaTask[] }) {
                     {formatDateTime(task.completed_at)}
                   </div>
                 ) : null}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function ApprovalHistoryTable({
-  approvals,
-}: {
-  approvals: ApprovalRow[];
-}) {
-  if (approvals.length === 0) {
-    return (
-      <p style={styles.emptyText}>
-        No approval summary fields are populated on this CAPA record.
-      </p>
-    );
-  }
-
-  return (
-    <div style={styles.tableWrap}>
-      <table style={styles.table}>
-        <thead>
-          <tr>
-            <th style={styles.th}>Workflow Stage</th>
-            <th style={styles.th}>Decision</th>
-            <th style={styles.th}>Approver</th>
-            <th style={styles.th}>Date / Time</th>
-            <th style={styles.th}>Comments</th>
-          </tr>
-        </thead>
-        <tbody>
-          {approvals.map((approval) => (
-            <tr key={approval.stage}>
-              <td style={styles.td}>{approval.stage}</td>
-              <td style={styles.td}>
-                {displayValue(approval.status)}
-              </td>
-              <td style={styles.td}>
-                {displayValue(approval.approver)}
-              </td>
-              <td style={styles.td}>
-                {hasMeaningfulValue(approval.approvedAt)
-                  ? formatDateTime(approval.approvedAt)
-                  : "N/A"}
-              </td>
-              <td style={styles.td}>
-                {displayValue(approval.comments)}
               </td>
             </tr>
           ))}
@@ -1849,6 +1597,13 @@ const styles: Record<string, CSSProperties> = {
     color: "white",
     fontSize: "14px",
     fontWeight: 800,
+  },
+  phaseLabel: {
+    marginBottom: "3px",
+    color: "#64748b",
+    fontSize: "9px",
+    fontWeight: 800,
+    letterSpacing: "0.12em",
   },
   sectionTitle: {
     margin: 0,
