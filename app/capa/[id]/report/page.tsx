@@ -1542,11 +1542,11 @@ function formatDateTime(value: unknown): string {
 
 function escapeCssContent(value: unknown): string {
   return displayValue(value)
-    .replace(/\/g, "\\")
-    .replace(/"/g, '\"')
-    .replace(/
-?
-/g, " ");
+    .split("\\")
+    .join("\\\\")
+    .split('"')
+    .join('\\"')
+    .replace(/\r?\n/g, " ");
 }
 
 const styles: Record<string, CSSProperties> = {
