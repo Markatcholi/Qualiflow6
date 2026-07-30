@@ -1,5 +1,7 @@
 "use client";
 
+// QualiSphere Enterprise CAPA Report v1.0 — Design Frozen
+
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "../../../../lib/supabaseClient";
@@ -948,16 +950,16 @@ function CapaEnterpriseReport({
           }
 
           .report-cover {
-            height: 9.18in !important;
+            height: 9.1in !important;
             min-height: 0 !important;
-            padding: 0.36in 0.42in 0.32in !important;
+            padding: 0.32in 0.42in 0.28in !important;
             overflow: hidden !important;
             page-break-after: always !important;
             break-after: page !important;
           }
 
           .report-cover > div:nth-child(2) {
-            margin-top: 0.48in !important;
+            margin-top: 0.42in !important;
           }
 
           .report-cover > div:last-child {
@@ -992,12 +994,28 @@ function CapaEnterpriseReport({
             page-break-inside: auto;
           }
 
+          .report-section > div:first-child,
+          .subsection-heading,
+          h2,
+          h3 {
+            break-after: avoid-page;
+            page-break-after: avoid;
+          }
+
           .avoid-break,
           .approval-card,
-          table:not(.enterprise-report-table),
           table:not(.enterprise-report-table) tr {
             break-inside: avoid;
             page-break-inside: avoid;
+          }
+
+          table:not(.enterprise-report-table) {
+            break-inside: auto;
+            page-break-inside: auto;
+          }
+
+          table:not(.enterprise-report-table) thead {
+            display: table-header-group;
           }
 
           .print-footer {
@@ -1146,7 +1164,7 @@ function Subsection({
 }) {
   return (
     <div className="avoid-break" style={styles.subsection}>
-      <h3 style={styles.subsectionTitle}>{title}</h3>
+      <h3 className="subsection-heading" style={styles.subsectionTitle}>{title}</h3>
       {children}
     </div>
   );
@@ -1334,6 +1352,61 @@ function hasMeaningfulValue(...values: unknown[]) {
   });
 }
 
+const DISPLAY_VALUES: Record<string, string> = {
+  approved: "Approved",
+  rejected: "Rejected",
+  pending: "Pending",
+  submitted: "Submitted",
+  completed: "Completed",
+  complete: "Complete",
+  open: "Open",
+  closed: "Closed",
+  cancelled: "Cancelled",
+  canceled: "Cancelled",
+  corrective: "Corrective",
+  preventive: "Preventive",
+  high_detection: "High",
+  medium_detection: "Medium",
+  low_detection: "Low",
+  high_occurrence: "High",
+  medium_occurrence: "Medium",
+  low_occurrence: "Low",
+  critical: "Critical",
+  major: "Major",
+  minor: "Minor",
+  high: "High",
+  medium: "Medium",
+  low: "Low",
+  yes: "Yes",
+  no: "No",
+  pass: "Pass",
+  passed: "Passed",
+  fail: "Fail",
+  failed: "Failed",
+  effective: "Effective",
+  ineffective: "Ineffective",
+  not_effective: "Not Effective",
+  not_required: "Not Required",
+  in_progress: "In Progress",
+  awaiting_approval: "Awaiting Approval",
+  returned_for_revision: "Returned for Revision",
+};
+
+function toFriendlyDisplayValue(value: string): string {
+  const normalized = value.trim().toLowerCase();
+
+  if (DISPLAY_VALUES[normalized]) return DISPLAY_VALUES[normalized];
+
+  if (/^[a-z0-9]+(?:[_-][a-z0-9]+)+$/i.test(value.trim())) {
+    return value
+      .trim()
+      .replace(/[_-]+/g, " ")
+      .replace(/\b\w/g, (character) => character.toUpperCase());
+  }
+
+  return value;
+}
+
 function displayValue(value: unknown): string {
   if (!hasMeaningfulValue(value)) return "N/A";
 
@@ -1351,7 +1424,7 @@ function displayValue(value: unknown): string {
     }
   }
 
-  return String(value);
+  return toFriendlyDisplayValue(String(value));
 }
 
 function formatDate(value: unknown): string {
@@ -1575,7 +1648,7 @@ const styles: Record<string, CSSProperties> = {
     lineHeight: 1.6,
   },
   section: {
-    padding: "34px 42px 38px",
+    padding: "38px 42px 42px",
     borderTop: "1px solid #dbe2ea",
   },
   sectionHeader: {
@@ -1601,14 +1674,14 @@ const styles: Record<string, CSSProperties> = {
   phaseLabel: {
     marginBottom: "3px",
     color: "#64748b",
-    fontSize: "9px",
+    fontSize: "10px",
     fontWeight: 800,
     letterSpacing: "0.12em",
   },
   sectionTitle: {
     margin: 0,
     color: "#1f3a5f",
-    fontSize: "24px",
+    fontSize: "25px",
   },
   sectionSubtitle: {
     marginTop: "4px",
