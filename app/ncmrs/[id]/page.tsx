@@ -460,6 +460,108 @@ export default function NcmrDetailPage() {
     fetchAuditTimeline();
   };
 
+  const createInAppNotification = async ({
+    recipientEmail,
+    notificationType,
+    title,
+    message,
+    severityLevel = "info",
+    assignedRole = null,
+  }: {
+    recipientEmail: string;
+    notificationType: string;
+    title: string;
+    message: string;
+    severityLevel?: string;
+    assignedRole?: string | null;
+  }) => {
+    const normalizedRecipient = String(recipientEmail || "").trim().toLowerCase();
+    if (!normalizedRecipient) return;
+
+    const { error } = await supabase.from("notifications").insert({
+      user_email: normalizedRecipient,
+      assigned_role: assignedRole,
+      notification_type: notificationType,
+      title,
+      message,
+      related_module: "ncmr",
+      related_record_id: id,
+      severity: severityLevel,
+      read_status: false,
+    });
+
+    if (error) {
+      console.warn("Unable to create in-app notification:", error.message);
+    }
+  };
+
+  const syncNcmrOwnerAssignment = async (previousOwner: string, nextOwner: string) => {
+    const previousEmail = normalizeApproverEmail(previousOwner);
+    const nextEmail = normalizeApproverEmail(nextOwner);
+
+    if (!nextEmail || previousEmail === nextEmail) return;
+
+    if (!isValidEmailFormat(nextEmail)) {
+      throw new Error("NCMR owner must be entered as a valid user email address.");
+    }
+
+    const ownerValidation = await validateApproverEmails([nextEmail]);
+    if (!ownerValidation.valid) {
+      throw new Error(ownerValidation.message);
+    }
+
+    const { error: cancelError } = await supabase
+      .from("approval_tasks")
+      .update({
+        status: "cancelled",
+        comments: `Cancelled because NCMR ownership was reassigned to ${nextEmail}.`,
+      })
+      .eq("entity_type", "ncmr")
+      .eq("entity_id", id)
+      .eq("task_type", "ncmr_owner")
+      .eq("status", "pending");
+
+    if (cancelError) throw new Error(cancelError.message);
+
+    const { data: ownerTask, error: taskError } = await supabase
+      .from("approval_tasks")
+      .insert({
+        entity_type: "ncmr",
+        entity_id: id,
+        task_type: "ncmr_owner",
+        required_function: "NCMR Owner",
+        task_title: `NCMR owner assignment: ${record?.ncmr_number || "NCMR"}`,
+        task_instructions: "Coordinate the NCMR workflow and ensure required activities are completed on time.",
+        assigned_to_email: nextEmail,
+        assigned_by_email: userEmail || null,
+        status: "pending",
+        comments: "NCMR ownership assignment.",
+      })
+      .select("id")
+      .single();
+
+    if (taskError) throw new Error(taskError.message);
+
+    await createInAppNotification({
+      recipientEmail: nextEmail,
+      notificationType: "ncmr_assignment",
+      title: `NCMR assigned: ${record?.ncmr_number || "NCMR"}`,
+      message: `You have been assigned as the owner of ${record?.ncmr_number || "this NCMR"}. Open My Workspace to review and coordinate the required activities.`,
+      severityLevel: severity === "critical" ? "critical" : severity === "major" ? "high" : "info",
+      assignedRole: "NCMR Owner",
+    });
+
+    await supabase.from("notification_queue").insert({
+      recipient_email: nextEmail,
+      subject: `NCMR assigned: ${record?.ncmr_number || "NCMR"}`,
+      body: `You have been assigned as the owner of ${record?.ncmr_number || "this NCMR"}. Please log in to QualiSphere and open My Workspace.`,
+      entity_type: "ncmr",
+      entity_id: id,
+      task_id: ownerTask?.id || null,
+      status: "pending",
+    });
+  };
+
   const isMrbApproved = () => {
     return !!record?.mrb_approved_by;
   };
@@ -632,11 +734,21 @@ export default function NcmrDetailPage() {
       return;
     }
 
+    const previousOwner = String(record?.owner || "");
+    const nextOwner = String(summaryOwner || "").trim().toLowerCase();
+
+    try {
+      await syncNcmrOwnerAssignment(previousOwner, nextOwner);
+    } catch (assignmentError: any) {
+      alert(`Unable to assign the NCMR owner.\n\n${assignmentError.message}`);
+      return;
+    }
+
     const { error } = await supabase
       .from("ncmrs")
       .update({
         issue_description: summaryIssueDescription,
-        owner: summaryOwner || null,
+        owner: nextOwner || null,
       })
       .eq("id", id);
 
@@ -970,7 +1082,7 @@ export default function NcmrDetailPage() {
     const errors: string[] = [];
 
     if (!investigator) errors.push("Investigator is required before MRB approval.");
-    if (!problemDescription) errors.push("Problem description is required before MRB approval.");
+    if (!problemDescription) errors.push("Problem statement is required before MRB approval.");
     if (!investigationSummary) errors.push("Investigation summary is required before MRB approval.");
     if (!rootCauseCategory) errors.push("Root cause category is required before MRB approval.");
     if (!rootCause) errors.push("Root cause is required before MRB approval.");
@@ -1609,7 +1721,7 @@ NCMR: ${record?.ncmr_number || "NCMR"}
 Severity: ${severity || "N/A"}
 
 Review and verify:
-• Problem description
+• Problem statement
 • Investigation summary
 • Root cause
 • Risk assessment
@@ -1636,7 +1748,7 @@ This approval becomes part of the official electronic quality record. MRB will a
       const notifications = insertedTasks.map((task) => ({
         recipient_email: task.assigned_to_email,
         subject: `MRB approval task assigned: ${record?.ncmr_number || "NCMR"}`,
-        body: `You have been assigned an MRB approval task for ${record?.ncmr_number || "this NCMR"}. Please log in to QualiFlow and open My Approval Tasks.`,
+        body: `You have been assigned an MRB approval task for ${record?.ncmr_number || "this NCMR"}. Please log in to QualiSphere and open My Workspace.`,
         entity_type: "ncmr",
         entity_id: id,
         task_id: task.id,
@@ -1644,6 +1756,19 @@ This approval becomes part of the official electronic quality record. MRB will a
       }));
 
       await supabase.from("notification_queue").insert(notifications);
+
+      await Promise.all(
+        insertedTasks.map((task: any) =>
+          createInAppNotification({
+            recipientEmail: task.assigned_to_email,
+            notificationType: "ncmr_approval",
+            title: `MRB approval assigned: ${record?.ncmr_number || "NCMR"}`,
+            message: `An MRB approval task for ${record?.ncmr_number || "this NCMR"} is waiting in My Workspace.`,
+            severityLevel: severity === "critical" ? "critical" : severity === "major" ? "high" : "info",
+            assignedRole: task.required_function || "MRB Approver",
+          })
+        )
+      );
     }
 
     await addAuditLog("mrb_approval_tasks_generated", `Generated ${taskRows.length} parallel MRB approval task(s).`);
@@ -1931,7 +2056,7 @@ This approval task was created by the MRB approval task issue recovery action. E
         const notifications = insertedTasks.map((task: any) => ({
           recipient_email: task.assigned_to_email,
           subject: `MRB approval task assigned: ${record?.ncmr_number || "NCMR"}`,
-          body: `You have been assigned an MRB approval task for ${record?.ncmr_number || "this NCMR"}. Please log in to QualiSphere and open My Approval Tasks.`,
+          body: `You have been assigned an MRB approval task for ${record?.ncmr_number || "this NCMR"}. Please log in to QualiSphere and open My Workspace.`,
           entity_type: "ncmr",
           entity_id: id,
           task_id: task.id,
@@ -1939,6 +2064,19 @@ This approval task was created by the MRB approval task issue recovery action. E
         }));
 
         await supabase.from("notification_queue").insert(notifications);
+
+      await Promise.all(
+        insertedTasks.map((task: any) =>
+          createInAppNotification({
+            recipientEmail: task.assigned_to_email,
+            notificationType: "ncmr_approval",
+            title: `MRB approval assigned: ${record?.ncmr_number || "NCMR"}`,
+            message: `An MRB approval task for ${record?.ncmr_number || "this NCMR"} is waiting in My Workspace.`,
+            severityLevel: severity === "critical" ? "critical" : severity === "major" ? "high" : "info",
+            assignedRole: task.required_function || "MRB Approver",
+          })
+        )
+      );
       }
     }
 
@@ -2154,14 +2292,14 @@ This approval task was created by the MRB approval task issue recovery action. E
     const { data: capaData, error: capaError } = await supabase
       .from("capas")
       .insert({
-        title: `CAPA for ${record.title}`,
+        title: `CAPA for ${record?.ncmr_number || "NCMR"}`,
         status: "open",
         source_type: "ncmr",
         capa_source: "NCMR",
         ncmr_id: id,
-        linked_ncmr_title: record.title,
+        linked_ncmr_title: record?.ncmr_number || null,
         problem_description:
-          problemDescription || record.issue_description || record.title,
+          problemDescription || record.issue_description || record?.ncmr_number,
         investigation_summary: investigationSummary,
         root_cause: rootCause,
         root_cause_category: rootCauseCategory,
@@ -2269,9 +2407,9 @@ This approval task was created by the MRB approval task issue recovery action. E
 
     if (!confirmed) return;
 
-    const scarTitle = `SCAR for ${record?.ncmr_number || record?.title || "NCMR"}`;
+    const scarTitle = `SCAR for ${record?.ncmr_number || "NCMR"}`;
     const scarProblemDescription = [
-      `SCAR initiated from NCMR: ${record?.ncmr_number || record?.title || id}.`,
+      `SCAR initiated from NCMR: ${record?.ncmr_number || id}.`,
       problemDescription || record?.issue_description || "",
       summaryProductPartNumber ? `Part: ${summaryProductPartNumber}.` : "",
       summaryLotNumber ? `Lot: ${summaryLotNumber}.` : "",
@@ -2352,7 +2490,7 @@ This approval task was created by the MRB approval task issue recovery action. E
       entity_type: "scar",
       entity_id: scarData.id,
       action: "scar_created_from_ncmr",
-      details: `SCAR created from NCMR ${record?.ncmr_number || record?.title || id}.`,
+      details: `SCAR created from NCMR ${record?.ncmr_number || id}.`,
       user_email: userEmail || "unknown",
     });
 
@@ -2548,9 +2686,9 @@ This approval task was created by the MRB approval task issue recovery action. E
 
     if (!confirmed) return;
 
-    const capaTitle = `CAPA for ${record?.ncmr_number || record?.title || "NCMR"}`;
+    const capaTitle = `CAPA for ${record?.ncmr_number || "NCMR"}`;
     const capaProblemDescription = [
-      `CAPA initiated from NCMR: ${record?.ncmr_number || record?.title || id}.`,
+      `CAPA initiated from NCMR: ${record?.ncmr_number || id}.`,
       problemDescription || record?.issue_description || "",
       rootCause ? `Root Cause: ${rootCause}` : "",
       containmentAction ? `Containment: ${containmentAction}` : "",
@@ -2575,7 +2713,7 @@ This approval task was created by the MRB approval task issue recovery action. E
           ? "NCMR governance override"
           : "NCMR governance",
         ncmr_id: id,
-        linked_ncmr_title: record?.title || record?.ncmr_number || null,
+        linked_ncmr_title: record?.ncmr_number || null,
         problem_description:
           problemDescription || record?.issue_description || capaProblemDescription,
         investigation_summary: investigationSummary || null,
@@ -2630,8 +2768,8 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
       entity_id: capaData.id,
       action: "capa_created_from_ncmr",
       details: governanceOverrideJustification
-        ? `CAPA created from NCMR ${record?.ncmr_number || record?.title || id} with governance override. Override justification: ${governanceOverrideJustification}`
-        : `CAPA created from NCMR ${record?.ncmr_number || record?.title || id}.`,
+        ? `CAPA created from NCMR ${record?.ncmr_number || id} with governance override. Override justification: ${governanceOverrideJustification}`
+        : `CAPA created from NCMR ${record?.ncmr_number || id}.`,
       user_email: userEmail || "unknown",
     });
 
@@ -2872,14 +3010,14 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
       const { data: capaData, error: capaError } = await supabase
         .from("capas")
         .insert({
-          title: `CAPA for ${record.title}`,
+          title: `CAPA for ${record?.ncmr_number || "NCMR"}`,
           status: "open",
           source_type: "ncmr",
           capa_source: "NCMR risk-based CAPA escalation decision",
           ncmr_id: id,
-          linked_ncmr_title: record.title,
+          linked_ncmr_title: record?.ncmr_number || null,
           problem_description:
-            problemDescription || record.issue_description || record.title,
+            problemDescription || record.issue_description || record?.ncmr_number,
           investigation_summary: investigationSummary,
           root_cause: rootCause,
           root_cause_category: rootCauseCategory,
@@ -3168,11 +3306,20 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
       await supabase.from("notification_queue").insert({
         recipient_email: correctionTaskAssignee.trim().toLowerCase(),
         subject: `Correction task assigned: ${record?.ncmr_number || "NCMR"}`,
-        body: `You have been assigned a correction task for ${record?.ncmr_number || "this NCMR"}. Please log in to QualiFlow and open My Tasks.`,
+        body: `You have been assigned a correction task for ${record?.ncmr_number || "this NCMR"}. Please log in to QualiSphere and open My Workspace.`,
         entity_type: "ncmr",
         entity_id: id,
         task_id: insertedTasks[0].id,
         status: "pending",
+      });
+
+      await createInAppNotification({
+        recipientEmail: correctionTaskAssignee,
+        notificationType: "ncmr_implementation_assignment",
+        title: `Correction task assigned: ${record?.ncmr_number || "NCMR"}`,
+        message: `A correction task for ${record?.ncmr_number || "this NCMR"} is waiting in My Workspace.`,
+        severityLevel: severity === "critical" ? "critical" : severity === "major" ? "high" : "info",
+        assignedRole: "Correction Owner",
       });
     }
 
@@ -3235,11 +3382,20 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
       await supabase.from("notification_queue").insert({
         recipient_email: reworkTaskAssignee.trim().toLowerCase(),
         subject: `Rework task assigned: ${record?.ncmr_number || "NCMR"}`,
-        body: `You have been assigned a rework task for ${record?.ncmr_number || "this NCMR"}. Please log in to QualiFlow and open My Tasks.`,
+        body: `You have been assigned a rework task for ${record?.ncmr_number || "this NCMR"}. Please log in to QualiSphere and open My Workspace.`,
         entity_type: "ncmr",
         entity_id: id,
         task_id: insertedTasks[0].id,
         status: "pending",
+      });
+
+      await createInAppNotification({
+        recipientEmail: reworkTaskAssignee,
+        notificationType: "ncmr_implementation_assignment",
+        title: `Rework task assigned: ${record?.ncmr_number || "NCMR"}`,
+        message: `A rework task for ${record?.ncmr_number || "this NCMR"} is waiting in My Workspace.`,
+        severityLevel: severity === "critical" ? "critical" : severity === "major" ? "high" : "info",
+        assignedRole: "Rework Owner",
       });
     }
 
@@ -3500,8 +3656,8 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
 
   const workflowProgressSteps = [
     { label: "Initiation", complete: affectedItems.length > 0 && !!summaryIssueDescription },
-    { label: "Containment", complete: !!investigator && !!problemDescription && !!containmentAction },
-    { label: "Investigation", complete: !!investigationSummary && !!rootCauseCategory && !!rootCause },
+    { label: "Containment", complete: !!containmentAction },
+    { label: "Investigation", complete: !!investigator && !!problemDescription && !!investigationSummary && !!rootCauseCategory && !!rootCause },
     { label: "Correction Proposal", complete: !!correctionActionProposal && !!correctiveAction },
     { label: "Risk Assessment", complete: !!riskAssessment && severity !== "not_assessed" },
     { label: "MRB Approval", complete: !!record?.mrb_approved_by },
@@ -3570,8 +3726,8 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
   };
 
   const isInitiationComplete = affectedItems.length > 0 && !!summaryIssueDescription;
-  const isContainmentComplete = !!investigator && !!problemDescription && !!containmentAction;
-  const isInvestigationComplete = !!investigationSummary && !!rootCauseCategory && !!rootCause;
+  const isContainmentComplete = !!containmentAction;
+  const isInvestigationComplete = !!investigator && !!problemDescription && !!investigationSummary && !!rootCauseCategory && !!rootCause;
   const isCorrectionProposalComplete = !!correctionActionProposal && !!correctiveAction;
   const isRiskAssessmentComplete = !!riskAssessment && severity !== "not_assessed";
   const isMrbComplete = !!record?.mrb_approved_by;
@@ -4110,28 +4266,11 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
 
       <SectionCard
         title="2. Containment"
-        subtitle={isContainmentComplete ? "Complete: containment information is documented." : "Pending: document investigator, problem description, and containment action."}
+        subtitle={isContainmentComplete ? "Complete: containment action is documented." : "Pending: document the containment action."}
         defaultOpen={true}
         rightAction={sectionStatusBadge(isContainmentComplete, "Containment")}
       >
 
-        <label>Investigator</label><br />
-        <input
-          value={investigator}
-          onChange={(e) => setInvestigator(e.target.value)}
-          style={{ width: "100%", maxWidth: "500px", padding: "8px", marginBottom: "12px" }}
-        />
-
-        <br />
-        <label>Problem Description</label><br />
-        <textarea
-          value={problemDescription}
-          onChange={(e) => setProblemDescription(e.target.value)}
-          rows={4}
-          style={{ width: "100%", maxWidth: "800px", marginBottom: "12px" }}
-        />
-
-        <br />
         <label>Containment Action</label><br />
         <textarea
           value={containmentAction}
@@ -4180,11 +4319,28 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
 
       <SectionCard
         title="3. Investigation / Root Cause"
-        subtitle={isInvestigationComplete ? "Complete: investigation and root cause are documented." : "Pending: document investigation summary, root cause category, and root cause."}
+        subtitle={isInvestigationComplete ? "Complete: investigator, problem statement, investigation, and root cause are documented." : "Pending: document the investigator, problem statement, investigation summary, root cause category, and root cause."}
         defaultOpen={true}
         rightAction={sectionStatusBadge(isInvestigationComplete, "Investigation")}
       >
 
+        <label>Investigator</label><br />
+        <input
+          value={investigator}
+          onChange={(e) => setInvestigator(e.target.value)}
+          style={{ width: "100%", maxWidth: "500px", padding: "8px", marginBottom: "12px" }}
+        />
+
+        <br />
+        <label>Problem Statement</label><br />
+        <textarea
+          value={problemDescription}
+          onChange={(e) => setProblemDescription(e.target.value)}
+          rows={4}
+          style={{ width: "100%", maxWidth: "800px", marginBottom: "12px" }}
+        />
+
+        <br />
         <label>Investigation Summary</label><br />
         <textarea
           value={investigationSummary}
@@ -4663,7 +4819,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
         >
           <h3 style={{ marginTop: 0 }}>MRB Approval Configuration</h3>
           <p style={{ color: "#4b5563", fontSize: "14px" }}>
-            Configure MRB approvers using an approval matrix or manually add named approvers. Approvers complete their tasks from My Approval Tasks. MRB auto-approves after all required approval tasks are approved.
+            Configure MRB approvers using an approval matrix or manually add named approvers. Approvers complete their tasks from My Workspace. MRB auto-approves after all required approval tasks are approved.
           </p>
 
           {hasActiveMrbApprovalWorkflow() || record.mrb_approved_by ? (
@@ -5068,7 +5224,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
         >
           <h3 style={{ marginTop: 0 }}>Correction Task Assignment</h3>
           <p style={{ color: "#4b5563", fontSize: "14px" }}>
-            Assign the correction or corrective action execution to an owner. The owner completes the task from My Tasks.
+            Assign the correction or corrective action execution to an owner. The owner completes the task from My Workspace.
           </p>
 
           <div style={{ display: "grid", gap: "12px", maxWidth: "700px" }}>
