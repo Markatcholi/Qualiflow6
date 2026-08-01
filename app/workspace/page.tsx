@@ -400,16 +400,6 @@ export default function HomePage() {
           <h2 style={panelTitleStyle}>Modules</h2>
 
           <ModuleGroup
-            title="My Work"
-            isOpen={openGroups.myWork}
-            onToggle={() => toggleGroup("myWork")}
-            items={[
-              { label: "My Tasks", href: "/my-approval-tasks" },
-              { label: "Notifications", href: "/notifications" },
-            ]}
-          />
-
-          <ModuleGroup
             title="Quality Management"
             isOpen={openGroups.quality}
             onToggle={() => toggleGroup("quality")}
@@ -459,7 +449,7 @@ export default function HomePage() {
             <div>
               <h2 style={panelTitleStyle}>My Work Queue</h2>
               <p style={panelSubtitleStyle}>
-                Assigned tasks and active quality records that require your action.
+                Assigned tasks and active quality records that currently require your action.
               </p>
             </div>
             <span style={taskCountStyle}>{filteredWorkItems.length}</span>
@@ -646,11 +636,8 @@ async function fetchOwnedRecordItems(userEmail: string) {
 
       return (data || [])
         .filter((record: any) => isRecordOwnedByUser(record, userEmail))
-        .filter((record: any) => !isClosedRecord(record))
         .filter((record: any) =>
-          configuration.workspaceItemType === "owned_capa"
-            ? shouldShowOwnedCapaWork(record)
-            : true
+          requiresUserAction(record, configuration.workspaceItemType)
         )
         .map((record: any) => ({
           ...record,
@@ -758,11 +745,89 @@ function isRecordOwnedByUser(record: any, userEmail: string) {
   return ownerCandidates.includes(userEmail.toLowerCase());
 }
 
-function isClosedRecord(record: any) {
-  const status = String(record.status || record.workflow_status || "")
+function normalizeWorkflowStatus(record: any) {
+  return String(
+    record.status ||
+      record.workflow_status ||
+      record.review_status ||
+      record.document_status ||
+      ""
+  )
     .trim()
-    .toLowerCase();
-  return CLOSED_STATUSES.has(status);
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+}
+
+function requiresUserAction(record: any, itemType: WorkspaceItemType) {
+  const status = normalizeWorkflowStatus(record);
+
+  if (itemType === "owned_capa") {
+    return shouldShowOwnedCapaWork(record);
+  }
+
+  const terminalByModule: Partial<Record<WorkspaceItemType, Set<string>>> = {
+    owned_ncmr: new Set([
+      "closed",
+      "cancelled",
+      "canceled",
+      "completed",
+      "obsolete",
+    ]),
+    owned_change_control: new Set([
+      "closed",
+      "cancelled",
+      "canceled",
+      "completed",
+      "implemented",
+      "obsolete",
+    ]),
+    owned_scar: new Set([
+      "closed",
+      "cancelled",
+      "canceled",
+      "completed",
+      "obsolete",
+    ]),
+    owned_document: new Set([
+      "released",
+      "effective",
+      "approved",
+      "superseded",
+      "obsolete",
+      "archived",
+      "cancelled",
+      "canceled",
+      "closed",
+      "completed",
+    ]),
+    owned_complaint: new Set([
+      "closed",
+      "cancelled",
+      "canceled",
+      "completed",
+      "obsolete",
+    ]),
+    owned_audit: new Set([
+      "closed",
+      "cancelled",
+      "canceled",
+      "completed",
+      "finalized",
+      "obsolete",
+    ]),
+  };
+
+  const terminalStatuses = terminalByModule[itemType] || CLOSED_STATUSES;
+
+  if (terminalStatuses.has(status)) {
+    return false;
+  }
+
+  /*
+   * A blank status is kept visible because it usually represents a newly
+   * created record that still requires the owner's attention.
+   */
+  return true;
 }
 
 function canReassignItem(item: any) {
@@ -841,7 +906,7 @@ function getTaskUrl(task: any) {
   if (task.entity_type === "audit") return `/audits/${task.entity_id}`;
   if (task.entity_type === "training") return `/training`;
 
-  return "/my-approval-tasks";
+  return "/";
 }
 
 function getRecordDisplay(task: any) {
@@ -877,8 +942,75 @@ function getTaskName(task: any) {
 }
 
 function getGenericOwnedWorkLabel(record: any) {
-  const status = formatTaskType(record.status || record.workflow_status || "active");
-  return status === "Active" ? "Continue Record" : `Continue — ${status}`;
+  const module = getModuleLabel(record);
+  const status = normalizeWorkflowStatus(record);
+
+  const labelsByModule: Record<string, Record<string, string>> = {
+    NCMR: {
+      draft: "Complete Initiation",
+      open: "Continue NCMR",
+      initiated: "Complete Containment",
+      containment: "Complete Containment",
+      risk_assessment: "Complete Risk Assessment",
+      investigation: "Complete Investigation / Root Cause",
+      mrb: "Prepare MRB Review",
+      pending_mrb_approval: "Awaiting MRB Approval",
+      implementation: "Complete Disposition Implementation",
+      verification: "Complete Verification",
+      closure: "Complete Closure",
+    },
+    Change: {
+      draft: "Complete Change Request",
+      open: "Continue Change Control",
+      impact_assessment: "Complete Impact Assessment",
+      pending_approval: "Awaiting Approval",
+      implementation: "Complete Implementation",
+      verification: "Complete Verification",
+      closure: "Complete Closure",
+    },
+    SCAR: {
+      draft: "Complete SCAR Initiation",
+      open: "Continue SCAR",
+      supplier_response: "Review Supplier Response",
+      corrective_action: "Review Corrective Action",
+      effectiveness: "Complete Effectiveness Verification",
+      closure: "Complete Closure",
+    },
+    Document: {
+      draft: "Complete Draft",
+      collaboration: "Continue Collaboration",
+      formal_review: "Prepare Formal Review",
+      pending_review: "Awaiting Formal Review",
+      rejected: "Revise Document",
+      release: "Complete Release",
+      pending_release: "Complete Release",
+    },
+    Complaint: {
+      draft: "Complete Complaint Intake",
+      open: "Continue Complaint",
+      evaluation: "Complete Evaluation",
+      investigation: "Complete Investigation",
+      reportability: "Complete Reportability Assessment",
+      closure: "Complete Closure",
+    },
+    Audit: {
+      draft: "Complete Audit Plan",
+      planned: "Prepare Audit",
+      scheduled: "Prepare Audit",
+      in_progress: "Continue Audit Execution",
+      findings: "Complete Findings",
+      corrective_action: "Track Corrective Actions",
+      closure: "Complete Audit Closure",
+    },
+  };
+
+  const mappedLabel = labelsByModule[module]?.[status];
+  if (mappedLabel) return mappedLabel;
+
+  const formattedStatus = formatTaskType(status || "active");
+  return formattedStatus === "Active"
+    ? `Continue ${module} Record`
+    : `Continue ${module} — ${formattedStatus}`;
 }
 
 function cleanTaskTitle(value: any) {
