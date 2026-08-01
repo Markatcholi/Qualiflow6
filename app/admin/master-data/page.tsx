@@ -10,6 +10,14 @@ type SimpleItem = {
   label: string;
 };
 
+type ProductPartItem = {
+  id: string;
+  code: string;
+  label: string;
+  part_description: string | null;
+  is_active: boolean | null;
+};
+
 type DefectSubcategoryItem = {
   id: string;
   category_code: string;
@@ -95,7 +103,7 @@ export default function MasterDataPage() {
   const [newUserStatus, setNewUserStatus] = useState("active");
   const [savingRoleAssignment, setSavingRoleAssignment] = useState(false);
 
-  const [partNumbers, setPartNumbers] = useState<SimpleItem[]>([]);
+  const [partNumbers, setPartNumbers] = useState<ProductPartItem[]>([]);
   const [dispositions, setDispositions] = useState<SimpleItem[]>([]);
   const [detectionSources, setDetectionSources] = useState<SimpleItem[]>([]);
   const [departments, setDepartments] = useState<SimpleItem[]>([]);
@@ -109,7 +117,8 @@ export default function MasterDataPage() {
   const [oosLimits, setOosLimits] = useState<OosLimitItem[]>([]);
 
   const [newPartCode, setNewPartCode] = useState("");
-  const [newPartLabel, setNewPartLabel] = useState("");
+  const [newPartDescription, setNewPartDescription] = useState("");
+  const [newPartIsActive, setNewPartIsActive] = useState(true);
 
   const [newDispositionCode, setNewDispositionCode] = useState("");
   const [newDispositionLabel, setNewDispositionLabel] = useState("");
@@ -282,7 +291,7 @@ export default function MasterDataPage() {
     if (methodRes.error) return alert(methodRes.error.message);
     if (limitRes.error) return alert(limitRes.error.message);
 
-    setPartNumbers((partRes.data as SimpleItem[]) || []);
+    setPartNumbers((partRes.data as ProductPartItem[]) || []);
     setDispositions((dispositionRes.data as SimpleItem[]) || []);
     setDetectionSources((detectionRes.data as SimpleItem[]) || []);
     setDepartments((departmentRes.data as SimpleItem[]) || []);
@@ -300,6 +309,60 @@ export default function MasterDataPage() {
     fetchAll();
     fetchUserAdministration();
   }, []);
+
+  const insertProductPart = async () => {
+    const partNumber = newPartCode.trim();
+    const partDescription = newPartDescription.trim();
+
+    if (!partNumber || !partDescription) {
+      alert("Part Number and Part Description are required.");
+      return;
+    }
+
+    const { error } = await supabase.from("md_product_part_numbers").insert({
+      code: partNumber,
+      label: partNumber,
+      part_description: partDescription,
+      is_active: newPartIsActive,
+    });
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    setNewPartCode("");
+    setNewPartDescription("");
+    setNewPartIsActive(true);
+    fetchAll();
+  };
+
+  const updateProductPart = async (item: ProductPartItem) => {
+    const partNumber = String(item.code || "").trim();
+    const partDescription = String(item.part_description || "").trim();
+
+    if (!partNumber || !partDescription) {
+      alert("Part Number and Part Description are required.");
+      return;
+    }
+
+    const { error } = await supabase
+      .from("md_product_part_numbers")
+      .update({
+        code: partNumber,
+        label: partNumber,
+        part_description: partDescription,
+        is_active: item.is_active !== false,
+      })
+      .eq("id", item.id);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    fetchAll();
+  };
 
   const insertSimple = async (table: string, code: string, label: string, reset: () => void) => {
     if (!code || !label) {
@@ -1046,11 +1109,118 @@ export default function MasterDataPage() {
       </div>
 
       <div style={sectionStyle}>
-        <h2>Product Part Numbers</h2>
-        <input value={newPartCode} onChange={(e) => setNewPartCode(e.target.value)} placeholder="Code" style={inputStyle} />
-        <input value={newPartLabel} onChange={(e) => setNewPartLabel(e.target.value)} placeholder="Label" style={inputStyle} />
-        <button onClick={() => insertSimple("md_product_part_numbers", newPartCode, newPartLabel, () => { setNewPartCode(""); setNewPartLabel(""); })}>Add</button>
-        <ul>{partNumbers.map((item) => <li key={item.id}>{item.code} — {item.label} <button onClick={() => deleteSimple("md_product_part_numbers", item.id)}>Delete</button></li>)}</ul>
+        <h2>Product Part Master</h2>
+        <p style={{ color: "#4b5563" }}>
+          Maintain the controlled Part Number and Part Description used to auto-populate product information across QualiSphere workflows.
+        </p>
+
+        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
+          <input
+            value={newPartCode}
+            onChange={(e) => setNewPartCode(e.target.value)}
+            placeholder="Part Number"
+            style={inputStyle}
+          />
+          <input
+            value={newPartDescription}
+            onChange={(e) => setNewPartDescription(e.target.value)}
+            placeholder="Part Description"
+            style={{ ...inputStyle, minWidth: "320px" }}
+          />
+          <select
+            value={newPartIsActive ? "active" : "inactive"}
+            onChange={(e) => setNewPartIsActive(e.target.value === "active")}
+            style={selectStyle}
+          >
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+          </select>
+          <button onClick={insertProductPart}>Add Product Part</button>
+        </div>
+
+        <div style={{ overflowX: "auto", marginTop: "16px" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr>
+                <th style={{ textAlign: "left", padding: "10px", borderBottom: "1px solid #d1d5db" }}>Part Number</th>
+                <th style={{ textAlign: "left", padding: "10px", borderBottom: "1px solid #d1d5db" }}>Part Description</th>
+                <th style={{ textAlign: "left", padding: "10px", borderBottom: "1px solid #d1d5db" }}>Status</th>
+                <th style={{ textAlign: "left", padding: "10px", borderBottom: "1px solid #d1d5db" }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {partNumbers.length === 0 ? (
+                <tr>
+                  <td colSpan={4} style={{ padding: "12px", color: "#6b7280" }}>
+                    No product parts have been configured.
+                  </td>
+                </tr>
+              ) : (
+                partNumbers.map((item) => (
+                  <tr key={item.id}>
+                    <td style={{ padding: "10px", borderBottom: "1px solid #e5e7eb" }}>
+                      <input
+                        value={item.code || ""}
+                        onChange={(e) =>
+                          setPartNumbers((current) =>
+                            current.map((part) =>
+                              part.id === item.id
+                                ? { ...part, code: e.target.value, label: e.target.value }
+                                : part
+                            )
+                          )
+                        }
+                        style={{ ...inputStyle, marginBottom: 0, width: "180px" }}
+                      />
+                    </td>
+                    <td style={{ padding: "10px", borderBottom: "1px solid #e5e7eb" }}>
+                      <input
+                        value={item.part_description || ""}
+                        onChange={(e) =>
+                          setPartNumbers((current) =>
+                            current.map((part) =>
+                              part.id === item.id
+                                ? { ...part, part_description: e.target.value }
+                                : part
+                            )
+                          )
+                        }
+                        placeholder="Part Description"
+                        style={{ ...inputStyle, marginBottom: 0, minWidth: "320px", width: "90%" }}
+                      />
+                    </td>
+                    <td style={{ padding: "10px", borderBottom: "1px solid #e5e7eb" }}>
+                      <select
+                        value={item.is_active === false ? "inactive" : "active"}
+                        onChange={(e) =>
+                          setPartNumbers((current) =>
+                            current.map((part) =>
+                              part.id === item.id
+                                ? { ...part, is_active: e.target.value === "active" }
+                                : part
+                            )
+                          )
+                        }
+                        style={{ ...selectStyle, marginBottom: 0, minWidth: "120px" }}
+                      >
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                      </select>
+                    </td>
+                    <td style={{ padding: "10px", borderBottom: "1px solid #e5e7eb", whiteSpace: "nowrap" }}>
+                      <button onClick={() => updateProductPart(item)} style={{ marginRight: "8px" }}>
+                        Save
+                      </button>
+                      <button onClick={() => deleteSimple("md_product_part_numbers", item.id)}>
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <div style={sectionStyle}>
