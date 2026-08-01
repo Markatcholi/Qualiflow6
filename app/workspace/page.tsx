@@ -765,6 +765,26 @@ function requiresUserAction(record: any, itemType: WorkspaceItemType) {
     return shouldShowOwnedCapaWork(record);
   }
 
+  /*
+   * Controlled Documents use "release" as the completed released state in
+   * the current workflow. Release metadata is also checked because older
+   * records may not have a normalized terminal status value.
+   */
+  if (itemType === "owned_document") {
+    const hasReleaseEvidence = Boolean(
+      record.released_at ||
+        record.release_date ||
+        record.effective_at ||
+        record.effective_date ||
+        record.released_by ||
+        record.is_released === true
+    );
+
+    if (hasReleaseEvidence) {
+      return false;
+    }
+  }
+
   const terminalByModule: Partial<Record<WorkspaceItemType, Set<string>>> = {
     owned_ncmr: new Set([
       "closed",
@@ -789,6 +809,7 @@ function requiresUserAction(record: any, itemType: WorkspaceItemType) {
       "obsolete",
     ]),
     owned_document: new Set([
+      "release",
       "released",
       "effective",
       "approved",
@@ -982,7 +1003,6 @@ function getGenericOwnedWorkLabel(record: any) {
       formal_review: "Prepare Formal Review",
       pending_review: "Awaiting Formal Review",
       rejected: "Revise Document",
-      release: "Complete Release",
       pending_release: "Complete Release",
     },
     Complaint: {
