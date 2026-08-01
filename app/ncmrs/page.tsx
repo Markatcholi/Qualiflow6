@@ -28,9 +28,6 @@ type SupplierOption = {
   id: string;
   supplier_name: string;
   supplier_number: string | null;
-  supplier_status: string | null;
-  supplier_risk_level: string | null;
-  primary_contact_email: string | null;
 };
 
 type AffectedItemInput = {
@@ -46,7 +43,6 @@ type AffectedItemInput = {
 type Ncmr = {
   id: string;
   ncmr_number: string | null;
-  title: string | null;
   issue_description: string | null;
   product_part_number: string | null;
   part_description?: string | null;
@@ -68,6 +64,7 @@ type Ncmr = {
   supplier_id: string | null;
   supplier_name: string | null;
   supplier_lot: string | null;
+  purchase_order_number?: string | null;
   site_location: string | null;
   immediate_correction: string | null;
   recurring_issue: boolean | null;
@@ -82,7 +79,6 @@ type Ncmr = {
 };
 
 export default function NcmrPage() {
-  const [title, setTitle] = useState("");
   const [issueDescription, setIssueDescription] = useState("");
   const [sourceOfDetection, setSourceOfDetection] = useState("");
   const [department, setDepartment] = useState("");
@@ -96,6 +92,7 @@ export default function NcmrPage() {
   const [supplierId, setSupplierId] = useState("");
   const [supplierName, setSupplierName] = useState("");
   const [supplierLot, setSupplierLot] = useState("");
+  const [purchaseOrderNumber, setPurchaseOrderNumber] = useState("");
   const [siteLocation, setSiteLocation] = useState("");
   const [immediateCorrection, setImmediateCorrection] = useState("");
   const [owner, setOwner] = useState("");
@@ -178,7 +175,7 @@ export default function NcmrPage() {
       supabase.from("md_defect_subcategories").select("category_code, code, label").order("label"),
       supabase
         .from("suppliers")
-        .select("id, supplier_name, supplier_number, supplier_status, supplier_risk_level, primary_contact_email")
+        .select("id, supplier_name, supplier_number")
         .order("supplier_name"),
     ]);
 
@@ -453,7 +450,6 @@ export default function NcmrPage() {
 
 
   const resetNcmrForm = () => {
-    setTitle("");
     setIssueDescription("");
     setSourceOfDetection("");
     setDepartment("");
@@ -467,6 +463,7 @@ export default function NcmrPage() {
     setSupplierId("");
     setSupplierName("");
     setSupplierLot("");
+    setPurchaseOrderNumber("");
     setSiteLocation("");
     setImmediateCorrection("");
     setOwner("");
@@ -484,8 +481,25 @@ export default function NcmrPage() {
   };
 
   const addNcmr = async () => {
-    if (!title) {
-      alert("Title is required.");
+    if (!issueDescription.trim()) {
+      alert("Issue Description is required.");
+      return;
+    }
+
+    const normalizedOwnerEmail = owner.trim().toLowerCase();
+
+    if (!normalizedOwnerEmail) {
+      alert("NCMR Owner Email is required.");
+      return;
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedOwnerEmail)) {
+      alert("Enter a valid NCMR Owner Email.");
+      return;
+    }
+
+    if (isSupplierSource && !supplierId) {
+      alert("Select a supplier for a supplier-related NCMR.");
       return;
     }
 
@@ -497,6 +511,7 @@ export default function NcmrPage() {
       ? selectedSupplier?.supplier_name || supplierName
       : "";
     const supplierLotForInsert = isSupplierSource ? supplierLot : "";
+    const purchaseOrderForInsert = isSupplierSource ? purchaseOrderNumber : "";
     const supplierIdForInsert = isSupplierSource ? supplierId || null : null;
 
     const primaryAffectedItem =
@@ -521,8 +536,7 @@ export default function NcmrPage() {
     const { data, error } = await supabase
       .from("ncmrs")
       .insert({
-        title,
-        issue_description: issueDescription,
+        issue_description: issueDescription.trim(),
         product_part_number: primaryAffectedItem?.product_part_number || null,
         lot_number: primaryAffectedItem?.lot_number || null,
         workorder_number: primaryAffectedItem?.workorder_number || null,
@@ -547,9 +561,10 @@ export default function NcmrPage() {
         supplier_id: supplierIdForInsert,
         supplier_name: supplierNameForInsert,
         supplier_lot: supplierLotForInsert,
+        purchase_order_number: purchaseOrderForInsert || null,
         site_location: siteLocation,
         immediate_correction: immediateCorrection,
-        owner,
+        owner: normalizedOwnerEmail,
         status: "open",
         severity: "not_assessed",
         capa_required: capaRequired,
@@ -567,7 +582,12 @@ export default function NcmrPage() {
       return;
     }
 
-    await addAuditLog("ncmr", data.id, "created", `Created NCMR: ${title}`);
+    await addAuditLog(
+      "ncmr",
+      data.id,
+      "created",
+      `Created NCMR: ${issueDescription.trim().slice(0, 120)}`
+    );
 
     if (containmentCompletedAt) {
       await addAuditLog(
@@ -678,12 +698,12 @@ export default function NcmrPage() {
   const filteredList = list.filter((item) => {
     const searchableText = [
       item.ncmr_number,
-      item.title,
       item.issue_description,
       item.product_part_number,
       item.lot_number,
       item.workorder_number,
       item.supplier_name,
+      item.purchase_order_number,
       item.department,
       item.owner,
     ]
@@ -702,11 +722,12 @@ export default function NcmrPage() {
   });
 
   const initiationProgressSteps = [
-    { label: "Issue", complete: !!title && !!issueDescription },
+    { label: "Issue", complete: !!issueDescription.trim() },
     { label: "Detection", complete: !!sourceOfDetection && !!department && !!dateDetected },
     { label: "Affected Material", complete: affectedItems.some((item) => item.product_part_number || item.lot_number || item.workorder_number || item.quantity_affected) },
-    { label: "Containment", complete: !!containmentAction || !!materialStatus },
     { label: "Defect", complete: !!defectCategory },
+    { label: "Supplier", complete: !isSupplierSource || !!supplierId },
+    { label: "Containment", complete: !!containmentAction || !!materialStatus },
     { label: "Owner", complete: !!owner },
   ];
 
@@ -816,21 +837,9 @@ export default function NcmrPage() {
             </div>
             <SectionCard
               title="1. Initiation Information"
-              subtitle="Capture title, issue description, detection source, department, date, and affected material."
+              subtitle="Capture issue description, detection source, department, date, and affected material."
               defaultOpen={true}
             >
-
-
-        <div style={rowStyle}>
-          <label>Title</label>
-          <br />
-          <input
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="Short NCMR title"
-            style={fieldStyle}
-          />
-        </div>
 
         <div style={rowStyle}>
           <label>Issue Description</label>
@@ -1089,153 +1098,166 @@ export default function NcmrPage() {
             </SectionCard>
 
             <SectionCard
-              title="3. Defect / Supplier Information"
-              subtitle="Capture defect category, supplier linkage when applicable, site, immediate correction, and owner. SCAR decisions are handled later in Supplier / SCAR Governance."
+              title="3. Defect Classification"
+              subtitle="Classify the nonconformance using the applicable defect category and subcategory."
               defaultOpen={false}
             >
-
-
-        <div style={rowStyle}>
-          <label>Defect Category</label>
-          <br />
-          <select
-            value={defectCategory}
-            onChange={(e) => setDefectCategory(e.target.value)}
-            style={fieldStyle}
-          >
-            <option value="">Select defect category</option>
-            {renderOptions(defectCategoryOptions)}
-          </select>
-        </div>
-
-        <div style={rowStyle}>
-          <label>Defect Subcategory</label>
-          <br />
-          <select
-            value={defectSubcategory}
-            onChange={(e) => setDefectSubcategory(e.target.value)}
-            style={fieldStyle}
-          >
-            <option value="">Select defect subcategory</option>
-            {filteredDefectSubcategories.map((option) => (
-              <option key={option.code} value={option.code}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div
-          style={{
-            border: "1px solid #d1d5db",
-            borderRadius: "8px",
-            padding: "12px",
-            marginBottom: "12px",
-            background: isSupplierSource ? "#ffffff" : "#f3f4f6",
-            opacity: isSupplierSource ? 1 : 0.65,
-          }}
-        >
-          <h3 style={{ marginTop: 0 }}>Supplier Information</h3>
-
-          {!isSupplierSource ? (
-            <p style={{ color: "#6b7280", fontSize: "14px" }}>
-              Supplier fields are disabled because Source of Detection is not supplier-related.
-            </p>
-          ) : null}
-
-          <div style={rowStyle}>
-            <label>Supplier</label>
-            <br />
-            <select
-              value={supplierId}
-              onChange={(e) => {
-                const selectedId = e.target.value;
-                const supplier = supplierOptions.find((item) => item.id === selectedId) || null;
-                setSupplierId(selectedId);
-                setSupplierName(supplier?.supplier_name || "");
-              }}
-              disabled={!isSupplierSource}
-              style={fieldStyle}
-            >
-              <option value="">Select supplier</option>
-              {supplierOptions.map((supplier) => (
-                <option key={supplier.id} value={supplier.id}>
-                  {supplier.supplier_number ? `${supplier.supplier_number} - ` : ""}
-                  {supplier.supplier_name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {selectedSupplier ? (
-            <div
-              style={{
-                border: "1px solid #d1d5db",
-                borderRadius: "8px",
-                padding: "10px",
-                background: "#f9fafb",
-                marginBottom: "12px",
-              }}
-            >
-              <strong>Selected Supplier Summary</strong>
-              <div><strong>Status:</strong> {selectedSupplier.supplier_status || "N/A"}</div>
-              <div><strong>Risk Level:</strong> {selectedSupplier.supplier_risk_level || "N/A"}</div>
-              <div><strong>Contact Email:</strong> {selectedSupplier.primary_contact_email || "N/A"}</div>
-              <div>
-                <a href={`/suppliers/${selectedSupplier.id}`} target="_blank" rel="noreferrer">
-                  Open Supplier Profile
-                </a>
+              <div style={rowStyle}>
+                <label>Defect Category</label>
+                <br />
+                <select
+                  value={defectCategory}
+                  onChange={(e) => setDefectCategory(e.target.value)}
+                  style={fieldStyle}
+                >
+                  <option value="">Select defect category</option>
+                  {renderOptions(defectCategoryOptions)}
+                </select>
               </div>
-            </div>
-          ) : null}
 
-          <div style={rowStyle}>
-            <label>Supplier Lot</label>
-            <br />
-            <input
-              value={supplierLot}
-              onChange={(e) => setSupplierLot(e.target.value)}
-              placeholder="Supplier lot"
-              disabled={!isSupplierSource}
-              style={fieldStyle}
-            />
-          </div>
-        </div>
+              <div style={rowStyle}>
+                <label>Defect Subcategory</label>
+                <br />
+                <select
+                  value={defectSubcategory}
+                  onChange={(e) => setDefectSubcategory(e.target.value)}
+                  style={fieldStyle}
+                >
+                  <option value="">Select defect subcategory</option>
+                  {filteredDefectSubcategories.map((option) => (
+                    <option key={option.code} value={option.code}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </SectionCard>
 
-        <div style={rowStyle}>
-          <label>Site / Location</label>
-          <br />
-          <input
-            value={siteLocation}
-            onChange={(e) => setSiteLocation(e.target.value)}
-            placeholder="Site / room / line / location"
-            style={fieldStyle}
-          />
-        </div>
+            <SectionCard
+              title="4. Supplier Information (If Applicable)"
+              subtitle="Capture only the supplier traceability information needed for a supplier-related NCMR."
+              defaultOpen={isSupplierSource}
+            >
+              {!isSupplierSource ? (
+                <div
+                  style={{
+                    border: "1px solid #d1d5db",
+                    borderRadius: "8px",
+                    padding: "12px",
+                    background: "#f3f4f6",
+                    color: "#6b7280",
+                  }}
+                >
+                  Supplier information is not required because Source of Detection is not supplier-related.
+                </div>
+              ) : (
+                <>
+                  <div style={rowStyle}>
+                    <label>Supplier</label>
+                    <br />
+                    <select
+                      value={supplierId}
+                      onChange={(e) => {
+                        const selectedId = e.target.value;
+                        const supplier = supplierOptions.find((item) => item.id === selectedId) || null;
+                        setSupplierId(selectedId);
+                        setSupplierName(supplier?.supplier_name || "");
+                      }}
+                      style={fieldStyle}
+                    >
+                      <option value="">Select supplier</option>
+                      {supplierOptions.map((supplier) => (
+                        <option key={supplier.id} value={supplier.id}>
+                          {supplier.supplier_number ? `${supplier.supplier_number} - ` : ""}
+                          {supplier.supplier_name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-        <div style={rowStyle}>
-          <label>Immediate Correction</label>
-          <br />
-          <textarea
-            value={immediateCorrection}
-            onChange={(e) => setImmediateCorrection(e.target.value)}
-            placeholder="Immediate correction taken"
-            rows={3}
-            style={textAreaStyle}
-          />
-        </div>
+                  <div style={rowStyle}>
+                    <label>Supplier ID</label>
+                    <br />
+                    <input
+                      value={selectedSupplier?.supplier_number || ""}
+                      readOnly
+                      placeholder="Auto-populated from selected supplier"
+                      style={{ ...fieldStyle, background: "#f3f4f6" }}
+                    />
+                  </div>
 
-        <div style={rowStyle}>
-          <label>Owner</label>
-          <br />
-          <input
-            value={owner}
-            onChange={(e) => setOwner(e.target.value)}
-            placeholder="Owner"
-            style={fieldStyle}
-          />
-        </div>
-      
+                  <div style={rowStyle}>
+                    <label>Purchase Order (PO)</label>
+                    <br />
+                    <input
+                      value={purchaseOrderNumber}
+                      onChange={(e) => setPurchaseOrderNumber(e.target.value)}
+                      placeholder="Purchase order number"
+                      style={fieldStyle}
+                    />
+                  </div>
+
+                  <div style={rowStyle}>
+                    <label>Supplier Lot</label>
+                    <br />
+                    <input
+                      value={supplierLot}
+                      onChange={(e) => setSupplierLot(e.target.value)}
+                      placeholder="Supplier lot"
+                      style={fieldStyle}
+                    />
+                  </div>
+
+                  {selectedSupplier ? (
+                    <div>
+                      <a href={`/suppliers/${selectedSupplier.id}`} target="_blank" rel="noreferrer">
+                        Open Supplier Profile
+                      </a>
+                    </div>
+                  ) : null}
+                </>
+              )}
+            </SectionCard>
+
+            <SectionCard
+              title="5. Additional Information and Ownership"
+              subtitle="Capture the location, immediate correction, and responsible NCMR owner."
+              defaultOpen={false}
+            >
+              <div style={rowStyle}>
+                <label>Site / Location</label>
+                <br />
+                <input
+                  value={siteLocation}
+                  onChange={(e) => setSiteLocation(e.target.value)}
+                  placeholder="Site / room / line / location"
+                  style={fieldStyle}
+                />
+              </div>
+
+              <div style={rowStyle}>
+                <label>Immediate Correction</label>
+                <br />
+                <textarea
+                  value={immediateCorrection}
+                  onChange={(e) => setImmediateCorrection(e.target.value)}
+                  placeholder="Immediate correction taken"
+                  rows={3}
+                  style={textAreaStyle}
+                />
+              </div>
+
+              <div style={rowStyle}>
+                <label>NCMR Owner Email</label>
+                <br />
+                <input
+                  type="email"
+                  value={owner}
+                  onChange={(e) => setOwner(e.target.value)}
+                  placeholder="owner@company.com"
+                  style={fieldStyle}
+                />
+              </div>
             </SectionCard>
 
             <ActionToolbar>
@@ -1283,7 +1305,7 @@ export default function NcmrPage() {
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search by title, NCMR number, part, lot, supplier, owner"
+          placeholder="Search by NCMR number, issue description, part, lot, PO, supplier, owner"
           style={{ ...fieldStyle, maxWidth: "650px", marginRight: "10px" }}
         />
 
@@ -1377,7 +1399,7 @@ export default function NcmrPage() {
                 >
                   <div>
                     <h3 style={{ margin: "0 0 6px 0" }}>
-                      {item.ncmr_number || "NCMR-PENDING"} — {item.title || "Untitled NCMR"}
+                      {item.ncmr_number || "NCMR-PENDING"}
                     </h3>
                     <div style={{ color: "#4b5563", fontSize: "14px" }}>
                       {item.issue_description || "No issue description provided."}
@@ -1430,6 +1452,8 @@ export default function NcmrPage() {
                   <div><strong>Defect:</strong> {item.defect_category || "N/A"}</div>
                   <div><strong>Subcategory:</strong> {item.defect_subcategory || "N/A"}</div>
                   <div><strong>Supplier:</strong> {item.supplier_name || "N/A"}</div>
+                  <div><strong>PO:</strong> {item.purchase_order_number || "N/A"}</div>
+                  <div><strong>Supplier Lot:</strong> {item.supplier_lot || "N/A"}</div>
                   <div><strong>Owner:</strong> {item.owner || "N/A"}</div>
                 </div>
 
