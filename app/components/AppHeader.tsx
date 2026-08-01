@@ -12,7 +12,10 @@ export default function AppHeader() {
     const userEmail = userData?.user?.email || "";
     setEmail(userEmail);
 
-    if (!userEmail) return;
+    if (!userEmail) {
+      setRole("");
+      return;
+    }
 
     const { data } = await supabase
       .from("user_roles")
@@ -36,6 +39,7 @@ export default function AppHeader() {
     <header style={headerStyle}>
       <a href="/workspace" style={brandStyle}>
         <span style={logoMarkStyle}>Q</span>
+
         <span>
           <span style={brandNameStyle}>QualiSphere</span>
           <span style={brandSubtextStyle}>Enterprise QMS</span>
@@ -47,24 +51,12 @@ export default function AppHeader() {
           Home
         </a>
 
-        <a href="/my-approval-tasks" style={primaryLinkStyle}>
-          My Tasks
-        </a>
-
-        <button
-          type="button"
-          title="Notifications coming soon"
-          style={notificationButtonStyle}
-        >
-          🔔
-        </button>
-
         <span style={userTextStyle}>
           {email ? `${email} (${role || "user"})` : "Not logged in"}
         </span>
 
         {email ? (
-          <button onClick={handleLogout} style={logoutButtonStyle}>
+          <button type="button" onClick={handleLogout} style={logoutButtonStyle}>
             Logout
           </button>
         ) : (
@@ -129,7 +121,7 @@ const brandSubtextStyle: React.CSSProperties = {
 const rightSideStyle: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
-  gap: "10px",
+  gap: "12px",
   flexWrap: "wrap",
 };
 
@@ -146,14 +138,6 @@ const primaryLinkStyle: React.CSSProperties = {
   padding: "8px 12px",
   textDecoration: "none",
   fontWeight: 900,
-};
-
-const notificationButtonStyle: React.CSSProperties = {
-  border: "1px solid #d1d5db",
-  background: "#f8fafc",
-  borderRadius: "999px",
-  padding: "7px 10px",
-  cursor: "not-allowed",
 };
 
 const userTextStyle: React.CSSProperties = {
