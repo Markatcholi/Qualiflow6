@@ -16,6 +16,10 @@ import {
 type MasterOption = {
   code: string;
   label: string;
+  description?: string | null;
+  part_description?: string | null;
+  product_description?: string | null;
+  name?: string | null;
 };
 
 type DefectSubcategoryOption = {
@@ -167,7 +171,7 @@ export default function NcmrPage() {
       defectSubcategoryRes,
       suppliersRes,
     ] = await Promise.all([
-      supabase.from("md_product_part_numbers").select("code, label").order("label"),
+      supabase.from("md_product_part_numbers").select("*").order("label"),
       supabase.from("md_detection_sources").select("code, label").order("label"),
       supabase.from("md_departments").select("code, label").order("label"),
       supabase.from("md_material_statuses").select("code, label").order("label"),
@@ -416,14 +420,31 @@ export default function NcmrPage() {
   };
 
   const updateAffectedPartNumber = (index: number, value: string) => {
-    const selectedPart = partNumberOptions.find((option) => option.code === value);
+    const selectedPart = partNumberOptions.find(
+      (option) => option.code === value
+    );
+
+    const resolvedDescription = selectedPart
+      ? String(
+          selectedPart.description ||
+            selectedPart.part_description ||
+            selectedPart.product_description ||
+            selectedPart.name ||
+            (selectedPart.label !== selectedPart.code
+              ? selectedPart.label
+              : "") ||
+            ""
+        ).trim()
+      : "";
+
     const updated = [...affectedItems];
+
     updated[index] = {
       ...updated[index],
       product_part_number: value,
-      part_description:
-        updated[index].part_description || selectedPart?.label || "",
+      part_description: resolvedDescription,
     };
+
     setAffectedItems(updated);
   };
 
