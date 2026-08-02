@@ -44,6 +44,15 @@ type AffectedItemInput = {
   quarantined_quantity: string;
 };
 
+type InitiationAttachment = {
+  name: string;
+  url: string;
+  storage_path: string;
+  uploaded_at: string;
+  uploaded_by: string;
+  phase: "initiation";
+};
+
 type Ncmr = {
   id: string;
   ncmr_number: string | null;
@@ -100,6 +109,8 @@ export default function NcmrPage() {
   const [siteLocation, setSiteLocation] = useState("");
   const [immediateCorrection, setImmediateCorrection] = useState("");
   const [owner, setOwner] = useState("");
+  const [initiationAttachmentFiles, setInitiationAttachmentFiles] = useState<File[]>([]);
+  const [uploadingAttachments, setUploadingAttachments] = useState(false);
   const [showCreateForm, setShowCreateForm] = useState(true);
 
   const [affectedItems, setAffectedItems] = useState<AffectedItemInput[]>([
@@ -470,6 +481,127 @@ export default function NcmrPage() {
   };
 
 
+  const sanitizeFileName = (fileName: string) => {
+    return fileName
+      .trim()
+      .replace(/[^a-zA-Z0-9._-]+/g, "_")
+      .replace(/_+/g, "_");
+  };
+
+  const addInitiationAttachmentFiles = (
+    files: FileList | null
+  ) => {
+    if (!files || files.length === 0) return;
+
+    const incomingFiles = Array.from(files);
+
+    setInitiationAttachmentFiles((current) => {
+      const existingKeys = new Set(
+        current.map(
+          (file) => `${file.name}:${file.size}:${file.lastModified}`
+        )
+      );
+
+      const uniqueIncoming = incomingFiles.filter(
+        (file) =>
+          !existingKeys.has(
+            `${file.name}:${file.size}:${file.lastModified}`
+          )
+      );
+
+      return [...current, ...uniqueIncoming];
+    });
+  };
+
+  const removeInitiationAttachmentFile = (index: number) => {
+    setInitiationAttachmentFiles((current) =>
+      current.filter((_, fileIndex) => fileIndex !== index)
+    );
+  };
+
+  const uploadInitiationAttachments = async (
+    ncmrId: string,
+    uploadedBy: string
+  ) => {
+    if (initiationAttachmentFiles.length === 0) {
+      return {
+        attachments: [] as InitiationAttachment[],
+        failedFiles: [] as string[],
+      };
+    }
+
+    setUploadingAttachments(true);
+
+    const attachments: InitiationAttachment[] = [];
+    const failedFiles: string[] = [];
+
+    try {
+      for (let index = 0; index < initiationAttachmentFiles.length; index += 1) {
+        const file = initiationAttachmentFiles[index];
+        const safeFileName = sanitizeFileName(file.name) || `attachment_${index + 1}`;
+        const storagePath =
+          `ncmrs/${ncmrId}/initiation/` +
+          `${Date.now()}_${index + 1}_${safeFileName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from("evidence")
+          .upload(storagePath, file, {
+            cacheControl: "3600",
+            upsert: false,
+            contentType: file.type || undefined,
+          });
+
+        if (uploadError) {
+          console.warn(
+            `Unable to upload initiation attachment ${file.name}:`,
+            uploadError.message
+          );
+          failedFiles.push(file.name);
+          continue;
+        }
+
+        const { data: publicUrlData } = supabase.storage
+          .from("evidence")
+          .getPublicUrl(storagePath);
+
+        attachments.push({
+          name: file.name,
+          url: publicUrlData.publicUrl,
+          storage_path: storagePath,
+          uploaded_at: new Date().toISOString(),
+          uploaded_by: uploadedBy,
+          phase: "initiation",
+        });
+      }
+
+      if (attachments.length > 0) {
+        const { error: attachmentUpdateError } = await supabase
+          .from("ncmrs")
+          .update({
+            initiation_attachments: attachments,
+          })
+          .eq("id", ncmrId);
+
+        if (attachmentUpdateError) {
+          throw new Error(attachmentUpdateError.message);
+        }
+
+        await addAuditLog(
+          "ncmr",
+          ncmrId,
+          "initiation_attachments_uploaded",
+          `Uploaded ${attachments.length} initiation supporting attachment(s): ${attachments
+            .map((attachment) => attachment.name)
+            .join(", ")}.`
+        );
+      }
+
+      return { attachments, failedFiles };
+    } finally {
+      setUploadingAttachments(false);
+    }
+  };
+
   const resetNcmrForm = () => {
     setIssueDescription("");
     setSourceOfDetection("");
@@ -488,6 +620,7 @@ export default function NcmrPage() {
     setSiteLocation("");
     setImmediateCorrection("");
     setOwner("");
+    setInitiationAttachmentFiles([]);
     setAffectedItems([
       {
         product_part_number: "",
@@ -678,8 +811,44 @@ export default function NcmrPage() {
       );
     }
 
+    let attachmentUploadResult = {
+      attachments: [] as InitiationAttachment[],
+      failedFiles: [] as string[],
+    };
+
+    try {
+      attachmentUploadResult = await uploadInitiationAttachments(
+        data.id,
+        currentUserEmail
+      );
+    } catch (attachmentError: any) {
+      await addAuditLog(
+        "ncmr",
+        data.id,
+        "initiation_attachment_upload_error",
+        `NCMR was created, but initiation attachments could not be fully recorded. ${attachmentError?.message || "Unknown upload error."}`
+      );
+
+      alert(
+        `NCMR ${data.ncmr_number || ""} was created, but the initiation attachments could not be fully saved. Open the NCMR workflow and add the supporting evidence there.\n\n${attachmentError?.message || ""}`
+      );
+    }
+
+    const failedAttachmentMessage =
+      attachmentUploadResult.failedFiles.length > 0
+        ? `\n\nThe following file(s) did not upload and may be added from the workflow page:\n${attachmentUploadResult.failedFiles.join("\n")}`
+        : "";
+
     resetNcmrForm();
-    fetchData();
+    await fetchData();
+
+    alert(
+      `NCMR ${data.ncmr_number || ""} created successfully.${
+        attachmentUploadResult.attachments.length > 0
+          ? ` ${attachmentUploadResult.attachments.length} initiation attachment(s) uploaded.`
+          : ""
+      }${failedAttachmentMessage}`
+    );
   };
 
   useEffect(() => {
@@ -700,6 +869,19 @@ export default function NcmrPage() {
       setDefectSubcategory("");
     }
   }, [defectCategory, defectSubcategoryOptions]);
+
+  const formatFileSize = (bytes: number) => {
+    if (!Number.isFinite(bytes) || bytes <= 0) return "0 KB";
+
+    const units = ["B", "KB", "MB", "GB"];
+    const unitIndex = Math.min(
+      Math.floor(Math.log(bytes) / Math.log(1024)),
+      units.length - 1
+    );
+    const value = bytes / Math.pow(1024, unitIndex);
+
+    return `${value >= 10 || unitIndex === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[unitIndex]}`;
+  };
 
   const renderOptions = (options: MasterOption[]) =>
     options.map((option) => (
@@ -1281,9 +1463,115 @@ export default function NcmrPage() {
               </div>
             </SectionCard>
 
+            <SectionCard
+              title="6. Supporting Attachments (Optional)"
+              subtitle="Attach photographs, inspection records, supplier documents, test results, or other evidence available when the NCMR is initiated."
+              defaultOpen={false}
+              rightAction={
+                <StatusBadge
+                  status={`${initiationAttachmentFiles.length} file${
+                    initiationAttachmentFiles.length === 1 ? "" : "s"
+                  } selected`}
+                />
+              }
+            >
+              <div style={rowStyle}>
+                <label>Supporting Files</label>
+                <br />
+                <input
+                  type="file"
+                  multiple
+                  onChange={(event) => {
+                    addInitiationAttachmentFiles(event.target.files);
+                    event.currentTarget.value = "";
+                  }}
+                  disabled={uploadingAttachments}
+                  style={{ marginTop: "8px" }}
+                />
+                <p
+                  style={{
+                    color: "#4b5563",
+                    fontSize: "13px",
+                    marginBottom: 0,
+                  }}
+                >
+                  Multiple files are allowed. Attachments are uploaded after
+                  the NCMR record is created and become part of the controlled
+                  quality record.
+                </p>
+              </div>
+
+              {initiationAttachmentFiles.length > 0 ? (
+                <div
+                  style={{
+                    display: "grid",
+                    gap: "8px",
+                    marginTop: "12px",
+                  }}
+                >
+                  {initiationAttachmentFiles.map((file, index) => (
+                    <div
+                      key={`${file.name}-${file.size}-${file.lastModified}`}
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        gap: "12px",
+                        border: "1px solid #d1d5db",
+                        borderRadius: "8px",
+                        padding: "10px 12px",
+                        background: "#f9fafb",
+                      }}
+                    >
+                      <div style={{ minWidth: 0 }}>
+                        <strong
+                          style={{
+                            display: "block",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {file.name}
+                        </strong>
+                        <span
+                          style={{
+                            color: "#6b7280",
+                            fontSize: "12px",
+                          }}
+                        >
+                          {formatFileSize(file.size)}
+                        </span>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          removeInitiationAttachmentFile(index)
+                        }
+                        disabled={uploadingAttachments}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p style={{ color: "#6b7280", marginBottom: 0 }}>
+                  No supporting files selected.
+                </p>
+              )}
+            </SectionCard>
+
             <ActionToolbar>
-              <button onClick={addNcmr} style={primaryButtonStyle}>
-                Create NCMR
+              <button
+                onClick={addNcmr}
+                style={primaryButtonStyle}
+                disabled={uploadingAttachments}
+              >
+                {uploadingAttachments
+                  ? "Creating NCMR / Uploading..."
+                  : "Create NCMR"}
               </button>
 
               <button
