@@ -112,6 +112,18 @@ export default function MyApprovalTasksPage() {
     );
   };
 
+  const isNcmrMrbApprovalTask = (task: any) => {
+    return (
+      task.entity_type === "ncmr" &&
+      ["mrb_approval", "ncmr_mrb_approval", "ncmr_mrb_review"].includes(
+        String(task.task_type || "")
+      )
+    );
+  };
+
+  const getNcmrReviewUrl = (task: any) =>
+    `/ncmrs/${task.entity_id}/approval-review?taskId=${task.id}`;
+
   const getCapaGateFromTask = (task: any) => {
     const taskType = String(task.task_type || "");
 
@@ -157,11 +169,19 @@ export default function MyApprovalTasksPage() {
     }
 
     if (isCapaApprovalTask(task)) {
-      const jobTitle = task.approver_job_title || task.required_function || "Approver";
+      const jobTitle =
+        task.approver_job_title || task.required_function || "Approver";
       return `${jobTitle} — ${getRecordDisplay(task)} ${getApprovalGateLabel(task)}`;
     }
 
-    return task.task_title || `${task.required_function || "Task"} — ${formatTaskType(task.task_type)}`;
+    if (isNcmrMrbApprovalTask(task)) {
+      return task.task_title || `MRB Approval — ${getRecordDisplay(task)}`;
+    }
+
+    return (
+      task.task_title ||
+      `${task.required_function || "Task"} — ${formatTaskType(task.task_type)}`
+    );
   };
 
   const getDueStatus = (task: any) => {
@@ -282,6 +302,11 @@ export default function MyApprovalTasksPage() {
   const signTask = async (task: any, status: "approved" | "rejected") => {
     if (isCapaApprovalTask(task)) {
       window.location.href = getCapaReviewUrl(task);
+      return;
+    }
+
+    if (isNcmrMrbApprovalTask(task)) {
+      window.location.href = getNcmrReviewUrl(task);
       return;
     }
 
@@ -429,7 +454,10 @@ export default function MyApprovalTasksPage() {
         <div style={{ display: "grid", gap: "12px" }}>
           {tasks.map((task) => {
             const capaApproval = isCapaApprovalTask(task);
-            const ownedCapaWork = task.workspace_item_type === "owned_capa";
+            const ncmrMrbApproval = isNcmrMrbApprovalTask(task);
+            const centralizedApproval = capaApproval || ncmrMrbApproval;
+            const ownedCapaWork =
+              task.workspace_item_type === "owned_capa";
             const dueStatus = getDueStatus(task);
             const pending = task.status === "pending";
 
@@ -489,10 +517,14 @@ export default function MyApprovalTasksPage() {
                     <a href={getCapaReviewUrl(task)} style={primaryLinkStyle}>
                       Open CAPA Review Package
                     </a>
+                  ) : ncmrMrbApproval ? (
+                    <a href={getNcmrReviewUrl(task)} style={primaryLinkStyle}>
+                      Open MRB Review Package
+                    </a>
                   ) : null}
                 </div>
 
-                {!capaApproval && !ownedCapaWork ? (
+                {!centralizedApproval && !ownedCapaWork ? (
                   <>
                     <div style={{ marginTop: "14px", marginBottom: "12px" }}>
                       <label style={labelStyle}>Review Instructions</label>
@@ -545,7 +577,9 @@ export default function MyApprovalTasksPage() {
                       <CompletedTaskDetails task={task} />
                     )}
                   </>
-                ) : !ownedCapaWork && task.status !== "pending" ? (
+                ) : !ownedCapaWork &&
+                  centralizedApproval &&
+                  task.status !== "pending" ? (
                   <CompletedTaskDetails task={task} />
                 ) : null}
               </section>
