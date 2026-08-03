@@ -13,6 +13,7 @@ type NotificationRecord = {
   message: string | null;
   related_module: string | null;
   related_record_id: string | null;
+  related_url?: string | null;
   severity: string | null;
   read_status: boolean | null;
   created_at: string | null;
@@ -55,7 +56,11 @@ export default function NotificationsPage() {
     }
 
     if (filter === "workflow") {
-      query = query.eq("related_module", "documents");
+      query = query.not(
+        "related_module",
+        "in",
+        '("training","system","general")'
+      );
     }
 
     if (filter === "training") {
@@ -89,7 +94,14 @@ export default function NotificationsPage() {
   );
 
   const workflowCount = useMemo(
-    () => notifications.filter((n) => n.related_module === "documents" && !n.read_status).length,
+    () =>
+      notifications.filter(
+        (notification) =>
+          !notification.read_status &&
+          !["training", "system", "general"].includes(
+            String(notification.related_module || "").toLowerCase()
+          )
+      ).length,
     [notifications]
   );
 
@@ -144,7 +156,7 @@ export default function NotificationsPage() {
     <main style={pageStyle}>
       <header style={headerStyle}>
         <div>
-          <div style={eyebrowStyle}>QUALIFLOW NOTIFICATION CENTER</div>
+          <div style={eyebrowStyle}>QUALISPHERE NOTIFICATION CENTER</div>
           <h1 style={{ margin: "6px 0" }}>My Notifications</h1>
           <p style={subtleText}>
             Workflow, training, review, escalation, and document release alerts.
@@ -272,30 +284,113 @@ export default function NotificationsPage() {
 }
 
 function getRelatedUrl(item: NotificationRecord) {
-  if (!item.related_record_id) return null;
+  const storedUrl = String(item.related_url || "").trim();
 
-  if (item.related_module === "documents") {
-    return `/documents/${item.related_record_id}`;
+  if (storedUrl) {
+    return storedUrl;
   }
 
-  if (item.related_module === "training") {
-    return `/documents/${item.related_record_id}`;
+  const recordId = String(item.related_record_id || "").trim();
+  const module = String(item.related_module || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+  const notificationType = String(item.notification_type || "")
+    .trim()
+    .toLowerCase();
+
+  if (!recordId) return null;
+
+  const collaborationTypes = new Set([
+    "collaboration_assignment",
+    "collaboration_update",
+    "collaboration_resolved",
+  ]);
+
+  if (collaborationTypes.has(notificationType)) {
+    if (module === "ncmr" || module === "ncmrs") {
+      return `/ncmrs/${recordId}/collaboration`;
+    }
+
+    if (module === "capa" || module === "capas") {
+      return `/capa/${recordId}/collaboration`;
+    }
+
+    if (module === "change_control") {
+      return `/change-control/${recordId}/collaboration`;
+    }
+
+    if (
+      module === "document" ||
+      module === "documents" ||
+      module === "controlled_documents"
+    ) {
+      return `/documents/${recordId}/collaboration`;
+    }
+
+    if (module === "scar" || module === "scars") {
+      return `/supplier-quality/scars/${recordId}/collaboration`;
+    }
+
+    if (module === "complaint" || module === "complaints") {
+      return `/complaints/${recordId}/collaboration`;
+    }
+
+    if (module === "audit" || module === "audits") {
+      return `/audits/${recordId}/collaboration`;
+    }
+
+    if (module === "oos_oot" || module === "oos" || module === "oot") {
+      return `/oos-oot/${recordId}/collaboration`;
+    }
   }
 
-  if (item.related_module === "capa") {
-    return `/capa/${item.related_record_id}`;
+  if (
+    module === "document" ||
+    module === "documents" ||
+    module === "controlled_documents"
+  ) {
+    return `/documents/${recordId}`;
   }
 
-  if (item.related_module === "ncmr") {
-    return `/ncmr/${item.related_record_id}`;
+  if (module === "training") {
+    return `/training`;
   }
 
-  if (item.related_module === "audit") {
-    return `/audits/${item.related_record_id}`;
+  if (module === "capa" || module === "capas") {
+    return `/capa/${recordId}`;
   }
 
-  if (item.related_module === "change_control") {
-    return `/change-control/${item.related_record_id}`;
+  if (module === "ncmr" || module === "ncmrs") {
+    return `/ncmrs/${recordId}`;
+  }
+
+  if (module === "audit" || module === "audits") {
+    return `/audits/${recordId}`;
+  }
+
+  if (module === "change_control") {
+    return `/change-control/${recordId}`;
+  }
+
+  if (module === "scar" || module === "scars") {
+    return `/supplier-quality/scars/${recordId}`;
+  }
+
+  if (module === "complaint" || module === "complaints") {
+    return `/complaints/${recordId}`;
+  }
+
+  if (module === "oos_oot" || module === "oos" || module === "oot") {
+    return `/oos-oot/${recordId}`;
+  }
+
+  if (module === "supplier" || module === "suppliers") {
+    return `/suppliers/${recordId}`;
+  }
+
+  if (module === "equipment") {
+    return `/equipment/${recordId}`;
   }
 
   return null;
