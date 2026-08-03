@@ -6540,6 +6540,8 @@ function AffectedItemCard({
     </div>
   );
 
+}
+
 const approvalTableHeaderStyle: React.CSSProperties = {
   textAlign: "left",
   borderBottom: "1px solid #d1d5db",
@@ -6554,4 +6556,3 @@ const approvalTableCellStyle: React.CSSProperties = {
   verticalAlign: "top",
 };
 
-}
