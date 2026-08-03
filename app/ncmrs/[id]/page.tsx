@@ -471,6 +471,7 @@ export default function NcmrDetailPage() {
     message,
     severityLevel = "info",
     assignedRole = null,
+    relatedUrl = null,
   }: {
     recipientEmail: string;
     notificationType: string;
@@ -478,6 +479,7 @@ export default function NcmrDetailPage() {
     message: string;
     severityLevel?: string;
     assignedRole?: string | null;
+    relatedUrl?: string | null;
   }) => {
     const normalizedRecipient = String(recipientEmail || "").trim().toLowerCase();
     if (!normalizedRecipient) return;
@@ -490,6 +492,7 @@ export default function NcmrDetailPage() {
       message,
       related_module: "ncmr",
       related_record_id: id,
+      related_url: relatedUrl,
       severity: severityLevel,
       read_status: false,
     });
@@ -1371,7 +1374,7 @@ export default function NcmrDetailPage() {
     if (unknownUsers.length > 0) {
       return {
         valid: false,
-        message: `The following approver email(s) are not valid QualiSphere users:\n\n${unknownUsers.join("\n")}\n\nPlease correct the approver list before generating MRB approval tasks.`,
+        message: `The following approver email(s) are not valid QualiSphere users:\n\n${unknownUsers.join("\n")}\n\nPlease correct the approver list before submitting for MRB approval.`,
       };
     }
 
@@ -1692,25 +1695,25 @@ export default function NcmrDetailPage() {
   const validateWorkflowBeforeGeneratingMrbTasks = () => {
     const errors: string[] = [];
 
-    if (!riskAssessment) errors.push("Risk assessment is required before generating MRB approval tasks.");
-    if (severity === "not_assessed") errors.push("Severity must be assessed before generating MRB approval tasks.");
-    if (!productDisposition) errors.push("Overall product disposition is required before generating MRB approval tasks.");
-    if (!dispositionJustification) errors.push("Overall disposition justification is required before generating MRB approval tasks.");
+    if (!riskAssessment) errors.push("Risk assessment is required before submitting for MRB approval.");
+    if (severity === "not_assessed") errors.push("Severity must be assessed before submitting for MRB approval.");
+    if (!productDisposition) errors.push("Overall product disposition is required before submitting for MRB approval.");
+    if (!dispositionJustification) errors.push("Overall disposition justification is required before submitting for MRB approval.");
 
     if (affectedItems.length === 0) {
-      errors.push("At least one affected item is required before generating MRB approval tasks.");
+      errors.push("At least one affected item is required before submitting for MRB approval.");
     }
 
     affectedItems.forEach((item, index) => {
       const label = `Affected Item ${index + 1}`;
 
-      if (!item.product_disposition) errors.push(`${label}: item disposition is required before generating MRB approval tasks.`);
-      if (!item.disposition_justification) errors.push(`${label}: item disposition justification is required before generating MRB approval tasks.`);
+      if (!item.product_disposition) errors.push(`${label}: item disposition is required before submitting for MRB approval.`);
+      if (!item.disposition_justification) errors.push(`${label}: item disposition justification is required before submitting for MRB approval.`);
       if (item.quantity_accepted === null || item.quantity_accepted === undefined) {
-        errors.push(`${label}: quantity accepted is required before generating MRB approval tasks.`);
+        errors.push(`${label}: quantity accepted is required before submitting for MRB approval.`);
       }
       if (item.quantity_rejected === null || item.quantity_rejected === undefined) {
-        errors.push(`${label}: quantity rejected is required before generating MRB approval tasks.`);
+        errors.push(`${label}: quantity rejected is required before submitting for MRB approval.`);
       }
 
       errors.push(...buildQuantityReconciliationErrors(item, label));
@@ -1823,6 +1826,8 @@ Review and verify:
 
 Approve only if the MRB decision is technically justified, risk-assessed, and compliant with procedure requirements.
 
+Open this task from My Workspace to review the submitted read-only MRB package and record your decision.
+
 This approval becomes part of the official electronic quality record. MRB approval is complete when all required reviewers approve.`,
     }));
 
@@ -1857,8 +1862,14 @@ This approval becomes part of the official electronic quality record. MRB approv
             notificationType: "ncmr_approval",
             title: `MRB approval assigned: ${record?.ncmr_number || "NCMR"}`,
             message: `An MRB approval task for ${record?.ncmr_number || "this NCMR"} is waiting in My Workspace.`,
-            severityLevel: severity === "critical" ? "critical" : severity === "major" ? "high" : "info",
+            severityLevel:
+              severity === "critical"
+                ? "critical"
+                : severity === "major"
+                  ? "high"
+                  : "info",
             assignedRole: task.required_function || "MRB Approver",
+            relatedUrl: "/workspace",
           })
         )
       );
@@ -1942,6 +1953,12 @@ This approval becomes part of the official electronic quality record. MRB approv
 
   const hasActiveMrbApprovalWorkflow = () => {
     return getActiveMrbApprovalTasks().length > 0;
+  };
+
+  const hasPendingMrbApprovalTasks = () => {
+    return getActiveMrbApprovalTasks().some(
+      (task: any) => String(task.status || "").toLowerCase() === "pending"
+    );
   };
 
   const isMrbApprovalConfigurationLocked = () => {
@@ -3768,7 +3785,9 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
     return <main style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>Record not found</main>;
   }
 
-  const isLocked = record?.is_locked === true;
+  const isLocked =
+    record?.is_locked === true ||
+    (hasPendingMrbApprovalTasks() && !hasRejectedMrbApprovalTask());
   const canEditInitiation = !isLocked && !record?.mrb_approved_by;
 
   const workflowProgressSteps = [
@@ -4171,10 +4190,6 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
               disabled={isLocked}
             >
               Validate for MRB
-            </button>
-
-            <button onClick={() => alert("MRB approval is now completed automatically after all required parallel approval tasks are approved.")} disabled={isLocked || !!record?.mrb_approved_by}>
-              Approve MRB
             </button>
 
             <button onClick={closeNcmr} disabled={isLocked}>
