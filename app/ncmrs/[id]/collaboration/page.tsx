@@ -379,29 +379,88 @@ export default function NcmrCollaborationPage() {
   };
 
   const resolveCollaboration = async () => {
-    if (!thread) return;
-    if (!resolutionSummary.trim()) return alert("Resolution summary is required.");
-    if (!window.confirm("Resolve this collaboration and complete all remaining collaboration tasks?")) return;
+    if (!thread || !record) return;
+
+    const ownerEmail = normalizeEmail(record.owner_email || record.owner);
+    const currentUserEmail = normalizeEmail(userEmail);
+    const eligibleParticipants = participants.filter(
+      (participant) => participant.status !== "removed"
+    );
+    const allAssignmentsCompleted =
+      eligibleParticipants.length > 0 &&
+      eligibleParticipants.every(
+        (participant) => participant.status === "completed"
+      );
+
+    if (!ownerEmail || ownerEmail !== currentUserEmail) {
+      alert("Only the NCMR owner may resolve this collaboration.");
+      return;
+    }
+
+    if (!allAssignmentsCompleted) {
+      alert(
+        "All collaborator assignments must be completed before the collaboration can be resolved."
+      );
+      return;
+    }
+
+    if (!resolutionSummary.trim()) {
+      alert("Resolution summary is required.");
+      return;
+    }
+
+    if (
+      !window.confirm(
+        "Resolve this collaboration? All collaborator assignments have been completed."
+      )
+    ) {
+      return;
+    }
 
     setResolving(true);
+
     try {
       const resolvedAt = new Date().toISOString();
-      const update = await supabase.from("collaboration_threads").update({
+
+      const update = await supabase
+        .from("collaboration_threads")
+        .update({
+          status: "resolved",
+          resolution_summary: resolutionSummary.trim(),
+          resolved_by: userEmail,
+          resolved_at: resolvedAt,
+        })
+        .eq("id", thread.id);
+
+      if (update.error) {
+        throw new Error(update.error.message);
+      }
+
+      await supabase
+        .from("approval_tasks")
+        .update({
+          status: "completed",
+          completed_at: resolvedAt,
+          completed_by_email: userEmail,
+        })
+        .eq("entity_type", MODULE)
+        .eq("entity_id", id)
+        .eq("task_type", "collaboration_task")
+        .eq("status", "pending");
+
+      await addAuditLog(
+        "collaboration_resolved",
+        `Collaboration resolved by NCMR owner ${userEmail}. Summary: ${resolutionSummary.trim()}`
+      );
+
+      setThread({
+        ...thread,
         status: "resolved",
         resolution_summary: resolutionSummary.trim(),
         resolved_by: userEmail,
         resolved_at: resolvedAt,
-      }).eq("id", thread.id);
-      if (update.error) throw new Error(update.error.message);
+      });
 
-      await Promise.all([
-        supabase.from("collaboration_participants").update({ status: "completed", completed_at: resolvedAt }).eq("thread_id", thread.id).eq("status", "active"),
-        supabase.from("approval_tasks").update({ status: "completed", completed_at: resolvedAt, completed_by_email: userEmail })
-          .eq("entity_type", MODULE).eq("entity_id", id).eq("task_type", "collaboration_task").eq("status", "pending"),
-      ]);
-
-      await addAuditLog("collaboration_resolved", `Collaboration resolved by ${userEmail}. Summary: ${resolutionSummary.trim()}`);
-      setThread({ ...thread, status: "resolved", resolution_summary: resolutionSummary.trim(), resolved_by: userEmail, resolved_at: resolvedAt });
       await refreshThread(thread.id);
       alert("Collaboration resolved.");
     } catch (error: any) {
@@ -415,7 +474,27 @@ export default function NcmrCollaborationPage() {
   if (!record || !thread) return <main style={pageStyle}>Collaboration Workspace could not be loaded.</main>;
 
   const isOpen = thread.status === "open";
-  const myActiveAssignment = participants.some((p) => normalizeEmail(p.user_email) === normalizeEmail(userEmail) && p.status === "active");
+  const currentUserEmail = normalizeEmail(userEmail);
+  const ncmrOwnerEmail = normalizeEmail(record.owner_email || record.owner);
+  const isNcmrOwner =
+    Boolean(ncmrOwnerEmail) && ncmrOwnerEmail === currentUserEmail;
+
+  const eligibleParticipants = participants.filter(
+    (participant) => participant.status !== "removed"
+  );
+  const completedParticipantCount = eligibleParticipants.filter(
+    (participant) => participant.status === "completed"
+  ).length;
+  const totalParticipantCount = eligibleParticipants.length;
+  const allCollaboratorsCompleted =
+    totalParticipantCount > 0 &&
+    completedParticipantCount === totalParticipantCount;
+
+  const myActiveAssignment = participants.some(
+    (participant) =>
+      normalizeEmail(participant.user_email) === currentUserEmail &&
+      participant.status === "active"
+  );
 
   return (
     <main style={pageStyle}>
@@ -533,17 +612,94 @@ export default function NcmrCollaborationPage() {
 
       <section style={cardStyle}>
         <h2 style={sectionTitleStyle}>Collaboration Resolution</h2>
+
         {thread.status === "resolved" ? (
           <div style={resolvedPanelStyle}>
-            <strong>Resolved by:</strong> {thread.resolved_by || "N/A"}<br />
-            <strong>Resolved:</strong> {formatDateTime(thread.resolved_at)}<br />
-            <strong>Summary:</strong><div style={{ marginTop: "6px", whiteSpace: "pre-wrap" }}>{thread.resolution_summary || "No resolution summary provided."}</div>
+            <strong>Resolved by:</strong> {thread.resolved_by || "N/A"}
+            <br />
+            <strong>Resolved:</strong> {formatDateTime(thread.resolved_at)}
+            <br />
+            <strong>Summary:</strong>
+            <div style={{ marginTop: "6px", whiteSpace: "pre-wrap" }}>
+              {thread.resolution_summary || "No resolution summary provided."}
+            </div>
           </div>
         ) : (
           <>
-            <label style={labelStyle}>Resolution Summary</label>
-            <textarea value={resolutionSummary} onChange={(e) => setResolutionSummary(e.target.value)} rows={4} style={textareaStyle} placeholder="Summarize the collaboration outcome and how the input will be used in the investigation." />
-            <button onClick={resolveCollaboration} disabled={resolving} style={resolveButtonStyle}>{resolving ? "Resolving..." : "Resolve Collaboration"}</button>
+            <div style={resolutionProgressStyle}>
+              <div>
+                <strong>Collaborator completion:</strong>{" "}
+                {completedParticipantCount} of {totalParticipantCount} completed
+              </div>
+              <div style={progressTrackStyle}>
+                <div
+                  style={{
+                    ...progressFillStyle,
+                    width:
+                      totalParticipantCount > 0
+                        ? `${Math.round(
+                            (completedParticipantCount /
+                              totalParticipantCount) *
+                              100
+                          )}%`
+                        : "0%",
+                  }}
+                />
+              </div>
+            </div>
+
+            {!isNcmrOwner ? (
+              <div style={ownerOnlyNoticeStyle}>
+                <strong>Owner-controlled resolution</strong>
+                <p style={{ margin: "6px 0 0" }}>
+                  Only the NCMR owner ({ncmrOwnerEmail || "not assigned"}) may
+                  resolve the overall collaboration after every collaborator
+                  has completed their assigned task.
+                </p>
+              </div>
+            ) : (
+              <>
+                {!allCollaboratorsCompleted ? (
+                  <div style={pendingCompletionNoticeStyle}>
+                    All collaborator assignments must be completed before the
+                    collaboration can be resolved.
+                  </div>
+                ) : (
+                  <div style={readyToResolveNoticeStyle}>
+                    All collaborator assignments are complete. The NCMR owner
+                    may now document the outcome and resolve the collaboration.
+                  </div>
+                )}
+
+                <label style={labelStyle}>Resolution Summary</label>
+                <textarea
+                  value={resolutionSummary}
+                  onChange={(event) =>
+                    setResolutionSummary(event.target.value)
+                  }
+                  rows={4}
+                  style={textareaStyle}
+                  placeholder="Summarize the collaboration outcome and how the input will be used in the investigation."
+                  disabled={!allCollaboratorsCompleted || resolving}
+                />
+
+                <button
+                  onClick={resolveCollaboration}
+                  disabled={!allCollaboratorsCompleted || resolving}
+                  style={{
+                    ...resolveButtonStyle,
+                    opacity:
+                      !allCollaboratorsCompleted || resolving ? 0.55 : 1,
+                    cursor:
+                      !allCollaboratorsCompleted || resolving
+                        ? "not-allowed"
+                        : "pointer",
+                  }}
+                >
+                  {resolving ? "Resolving..." : "Resolve Collaboration"}
+                </button>
+              </>
+            )}
           </>
         )}
       </section>
@@ -598,4 +754,55 @@ const attachmentRowStyle: React.CSSProperties = { display: "flex", gap: "8px", f
 const attachmentLinkStyle: React.CSSProperties = { display: "inline-block", background: "#eff6ff", color: "#1d4ed8", border: "1px solid #bfdbfe", borderRadius: "8px", padding: "7px 9px", textDecoration: "none", fontWeight: 800, fontSize: "13px" };
 const tagStyle: React.CSSProperties = { marginTop: "10px", color: "#2563eb", fontSize: "13px" };
 const resolveButtonStyle: React.CSSProperties = { border: "none", background: "#15803d", color: "#fff", borderRadius: "9px", padding: "10px 14px", fontWeight: 900, cursor: "pointer" };
+const resolutionProgressStyle: React.CSSProperties = {
+  border: "1px solid #e2e8f0",
+  background: "#f8fafc",
+  borderRadius: "10px",
+  padding: "12px",
+  marginBottom: "14px",
+};
+
+const progressTrackStyle: React.CSSProperties = {
+  height: "8px",
+  background: "#e2e8f0",
+  borderRadius: "999px",
+  overflow: "hidden",
+  marginTop: "8px",
+};
+
+const progressFillStyle: React.CSSProperties = {
+  height: "100%",
+  background: "#2563eb",
+  borderRadius: "999px",
+  transition: "width 180ms ease",
+};
+
+const ownerOnlyNoticeStyle: React.CSSProperties = {
+  border: "1px solid #bfdbfe",
+  background: "#eff6ff",
+  color: "#1e3a8a",
+  borderRadius: "10px",
+  padding: "14px",
+};
+
+const pendingCompletionNoticeStyle: React.CSSProperties = {
+  border: "1px solid #fde68a",
+  background: "#fffbeb",
+  color: "#92400e",
+  borderRadius: "10px",
+  padding: "12px",
+  marginBottom: "12px",
+  fontWeight: 800,
+};
+
+const readyToResolveNoticeStyle: React.CSSProperties = {
+  border: "1px solid #bbf7d0",
+  background: "#f0fdf4",
+  color: "#166534",
+  borderRadius: "10px",
+  padding: "12px",
+  marginBottom: "12px",
+  fontWeight: 800,
+};
+
 const resolvedPanelStyle: React.CSSProperties = { border: "1px solid #bbf7d0", background: "#f0fdf4", color: "#166534", borderRadius: "10px", padding: "14px", lineHeight: 1.6 };
