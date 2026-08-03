@@ -4935,372 +4935,307 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
           }}
         >
           <h3 style={{ marginTop: 0 }}>MRB Approval</h3>
-          <p style={{ color: "#4b5563", fontSize: "14px" }}>
-            Select an approval matrix or add reviewers manually. When the
-            reviewer list is complete, submit the MRB package for approval.
-            Required reviewers receive approval tasks in My Workspace.
-          </p>
 
-          {hasActiveMrbApprovalWorkflow() || record.mrb_approved_by ? (
+          {record.mrb_approved_by ? (
+            <div
+              style={{
+                border: "1px solid #86efac",
+                borderRadius: "10px",
+                padding: "14px",
+                background: "#f0fdf4",
+                color: "#166534",
+              }}
+            >
+              <strong>MRB Approved</strong>
+              <p style={{ margin: "6px 0 0" }}>
+                All required reviewers approved the submitted MRB package.
+                Implementation is unlocked.
+              </p>
+            </div>
+          ) : hasRejectedMrbApprovalTask() ? (
+            <div
+              style={{
+                border: "1px solid #fca5a5",
+                borderRadius: "10px",
+                padding: "14px",
+                background: "#fef2f2",
+                color: "#991b1b",
+              }}
+            >
+              <strong>MRB Approval Rejected</strong>
+              <p style={{ margin: "6px 0 0" }}>
+                A required reviewer rejected the submitted MRB package. Review
+                the rejection notification and comments, revise the applicable
+                NCMR information, and prepare a new approval submission.
+              </p>
+            </div>
+          ) : hasActiveMrbApprovalWorkflow() ? (
             <div
               style={{
                 border: "1px solid #bfdbfe",
-                borderRadius: "8px",
-                padding: "10px",
+                borderRadius: "10px",
+                padding: "14px",
                 background: "#eff6ff",
-                marginBottom: "12px",
                 color: "#1e3a8a",
               }}
             >
-              {record.mrb_approved_by
-                ? "MRB approval is complete."
-                : "MRB approval has been submitted. Reviewer configuration is locked while approval tasks are active."}
+              <strong>MRB Approval Pending</strong>
+              <p style={{ margin: "6px 0 0" }}>
+                The MRB package has been submitted. Required reviewers will
+                complete their decisions from My Workspace.
+              </p>
             </div>
-          ) : null}
+          ) : (
+            <>
+              <p style={{ color: "#4b5563", fontSize: "14px" }}>
+                Select an approval matrix or add reviewers manually. When the
+                reviewer list is complete, submit the MRB package for approval.
+                Required reviewers receive approval tasks in My Workspace.
+              </p>
 
-          <div style={{ display: "grid", gap: "14px", maxWidth: "1100px" }}>
-            <div>
-              <label style={{ fontWeight: 800 }}>Approval Matrix</label>
-              <br />
-              <select
-                value={selectedApprovalMatrixId}
-                onChange={(event) =>
-                  setSelectedApprovalMatrixId(event.target.value)
-                }
-                disabled={isMrbApprovalConfigurationLocked()}
-                style={{
-                  padding: "9px",
-                  width: "100%",
-                  maxWidth: "620px",
-                  marginTop: "6px",
-                }}
-              >
-                <option value="">Select NCMR approval matrix</option>
-                {approvalMatrixTemplates.map((template: any) => (
-                  <option key={template.id} value={template.id}>
-                    {template.template_name ||
-                      template.name ||
-                      template.title ||
-                      "Approval Matrix"}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                onClick={loadMrbApproversFromMatrix}
-                disabled={
-                  isMrbApprovalConfigurationLocked() ||
-                  !selectedApprovalMatrixId
-                }
-                style={{ marginTop: "8px" }}
-              >
-                Add MRB Approvers from Matrix
-              </button>
-            </div>
-
-            <div
-              style={{
-                border: "1px solid #d1d5db",
-                borderRadius: "10px",
-                padding: "12px",
-                background: "white",
-              }}
-            >
-              <strong>Add MRB Approver</strong>
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns:
-                    "repeat(auto-fit, minmax(190px, 1fr))",
-                  gap: "10px",
-                  marginTop: "10px",
+                  gap: "14px",
+                  maxWidth: "1100px",
                 }}
               >
                 <div>
-                  <label>Function</label>
+                  <label style={{ fontWeight: 800 }}>Approval Matrix</label>
                   <br />
-                  <input
-                    value={manualMrbApproverFunction}
+                  <select
+                    value={selectedApprovalMatrixId}
                     onChange={(event) =>
-                      setManualMrbApproverFunction(event.target.value)
+                      setSelectedApprovalMatrixId(event.target.value)
                     }
-                    disabled={isMrbApprovalConfigurationLocked()}
-                    placeholder="Quality, Operations, Regulatory..."
-                    style={{ padding: "8px", width: "100%" }}
-                  />
+                    style={{
+                      padding: "9px",
+                      width: "100%",
+                      maxWidth: "620px",
+                      marginTop: "6px",
+                    }}
+                  >
+                    <option value="">Select NCMR approval matrix</option>
+                    {approvalMatrixTemplates.map((template: any) => (
+                      <option key={template.id} value={template.id}>
+                        {template.template_name ||
+                          template.name ||
+                          template.title ||
+                          "Approval Matrix"}
+                      </option>
+                    ))}
+                  </select>
+
+                  <button
+                    type="button"
+                    onClick={loadMrbApproversFromMatrix}
+                    disabled={!selectedApprovalMatrixId}
+                    style={{ marginTop: "8px" }}
+                  >
+                    Add MRB Approvers from Matrix
+                  </button>
                 </div>
 
-                <div>
-                  <label>Job Title</label>
-                  <br />
-                  <input
-                    value={manualMrbApproverJobTitle}
-                    onChange={(event) =>
-                      setManualMrbApproverJobTitle(event.target.value)
-                    }
-                    disabled={isMrbApprovalConfigurationLocked()}
-                    placeholder="Quality Manager"
-                    style={{ padding: "8px", width: "100%" }}
-                  />
-                </div>
-
-                <div>
-                  <label>Reviewer Email</label>
-                  <br />
-                  <input
-                    type="email"
-                    value={manualMrbApproverEmail}
-                    onChange={(event) =>
-                      setManualMrbApproverEmail(event.target.value)
-                    }
-                    disabled={isMrbApprovalConfigurationLocked()}
-                    placeholder="reviewer@company.com"
-                    style={{ padding: "8px", width: "100%" }}
-                  />
-                </div>
-
-                <div>
-                  <label>Approve By</label>
-                  <br />
-                  <input
-                    type="date"
-                    value={manualMrbApproverDueDate}
-                    onChange={(event) =>
-                      setManualMrbApproverDueDate(event.target.value)
-                    }
-                    disabled={isMrbApprovalConfigurationLocked()}
-                    style={{ padding: "8px", width: "100%" }}
-                  />
-                </div>
-
-                <label style={{ alignSelf: "end", paddingBottom: "8px" }}>
-                  <input
-                    type="checkbox"
-                    checked={manualMrbApproverRequired}
-                    onChange={(event) =>
-                      setManualMrbApproverRequired(event.target.checked)
-                    }
-                    disabled={isMrbApprovalConfigurationLocked()}
-                  />{" "}
-                  Required: {manualMrbApproverRequired ? "Yes" : "No"}
-                </label>
-              </div>
-
-              <button
-                type="button"
-                onClick={addManualMrbApprover}
-                disabled={isMrbApprovalConfigurationLocked()}
-                style={{ marginTop: "10px" }}
-              >
-                + Add MRB Approver
-              </button>
-            </div>
-          </div>
-
-          <h4>MRB Reviewers</h4>
-          {mrbApprovers.length === 0 ? (
-            <p>
-              No MRB reviewers configured. Select an approval matrix or add
-              reviewers manually.
-            </p>
-          ) : (
-            <div style={{ overflowX: "auto" }}>
-              <table
-                style={{
-                  width: "100%",
-                  borderCollapse: "collapse",
-                  marginTop: "8px",
-                  minWidth: "980px",
-                }}
-              >
-                <thead>
-                  <tr>
-                    <th style={approvalTableHeaderStyle}>Function</th>
-                    <th style={approvalTableHeaderStyle}>Job Title</th>
-                    <th style={approvalTableHeaderStyle}>Reviewer Email</th>
-                    <th style={approvalTableHeaderStyle}>Required</th>
-                    <th style={approvalTableHeaderStyle}>Approve By</th>
-                    <th style={approvalTableHeaderStyle}>Status</th>
-                    <th style={approvalTableHeaderStyle}>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {mrbApprovers.map((approver: any, index: number) => (
-                    <tr
-                      key={
-                        approver.id ||
-                        `${approver.approver_email}-${index}`
-                      }
-                    >
-                      <td style={approvalTableCellStyle}>
-                        {approver.approver_function || "MRB Approval"}
-                      </td>
-                      <td style={approvalTableCellStyle}>
-                        {approver.approver_job_title ||
-                          approver.approver_role ||
-                          "MRB Approver"}
-                      </td>
-                      <td style={approvalTableCellStyle}>
-                        {approver.approver_email}
-                      </td>
-                      <td style={approvalTableCellStyle}>
-                        {approver.is_required === false ? "No" : "Yes"}
-                      </td>
-                      <td style={approvalTableCellStyle}>
-                        {approver.approver_due_date || "Not set"}
-                      </td>
-                      <td style={approvalTableCellStyle}>
-                        {approver.approval_status || "configured"}
-                      </td>
-                      <td style={approvalTableCellStyle}>
-                        <button
-                          type="button"
-                          onClick={() => removeMrbApprover(approver)}
-                          disabled={isMrbApprovalConfigurationLocked()}
-                        >
-                          Delete
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          {!record.mrb_approved_by ? (
-            <div style={{ marginTop: "14px" }}>
-              <button
-                type="button"
-                onClick={submitForMrbApproval}
-                disabled={
-                  isMrbApprovalConfigurationLocked() ||
-                  mrbApprovers.length === 0 ||
-                  submittingMrbApproval
-                }
-                style={{
-                  background: "#2563eb",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "8px",
-                  padding: "10px 14px",
-                  fontWeight: 800,
-                  cursor:
-                    isMrbApprovalConfigurationLocked() ||
-                    mrbApprovers.length === 0 ||
-                    submittingMrbApproval
-                      ? "not-allowed"
-                      : "pointer",
-                  opacity:
-                    isMrbApprovalConfigurationLocked() ||
-                    mrbApprovers.length === 0
-                      ? 0.55
-                      : 1,
-                }}
-              >
-                {submittingMrbApproval
-                  ? "Submitting..."
-                  : "Submit for MRB Approval"}
-              </button>
-            </div>
-          ) : null}
-
-          <h4>Approval Status</h4>
-          {approvalTasks.length === 0 ? (
-            <p>MRB approval has not been submitted.</p>
-          ) : (
-            <div style={{ display: "grid", gap: "10px" }}>
-              {approvalTasks.map((task) => (
                 <div
-                  key={task.id}
                   style={{
-                    border:
-                      task.status === "approved"
-                        ? "1px solid #86efac"
-                        : task.status === "rejected"
-                          ? "1px solid #fca5a5"
-                          : "1px solid #facc15",
-                    background:
-                      task.status === "approved"
-                        ? "#f0fdf4"
-                        : task.status === "rejected"
-                          ? "#fef2f2"
-                          : "#fefce8",
-                    borderRadius: "8px",
-                    padding: "10px",
+                    border: "1px solid #d1d5db",
+                    borderRadius: "10px",
+                    padding: "12px",
+                    background: "white",
                   }}
                 >
-                  <strong>{task.required_function}</strong> —{" "}
-                  {task.status || "pending"}
-                  <br />
-                  <strong>Reviewer:</strong> {task.assigned_to_email}
-                  <br />
-                  <strong>Approve By:</strong>{" "}
-                  {task.due_date || "Not set"}
-                  <br />
-                  <strong>Signed By:</strong> {task.signed_by || "N/A"}
-                  <br />
-                  <strong>Decision Date:</strong>{" "}
-                  {task.signed_at || "N/A"}
-                  <br />
-                  <strong>Reviewer Comment:</strong>{" "}
-                  {task.approver_comment || "N/A"}
+                  <strong>Add MRB Approver</strong>
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns:
+                        "repeat(auto-fit, minmax(190px, 1fr))",
+                      gap: "10px",
+                      marginTop: "10px",
+                    }}
+                  >
+                    <div>
+                      <label>Function</label>
+                      <br />
+                      <input
+                        value={manualMrbApproverFunction}
+                        onChange={(event) =>
+                          setManualMrbApproverFunction(event.target.value)
+                        }
+                        placeholder="Quality, Operations, Regulatory..."
+                        style={{ padding: "8px", width: "100%" }}
+                      />
+                    </div>
+
+                    <div>
+                      <label>Job Title</label>
+                      <br />
+                      <input
+                        value={manualMrbApproverJobTitle}
+                        onChange={(event) =>
+                          setManualMrbApproverJobTitle(event.target.value)
+                        }
+                        placeholder="Quality Manager"
+                        style={{ padding: "8px", width: "100%" }}
+                      />
+                    </div>
+
+                    <div>
+                      <label>Reviewer Email</label>
+                      <br />
+                      <input
+                        type="email"
+                        value={manualMrbApproverEmail}
+                        onChange={(event) =>
+                          setManualMrbApproverEmail(event.target.value)
+                        }
+                        placeholder="reviewer@company.com"
+                        style={{ padding: "8px", width: "100%" }}
+                      />
+                    </div>
+
+                    <div>
+                      <label>Approve By</label>
+                      <br />
+                      <input
+                        type="date"
+                        value={manualMrbApproverDueDate}
+                        onChange={(event) =>
+                          setManualMrbApproverDueDate(event.target.value)
+                        }
+                        style={{ padding: "8px", width: "100%" }}
+                      />
+                    </div>
+
+                    <label style={{ alignSelf: "end", paddingBottom: "8px" }}>
+                      <input
+                        type="checkbox"
+                        checked={manualMrbApproverRequired}
+                        onChange={(event) =>
+                          setManualMrbApproverRequired(event.target.checked)
+                        }
+                      />{" "}
+                      Required: {manualMrbApproverRequired ? "Yes" : "No"}
+                    </label>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={addManualMrbApprover}
+                    style={{ marginTop: "10px" }}
+                  >
+                    + Add MRB Approver
+                  </button>
                 </div>
-              ))}
-            </div>
+              </div>
+
+              <h4>MRB Reviewers</h4>
+
+              {mrbApprovers.length === 0 ? (
+                <p>
+                  No MRB reviewers configured. Select an approval matrix or add
+                  reviewers manually.
+                </p>
+              ) : (
+                <div style={{ overflowX: "auto" }}>
+                  <table
+                    style={{
+                      width: "100%",
+                      borderCollapse: "collapse",
+                      marginTop: "8px",
+                      minWidth: "900px",
+                    }}
+                  >
+                    <thead>
+                      <tr>
+                        <th style={approvalTableHeaderStyle}>Function</th>
+                        <th style={approvalTableHeaderStyle}>Job Title</th>
+                        <th style={approvalTableHeaderStyle}>
+                          Reviewer Email
+                        </th>
+                        <th style={approvalTableHeaderStyle}>Required</th>
+                        <th style={approvalTableHeaderStyle}>Approve By</th>
+                        <th style={approvalTableHeaderStyle}>Action</th>
+                      </tr>
+                    </thead>
+
+                    <tbody>
+                      {mrbApprovers.map(
+                        (approver: any, index: number) => (
+                          <tr
+                            key={
+                              approver.id ||
+                              `${approver.approver_email}-${index}`
+                            }
+                          >
+                            <td style={approvalTableCellStyle}>
+                              {approver.approver_function || "MRB Approval"}
+                            </td>
+                            <td style={approvalTableCellStyle}>
+                              {approver.approver_job_title ||
+                                approver.approver_role ||
+                                "MRB Approver"}
+                            </td>
+                            <td style={approvalTableCellStyle}>
+                              {approver.approver_email}
+                            </td>
+                            <td style={approvalTableCellStyle}>
+                              {approver.is_required === false ? "No" : "Yes"}
+                            </td>
+                            <td style={approvalTableCellStyle}>
+                              {approver.approver_due_date || "Not set"}
+                            </td>
+                            <td style={approvalTableCellStyle}>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  removeMrbApprover(approver)
+                                }
+                              >
+                                Delete
+                              </button>
+                            </td>
+                          </tr>
+                        )
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              <div style={{ marginTop: "14px" }}>
+                <button
+                  type="button"
+                  onClick={submitForMrbApproval}
+                  disabled={
+                    mrbApprovers.length === 0 || submittingMrbApproval
+                  }
+                  style={{
+                    background: "#2563eb",
+                    color: "white",
+                    border: "none",
+                    borderRadius: "8px",
+                    padding: "10px 14px",
+                    fontWeight: 800,
+                    cursor:
+                      mrbApprovers.length === 0 || submittingMrbApproval
+                        ? "not-allowed"
+                        : "pointer",
+                    opacity:
+                      mrbApprovers.length === 0 || submittingMrbApproval
+                        ? 0.55
+                        : 1,
+                  }}
+                >
+                  {submittingMrbApproval
+                    ? "Submitting..."
+                    : "Submit for MRB Approval"}
+                </button>
+              </div>
+            </>
           )}
         </div>
-
-        {record.mrb_approved_by ? (
-          <div
-            style={{
-              marginTop: "12px",
-              border: "1px solid #86efac",
-              borderRadius: "8px",
-              padding: "12px",
-              background: "#f0fdf4",
-              color: "#166534",
-            }}
-          >
-            <strong>MRB Approval Complete</strong>
-            <br />
-            <strong>Required Reviewers:</strong>{" "}
-            {record.mrb_approved_by}
-            <br />
-            <strong>Completed At:</strong> {record.mrb_approved_at}
-            <br />
-            <strong>Approval Meaning:</strong>{" "}
-            {record.mrb_signature_meaning}
-          </div>
-        ) : hasRejectedMrbApprovalTask() ? (
-          <div
-            style={{
-              marginTop: "12px",
-              border: "1px solid #fca5a5",
-              borderRadius: "8px",
-              padding: "12px",
-              background: "#fef2f2",
-              color: "#991b1b",
-            }}
-          >
-            One or more required reviewers rejected the MRB package. The NCMR
-            owner must address the rejection before resubmitting.
-          </div>
-        ) : hasActiveMrbApprovalWorkflow() ? (
-          <div
-            style={{
-              marginTop: "12px",
-              border: "1px solid #bfdbfe",
-              borderRadius: "8px",
-              padding: "12px",
-              background: "#eff6ff",
-              color: "#1e3a8a",
-            }}
-          >
-            MRB approval is pending. The workflow advances when all required
-            reviewers approve.
-          </div>
-        ) : null}
 
         {hasReworkDisposition() && record.mrb_approved_by ? (
           <div
@@ -5417,35 +5352,6 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
           </div>
         ) : null}
 
-        <div
-          style={{
-            marginTop: "18px",
-            border: record?.mrb_approved_by ? "1px solid #86efac" : hasRejectedMrbApprovalTask() ? "1px solid #fca5a5" : "1px solid #bfdbfe",
-            borderRadius: "8px",
-            padding: "12px",
-            background: record?.mrb_approved_by ? "#f0fdf4" : hasRejectedMrbApprovalTask() ? "#fef2f2" : "#eff6ff",
-          }}
-        >
-          <h3 style={{ marginTop: 0 }}>MRB Approval Status</h3>
-          {record?.mrb_approved_by ? (
-            <p style={{ color: "#166534" }}>
-              All required MRB reviewers approved. Implementation is unlocked.
-            </p>
-          ) : hasRejectedMrbApprovalTask() ? (
-            <p style={{ color: "#991b1b" }}>
-              One or more required reviewers rejected the MRB package. Address
-              the rejection before resubmitting.
-            </p>
-          ) : (
-            <p style={{ color: "#1e3a8a" }}>
-              MRB approval remains pending until all required reviewers approve.
-            </p>
-          )}
-
-          <div style={{ fontSize: "13px", color: "#374151" }}>
-            Required approvals complete: {requiredMrbApprovalsComplete().length === 0 && hasActiveMrbApprovalWorkflow() ? "Yes" : "No"}
-          </div>
-        </div>
 
 
       </SectionCard>
