@@ -913,6 +913,15 @@ function getTaskUrl(task: any) {
   if (task.workspace_item_type === "owned_complaint") return `/complaints/${task.id}`;
   if (task.workspace_item_type === "owned_audit") return `/audits/${task.id}`;
 
+  /*
+   * Collaboration assignments must open the Collaboration Workspace directly.
+   * This check must remain above the normal entity routes so an NCMR
+   * collaboration task does not first open the parent NCMR workflow.
+   */
+  if (isCollaborationTask(task)) {
+    return getCollaborationTaskUrl(task);
+  }
+
   if (isCapaApprovalTask(task)) {
     const gate = getCapaGateFromTask(task);
     return `/capa/${task.entity_id}/approval-review?gate=${gate}&taskId=${task.id}`;
@@ -926,6 +935,38 @@ function getTaskUrl(task: any) {
   if (task.entity_type === "complaint") return `/complaints/${task.entity_id}`;
   if (task.entity_type === "audit") return `/audits/${task.entity_id}`;
   if (task.entity_type === "training") return `/training`;
+
+  return "/";
+}
+
+function isCollaborationTask(task: any) {
+  return (
+    task.workspace_item_type === "assigned_task" &&
+    String(task.task_type || "").trim().toLowerCase() === "collaboration_task"
+  );
+}
+
+function getCollaborationTaskUrl(task: any) {
+  const entityId = String(task.entity_id || "").trim();
+  const entityType = String(task.entity_type || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+
+  if (!entityId) return "/";
+
+  if (entityType === "ncmr") return `/ncmrs/${entityId}/collaboration`;
+  if (entityType === "capa") return `/capa/${entityId}/collaboration`;
+  if (entityType === "change_control") return `/change-control/${entityId}/collaboration`;
+  if (entityType === "document" || entityType === "controlled_document") {
+    return `/documents/${entityId}/collaboration`;
+  }
+  if (entityType === "scar") return `/supplier-quality/scars/${entityId}/collaboration`;
+  if (entityType === "complaint") return `/complaints/${entityId}/collaboration`;
+  if (entityType === "audit") return `/audits/${entityId}/collaboration`;
+  if (entityType === "oos_oot" || entityType === "oos" || entityType === "oot") {
+    return `/oos-oot/${entityId}/collaboration`;
+  }
 
   return "/";
 }
