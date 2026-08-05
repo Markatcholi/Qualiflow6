@@ -872,7 +872,15 @@ function matchesWorkspaceFilter(item: any, filter: WorkspaceFilter) {
 
 function isApprovalTask(task: any) {
   if (task.workspace_item_type !== "assigned_task") return false;
-  return String(task.task_type || "").toLowerCase().includes("approval");
+
+  if (isCapaApprovalTask(task) || isNcmrMrbApprovalTask(task)) {
+    return true;
+  }
+
+  return String(task.task_type || "")
+    .trim()
+    .toLowerCase()
+    .includes("approval");
 }
 
 function compareWorkspaceItems(a: any, b: any) {
@@ -925,6 +933,10 @@ function getTaskUrl(task: any) {
   if (isCapaApprovalTask(task)) {
     const gate = getCapaGateFromTask(task);
     return `/capa/${task.entity_id}/approval-review?gate=${gate}&taskId=${task.id}`;
+  }
+
+  if (isNcmrMrbApprovalTask(task)) {
+    return `/ncmrs/${task.entity_id}/approval-review?taskId=${task.id}`;
   }
 
   if (task.entity_type === "ncmr") return `/ncmrs/${task.entity_id}`;
@@ -996,10 +1008,26 @@ function getRecordDisplay(task: any) {
 }
 
 function getTaskName(task: any) {
-  if (task.workspace_item_type === "owned_capa") return getOwnedCapaWorkLabel(task);
-  if (task.workspace_item_type !== "assigned_task") return getGenericOwnedWorkLabel(task);
-  if (isCapaApprovalTask(task)) return getCapaApprovalLabel(task);
-  if (task.task_title) return cleanTaskTitle(task.task_title);
+  if (task.workspace_item_type === "owned_capa") {
+    return getOwnedCapaWorkLabel(task);
+  }
+
+  if (task.workspace_item_type !== "assigned_task") {
+    return getGenericOwnedWorkLabel(task);
+  }
+
+  if (isCapaApprovalTask(task)) {
+    return getCapaApprovalLabel(task);
+  }
+
+  if (isNcmrMrbApprovalTask(task)) {
+    return "MRB Approval";
+  }
+
+  if (task.task_title) {
+    return cleanTaskTitle(task.task_title);
+  }
+
   return formatTaskType(task.task_type);
 }
 
@@ -1102,6 +1130,16 @@ function isCapaApprovalTask(task: any) {
       "capa_effectiveness_plan_approval",
       "capa_closure_approval",
     ].includes(task.task_type)
+  );
+}
+
+function isNcmrMrbApprovalTask(task: any) {
+  return (
+    task.workspace_item_type === "assigned_task" &&
+    String(task.entity_type || "").trim().toLowerCase() === "ncmr" &&
+    ["mrb_approval", "ncmr_mrb_approval", "ncmr_mrb_review"].includes(
+      String(task.task_type || "").trim().toLowerCase()
+    )
   );
 }
 
