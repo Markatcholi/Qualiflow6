@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { supabase } from "../../../../lib/supabaseClient";
+import { SectionCard } from "../../../components/QualityWorkflowComponents";
 
 type Decision = "approved" | "rejected";
 
@@ -303,7 +304,7 @@ export default function NcmrMrbApprovalReviewPage() {
       }
 
       alert(`MRB review ${decision}.`);
-      window.location.href = "/my-approval-tasks";
+      window.location.href = "/workspace";
     } catch (error: any) {
       alert(error?.message || `Unable to ${verb} the MRB package.`);
       setSubmitting(false);
@@ -319,7 +320,7 @@ export default function NcmrMrbApprovalReviewPage() {
       <main style={pageStyle}>
         <h1>MRB Review Package</h1>
         <p>The requested review package could not be loaded.</p>
-        <Link href="/my-approval-tasks">Back to My Tasks</Link>
+        <Link href="/workspace">Back to My Workspace</Link>
       </main>
     );
   }
@@ -331,14 +332,15 @@ export default function NcmrMrbApprovalReviewPage() {
           <div style={eyebrowStyle}>QUALISPHERE ENTERPRISE APPROVAL ENGINE</div>
           <h1 style={{ margin: "6px 0" }}>MRB Review Package</h1>
           <p style={mutedStyle}>
-            Read-only review of the NCMR record through the MRB approval gate.
+            Locked, read-only presentation of the NCMR content submitted by the
+            owner through the MRB approval gate.
           </p>
         </div>
 
         <div style={headerActionStyle}>
           <StatusBadge value={task.status || "pending"} />
-          <Link href="/my-approval-tasks" style={secondaryLinkStyle}>
-            Back to My Tasks
+          <Link href="/workspace" style={secondaryLinkStyle}>
+            Back to My Workspace
           </Link>
         </div>
       </header>
@@ -346,111 +348,260 @@ export default function NcmrMrbApprovalReviewPage() {
       <section style={summaryGridStyle}>
         <Summary label="NCMR" value={record.ncmr_number || id} />
         <Summary label="Reviewer" value={task.assigned_to_email || "N/A"} />
-        <Summary label="Function / Job Title" value={task.required_function || "MRB Approval"} />
+        <Summary
+          label="Function / Job Title"
+          value={task.required_function || "MRB Approval"}
+        />
         <Summary label="Approve By" value={task.due_date || "Not set"} />
       </section>
 
-      <ReadOnlySection title="1. Record Summary">
-        <Field label="Issue Description" value={record.issue_description} wide />
-        <Field label="Owner" value={record.owner_email || record.owner} />
-        <Field label="Source" value={record.source} />
-        <Field label="Department" value={record.department} />
-        <Field label="Date Identified" value={record.date_identified || record.created_at} />
-      </ReadOnlySection>
+      <div style={lockedBannerStyle}>
+        <strong>Submitted MRB Package — Read Only</strong>
+        <div style={{ marginTop: "4px" }}>
+          The fields below mirror the owner workflow through MRB Approval.
+          Reviewer changes are not permitted.
+        </div>
+      </div>
 
-      <ReadOnlySection title="2. Affected Material">
+      <div style={ownerSummaryStyle}>
+        <h2 style={{ marginTop: 0 }}>Record Summary</h2>
+        <p style={readOnlyNoticeStyle}>
+          Record summary is locked for MRB review.
+        </p>
+
+        <OwnerField label="Issue Description" value={record.issue_description} multiline />
+        <OwnerField label="Owner" value={record.owner_email || record.owner} />
+
+        <p><strong>Severity:</strong> {formatValue(record.severity)}</p>
+        <p><strong>CAPA Required:</strong> {record.capa_required ? "Yes" : "No"}</p>
+        <p><strong>CAPA Recommended:</strong> {record.capa_recommended ? "Yes" : "No"}</p>
+        <p><strong>CAPA Decision:</strong> {formatValue(record.capa_decision)}</p>
+        <p>
+          <strong>CAPA Decision Justification:</strong>{" "}
+          {formatValue(
+            record.capa_decision_justification ||
+              record.capa_justification ||
+              record.capa_not_required_justification
+          )}
+        </p>
+        <p><strong>Status:</strong> {formatValue(record.status)}</p>
+      </div>
+
+      <SectionCard
+        title="1. Initiation"
+        subtitle="Submitted affected materials and initiation information."
+        defaultOpen={true}
+      >
+        <p style={readOnlyNoticeStyle}>
+          This section is the locked version of the initiation information
+          submitted by the NCMR owner.
+        </p>
+
+        <h3>Affected Materials / Multiple Parts and Lots</h3>
+
         {affectedItems.length === 0 ? (
-          <p style={mutedStyle}>No affected material rows were found.</p>
+          <p>No affected material items were recorded.</p>
         ) : (
-          <div style={{ display: "grid", gap: "10px" }}>
+          <div style={{ display: "grid", gap: "12px" }}>
             {affectedItems.map((item, index) => (
-              <div key={item.id || index} style={itemCardStyle}>
-                <strong>Affected Item {index + 1}</strong>
-                <div style={fieldGridStyle}>
-                  <Field label="Part Number" value={item.product_part_number} />
-                  <Field label="Part Description" value={item.part_description} />
-                  <Field label="Revision" value={item.part_revision} />
-                  <Field label="Lot Number" value={item.lot_number} />
-                  <Field label="Work Order" value={item.workorder_number} />
-                  <Field label="Quantity Affected" value={item.quantity_affected} />
-                  <Field label="Quantity Quarantined" value={item.quarantined_quantity} />
-                  <Field label="Disposition" value={item.product_disposition} />
-                  <Field label="Disposition Justification" value={item.disposition_justification} wide />
-                  <Field label="Quantity Accepted" value={item.quantity_accepted} />
-                  <Field label="Quantity Rejected" value={item.quantity_rejected} />
+              <div key={item.id || index} style={ownerItemCardStyle}>
+                <h4 style={{ marginTop: 0 }}>Affected Item {index + 1}</h4>
+
+                <div style={ownerGridStyle}>
+                  <OwnerField label="Part Number" value={item.product_part_number} />
+                  <OwnerField label="Part Description" value={item.part_description} />
+                  <OwnerField label="Part Revision" value={item.part_revision} />
+                  <OwnerField label="Lot Number" value={item.lot_number} />
+                  <OwnerField label="Work Order" value={item.workorder_number} />
+                  <OwnerField label="Quantity Affected" value={item.quantity_affected} />
+                  <OwnerField
+                    label="Quantity Quarantined"
+                    value={item.quarantined_quantity}
+                  />
                 </div>
               </div>
             ))}
           </div>
         )}
-      </ReadOnlySection>
+      </SectionCard>
 
-      <ReadOnlySection title="3. Investigation / Root Cause">
-        <Field label="Investigator" value={record.investigator} />
-        <Field label="Problem Statement" value={record.problem_description} wide />
-        <Field label="Investigation Summary" value={record.investigation_summary} wide />
-        <Field label="Root Cause Category" value={record.root_cause_category} />
-        <Field label="Root Cause Summary" value={record.root_cause} wide />
-      </ReadOnlySection>
+      <SectionCard
+        title="2. Containment"
+        subtitle="Submitted containment action."
+        defaultOpen={true}
+      >
+        <OwnerField
+          label="Containment Action"
+          value={record.containment_action}
+          multiline
+        />
+      </SectionCard>
 
-      <ReadOnlySection title="4. Risk Assessment">
-        <Field label="Severity" value={record.severity} />
-        <Field label="Risk Level / Assessment" value={riskLevel} wide />
-      </ReadOnlySection>
+      <SectionCard
+        title="3. Investigation / Root Cause"
+        subtitle="Submitted investigator, problem statement, investigation summary, and root cause."
+        defaultOpen={true}
+      >
+        <OwnerField label="Investigator" value={record.investigator} />
+        <OwnerField
+          label="Problem Statement"
+          value={record.problem_description}
+          multiline
+        />
+        <OwnerField
+          label="Investigation Summary"
+          value={record.investigation_summary}
+          multiline
+        />
+        <OwnerField
+          label="Root Cause Category"
+          value={record.root_cause_category}
+        />
+        <OwnerField label="Root Cause Summary" value={record.root_cause} multiline />
+      </SectionCard>
 
-      <ReadOnlySection title="5. Correction / Corrective Action Proposal">
-        <Field
+      <SectionCard
+        title="4. Correction / Corrective Action Proposal"
+        subtitle="Submitted correction and corrective-action recommendation."
+        defaultOpen={true}
+      >
+        <OwnerField
           label="Correction / Corrective Action Proposal"
           value={record.correction_action_proposal}
         />
-        <Field
+        <OwnerField
           label="Corrective Action Recommendation"
           value={record.corrective_action}
-          wide
+          multiline
         />
-      </ReadOnlySection>
+      </SectionCard>
 
-      <ReadOnlySection title="6. Product Disposition">
-        <Field
+      <SectionCard
+        title="5. Risk Assessment"
+        subtitle="Submitted severity and risk assessment."
+        defaultOpen={true}
+      >
+        <OwnerField label="Severity" value={record.severity} />
+        <OwnerField
+          label="Risk Assessment"
+          value={
+            record.risk_assessment ||
+            record.risk_level ||
+            record.risk_rating ||
+            riskLevel
+          }
+          multiline
+        />
+      </SectionCard>
+
+      <SectionCard
+        title="6. Product Disposition"
+        subtitle="Submitted overall and item-level disposition decisions."
+        defaultOpen={true}
+      >
+        <OwnerField
           label="Overall Product Disposition"
           value={record.product_disposition || record.disposition}
         />
-        <Field
-          label="Disposition Justification"
+        <OwnerField
+          label="Overall Disposition Justification"
           value={record.disposition_justification}
-          wide
+          multiline
         />
-      </ReadOnlySection>
 
-      <ReadOnlySection title="7. CAPA Governance">
-        <Field
-          label="CAPA Recommended"
-          value={record.capa_recommended ? "Yes" : "No"}
-        />
-        <Field label="CAPA Decision" value={record.capa_decision} />
-        <Field
+        <h3>Affected Item Dispositions</h3>
+        {affectedItems.map((item, index) => (
+          <div key={item.id || index} style={ownerItemCardStyle}>
+            <h4 style={{ marginTop: 0 }}>Affected Item {index + 1}</h4>
+            <div style={ownerGridStyle}>
+              <OwnerField label="Part Number" value={item.product_part_number} />
+              <OwnerField label="Lot Number" value={item.lot_number} />
+              <OwnerField
+                label="Item Disposition"
+                value={item.product_disposition}
+              />
+              <OwnerField
+                label="Quantity Accepted"
+                value={item.quantity_accepted}
+              />
+              <OwnerField
+                label="Quantity Rejected"
+                value={item.quantity_rejected}
+              />
+            </div>
+            <OwnerField
+              label="Disposition Justification"
+              value={item.disposition_justification}
+              multiline
+            />
+            {String(item.product_disposition || "").toLowerCase() === "rework" ? (
+              <div style={ownerGridStyle}>
+                <OwnerField
+                  label="Final Disposition After Rework"
+                  value={item.final_disposition_after_rework}
+                />
+                <OwnerField
+                  label="Final Rework Quantity Accepted"
+                  value={item.final_rework_quantity_accepted}
+                />
+                <OwnerField
+                  label="Final Rework Quantity Rejected"
+                  value={item.final_rework_quantity_rejected}
+                />
+              </div>
+            ) : null}
+          </div>
+        ))}
+      </SectionCard>
+
+      <SectionCard
+        title="7. CAPA Governance"
+        subtitle="Submitted CAPA governance decision and justification."
+        defaultOpen={true}
+      >
+        <p><strong>CAPA Recommended:</strong> {record.capa_recommended ? "Yes" : "No"}</p>
+        <p><strong>CAPA Decision:</strong> {formatValue(record.capa_decision)}</p>
+        <OwnerField
           label="CAPA Decision Justification"
           value={
             record.capa_decision_justification ||
-            record.capa_not_required_justification
+            record.capa_not_required_justification ||
+            record.capa_justification
           }
-          wide
+          multiline
         />
-      </ReadOnlySection>
+      </SectionCard>
 
-      <ReadOnlySection title="8. Supplier Governance">
-        <Field label="Supplier" value={record.supplier_name} />
-        <Field label="Supplier ID" value={record.supplier_id} />
-        <Field label="SCAR Recommended" value={record.scar_recommended ? "Yes" : "No"} />
-        <Field label="SCAR Justification" value={record.scar_justification} wide />
-      </ReadOnlySection>
+      <SectionCard
+        title="8. Supplier / SCAR Governance"
+        subtitle="Submitted supplier and SCAR governance information."
+        defaultOpen={true}
+      >
+        <div style={ownerGridStyle}>
+          <OwnerField label="Supplier" value={record.supplier_name} />
+          <OwnerField label="Supplier ID" value={record.supplier_id} />
+          <OwnerField
+            label="SCAR Recommended"
+            value={record.scar_recommended ? "Yes" : "No"}
+          />
+        </div>
+        <OwnerField
+          label="SCAR Justification"
+          value={record.scar_justification}
+          multiline
+        />
+      </SectionCard>
 
-      <ReadOnlySection title="9. MRB Approval Decision">
-        <p style={mutedStyle}>
-          Review only the information shown above. Downstream implementation,
-          rework execution, verification, and closure sections are intentionally
-          excluded from this approval package.
-        </p>
+      <SectionCard
+        title="9. MRB Approval"
+        subtitle="Reviewer decision for the submitted MRB package."
+        defaultOpen={true}
+      >
+        <div style={decisionNoticeStyle}>
+          Review the locked content above. Implementation, evidence, rework
+          execution, verification, and closure are not part of this approval
+          package.
+        </div>
 
         <label style={labelStyle}>Reviewer Comment</label>
         <textarea
@@ -472,6 +623,7 @@ export default function NcmrMrbApprovalReviewPage() {
             >
               {submitting ? "Submitting..." : "Approve MRB"}
             </button>
+
             <button
               type="button"
               onClick={() => submitDecision("rejected")}
@@ -492,42 +644,49 @@ export default function NcmrMrbApprovalReviewPage() {
             <strong>Comment:</strong> {task.approver_comment || "N/A"}
           </div>
         )}
-      </ReadOnlySection>
+      </SectionCard>
     </main>
   );
 }
 
-function ReadOnlySection({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section style={sectionStyle}>
-      <h2 style={{ marginTop: 0 }}>{title}</h2>
-      <div style={fieldGridStyle}>{children}</div>
-    </section>
-  );
-}
-
-function Field({
+function OwnerField({
   label,
   value,
-  wide = false,
+  multiline = false,
 }: {
   label: string;
   value: any;
-  wide?: boolean;
+  multiline?: boolean;
 }) {
+  const displayValue =
+    value === null || value === undefined || value === ""
+      ? "N/A"
+      : String(value);
+
   return (
-    <div style={wide ? wideFieldStyle : fieldStyle}>
-      <div style={fieldLabelStyle}>{label}</div>
-      <div style={fieldValueStyle}>{formatValue(value)}</div>
+    <div style={{ marginBottom: "12px" }}>
+      <label style={{ fontWeight: 700 }}>{label}</label>
+      <br />
+      {multiline ? (
+        <textarea
+          value={displayValue}
+          readOnly
+          disabled
+          rows={4}
+          style={ownerTextareaStyle}
+        />
+      ) : (
+        <input
+          value={displayValue}
+          readOnly
+          disabled
+          style={ownerInputStyle}
+        />
+      )}
     </div>
   );
 }
+
 
 function Summary({ label, value }: { label: string; value: any }) {
   return (
@@ -759,6 +918,77 @@ const badgeStyle: React.CSSProperties = {
   borderRadius: "999px",
   padding: "6px 10px",
   fontWeight: 900,
+};
+
+
+const lockedBannerStyle: React.CSSProperties = {
+  border: "1px solid #93c5fd",
+  background: "#eff6ff",
+  color: "#1e3a8a",
+  borderRadius: "10px",
+  padding: "12px",
+  marginBottom: "16px",
+};
+
+const ownerSummaryStyle: React.CSSProperties = {
+  marginBottom: "20px",
+  padding: "12px",
+  border: "1px solid #cbd5e1",
+  borderRadius: "10px",
+  background: "#ffffff",
+};
+
+const readOnlyNoticeStyle: React.CSSProperties = {
+  color: "#6b7280",
+  fontSize: "14px",
+};
+
+const ownerGridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+  gap: "12px",
+};
+
+const ownerItemCardStyle: React.CSSProperties = {
+  border: "1px solid #d1d5db",
+  borderRadius: "10px",
+  padding: "12px",
+  background: "#ffffff",
+};
+
+const ownerInputStyle: React.CSSProperties = {
+  width: "100%",
+  maxWidth: "600px",
+  padding: "8px",
+  boxSizing: "border-box",
+  color: "#111827",
+  background: "#f3f4f6",
+  border: "1px solid #d1d5db",
+  borderRadius: "6px",
+  opacity: 1,
+};
+
+const ownerTextareaStyle: React.CSSProperties = {
+  width: "100%",
+  maxWidth: "100%",
+  padding: "8px",
+  boxSizing: "border-box",
+  color: "#111827",
+  background: "#f3f4f6",
+  border: "1px solid #d1d5db",
+  borderRadius: "6px",
+  opacity: 1,
+  resize: "vertical",
+};
+
+const decisionNoticeStyle: React.CSSProperties = {
+  border: "1px solid #bfdbfe",
+  background: "#eff6ff",
+  color: "#1e3a8a",
+  borderRadius: "8px",
+  padding: "10px",
+  marginBottom: "14px",
+  lineHeight: 1.5,
 };
 
 const completedPanelStyle: React.CSSProperties = {
