@@ -169,6 +169,45 @@ export default function NcmrMrbApprovalReviewPage() {
       .eq("approver_email", normalizedUserEmail);
   };
 
+  const closeRejectedMrbApprovalCycle = async () => {
+    const cancellationComment = `Cancelled because ${userEmail || "an MRB reviewer"} rejected the MRB approval package.`;
+
+    const { error: cancelTaskError } = await supabase
+      .from("approval_tasks")
+      .update({
+        status: "cancelled",
+        comments: cancellationComment,
+      })
+      .eq("entity_type", "ncmr")
+      .eq("entity_id", id)
+      .eq("task_type", "mrb_approval")
+      .eq("status", "pending")
+      .neq("id", task?.id || "");
+
+    if (cancelTaskError) {
+      throw new Error(cancelTaskError.message);
+    }
+
+    const { error: cancelApproverError } = await supabase
+      .from("ncmr_mrb_approvers")
+      .update({
+        approval_status: "cancelled",
+        approver_comment: cancellationComment,
+      })
+      .eq("ncmr_id", id)
+      .in("approval_status", ["configured", "submitted", "pending"])
+      .neq("approver_email", normalizedUserEmail);
+
+    if (cancelApproverError) {
+      throw new Error(cancelApproverError.message);
+    }
+
+    await addAuditLog(
+      "mrb_approval_cycle_returned",
+      `MRB approval cycle returned to the owner after rejection by ${userEmail}. Remaining pending reviewer tasks were cancelled. Rejection rationale: ${reviewerComment.trim()}.`
+    );
+  };
+
   const completeMrbIfReady = async () => {
     const { data: currentTasks, error } = await supabase
       .from("approval_tasks")
@@ -286,17 +325,27 @@ export default function NcmrMrbApprovalReviewPage() {
       );
 
       if (decision === "rejected") {
-        await supabase
+        await closeRejectedMrbApprovalCycle();
+
+        const { error: recordUpdateError } = await supabase
           .from("ncmrs")
           .update({
             review_status: "rejected",
+            mrb_approved_by: null,
+            mrb_approved_at: null,
+            mrb_signature_email_entered: null,
+            mrb_signature_meaning: null,
           })
           .eq("id", id);
+
+        if (recordUpdateError) {
+          throw new Error(recordUpdateError.message);
+        }
 
         await notifyOwner(
           "ncmr_mrb_rejected",
           `MRB review rejected: ${record?.ncmr_number || "NCMR"}`,
-          `${userEmail} rejected the MRB package. Rationale: ${reviewerComment.trim()}`,
+          `${userEmail} rejected the MRB package. Rationale: ${reviewerComment.trim()}. The approval cycle has been returned for revision and resubmission.`,
           "high"
         );
       } else {
