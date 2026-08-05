@@ -2201,6 +2201,7 @@ This approval task was created by the MRB approval task issue recovery action. E
             message: `An MRB approval task for ${record?.ncmr_number || "this NCMR"} is waiting in My Workspace.`,
             severityLevel: severity === "critical" ? "critical" : severity === "major" ? "high" : "info",
             assignedRole: task.required_function || "MRB Approver",
+            relatedUrl: "/workspace",
           })
         )
       );
@@ -6476,4 +6477,3 @@ const approvalTableCellStyle: React.CSSProperties = {
   padding: "8px",
   verticalAlign: "top",
 };
-
