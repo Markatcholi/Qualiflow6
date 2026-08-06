@@ -292,7 +292,7 @@ export default function NcmrDetailPage() {
 
   const fetchMrbApprovers = async () => {
     const { data, error } = await supabase
-      .from("ncmr_mrb_approvers")
+      .from("ncmr_mrb_reviewers")
       .select("*")
       .eq("ncmr_id", id)
       .order("approval_order", { ascending: true, nullsFirst: false })
@@ -1441,7 +1441,7 @@ export default function NcmrDetailPage() {
 
   const loadMrbApproversFromMatrix = async () => {
     if (isMrbApprovalConfigurationLocked()) {
-      alert("MRB approval configuration cannot be changed while an active MRB approval package exists. Use Reset MRB Approval Workflow first if configuration changes are needed.");
+      alert("MRB approval configuration cannot be changed while the current MRB approval package is pending.");
       return;
     }
 
@@ -1465,16 +1465,20 @@ export default function NcmrDetailPage() {
     }
 
     const confirmed = window.confirm(
-      "Load approvers from this approval matrix? Existing pending MRB approver configuration rows will be replaced."
+      "Load approvers from this approval matrix? The current editable MRB reviewer configuration will be replaced. Historical approval tasks will not be changed."
     );
 
     if (!confirmed) return;
 
-    await supabase
-      .from("ncmr_mrb_approvers")
+    const { error: replaceConfigurationError } = await supabase
+      .from("ncmr_mrb_reviewers")
       .delete()
-      .eq("ncmr_id", id)
-      .eq("approval_status", "pending");
+      .eq("ncmr_id", id);
+
+    if (replaceConfigurationError) {
+      alert(replaceConfigurationError.message);
+      return;
+    }
 
     const rowsToInsert = matrixRows.map((row: any, index: number) => ({
       ncmr_id: id,
@@ -1492,7 +1496,7 @@ export default function NcmrDetailPage() {
       signature_meaning: "MRB approval requested from approval matrix.",
     }));
 
-    const { error } = await supabase.from("ncmr_mrb_approvers").insert(rowsToInsert);
+    const { error } = await supabase.from("ncmr_mrb_reviewers").insert(rowsToInsert);
 
     if (error) {
       alert(error.message);
@@ -1510,7 +1514,7 @@ export default function NcmrDetailPage() {
 
   const addManualMrbApprover = async () => {
     if (isMrbApprovalConfigurationLocked()) {
-      alert("Approvers cannot be changed after the MRB approval package is submitted.");
+      alert("Approvers cannot be changed while the current MRB approval package is pending.");
       return;
     }
 
@@ -1570,7 +1574,7 @@ export default function NcmrDetailPage() {
           ) + 1
         : 1;
 
-    const { error } = await supabase.from("ncmr_mrb_approvers").insert({
+    const { error } = await supabase.from("ncmr_mrb_reviewers").insert({
       ncmr_id: id,
       approver_email: normalizedManualEmail,
       approver_function: approverFunction,
@@ -1605,7 +1609,7 @@ export default function NcmrDetailPage() {
 
   const removeMrbApprover = async (approver: any) => {
     if (isMrbApprovalConfigurationLocked()) {
-      alert("MRB approval configuration cannot be changed while an active MRB approval package exists. Use Reset MRB Approval Workflow first if configuration changes are needed.");
+      alert("MRB approval configuration cannot be changed while the current MRB approval package is pending.");
       return;
     }
 
@@ -1627,7 +1631,7 @@ export default function NcmrDetailPage() {
 
     if (approver?.id) {
       const { data, error } = await supabase
-        .from("ncmr_mrb_approvers")
+        .from("ncmr_mrb_reviewers")
         .delete()
         .eq("id", approver.id)
         .select("id");
@@ -1642,7 +1646,7 @@ export default function NcmrDetailPage() {
 
     if (removedCount === 0 && approverEmail) {
       let deleteQuery = supabase
-        .from("ncmr_mrb_approvers")
+        .from("ncmr_mrb_reviewers")
         .delete()
         .eq("ncmr_id", id)
         .eq("approver_email", approverEmail);
@@ -1748,25 +1752,9 @@ export default function NcmrDetailPage() {
       .update({
         risk_assessment: riskAssessment,
         severity,
-        product_disposition:
-          productDisposition ||
-          record?.product_disposition ||
-          record?.disposition ||
-          null,
-        disposition:
-          productDisposition ||
-          record?.product_disposition ||
-          record?.disposition ||
-          null,
-        disposition_justification:
-          dispositionJustification ||
-          record?.disposition_justification ||
-          null,
-        review_status: "pending_approval",
-        mrb_approved_by: null,
-        mrb_approved_at: null,
-        mrb_signature_email_entered: null,
-        mrb_signature_meaning: null,
+        product_disposition: productDisposition || record?.product_disposition || record?.disposition || null,
+        disposition: productDisposition || record?.product_disposition || record?.disposition || null,
+        disposition_justification: dispositionJustification || record?.disposition_justification || null,
       })
       .eq("id", id);
 
@@ -1891,9 +1879,12 @@ This approval becomes part of the official electronic quality record. MRB approv
       );
     }
 
-    await supabase
-      .from("ncmr_mrb_approvers")
-      .update({ approval_status: "submitted" })
+    const { error: reviewerStatusError } = await supabase
+      .from("ncmr_mrb_reviewers")
+      .update({
+        approval_status: "submitted",
+        updated_at: new Date().toISOString(),
+      })
       .eq("ncmr_id", id)
       .in(
         "approver_email",
@@ -1901,6 +1892,12 @@ This approval becomes part of the official electronic quality record. MRB approv
           normalizeApproverEmail(approver.approver_email)
         )
       );
+
+    if (reviewerStatusError) {
+      alert(reviewerStatusError.message);
+      setSubmittingMrbApproval(false);
+      return;
+    }
 
     await addAuditLog(
       "mrb_submitted_for_approval",
@@ -1940,25 +1937,18 @@ This approval becomes part of the official electronic quality record. MRB approv
     );
   };
 
-  const getLatestMrbApprovalBoundaryAt = () => {
-    const boundaryEvents = auditTimeline
-      .filter((item: any) =>
-        [
-          "mrb_approval_workflow_reset",
-          "mrb_approval_cycle_returned",
-        ].includes(String(item.action || ""))
-      )
+  const getLatestMrbApprovalResetAt = () => {
+    const resetEvents = auditTimeline
+      .filter((item: any) => item.action === "mrb_approval_workflow_reset")
       .map((item: any) => item.created_at)
       .filter(Boolean)
       .sort();
 
-    return boundaryEvents.length > 0
-      ? boundaryEvents[boundaryEvents.length - 1]
-      : null;
+    return resetEvents.length > 0 ? resetEvents[resetEvents.length - 1] : null;
   };
 
   const getActiveMrbApprovalTasks = () => {
-    const latestBoundaryAt = getLatestMrbApprovalBoundaryAt();
+    const latestResetAt = getLatestMrbApprovalResetAt();
 
     return approvalTasks
       .filter((approvalTask: any) => approvalTask.task_type === "mrb_approval")
@@ -1968,20 +1958,14 @@ This approval becomes part of the official electronic quality record. MRB approv
           approvalTask.status !== "obsolete"
       )
       .filter((approvalTask: any) => {
-        if (!latestBoundaryAt) return true;
+        if (!latestResetAt) return true;
         if (!approvalTask.created_at) return false;
-
-        return (
-          new Date(approvalTask.created_at).getTime() >
-          new Date(latestBoundaryAt).getTime()
-        );
+        return new Date(approvalTask.created_at).getTime() > new Date(latestResetAt).getTime();
       });
   };
 
   const hasActiveMrbApprovalWorkflow = () => {
-    return getActiveMrbApprovalTasks().some(
-      (task: any) => String(task.status || "").toLowerCase() === "pending"
-    );
+    return getActiveMrbApprovalTasks().length > 0;
   };
 
   const hasPendingMrbApprovalTasks = () => {
@@ -1993,10 +1977,14 @@ This approval becomes part of the official electronic quality record. MRB approv
   const isMrbApprovalConfigurationLocked = () => {
     if (record?.is_locked || record?.mrb_approved_by) return true;
 
-    // Only a currently pending MRB package locks configuration.
-    // Rejected, cancelled, obsolete, and historical tasks remain part of the
-    // audit trail but must not prevent owner revision and resubmission.
-    return hasPendingMrbApprovalTasks();
+    // Configuration is locked only when there are active non-cancelled MRB approval tasks
+    // in the current approval package. Cancelled/obsolete/history tasks must not lock config.
+    return getActiveMrbApprovalTasks().some(
+      (task: any) =>
+        task.status === "pending" ||
+        task.status === "approved" ||
+        task.status === "rejected"
+    );
   };
 
   const fixMrbApprovalTaskIssues = async () => {
@@ -2143,7 +2131,7 @@ This approval becomes part of the official electronic quality record. MRB approv
 
     if (approverRowIdsToRemove.length > 0) {
       const { error: approverCleanupError } = await supabase
-        .from("ncmr_mrb_approvers")
+        .from("ncmr_mrb_reviewers")
         .delete()
         .in("id", approverRowIdsToRemove);
 
@@ -2320,10 +2308,10 @@ This approval task was created by the MRB approval task issue recovery action. E
   };
 
   const hasRejectedMrbApprovalTask = () => {
-    return (
-      String(record?.review_status || "").toLowerCase() === "rejected" &&
-      !hasPendingMrbApprovalTasks() &&
-      !record?.mrb_approved_by
+    return getActiveMrbApprovalTasks().some(
+      (approvalTask) =>
+        approvalTask.task_type === "mrb_approval" &&
+        approvalTask.status === "rejected"
     );
   };
 
@@ -3401,7 +3389,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
       }));
 
       const { error: approverError } = await supabase
-        .from("ncmr_mrb_approvers")
+        .from("ncmr_mrb_reviewers")
         .insert(approverRows);
 
       if (approverError) {
@@ -4993,6 +4981,23 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
                 Implementation is unlocked.
               </p>
             </div>
+          ) : hasRejectedMrbApprovalTask() ? (
+            <div
+              style={{
+                border: "1px solid #fca5a5",
+                borderRadius: "10px",
+                padding: "14px",
+                background: "#fef2f2",
+                color: "#991b1b",
+              }}
+            >
+              <strong>MRB Approval Rejected</strong>
+              <p style={{ margin: "6px 0 0" }}>
+                A required reviewer rejected the submitted MRB package. Review
+                the rejection notification and comments, revise the applicable
+                NCMR information, and prepare a new approval submission.
+              </p>
+            </div>
           ) : hasActiveMrbApprovalWorkflow() ? (
             <div
               style={{
@@ -5011,27 +5016,6 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
             </div>
           ) : (
             <>
-              {hasRejectedMrbApprovalTask() ? (
-                <div
-                  style={{
-                    border: "1px solid #fca5a5",
-                    borderRadius: "10px",
-                    padding: "14px",
-                    background: "#fef2f2",
-                    color: "#991b1b",
-                    marginBottom: "14px",
-                  }}
-                >
-                  <strong>MRB Approval Rejected — Returned for Revision</strong>
-                  <p style={{ margin: "6px 0 0" }}>
-                    The prior approval cycle is complete and preserved in the
-                    audit history. Revise the applicable NCMR information,
-                    confirm or update the reviewer configuration below, and
-                    submit a new MRB approval package.
-                  </p>
-                </div>
-              ) : null}
-
               <p style={{ color: "#4b5563", fontSize: "14px" }}>
                 Select an approval matrix or add reviewers manually. When the
                 reviewer list is complete, submit the MRB package for approval.
