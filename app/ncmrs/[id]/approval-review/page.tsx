@@ -340,6 +340,140 @@ export default function NcmrMrbApprovalReviewPage() {
     }
   };
 
+  const evaluateCapaGovernanceForReview = () => {
+    const severityValue = String(record?.severity || "").toLowerCase();
+    const isCritical = severityValue.includes("critical");
+    const isMajor = severityValue.includes("major");
+    const isMinor = severityValue.includes("minor");
+
+    const hasRecurrence =
+      record?.recurring_issue === true ||
+      String(record?.recurrence_reason || "")
+        .toLowerCase()
+        .includes("recurr");
+
+    const signals: string[] = [];
+
+    if (isCritical) {
+      signals.push("Critical severity identified.");
+    } else if (isMajor) {
+      signals.push("Major severity identified.");
+    } else if (isMinor) {
+      signals.push("Minor severity identified.");
+    } else {
+      signals.push("Severity not assessed.");
+    }
+
+    signals.push(
+      hasRecurrence
+        ? "Recurring NCMR detected."
+        : "No recurrence detected."
+    );
+
+    if (isCritical) {
+      return {
+        outcome: "required",
+        label: "CAPA Required",
+        rationale:
+          "CAPA is required because critical severity was identified. If CAPA is not initiated, a documented risk-based justification is required.",
+        signals,
+      };
+    }
+
+    if (isMajor) {
+      return {
+        outcome: "recommended",
+        label: "CAPA Recommended",
+        rationale:
+          "CAPA is recommended because major severity was identified. If CAPA is not initiated, a documented risk-based justification is required.",
+        signals,
+      };
+    }
+
+    if (hasRecurrence) {
+      return {
+        outcome: "recommended",
+        label: "CAPA Recommended",
+        rationale:
+          "CAPA is recommended because NCMR recurrence was detected. If CAPA is not initiated, a documented risk-based justification is required.",
+        signals,
+      };
+    }
+
+    return {
+      outcome: "not_required",
+      label: "CAPA Not Required",
+      rationale:
+        "CAPA is not required because the NCMR is not recurring and severity is not major or critical. If CAPA is opened, document the business or quality justification for the governance override.",
+      signals,
+    };
+  };
+
+  const formatCapaEvaluationOutcomeForReview = (
+    outcome: string | null | undefined
+  ) => {
+    const calculated = evaluateCapaGovernanceForReview();
+
+    switch (outcome) {
+      case "required":
+        return "CAPA Required";
+      case "recommended":
+        return "CAPA Recommended";
+      case "not_required":
+        return "CAPA Not Required";
+      case "capa_opened":
+        return "CAPA Opened";
+      case "not_opened_with_justification":
+        return "CAPA Not Opened - Justification Documented";
+      default:
+        return outcome || calculated.label;
+    }
+  };
+
+  const evaluateScarGovernanceForReview = () => {
+    const supplierPartRecorded =
+      Boolean(record?.product_part_number) ||
+      affectedItems.some((item: any) => Boolean(item.product_part_number));
+
+    const supplierRecurrence =
+      record?.recurring_issue === true ||
+      record?.supplier_capa_required === true ||
+      record?.supplier_scar_required === true ||
+      String(record?.recurrence_reason || "")
+        .toLowerCase()
+        .includes("recurr") ||
+      String(record?.supplier_capa_reason || "")
+        .toLowerCase()
+        .includes("recurr") ||
+      String(record?.supplier_scar_reason || "")
+        .toLowerCase()
+        .includes("recurr") ||
+      String(record?.scar_reason || "")
+        .toLowerCase()
+        .includes("recurr");
+
+    const triggers = [
+      `${supplierPartRecorded ? "✓" : "✗"} Supplier Part Recorded`,
+      `${supplierRecurrence ? "✓" : "✗"} Supplier Recurrence Detected`,
+    ];
+
+    if (supplierPartRecorded && supplierRecurrence) {
+      return {
+        label: "SCAR Recommended",
+        rationale:
+          "SCAR is recommended because supplier part has been recorded and supplier recurrence has been detected.",
+        triggers,
+      };
+    }
+
+    return {
+      label: "SCAR Not Required",
+      rationale:
+        "SCAR is not automatically required because both supplier governance criteria have not been met. Supplier Part Recorded and Supplier Recurrence Detected are required for an automatic SCAR recommendation.",
+      triggers,
+    };
+  };
+
   if (loading) {
     return <main style={pageStyle}>Loading MRB review package...</main>;
   }
@@ -585,40 +719,181 @@ export default function NcmrMrbApprovalReviewPage() {
 
       <SectionCard
         title="7. CAPA Governance"
-        subtitle="Submitted CAPA governance decision and justification."
+        subtitle={
+          record?.linked_capa_id || record?.capa_id
+            ? "Complete: linked CAPA exists."
+            : record?.capa_not_required_justification
+              ? "Complete: CAPA not-required justification documented."
+              : "Evaluate whether CAPA is required based on recurrence, severity, risk, or governance rules."
+        }
         defaultOpen={true}
       >
-        <p><strong>CAPA Recommended:</strong> {record.capa_recommended ? "Yes" : "No"}</p>
-        <p><strong>CAPA Decision:</strong> {formatValue(record.capa_decision)}</p>
-        <OwnerField
-          label="CAPA Decision Justification"
-          value={
-            record.capa_decision_justification ||
-            record.capa_not_required_justification ||
-            record.capa_justification
-          }
-          multiline
-        />
+        {(() => {
+          const evaluation = evaluateCapaGovernanceForReview();
+
+          return (
+            <>
+              <div style={governancePanelStyle}>
+                <h3 style={{ marginTop: 0 }}>Governance Decision Support</h3>
+                <p style={governanceHelpStyle}>
+                  CAPA decisions are supported by the governance signal and
+                  documented quality judgment.
+                </p>
+
+                <div style={governanceGridStyle}>
+                  <div>
+                    <strong>Governance Decision:</strong>{" "}
+                    <GovernanceBadge
+                      value={formatCapaEvaluationOutcomeForReview(
+                        record?.capa_evaluation_outcome
+                      )}
+                    />
+                  </div>
+
+                  <div>
+                    <strong>Rationale:</strong>{" "}
+                    {record?.capa_evaluation_rationale || evaluation.rationale}
+                  </div>
+
+                  <div>
+                    <strong>CAPA Governance Signal:</strong>{" "}
+                    {evaluation.signals.join(" ") ||
+                      "No CAPA governance signal identified."}
+                  </div>
+                </div>
+              </div>
+
+              {record?.linked_capa_id || record?.capa_id ? (
+                <div style={linkedRecordPanelStyle}>
+                  <strong>Linked CAPA:</strong>{" "}
+                  <Link
+                    href={`/capa/${record?.linked_capa_id || record?.capa_id}`}
+                  >
+                    Open Linked CAPA
+                  </Link>
+                </div>
+              ) : (
+                <>
+                  <div style={disabledActionRowStyle}>
+                    <button type="button" disabled>
+                      Save CAPA Evaluation
+                    </button>
+                    <button type="button" disabled>
+                      Create Linked CAPA
+                    </button>
+                  </div>
+
+                  <OwnerField
+                    label="Risk-Based Justification if CAPA is Not Opened"
+                    value={
+                      record?.capa_not_required_justification ||
+                      record?.capa_decision_justification ||
+                      record?.capa_justification
+                    }
+                    multiline
+                  />
+
+                  <button type="button" disabled>
+                    Save No-CAPA Justification
+                  </button>
+                </>
+              )}
+
+              {record?.capa_not_required_justification ? (
+                <div style={savedJustificationStyle}>
+                  <strong>Saved No-CAPA Justification:</strong>{" "}
+                  {record.capa_not_required_justification}
+                </div>
+              ) : null}
+            </>
+          );
+        })()}
       </SectionCard>
 
       <SectionCard
         title="8. Supplier / SCAR Governance"
-        subtitle="Submitted supplier and SCAR governance information."
+        subtitle={
+          record?.linked_scar_id
+            ? "Complete: linked SCAR exists for supplier governance."
+            : record?.scar_justification
+              ? "Complete: no-SCAR justification documented."
+              : "Evaluate SCAR using supplier part recorded and supplier recurrence detected."
+        }
         defaultOpen={true}
       >
-        <div style={ownerGridStyle}>
-          <OwnerField label="Supplier" value={record.supplier_name} />
-          <OwnerField label="Supplier ID" value={record.supplier_id} />
-          <OwnerField
-            label="SCAR Recommended"
-            value={record.scar_recommended ? "Yes" : "No"}
-          />
-        </div>
-        <OwnerField
-          label="SCAR Justification"
-          value={record.scar_justification}
-          multiline
-        />
+        {(() => {
+          const evaluation = evaluateScarGovernanceForReview();
+
+          return (
+            <>
+              <div style={governancePanelStyle}>
+                <h3 style={{ marginTop: 0 }}>Supplier Governance</h3>
+                <p style={governanceHelpStyle}>
+                  SCAR should be created through supplier risk-based decision
+                  making, not automatic supplier linkage alone.
+                </p>
+
+                <div style={governanceGridStyle}>
+                  <div>
+                    <strong>Governance Decision:</strong>{" "}
+                    <GovernanceBadge value={evaluation.label} />
+                  </div>
+
+                  <div>
+                    <strong>Rationale:</strong> {evaluation.rationale}
+                  </div>
+
+                  <div style={signalPanelStyle}>
+                    <strong>SCAR Governance Signal</strong>
+                    <ul style={{ marginBottom: 0 }}>
+                      {evaluation.triggers.map(
+                        (trigger: string, index: number) => (
+                          <li key={index}>{trigger}</li>
+                        )
+                      )}
+                    </ul>
+                  </div>
+                </div>
+              </div>
+
+              {record?.linked_scar_id ? (
+                <div style={linkedRecordPanelStyle}>
+                  <strong>Linked SCAR:</strong>{" "}
+                  <Link
+                    href={`/supplier-quality/scars/${record.linked_scar_id}`}
+                  >
+                    Open Linked SCAR
+                  </Link>
+                </div>
+              ) : (
+                <>
+                  <div style={disabledActionRowStyle}>
+                    <button type="button" disabled>
+                      Create Linked SCAR
+                    </button>
+                  </div>
+
+                  <OwnerField
+                    label="Risk-Based Justification if SCAR is Not Opened"
+                    value={record?.scar_justification}
+                    multiline
+                  />
+
+                  <button type="button" disabled>
+                    Save SCAR Justification
+                  </button>
+                </>
+              )}
+
+              {record?.scar_justification ? (
+                <div style={savedJustificationStyle}>
+                  <strong>Saved SCAR Justification:</strong>{" "}
+                  {record.scar_justification}
+                </div>
+              ) : null}
+            </>
+          );
+        })()}
       </SectionCard>
 
       <SectionCard
@@ -748,6 +1023,14 @@ function StatusBadge({ value }: { value: string }) {
       }}
     >
       {formatValue(value)}
+    </span>
+  );
+}
+
+function GovernanceBadge({ value }: { value: string }) {
+  return (
+    <span style={governanceBadgeStyle}>
+      {value || "Not Assessed"}
     </span>
   );
 }
@@ -1018,6 +1301,63 @@ const decisionNoticeStyle: React.CSSProperties = {
   padding: "10px",
   marginBottom: "14px",
   lineHeight: 1.5,
+};
+
+const governancePanelStyle: React.CSSProperties = {
+  border: "1px solid #d1d5db",
+  borderRadius: "10px",
+  padding: "12px",
+  background: "#f9fafb",
+  marginBottom: "14px",
+};
+
+const governanceHelpStyle: React.CSSProperties = {
+  color: "#4b5563",
+  fontSize: "14px",
+};
+
+const governanceGridStyle: React.CSSProperties = {
+  display: "grid",
+  gap: "8px",
+  maxWidth: "900px",
+};
+
+const governanceBadgeStyle: React.CSSProperties = {
+  display: "inline-block",
+  border: "1px solid #d1d5db",
+  borderRadius: "999px",
+  padding: "3px 10px",
+  fontSize: "12px",
+  fontWeight: 700,
+  background: "#ffffff",
+};
+
+const signalPanelStyle: React.CSSProperties = {
+  border: "1px solid #bfdbfe",
+  background: "#eff6ff",
+  padding: "12px",
+  borderRadius: "8px",
+  marginTop: "4px",
+};
+
+const linkedRecordPanelStyle: React.CSSProperties = {
+  border: "1px solid #86efac",
+  background: "#f0fdf4",
+  borderRadius: "10px",
+  padding: "12px",
+  marginBottom: "14px",
+};
+
+const disabledActionRowStyle: React.CSSProperties = {
+  display: "flex",
+  gap: "8px",
+  flexWrap: "wrap",
+  marginBottom: "14px",
+};
+
+const savedJustificationStyle: React.CSSProperties = {
+  marginTop: "12px",
+  color: "#374151",
 };
 
 const completedPanelStyle: React.CSSProperties = {
