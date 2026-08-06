@@ -1739,6 +1739,48 @@ export default function NcmrDetailPage() {
 
     setSubmittingMrbApproval(true);
 
+    const { data: existingPendingTasks, error: pendingTaskCheckError } =
+      await supabase
+        .from("approval_tasks")
+        .select("id, assigned_to_email, required_function, status, created_at")
+        .eq("entity_type", "ncmr")
+        .eq("entity_id", id)
+        .eq("task_type", "mrb_approval")
+        .eq("status", "pending");
+
+    if (pendingTaskCheckError) {
+      alert(
+        `Unable to verify the current MRB approval status.\n\n${pendingTaskCheckError.message}`
+      );
+      setSubmittingMrbApproval(false);
+      return;
+    }
+
+    if ((existingPendingTasks || []).length > 0) {
+      setApprovalTasks((currentTasks) => {
+        const nonPendingTasks = currentTasks.filter(
+          (item: any) =>
+            !(
+              item.task_type === "mrb_approval" &&
+              String(item.status || "").toLowerCase() === "pending"
+            )
+        );
+
+        return [...nonPendingTasks, ...(existingPendingTasks || [])];
+      });
+
+      setRecord((currentRecord: any) => ({
+        ...(currentRecord || {}),
+        review_status: "pending_approval",
+      }));
+
+      alert(
+        "This MRB package has already been submitted and currently has pending reviewer tasks. A duplicate approval package was not created."
+      );
+      setSubmittingMrbApproval(false);
+      return;
+    }
+
     const preTaskValidationErrors = validateWorkflowBeforeGeneratingMrbTasks();
 
     if (preTaskValidationErrors.length > 0) {
@@ -1811,14 +1853,6 @@ export default function NcmrDetailPage() {
       })
     );
 
-    await supabase
-      .from("approval_tasks")
-      .delete()
-      .eq("entity_type", "ncmr")
-      .eq("entity_id", id)
-      .eq("task_type", "mrb_approval")
-      .eq("status", "pending");
-
     const taskRows = requiredTasks.map((task) => ({
       entity_type: "ncmr",
       entity_id: id,
@@ -1863,6 +1897,24 @@ This approval becomes part of the official electronic quality record. MRB approv
     }
 
     if (insertedTasks && insertedTasks.length > 0) {
+      setApprovalTasks((currentTasks) => {
+        const historicalTasks = currentTasks.filter(
+          (item: any) =>
+            !(
+              item.task_type === "mrb_approval" &&
+              String(item.status || "").toLowerCase() === "pending"
+            )
+        );
+
+        return [...historicalTasks, ...insertedTasks];
+      });
+
+      setRecord((currentRecord: any) => ({
+        ...(currentRecord || {}),
+        review_status: "pending_approval",
+      }));
+      setReviewStatus("pending_approval");
+
       const notifications = insertedTasks.map((task) => ({
         recipient_email: task.assigned_to_email,
         subject: `MRB approval task assigned: ${record?.ncmr_number || "NCMR"}`,
@@ -1923,7 +1975,11 @@ This approval becomes part of the official electronic quality record. MRB approv
     alert(
       "MRB submitted for approval. Reviewer tasks are now available in My Workspace."
     );
-    await Promise.all([fetchRecord(), fetchMrbApprovers(), fetchApprovalTasks()]);
+    await Promise.all([
+      fetchMrbApprovers(),
+      fetchApprovalTasks(),
+      fetchAuditTimeline(),
+    ]);
     setSubmittingMrbApproval(false);
   };
 
