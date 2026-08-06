@@ -1889,7 +1889,7 @@ This approval becomes part of the official electronic quality record. MRB approv
                   ? "high"
                   : "info",
             assignedRole: task.required_function || "MRB Approver",
-            relatedUrl: "/workspace",
+            relatedUrl: `/ncmrs/${id}/approval-review?taskId=${task.id}`,
           })
         )
       );
@@ -2239,7 +2239,7 @@ This approval task was created by the MRB approval task issue recovery action. E
             message: `An MRB approval task for ${record?.ncmr_number || "this NCMR"} is waiting in My Workspace.`,
             severityLevel: severity === "critical" ? "critical" : severity === "major" ? "high" : "info",
             assignedRole: task.required_function || "MRB Approver",
-            relatedUrl: "/workspace",
+            relatedUrl: `/ncmrs/${id}/approval-review?taskId=${task.id}`,
           })
         )
       );
