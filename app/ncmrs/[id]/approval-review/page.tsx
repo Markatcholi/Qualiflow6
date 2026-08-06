@@ -151,23 +151,6 @@ export default function NcmrMrbApprovalReviewPage() {
     });
   };
 
-  const syncApproverConfiguration = async (
-    status: Decision,
-    signedAt: string
-  ) => {
-    await supabase
-      .from("ncmr_mrb_approvers")
-      .update({
-        approval_status: status,
-        approved_by: status === "approved" ? userEmail : null,
-        approved_at: status === "approved" ? signedAt : null,
-        rejected_by: status === "rejected" ? userEmail : null,
-        rejected_at: status === "rejected" ? signedAt : null,
-        approver_comment: reviewerComment.trim() || null,
-      })
-      .eq("ncmr_id", id)
-      .eq("approver_email", normalizedUserEmail);
-  };
 
   const closeRejectedMrbApprovalCycle = async () => {
     const cancellationComment = `Cancelled because ${userEmail || "an MRB reviewer"} rejected the MRB approval package.`;
@@ -188,18 +171,16 @@ export default function NcmrMrbApprovalReviewPage() {
       throw new Error(cancelTaskError.message);
     }
 
-    const { error: cancelApproverError } = await supabase
-      .from("ncmr_mrb_approvers")
+    const { error: reviewerConfigurationError } = await supabase
+      .from("ncmr_mrb_reviewers")
       .update({
-        approval_status: "cancelled",
-        approver_comment: cancellationComment,
+        approval_status: "configured",
+        updated_at: new Date().toISOString(),
       })
-      .eq("ncmr_id", id)
-      .in("approval_status", ["configured", "submitted", "pending"])
-      .neq("approver_email", normalizedUserEmail);
+      .eq("ncmr_id", id);
 
-    if (cancelApproverError) {
-      throw new Error(cancelApproverError.message);
+    if (reviewerConfigurationError) {
+      throw new Error(reviewerConfigurationError.message);
     }
 
     await addAuditLog(
@@ -317,7 +298,6 @@ export default function NcmrMrbApprovalReviewPage() {
 
       if (taskError) throw new Error(taskError.message);
 
-      await syncApproverConfiguration(decision, now);
 
       await addAuditLog(
         `mrb_approval_task_${decision}`,
