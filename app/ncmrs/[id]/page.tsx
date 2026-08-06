@@ -1748,9 +1748,25 @@ export default function NcmrDetailPage() {
       .update({
         risk_assessment: riskAssessment,
         severity,
-        product_disposition: productDisposition || record?.product_disposition || record?.disposition || null,
-        disposition: productDisposition || record?.product_disposition || record?.disposition || null,
-        disposition_justification: dispositionJustification || record?.disposition_justification || null,
+        product_disposition:
+          productDisposition ||
+          record?.product_disposition ||
+          record?.disposition ||
+          null,
+        disposition:
+          productDisposition ||
+          record?.product_disposition ||
+          record?.disposition ||
+          null,
+        disposition_justification:
+          dispositionJustification ||
+          record?.disposition_justification ||
+          null,
+        review_status: "pending_approval",
+        mrb_approved_by: null,
+        mrb_approved_at: null,
+        mrb_signature_email_entered: null,
+        mrb_signature_meaning: null,
       })
       .eq("id", id);
 
@@ -1924,18 +1940,25 @@ This approval becomes part of the official electronic quality record. MRB approv
     );
   };
 
-  const getLatestMrbApprovalResetAt = () => {
-    const resetEvents = auditTimeline
-      .filter((item: any) => item.action === "mrb_approval_workflow_reset")
+  const getLatestMrbApprovalBoundaryAt = () => {
+    const boundaryEvents = auditTimeline
+      .filter((item: any) =>
+        [
+          "mrb_approval_workflow_reset",
+          "mrb_approval_cycle_returned",
+        ].includes(String(item.action || ""))
+      )
       .map((item: any) => item.created_at)
       .filter(Boolean)
       .sort();
 
-    return resetEvents.length > 0 ? resetEvents[resetEvents.length - 1] : null;
+    return boundaryEvents.length > 0
+      ? boundaryEvents[boundaryEvents.length - 1]
+      : null;
   };
 
   const getActiveMrbApprovalTasks = () => {
-    const latestResetAt = getLatestMrbApprovalResetAt();
+    const latestBoundaryAt = getLatestMrbApprovalBoundaryAt();
 
     return approvalTasks
       .filter((approvalTask: any) => approvalTask.task_type === "mrb_approval")
@@ -1945,14 +1968,20 @@ This approval becomes part of the official electronic quality record. MRB approv
           approvalTask.status !== "obsolete"
       )
       .filter((approvalTask: any) => {
-        if (!latestResetAt) return true;
+        if (!latestBoundaryAt) return true;
         if (!approvalTask.created_at) return false;
-        return new Date(approvalTask.created_at).getTime() > new Date(latestResetAt).getTime();
+
+        return (
+          new Date(approvalTask.created_at).getTime() >
+          new Date(latestBoundaryAt).getTime()
+        );
       });
   };
 
   const hasActiveMrbApprovalWorkflow = () => {
-    return getActiveMrbApprovalTasks().length > 0;
+    return getActiveMrbApprovalTasks().some(
+      (task: any) => String(task.status || "").toLowerCase() === "pending"
+    );
   };
 
   const hasPendingMrbApprovalTasks = () => {
@@ -1964,14 +1993,10 @@ This approval becomes part of the official electronic quality record. MRB approv
   const isMrbApprovalConfigurationLocked = () => {
     if (record?.is_locked || record?.mrb_approved_by) return true;
 
-    // Configuration is locked only when there are active non-cancelled MRB approval tasks
-    // in the current approval package. Cancelled/obsolete/history tasks must not lock config.
-    return getActiveMrbApprovalTasks().some(
-      (task: any) =>
-        task.status === "pending" ||
-        task.status === "approved" ||
-        task.status === "rejected"
-    );
+    // Only a currently pending MRB package locks configuration.
+    // Rejected, cancelled, obsolete, and historical tasks remain part of the
+    // audit trail but must not prevent owner revision and resubmission.
+    return hasPendingMrbApprovalTasks();
   };
 
   const fixMrbApprovalTaskIssues = async () => {
@@ -2295,10 +2320,10 @@ This approval task was created by the MRB approval task issue recovery action. E
   };
 
   const hasRejectedMrbApprovalTask = () => {
-    return getActiveMrbApprovalTasks().some(
-      (approvalTask) =>
-        approvalTask.task_type === "mrb_approval" &&
-        approvalTask.status === "rejected"
+    return (
+      String(record?.review_status || "").toLowerCase() === "rejected" &&
+      !hasPendingMrbApprovalTasks() &&
+      !record?.mrb_approved_by
     );
   };
 
@@ -4968,23 +4993,6 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
                 Implementation is unlocked.
               </p>
             </div>
-          ) : hasRejectedMrbApprovalTask() ? (
-            <div
-              style={{
-                border: "1px solid #fca5a5",
-                borderRadius: "10px",
-                padding: "14px",
-                background: "#fef2f2",
-                color: "#991b1b",
-              }}
-            >
-              <strong>MRB Approval Rejected</strong>
-              <p style={{ margin: "6px 0 0" }}>
-                A required reviewer rejected the submitted MRB package. Review
-                the rejection notification and comments, revise the applicable
-                NCMR information, and prepare a new approval submission.
-              </p>
-            </div>
           ) : hasActiveMrbApprovalWorkflow() ? (
             <div
               style={{
@@ -5003,6 +5011,27 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
             </div>
           ) : (
             <>
+              {hasRejectedMrbApprovalTask() ? (
+                <div
+                  style={{
+                    border: "1px solid #fca5a5",
+                    borderRadius: "10px",
+                    padding: "14px",
+                    background: "#fef2f2",
+                    color: "#991b1b",
+                    marginBottom: "14px",
+                  }}
+                >
+                  <strong>MRB Approval Rejected — Returned for Revision</strong>
+                  <p style={{ margin: "6px 0 0" }}>
+                    The prior approval cycle is complete and preserved in the
+                    audit history. Revise the applicable NCMR information,
+                    confirm or update the reviewer configuration below, and
+                    submit a new MRB approval package.
+                  </p>
+                </div>
+              ) : null}
+
               <p style={{ color: "#4b5563", fontSize: "14px" }}>
                 Select an approval matrix or add reviewers manually. When the
                 reviewer list is complete, submit the MRB package for approval.
