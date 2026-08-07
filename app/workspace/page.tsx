@@ -943,6 +943,10 @@ function getTaskUrl(task: any) {
     return `/ncmrs/${task.entity_id}/implementation?taskId=${task.id}`;
   }
 
+  if (isNcmrReworkTask(task)) {
+    return `/ncmrs/${task.entity_id}/rework?taskId=${task.id}`;
+  }
+
   if (task.entity_type === "ncmr") return `/ncmrs/${task.entity_id}`;
   if (task.entity_type === "capa") return `/capa/${task.entity_id}`;
   if (task.entity_type === "change_control") return `/change-control/${task.entity_id}`;
@@ -1032,6 +1036,10 @@ function getTaskName(task: any) {
     return String(task.task_type || "").toLowerCase() === "corrective_action_task"
       ? "Corrective Action Implementation"
       : "Correction Implementation";
+  }
+
+  if (isNcmrReworkTask(task)) {
+    return "Rework Implementation";
   }
 
   if (task.task_title) {
@@ -1160,6 +1168,14 @@ function isNcmrImplementationTask(task: any) {
     ["correction_task", "corrective_action_task"].includes(
       String(task.task_type || "").trim().toLowerCase()
     )
+  );
+}
+
+function isNcmrReworkTask(task: any) {
+  return (
+    task.workspace_item_type === "assigned_task" &&
+    String(task.entity_type || "").trim().toLowerCase() === "ncmr" &&
+    String(task.task_type || "").trim().toLowerCase() === "rework_task"
   );
 }
 
