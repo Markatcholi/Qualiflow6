@@ -939,6 +939,10 @@ function getTaskUrl(task: any) {
     return `/ncmrs/${task.entity_id}/approval-review?taskId=${task.id}`;
   }
 
+  if (isNcmrImplementationTask(task)) {
+    return `/ncmrs/${task.entity_id}/implementation?taskId=${task.id}`;
+  }
+
   if (task.entity_type === "ncmr") return `/ncmrs/${task.entity_id}`;
   if (task.entity_type === "capa") return `/capa/${task.entity_id}`;
   if (task.entity_type === "change_control") return `/change-control/${task.entity_id}`;
@@ -1022,6 +1026,12 @@ function getTaskName(task: any) {
 
   if (isNcmrMrbApprovalTask(task)) {
     return "MRB Approval";
+  }
+
+  if (isNcmrImplementationTask(task)) {
+    return String(task.task_type || "").toLowerCase() === "corrective_action_task"
+      ? "Corrective Action Implementation"
+      : "Correction Implementation";
   }
 
   if (task.task_title) {
@@ -1138,6 +1148,16 @@ function isNcmrMrbApprovalTask(task: any) {
     task.workspace_item_type === "assigned_task" &&
     String(task.entity_type || "").trim().toLowerCase() === "ncmr" &&
     ["mrb_approval", "ncmr_mrb_approval", "ncmr_mrb_review"].includes(
+      String(task.task_type || "").trim().toLowerCase()
+    )
+  );
+}
+
+function isNcmrImplementationTask(task: any) {
+  return (
+    task.workspace_item_type === "assigned_task" &&
+    String(task.entity_type || "").trim().toLowerCase() === "ncmr" &&
+    ["correction_task", "corrective_action_task"].includes(
       String(task.task_type || "").trim().toLowerCase()
     )
   );
