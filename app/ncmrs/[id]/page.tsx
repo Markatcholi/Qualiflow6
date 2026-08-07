@@ -3491,6 +3491,94 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
     fetchRecord();
   };
 
+  const isElevatedNcmrAuthority = () => {
+    const role = String(userRole || "").trim().toLowerCase();
+    return ["administrator", "admin", "ncmr administrator", "vp quality", "vp_quality"].includes(role);
+  };
+
+  const isCurrentNcmrOwner = () =>
+    normalizeApproverEmail(record?.owner || record?.owner_email) ===
+    normalizeApproverEmail(userEmail);
+
+  const cancelNcmr = async () => {
+    if (!record || ["closed", "cancelled"].includes(String(record?.status || "").toLowerCase())) {
+      alert("This NCMR is already closed or cancelled.");
+      return;
+    }
+    if (!isCurrentNcmrOwner() && !isElevatedNcmrAuthority()) {
+      alert("Only the current NCMR owner, Administrator, or VP Quality can cancel this NCMR.");
+      return;
+    }
+    const justification = window.prompt("Cancellation justification is required:");
+    if (!justification?.trim()) {
+      alert("NCMR cancellation requires a justification.");
+      return;
+    }
+    if (!window.confirm("Cancel this NCMR? Pending tasks will be cancelled. Completed work and approval history will be preserved.")) return;
+
+    const { error: taskError } = await supabase
+      .from("approval_tasks")
+      .update({ status: "cancelled", comments: `Parent NCMR cancelled. Justification: ${justification.trim()}` })
+      .eq("entity_type", "ncmr").eq("entity_id", id).eq("status", "pending");
+    if (taskError) return alert(taskError.message);
+
+    const { error } = await supabase.from("ncmrs").update({
+      status: "cancelled",
+      review_status: "cancelled",
+      is_locked: true,
+      closure_comments: `NCMR CANCELLED. Justification: ${justification.trim()}`,
+    }).eq("id", id);
+    if (error) return alert(error.message);
+
+    await addAuditLog("ncmr_cancelled", `NCMR cancelled by ${userEmail}. Justification: ${justification.trim()}`);
+    alert("NCMR cancelled.");
+    await fetchRecord();
+  };
+
+  const returnAfterMrbApproval = async () => {
+    if (!record?.mrb_approved_by || !record?.mrb_approved_at) {
+      alert("Return for Revision is available only after MRB approval.");
+      return;
+    }
+    if (!isElevatedNcmrAuthority()) {
+      alert("Only an NCMR Administrator or VP Quality can return an approved MRB for revision.");
+      return;
+    }
+    if (["closed", "cancelled"].includes(String(record?.status || "").toLowerCase())) {
+      alert("Closed or cancelled NCMRs cannot be returned for revision.");
+      return;
+    }
+
+    const destination = window.prompt("Return destination: Investigation / Root Cause, Risk Assessment, Correction / Corrective Action Proposal, Product Disposition, or MRB Preparation");
+    if (!destination?.trim()) return;
+    const allowed = ["investigation / root cause","risk assessment","correction / corrective action proposal","product disposition","mrb preparation"];
+    if (!allowed.includes(destination.trim().toLowerCase())) return alert("Enter one of the listed return destinations.");
+
+    const justification = window.prompt("Return justification is required:");
+    if (!justification?.trim()) return alert("Return for Revision requires a justification.");
+    if (!window.confirm("Return this approved MRB for revision? Prior approval history will be preserved and a new MRB approval cycle will be required.")) return;
+
+    const { error: taskError } = await supabase
+      .from("approval_tasks")
+      .update({ status: "cancelled", comments: `Approved MRB returned for revision. Destination: ${destination.trim()}. Justification: ${justification.trim()}` })
+      .eq("entity_type", "ncmr").eq("entity_id", id).eq("status", "pending");
+    if (taskError) return alert(taskError.message);
+
+    const { error } = await supabase.from("ncmrs").update({
+      mrb_approved_by: null,
+      mrb_approved_at: null,
+      mrb_signature_email_entered: null,
+      mrb_signature_meaning: null,
+      review_status: "draft",
+      is_locked: false,
+    }).eq("id", id);
+    if (error) return alert(error.message);
+
+    await addAuditLog("mrb_returned_for_revision", `Approved MRB returned by ${userEmail}. Destination: ${destination.trim()}. Justification: ${justification.trim()}. Prior approval history preserved.`);
+    alert("MRB returned for revision. A new MRB approval cycle is required.");
+    await fetchRecord();
+  };
+
   const generateCorrectionTask = async () => {
     if (record?.is_locked) {
       alert("This record is locked after electronic signature and cannot be edited.");
@@ -3778,8 +3866,13 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
       return;
     }
 
-    if (userRole !== "approver" && userRole !== "vp_quality") {
-      return alert("Only an approver or VP Quality can close NCMR.");
+    const currentNcmrOwner = normalizeApproverEmail(
+      record?.owner || record?.owner_email
+    );
+    const currentUserForClosure = normalizeApproverEmail(userEmail);
+
+    if (!currentNcmrOwner || currentNcmrOwner !== currentUserForClosure) {
+      return alert("Only the current NCMR owner can close this NCMR.");
     }
 
     if (!problemDescription) return alert("Problem description is required.");
@@ -4139,6 +4232,17 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
       </div>
 
       {/* Phase 3 Executive Workflow Summary */}
+      {!["closed", "cancelled"].includes(String(record?.status || "").toLowerCase()) ? (
+        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "14px" }}>
+          {(isCurrentNcmrOwner() || isElevatedNcmrAuthority()) ? (
+            <button type="button" onClick={cancelNcmr}>Cancel NCMR</button>
+          ) : null}
+          {record?.mrb_approved_by && isElevatedNcmrAuthority() ? (
+            <button type="button" onClick={returnAfterMrbApproval}>Return Approved MRB for Revision</button>
+          ) : null}
+        </div>
+      ) : null}
+
       <SectionCard
         title="Executive Workflow Summary"
         subtitle="High-level NCMR health, aging, SLA, approval, and closure readiness indicators."
