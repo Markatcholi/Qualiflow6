@@ -3579,6 +3579,20 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
     await fetchRecord();
   };
 
+  const hasActiveOrCompletedImplementationTask = () =>
+    correctionTasks.some((task: any) =>
+      ["pending", "completed"].includes(
+        String(task?.status || "").trim().toLowerCase()
+      )
+    );
+
+  const hasActiveOrCompletedReworkTask = () =>
+    reworkTasks.some((task: any) =>
+      ["pending", "completed"].includes(
+        String(task?.status || "").trim().toLowerCase()
+      )
+    );
+
   const generateCorrectionTask = async () => {
     if (record?.is_locked) {
       alert("This record is locked after electronic signature and cannot be edited.");
@@ -3597,6 +3611,35 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
 
     if (!correctionTaskInstructions) {
       alert("Implementation task instructions are required.");
+      return;
+    }
+
+    if (hasActiveOrCompletedImplementationTask()) {
+      alert(
+        "A pending or completed Correction / Corrective Action implementation task already exists. A duplicate task was not created."
+      );
+      return;
+    }
+
+    const { data: existingImplementationTasks, error: existingImplementationError } =
+      await supabase
+        .from("approval_tasks")
+        .select("id, status, task_type")
+        .eq("entity_type", "ncmr")
+        .eq("entity_id", id)
+        .in("task_type", ["correction_task", "corrective_action_task"])
+        .in("status", ["pending", "completed"]);
+
+    if (existingImplementationError) {
+      alert(existingImplementationError.message);
+      return;
+    }
+
+    if ((existingImplementationTasks || []).length > 0) {
+      await fetchCorrectionTasks();
+      alert(
+        "A pending or completed Correction / Corrective Action implementation task already exists. A duplicate task was not created."
+      );
       return;
     }
 
@@ -3701,6 +3744,35 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
       return;
     }
 
+    if (hasActiveOrCompletedReworkTask()) {
+      alert(
+        "A pending or completed Rework task already exists. A duplicate task was not created."
+      );
+      return;
+    }
+
+    const { data: existingReworkTasks, error: existingReworkError } =
+      await supabase
+        .from("approval_tasks")
+        .select("id, status")
+        .eq("entity_type", "ncmr")
+        .eq("entity_id", id)
+        .eq("task_type", "rework_task")
+        .in("status", ["pending", "completed"]);
+
+    if (existingReworkError) {
+      alert(existingReworkError.message);
+      return;
+    }
+
+    if ((existingReworkTasks || []).length > 0) {
+      await fetchReworkTasks();
+      alert(
+        "A pending or completed Rework task already exists. A duplicate task was not created."
+      );
+      return;
+    }
+
     const { data: insertedTasks, error } = await supabase
       .from("approval_tasks")
       .insert({
@@ -3724,23 +3796,27 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
     }
 
     if (insertedTasks && insertedTasks.length > 0) {
+      const task = insertedTasks[0];
+      const reworkPackageUrl = `/ncmrs/${id}/rework?taskId=${task.id}`;
+
       await supabase.from("notification_queue").insert({
         recipient_email: reworkTaskAssignee.trim().toLowerCase(),
         subject: `Rework task assigned: ${record?.ncmr_number || "NCMR"}`,
         body: `You have been assigned a rework task for ${record?.ncmr_number || "this NCMR"}. Please log in to QualiSphere and open My Workspace.`,
         entity_type: "ncmr",
         entity_id: id,
-        task_id: insertedTasks[0].id,
+        task_id: task.id,
         status: "pending",
       });
 
       await createInAppNotification({
         recipientEmail: reworkTaskAssignee,
-        notificationType: "ncmr_implementation_assignment",
+        notificationType: "ncmr_rework_assignment",
         title: `Rework task assigned: ${record?.ncmr_number || "NCMR"}`,
         message: `A rework task for ${record?.ncmr_number || "this NCMR"} is waiting in My Workspace.`,
         severityLevel: severity === "critical" ? "critical" : severity === "major" ? "high" : "info",
         assignedRole: "Rework Owner",
+        relatedUrl: reworkPackageUrl,
       });
     }
 
@@ -5503,55 +5579,72 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
               Rework is applicable based on the approved MRB disposition. Assign rework execution after MRB approval.
             </p>
 
-            <div style={{ display: "grid", gap: "12px", maxWidth: "700px" }}>
-              <div>
-                <label>Assigned To Email</label><br />
-                <input
-                  value={reworkTaskAssignee}
-                  onChange={(e) => setReworkTaskAssignee(e.target.value)}
+            {!hasActiveOrCompletedReworkTask() ? (
+              <>
+                <div style={{ display: "grid", gap: "12px", maxWidth: "700px" }}>
+                  <div>
+                    <label>Assigned To Email</label><br />
+                    <input
+                      value={reworkTaskAssignee}
+                      onChange={(e) => setReworkTaskAssignee(e.target.value)}
+                      disabled={isLocked}
+                      style={{ padding: "8px", width: "100%" }}
+                    />
+                  </div>
+
+                  <div>
+                    <label>Due Date</label><br />
+                    <input
+                      type="date"
+                      value={reworkTaskDueDate}
+                      onChange={(e) => setReworkTaskDueDate(e.target.value)}
+                      disabled={isLocked}
+                      style={{ padding: "8px", width: "100%" }}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ marginTop: "10px" }}>
+                  <label>Rework Task Instructions</label><br />
+                  <textarea
+                    value={reworkTaskInstructions}
+                    onChange={(e) => setReworkTaskInstructions(e.target.value)}
+                    disabled={isLocked}
+                    rows={3}
+                    style={{ width: "100%", maxWidth: "700px" }}
+                  />
+                </div>
+
+                <button type="button" onClick={generateReworkTask} disabled={isLocked} style={{ marginTop: "10px" }}>
+                  Generate Rework Task
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setReworkTaskAssignee("");
+                    setReworkTaskDueDate("");
+                    setReworkTaskInstructions("");
+                  }}
                   disabled={isLocked}
-                  style={{ padding: "8px", width: "100%" }}
-                />
+                  style={{ marginTop: "10px", marginLeft: "8px" }}
+                >
+                  Cancel Rework Task Entry
+                </button>
+              </>
+            ) : (
+              <div
+                style={{
+                  marginTop: "10px",
+                  border: "1px solid #bfdbfe",
+                  borderRadius: "8px",
+                  padding: "10px",
+                  background: "#eff6ff",
+                  color: "#1e3a8a",
+                }}
+              >
+                Rework task assignment is locked because a pending or completed Rework task already exists.
               </div>
-
-              <div>
-                <label>Due Date</label><br />
-                <input
-                  type="date"
-                  value={reworkTaskDueDate}
-                  onChange={(e) => setReworkTaskDueDate(e.target.value)}
-                  disabled={isLocked}
-                  style={{ padding: "8px", width: "100%" }}
-                />
-              </div>
-            </div>
-
-            <div style={{ marginTop: "10px" }}>
-              <label>Rework Task Instructions</label><br />
-              <textarea
-                value={reworkTaskInstructions}
-                onChange={(e) => setReworkTaskInstructions(e.target.value)}
-                disabled={isLocked}
-                rows={3}
-                style={{ width: "100%", maxWidth: "700px" }}
-              />
-            </div>
-
-            <button type="button" onClick={generateReworkTask} disabled={isLocked} style={{ marginTop: "10px" }}>
-              Generate Rework Task
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setReworkTaskAssignee("");
-                setReworkTaskDueDate("");
-                setReworkTaskInstructions("");
-              }}
-              disabled={isLocked}
-              style={{ marginTop: "10px", marginLeft: "8px" }}
-            >
-              Cancel Rework Task Entry
-            </button>
+            )}
 
             <h4>Rework Task Status</h4>
             {reworkTasks.length === 0 ? <p>No rework tasks generated.</p> : <TaskStatusList tasks={reworkTasks} />}
@@ -5667,72 +5760,89 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
             Choose the implementation type, then assign the work to an owner. The assignee completes only the assigned implementation package from My Workspace.
           </p>
 
-          <div style={{ display: "grid", gap: "12px", maxWidth: "700px" }}>
-            <div>
-              <label>Implementation Type</label><br />
-              <select
-                value={implementationTaskType}
-                onChange={(e) =>
-                  setImplementationTaskType(
-                    e.target.value as "correction" | "corrective_action"
-                  )
-                }
+          {!hasActiveOrCompletedImplementationTask() ? (
+            <>
+              <div style={{ display: "grid", gap: "12px", maxWidth: "700px" }}>
+                <div>
+                  <label>Implementation Type</label><br />
+                  <select
+                    value={implementationTaskType}
+                    onChange={(e) =>
+                      setImplementationTaskType(
+                        e.target.value as "correction" | "corrective_action"
+                      )
+                    }
+                    disabled={isPostMrbSectionLocked()}
+                    style={{ padding: "8px", width: "100%" }}
+                  >
+                    <option value="correction">Correction</option>
+                    <option value="corrective_action">Corrective Action</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label>Assigned To Email</label><br />
+                  <input
+                    value={correctionTaskAssignee}
+                    onChange={(e) => setCorrectionTaskAssignee(e.target.value)}
+                    disabled={isPostMrbSectionLocked()}
+                    style={{ padding: "8px", width: "100%" }}
+                  />
+                </div>
+
+                <div>
+                  <label>Due Date</label><br />
+                  <input
+                    type="date"
+                    value={correctionTaskDueDate}
+                    onChange={(e) => setCorrectionTaskDueDate(e.target.value)}
+                    disabled={isPostMrbSectionLocked()}
+                    style={{ padding: "8px", width: "100%" }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ marginTop: "10px" }}>
+                <label>Implementation Instructions</label><br />
+                <textarea
+                  value={correctionTaskInstructions}
+                  onChange={(e) => setCorrectionTaskInstructions(e.target.value)}
+                  disabled={isPostMrbSectionLocked()}
+                  rows={3}
+                  style={{ width: "100%", maxWidth: "700px" }}
+                />
+              </div>
+
+              <button type="button" onClick={generateCorrectionTask} disabled={isPostMrbSectionLocked()} style={{ marginTop: "10px" }}>
+                Generate Implementation Task
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setCorrectionTaskAssignee("");
+                  setCorrectionTaskDueDate("");
+                  setCorrectionTaskInstructions("");
+                }}
                 disabled={isPostMrbSectionLocked()}
-                style={{ padding: "8px", width: "100%" }}
+                style={{ marginTop: "10px", marginLeft: "8px" }}
               >
-                <option value="correction">Correction</option>
-                <option value="corrective_action">Corrective Action</option>
-              </select>
+                Cancel Implementation Task Entry
+              </button>
+            </>
+          ) : (
+            <div
+              style={{
+                marginTop: "10px",
+                border: "1px solid #bfdbfe",
+                borderRadius: "8px",
+                padding: "10px",
+                background: "#eff6ff",
+                color: "#1e3a8a",
+              }}
+            >
+              Implementation task assignment is locked because a pending or completed Correction / Corrective Action task already exists.
             </div>
-
-            <div>
-              <label>Assigned To Email</label><br />
-              <input
-                value={correctionTaskAssignee}
-                onChange={(e) => setCorrectionTaskAssignee(e.target.value)}
-                disabled={isPostMrbSectionLocked()}
-                style={{ padding: "8px", width: "100%" }}
-              />
-            </div>
-
-            <div>
-              <label>Due Date</label><br />
-              <input
-                type="date"
-                value={correctionTaskDueDate}
-                onChange={(e) => setCorrectionTaskDueDate(e.target.value)}
-                disabled={isPostMrbSectionLocked()}
-                style={{ padding: "8px", width: "100%" }}
-              />
-            </div>
-          </div>
-
-          <div style={{ marginTop: "10px" }}>
-            <label>Implementation Instructions</label><br />
-            <textarea
-              value={correctionTaskInstructions}
-              onChange={(e) => setCorrectionTaskInstructions(e.target.value)}
-              disabled={isPostMrbSectionLocked()}
-              rows={3}
-              style={{ width: "100%", maxWidth: "700px" }}
-            />
-          </div>
-
-          <button type="button" onClick={generateCorrectionTask} disabled={isPostMrbSectionLocked()} style={{ marginTop: "10px" }}>
-            Generate Implementation Task
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setCorrectionTaskAssignee("");
-              setCorrectionTaskDueDate("");
-              setCorrectionTaskInstructions("");
-            }}
-            disabled={isPostMrbSectionLocked()}
-            style={{ marginTop: "10px", marginLeft: "8px" }}
-          >
-            Cancel Implementation Task Entry
-          </button>
+          )}
 
           <h4>Correction / Corrective Action Task Status</h4>
           {correctionTasks.length === 0 ? <p>No implementation tasks generated.</p> : <TaskStatusList tasks={correctionTasks} />}
