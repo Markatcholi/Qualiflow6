@@ -79,6 +79,9 @@ export default function NcmrDetailPage() {
   const [correctionTasks, setCorrectionTasks] = useState<any[]>([]);
   const [reworkTasks, setReworkTasks] = useState<any[]>([]);
 
+  const [implementationTaskType, setImplementationTaskType] = useState<
+    "correction" | "corrective_action"
+  >("correction");
   const [correctionTaskAssignee, setCorrectionTaskAssignee] = useState("");
   const [correctionTaskDueDate, setCorrectionTaskDueDate] = useState("");
   const [correctionTaskInstructions, setCorrectionTaskInstructions] = useState("");
@@ -344,7 +347,7 @@ export default function NcmrDetailPage() {
       .select("*")
       .eq("entity_type", "ncmr")
       .eq("entity_id", id)
-      .eq("task_type", "correction_task")
+      .in("task_type", ["correction_task", "corrective_action_task"])
       .order("created_at", { ascending: true });
 
     if (error) {
@@ -3500,23 +3503,38 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
     }
 
     if (!correctionTaskAssignee) {
-      alert("Correction task assignee email is required.");
+      alert("Implementation task assignee email is required.");
       return;
     }
 
     if (!correctionTaskInstructions) {
-      alert("Correction task instructions are required.");
+      alert("Implementation task instructions are required.");
       return;
     }
+
+    const taskType =
+      implementationTaskType === "corrective_action"
+        ? "corrective_action_task"
+        : "correction_task";
+
+    const implementationLabel =
+      implementationTaskType === "corrective_action"
+        ? "Corrective Action"
+        : "Correction";
+
+    const requiredFunction =
+      implementationTaskType === "corrective_action"
+        ? "Corrective Action Owner"
+        : "Correction Owner";
 
     const { data: insertedTasks, error } = await supabase
       .from("approval_tasks")
       .insert({
         entity_type: "ncmr",
         entity_id: id,
-        task_type: "correction_task",
-        required_function: "Correction Owner",
-        task_title: `Correction task for ${record?.ncmr_number || "NCMR"}`,
+        task_type: taskType,
+        required_function: requiredFunction,
+        task_title: `${implementationLabel} implementation for ${record?.ncmr_number || "NCMR"}`,
         task_instructions: correctionTaskInstructions,
         assigned_to_email: correctionTaskAssignee.trim().toLowerCase(),
         assigned_by_email: userEmail,
@@ -3532,32 +3550,42 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
     }
 
     if (insertedTasks && insertedTasks.length > 0) {
+      const task = insertedTasks[0];
+      const workPackageUrl = `/ncmrs/${id}/implementation?taskId=${task.id}`;
+
       await supabase.from("notification_queue").insert({
         recipient_email: correctionTaskAssignee.trim().toLowerCase(),
-        subject: `Correction task assigned: ${record?.ncmr_number || "NCMR"}`,
-        body: `You have been assigned a correction task for ${record?.ncmr_number || "this NCMR"}. Please log in to QualiSphere and open My Workspace.`,
+        subject: `${implementationLabel} implementation task assigned: ${record?.ncmr_number || "NCMR"}`,
+        body: `You have been assigned a ${implementationLabel.toLowerCase()} implementation task for ${record?.ncmr_number || "this NCMR"}. Please log in to QualiSphere and open My Workspace.`,
         entity_type: "ncmr",
         entity_id: id,
-        task_id: insertedTasks[0].id,
+        task_id: task.id,
         status: "pending",
       });
 
       await createInAppNotification({
         recipientEmail: correctionTaskAssignee,
         notificationType: "ncmr_implementation_assignment",
-        title: `Correction task assigned: ${record?.ncmr_number || "NCMR"}`,
-        message: `A correction task for ${record?.ncmr_number || "this NCMR"} is waiting in My Workspace.`,
-        severityLevel: severity === "critical" ? "critical" : severity === "major" ? "high" : "info",
-        assignedRole: "Correction Owner",
+        title: `${implementationLabel} implementation assigned: ${record?.ncmr_number || "NCMR"}`,
+        message: `A ${implementationLabel.toLowerCase()} implementation task for ${record?.ncmr_number || "this NCMR"} is waiting in My Workspace.`,
+        severityLevel:
+          severity === "critical"
+            ? "critical"
+            : severity === "major"
+              ? "high"
+              : "info",
+        assignedRole: requiredFunction,
+        relatedUrl: workPackageUrl,
       });
     }
 
     await addAuditLog(
-      "correction_task_generated",
-      `Correction task assigned to ${correctionTaskAssignee}.`
+      `${taskType}_generated`,
+      `${implementationLabel} implementation task assigned to ${correctionTaskAssignee}.`
     );
 
-    alert("Correction task generated.");
+    alert(`${implementationLabel} implementation task generated.`);
+    setImplementationTaskType("correction");
     setCorrectionTaskAssignee("");
     setCorrectionTaskDueDate("");
     setCorrectionTaskInstructions("");
@@ -3671,12 +3699,16 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
     const errors: string[] = [];
 
     if (isCorrectionTaskRequired()) {
-      const completedCorrectionTask = correctionTasks.find(
-        (task) => task.status === "completed"
+      const completedImplementationTask = correctionTasks.find(
+        (task) =>
+          task.status === "completed" &&
+          ["correction_task", "corrective_action_task"].includes(task.task_type)
       );
 
-      if (!completedCorrectionTask) {
-        errors.push("At least one correction task must be completed before closure.");
+      if (!completedImplementationTask) {
+        errors.push(
+          "At least one Correction / Corrective Action implementation task must be completed before closure."
+        );
       }
     }
 
@@ -3703,7 +3735,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
     }
 
     if (!correctionImplementation) {
-      alert("Correction implementation must be documented.");
+      alert("Correction / Corrective Action implementation must be documented.");
       return;
     }
 
@@ -3723,8 +3755,8 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
       return;
     }
 
-    await addAuditLog("correction_implemented", "Correction implementation documented.");
-    alert("Correction implementation recorded");
+    await addAuditLog("implementation_verified", "Correction / Corrective Action implementation verification documented.");
+    alert("Implementation verification recorded.");
     fetchRecord();
   };
 
@@ -4013,6 +4045,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
 
   const cancelCurrentFormChanges = () => {
     fetchRecord();
+    setImplementationTaskType("correction");
     setCorrectionTaskAssignee("");
     setCorrectionTaskDueDate("");
     setCorrectionTaskInstructions("");
@@ -5471,8 +5504,8 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
       </SectionCard>
 
       <SectionCard
-        title="10. Correction Implementation"
-        subtitle={isImplementationComplete ? "Complete: correction implementation is satisfied." : isCorrectionNotRequired() ? "Pending: document correction-not-required justification." : "Pending: assign/complete correction task and document implementation."}
+        title="10. Correction / Corrective Action Implementation"
+        subtitle={isImplementationComplete ? "Complete: implementation requirements are satisfied." : isCorrectionNotRequired() ? "Pending: document correction-not-required justification." : "Pending: assign/complete a Correction or Corrective Action task and document implementation."}
         defaultOpen={false}
         rightAction={sectionStatusBadge(isImplementationComplete, "Implementation")}
       >
@@ -5525,12 +5558,29 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
             marginBottom: "12px",
           }}
         >
-          <h3 style={{ marginTop: 0 }}>Correction Task Assignment</h3>
+          <h3 style={{ marginTop: 0 }}>Correction / Corrective Action Task Assignment</h3>
           <p style={{ color: "#4b5563", fontSize: "14px" }}>
-            Assign the correction or corrective action execution to an owner. The owner completes the task from My Workspace.
+            Choose the implementation type, then assign the work to an owner. The assignee completes only the assigned implementation package from My Workspace.
           </p>
 
           <div style={{ display: "grid", gap: "12px", maxWidth: "700px" }}>
+            <div>
+              <label>Implementation Type</label><br />
+              <select
+                value={implementationTaskType}
+                onChange={(e) =>
+                  setImplementationTaskType(
+                    e.target.value as "correction" | "corrective_action"
+                  )
+                }
+                disabled={isPostMrbSectionLocked()}
+                style={{ padding: "8px", width: "100%" }}
+              >
+                <option value="correction">Correction</option>
+                <option value="corrective_action">Corrective Action</option>
+              </select>
+            </div>
+
             <div>
               <label>Assigned To Email</label><br />
               <input
@@ -5554,7 +5604,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
           </div>
 
           <div style={{ marginTop: "10px" }}>
-            <label>Correction Task Instructions</label><br />
+            <label>Implementation Instructions</label><br />
             <textarea
               value={correctionTaskInstructions}
               onChange={(e) => setCorrectionTaskInstructions(e.target.value)}
@@ -5565,7 +5615,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
           </div>
 
           <button type="button" onClick={generateCorrectionTask} disabled={isPostMrbSectionLocked()} style={{ marginTop: "10px" }}>
-            Generate Correction Task
+            Generate Implementation Task
           </button>
           <button
             type="button"
@@ -5577,17 +5627,17 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
             disabled={isPostMrbSectionLocked()}
             style={{ marginTop: "10px", marginLeft: "8px" }}
           >
-            Cancel Correction Task Entry
+            Cancel Implementation Task Entry
           </button>
 
-          <h4>Correction Task Status</h4>
-          {correctionTasks.length === 0 ? <p>No correction tasks generated.</p> : <TaskStatusList tasks={correctionTasks} />}
+          <h4>Correction / Corrective Action Task Status</h4>
+          {correctionTasks.length === 0 ? <p>No implementation tasks generated.</p> : <TaskStatusList tasks={correctionTasks} />}
         </div>
 
         <textarea
           value={correctionImplementation}
           onChange={(e) => setCorrectionImplementation(e.target.value)}
-          placeholder="Describe how the correction was implemented."
+          placeholder="Describe how the correction or corrective action was implemented and verified by the NCMR owner."
           rows={4}
           disabled={isPostMrbSectionLocked()}
           style={{ width: "100%", maxWidth: "700px" }}
@@ -5595,7 +5645,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
 
         <div style={{ marginTop: "12px" }}>
           <button onClick={markCorrectionImplemented} disabled={isPostMrbSectionLocked()}>
-            Mark Correction Implemented
+            Record Implementation Verification
           </button>
         </div>
 
