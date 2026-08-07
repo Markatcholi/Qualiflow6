@@ -100,44 +100,6 @@ export default function NcmrImplementationWorkPackagePage() {
     fetchPackage();
   }, [id, taskId]);
 
-  const reassignTask = async () => {
-    if (!task || !isPending) return alert("Only a pending implementation task can be reassigned.");
-    if (!isAssignedUser) return alert("Only the current task owner can reassign this task from this work package.");
-
-    const nextEmail = window.prompt("Enter the qualified replacement assignee email:");
-    if (!nextEmail?.trim()) return;
-    const normalizedNext = normalizeEmail(nextEmail);
-    if (normalizedNext === normalizeEmail(task.assigned_to_email)) return alert("That user is already assigned.");
-
-    const reason = window.prompt("Reassignment justification is required:");
-    if (!reason?.trim()) return alert("Task reassignment requires a justification.");
-
-    const previous = normalizeEmail(task.assigned_to_email);
-    const { data: rows, error } = await supabase.from("approval_tasks").update({
-      assigned_to_email: normalizedNext,
-      comments: `${task.task_instructions || task.comments || ""}\n\nReassigned from ${previous} to ${normalizedNext}. Reason: ${reason.trim()}`,
-    }).eq("id", task.id).eq("status", "pending").select("*");
-    if (error) return alert(error.message);
-    if (!rows?.length) return alert("Task was not reassigned. Reload and try again.");
-
-    await supabase.from("audit_logs").insert({
-      entity_type: "ncmr", entity_id: id, action: "implementation_task_reassigned",
-      details: `${implementationLabel} task reassigned from ${previous} to ${normalizedNext} by ${userEmail}. Reason: ${reason.trim()}`,
-      user_email: userEmail,
-    });
-    await supabase.from("notifications").insert({
-      user_email: normalizedNext,
-      assigned_role: task.required_function || "Implementation Owner",
-      notification_type: "ncmr_implementation_reassigned",
-      title: `${implementationLabel} implementation reassigned: ${record?.ncmr_number || "NCMR"}`,
-      message: `You have been assigned this ${implementationLabel.toLowerCase()} implementation task. Reason: ${reason.trim()}`,
-      related_module: "ncmr", related_record_id: id,
-      related_url: `/ncmrs/${id}/implementation?taskId=${task.id}`,
-      severity: "info", read_status: false,
-    });
-    alert(`Task reassigned to ${normalizedNext}.`);
-    window.location.href = "/workspace";
-  };
 
   const completeTask = async () => {
     if (!task || !record) return;
@@ -360,12 +322,6 @@ export default function NcmrImplementationWorkPackagePage() {
 
       <section style={cardStyle}>
         <h2 style={sectionTitleStyle}>3. Completion</h2>
-
-        {isPending && isAssignedUser ? (
-          <div style={{ marginBottom: "14px" }}>
-            <button type="button" onClick={reassignTask} disabled={submitting}>Reassign Task</button>
-          </div>
-        ) : null}
 
         {isPending ? (
           <>
