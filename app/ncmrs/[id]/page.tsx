@@ -697,15 +697,23 @@ export default function NcmrDetailPage() {
     const finalAcceptedQty = toQuantityNumber(item?.final_quantity_accepted);
     const finalRejectedQty = toQuantityNumber(item?.final_quantity_rejected);
 
-    if (finalAcceptedQty + finalRejectedQty !== affectedQty) {
-      errors.push(
-        `${label}: final accepted + final rejected quantity (${finalAcceptedQty + finalRejectedQty}) must equal initial affected quantity (${affectedQty}).`
-      );
-    }
-
     const allowsDiscrepancy =
       disposition === "use_as_is" ||
       disposition === "accept_per_specification";
+
+    const discrepancyQtyForReconciliation =
+      allowsDiscrepancy && item?.quantity_discrepancy === true
+        ? toQuantityNumber(item?.discrepancy_quantity)
+        : 0;
+
+    const finalReconciledQty =
+      finalAcceptedQty + finalRejectedQty + discrepancyQtyForReconciliation;
+
+    if (finalReconciledQty !== affectedQty) {
+      errors.push(
+        `${label}: final accepted + final rejected${discrepancyQtyForReconciliation > 0 ? " + discrepancy" : ""} quantity (${finalReconciledQty}) must equal initial affected quantity (${affectedQty}).`
+      );
+    }
 
     if (!allowsDiscrepancy && item?.quantity_discrepancy === true) {
       errors.push(`${label}: quantity discrepancy is only available for Use As Is or Accept Per Specification.`);
@@ -4173,9 +4181,19 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
       }
     }
 
-    if (finalAcceptedQty + finalRejectedQty !== affectedQty) {
+    const discrepancyQtyForReconciliation =
+      allowsDiscrepancy && savedDiscrepancy
+        ? toQuantityNumber(savedDiscrepancyQty)
+        : 0;
+
+    const finalReconciledQty =
+      finalAcceptedQty + finalRejectedQty + discrepancyQtyForReconciliation;
+
+    if (finalReconciledQty !== affectedQty) {
       alert(
-        `Final quantity reconciliation failed. Final Accepted (${finalAcceptedQty}) + Final Rejected (${finalRejectedQty}) must equal Initial Quantity (${affectedQty}).`
+        savedDiscrepancy
+          ? `Final quantity reconciliation failed. Final Accepted (${finalAcceptedQty}) + Final Rejected (${finalRejectedQty}) + Discrepancy (${discrepancyQtyForReconciliation}) must equal Initial Quantity (${affectedQty}).`
+          : `Final quantity reconciliation failed. Final Accepted (${finalAcceptedQty}) + Final Rejected (${finalRejectedQty}) must equal Initial Quantity (${affectedQty}).`
       );
       return;
     }
@@ -7178,8 +7196,15 @@ function DispositionImplementationCard({
       ? Number(finalQuantityRejected || 0)
       : mrbRejected;
 
-  const reconciled =
-    displayedFinalAccepted + displayedFinalRejected === affectedQuantity;
+  const displayedDiscrepancyQuantity =
+    allowsDiscrepancy && quantityDiscrepancy
+      ? Number(discrepancyQuantity || 0)
+      : 0;
+
+  const displayedReconciledQuantity =
+    displayedFinalAccepted + displayedFinalRejected + displayedDiscrepancyQuantity;
+
+  const reconciled = displayedReconciledQuantity === affectedQuantity;
 
   const status = String(
     item?.disposition_implementation_status || "not_started"
@@ -7312,8 +7337,11 @@ function DispositionImplementationCard({
         }}
       >
         <strong>Final Quantity Reconciliation:</strong>{" "}
-        {displayedFinalAccepted} Accepted + {displayedFinalRejected} Rejected ={" "}
-        {displayedFinalAccepted + displayedFinalRejected} / Initial {affectedQuantity} —{" "}
+        {displayedFinalAccepted} Accepted + {displayedFinalRejected} Rejected
+        {displayedDiscrepancyQuantity > 0 ? (
+          <> + {displayedDiscrepancyQuantity} Discrepancy</>
+        ) : null}{" "}
+        = {displayedReconciledQuantity} / Initial {affectedQuantity} —{" "}
         {reconciled ? "✓ Reconciled" : "⚠ Not Reconciled"}
       </div>
 
