@@ -85,6 +85,8 @@ export default function NcmrDetailPage() {
   const [correctionTaskAssignee, setCorrectionTaskAssignee] = useState("");
   const [correctionTaskDueDate, setCorrectionTaskDueDate] = useState("");
   const [correctionTaskInstructions, setCorrectionTaskInstructions] = useState("");
+  const [showAdditionalImplementationTaskForm, setShowAdditionalImplementationTaskForm] = useState(false);
+  const [submittingImplementationTask, setSubmittingImplementationTask] = useState(false);
 
   const [reworkTaskAssignee, setReworkTaskAssignee] = useState("");
   const [reworkTaskDueDate, setReworkTaskDueDate] = useState("");
@@ -141,12 +143,17 @@ export default function NcmrDetailPage() {
       { code: "accept_per_specification", label: "Accept Per Specification" },
       { code: "use_as_is", label: "Use As Is" },
       { code: "rework", label: "Rework" },
-      { code: "repair", label: "Repair" },
       { code: "scrap", label: "Scrap" },
       { code: "return_to_supplier", label: "Return to Supplier" },
-      { code: "sort_screen", label: "Sort / Screen" },
-      { code: "hold_pending_decision", label: "Hold Pending Decision" },
     ];
+
+    const allowedDispositionCodes = new Set([
+      "accept_per_specification",
+      "use_as_is",
+      "rework",
+      "scrap",
+      "return_to_supplier",
+    ]);
 
     const normalizeOption = (item: any) => {
       const rawLabel =
@@ -224,9 +231,19 @@ export default function NcmrDetailPage() {
       mergedByCode[normalized.code] = normalized;
     });
 
-    const mergedOptions = Object.values(mergedByCode).sort((a: any, b: any) =>
-      String(a.label || "").localeCompare(String(b.label || ""))
-    );
+    const mergedOptions = Object.values(mergedByCode)
+      .filter((option: any) =>
+        allowedDispositionCodes.has(
+          String(option?.code || "")
+            .trim()
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, "_")
+            .replace(/^_+|_+$/g, "")
+        )
+      )
+      .sort((a: any, b: any) =>
+        String(a.label || "").localeCompare(String(b.label || ""))
+      );
 
     setDispositionOptions(mergedOptions);
   };
@@ -637,6 +654,125 @@ export default function NcmrDetailPage() {
   const isReworkDisposition = (value: any) => {
     const disposition = normalizeDispositionValue(value);
     return disposition === "rework" || disposition.includes("rework");
+  };
+
+  const isSupportedDisposition = (value: any) => {
+    const disposition = normalizeDispositionValue(value);
+    return [
+      "accept_per_specification",
+      "use_as_is",
+      "rework",
+      "scrap",
+      "return_to_supplier",
+    ].includes(disposition);
+  };
+
+  const requiresDispositionImplementation = (item: any) => {
+    const disposition = normalizeDispositionValue(item?.product_disposition);
+    return [
+      "accept_per_specification",
+      "use_as_is",
+      "scrap",
+      "return_to_supplier",
+    ].includes(disposition);
+  };
+
+  const getDispositionImplementationItems = () =>
+    affectedItems.filter((item) => requiresDispositionImplementation(item));
+
+  const getDispositionImplementationErrors = (item: any, label: string) => {
+    const errors: string[] = [];
+    const disposition = normalizeDispositionValue(item?.product_disposition);
+
+    if (!requiresDispositionImplementation(item)) return errors;
+
+    if (item?.disposition_implementation_status !== "completed") {
+      errors.push(`${label}: approved ${formatDispositionLabel(disposition)} disposition has not been implemented.`);
+      return errors;
+    }
+
+    const affectedQty = toQuantityNumber(item?.quantity_affected);
+    const mrbAcceptedQty = toQuantityNumber(item?.quantity_accepted);
+    const mrbRejectedQty = toQuantityNumber(item?.quantity_rejected);
+    const finalAcceptedQty = toQuantityNumber(item?.final_quantity_accepted);
+    const finalRejectedQty = toQuantityNumber(item?.final_quantity_rejected);
+
+    if (finalAcceptedQty + finalRejectedQty !== affectedQty) {
+      errors.push(
+        `${label}: final accepted + final rejected quantity (${finalAcceptedQty + finalRejectedQty}) must equal initial affected quantity (${affectedQty}).`
+      );
+    }
+
+    const allowsDiscrepancy =
+      disposition === "use_as_is" ||
+      disposition === "accept_per_specification";
+
+    if (!allowsDiscrepancy && item?.quantity_discrepancy === true) {
+      errors.push(`${label}: quantity discrepancy is only available for Use As Is or Accept Per Specification.`);
+    }
+
+    if (allowsDiscrepancy && item?.quantity_discrepancy === true) {
+      const discrepancyQty = toQuantityNumber(item?.discrepancy_quantity);
+      const discrepancyType = String(item?.discrepancy_type || "");
+      const rationale = String(item?.discrepancy_rationale || "").trim();
+
+      if (discrepancyQty <= 0) {
+        errors.push(`${label}: discrepancy quantity must be greater than zero.`);
+      }
+
+      if (!["accepted_quantity", "rejected_quantity"].includes(discrepancyType)) {
+        errors.push(`${label}: discrepancy type must identify Accepted Quantity or Rejected Quantity.`);
+      }
+
+      if (!rationale) {
+        errors.push(`${label}: discrepancy rationale is required.`);
+      }
+
+      const acceptedDifference = Math.abs(finalAcceptedQty - mrbAcceptedQty);
+      const rejectedDifference = Math.abs(finalRejectedQty - mrbRejectedQty);
+      const selectedDifference =
+        discrepancyType === "accepted_quantity"
+          ? acceptedDifference
+          : rejectedDifference;
+
+      if (discrepancyQty > 0 && selectedDifference !== discrepancyQty) {
+        errors.push(
+          `${label}: discrepancy quantity (${discrepancyQty}) does not match the change in the selected MRB ${discrepancyType === "accepted_quantity" ? "Accepted" : "Rejected"} Quantity (${selectedDifference}).`
+        );
+      }
+    }
+
+    if (allowsDiscrepancy && item?.quantity_discrepancy !== true) {
+      if (
+        finalAcceptedQty !== mrbAcceptedQty ||
+        finalRejectedQty !== mrbRejectedQty
+      ) {
+        errors.push(
+          `${label}: when Quantity Discrepancy is No, final accepted/rejected quantities must equal the MRB-approved quantities.`
+        );
+      }
+    }
+
+    if (
+      (disposition === "scrap" || disposition === "return_to_supplier") &&
+      (finalAcceptedQty !== mrbAcceptedQty ||
+        finalRejectedQty !== mrbRejectedQty)
+    ) {
+      errors.push(
+        `${label}: ${formatDispositionLabel(disposition)} implementation must retain the MRB-approved accepted/rejected quantities.`
+      );
+    }
+
+    return errors;
+  };
+
+  const areDispositionImplementationsComplete = () => {
+    const items = getDispositionImplementationItems();
+    if (items.length === 0) return true;
+
+    return items.every(
+      (item) => getDispositionImplementationErrors(item, "Affected item").length === 0
+    );
   };
 
   const buildQuantityReconciliationErrors = (item: any, label: string) => {
@@ -1187,6 +1323,12 @@ export default function NcmrDetailPage() {
       const label = `Affected Item ${index + 1}`;
       const quantityReconciliationErrors = buildQuantityReconciliationErrors(item, label);
       errors.push(...quantityReconciliationErrors);
+
+      if (!isSupportedDisposition(item?.product_disposition)) {
+        errors.push(`${label}: unsupported disposition. Select one of the approved NCMR disposition types.`);
+      }
+
+      errors.push(...getDispositionImplementationErrors(item, label));
     });
 
     const reworkItemsMissingFinalDisposition = affectedItems.filter(
@@ -3574,17 +3716,37 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
     }).eq("id", id);
     if (error) return alert(error.message);
 
-    await addAuditLog("mrb_returned_for_revision", `Approved MRB returned by ${userEmail}. Destination: ${destination.trim()}. Justification: ${justification.trim()}. Prior approval history preserved.`);
+    const { error: supersedeDispositionImplementationError } = await supabase
+      .from("ncmr_affected_items")
+      .update({ disposition_implementation_status: "superseded" })
+      .eq("ncmr_id", id)
+      .eq("disposition_implementation_status", "completed");
+
+    if (supersedeDispositionImplementationError) {
+      return alert(supersedeDispositionImplementationError.message);
+    }
+
+    await addAuditLog("mrb_returned_for_revision", `Approved MRB returned by ${userEmail}. Destination: ${destination.trim()}. Justification: ${justification.trim()}. Prior approval history preserved. Completed disposition implementations were marked superseded and must be reconfirmed after the new MRB approval cycle.`);
     alert("MRB returned for revision. A new MRB approval cycle is required.");
     await fetchRecord();
   };
 
-  const hasActiveOrCompletedImplementationTask = () =>
-    correctionTasks.some((task: any) =>
-      ["pending", "completed"].includes(
-        String(task?.status || "").trim().toLowerCase()
+  const getActiveImplementationTasks = () =>
+    correctionTasks.filter(
+      (task: any) =>
+        String(task?.status || "").trim().toLowerCase() !== "cancelled"
+    );
+
+  const areAllActiveImplementationTasksComplete = () => {
+    const activeTasks = getActiveImplementationTasks();
+    return (
+      activeTasks.length > 0 &&
+      activeTasks.every(
+        (task: any) =>
+          String(task?.status || "").trim().toLowerCase() === "completed"
       )
     );
+  };
 
   const hasActiveOrCompletedReworkTask = () =>
     reworkTasks.some((task: any) =>
@@ -3614,35 +3776,6 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
       return;
     }
 
-    if (hasActiveOrCompletedImplementationTask()) {
-      alert(
-        "A pending or completed Correction / Corrective Action implementation task already exists. A duplicate task was not created."
-      );
-      return;
-    }
-
-    const { data: existingImplementationTasks, error: existingImplementationError } =
-      await supabase
-        .from("approval_tasks")
-        .select("id, status, task_type")
-        .eq("entity_type", "ncmr")
-        .eq("entity_id", id)
-        .in("task_type", ["correction_task", "corrective_action_task"])
-        .in("status", ["pending", "completed"]);
-
-    if (existingImplementationError) {
-      alert(existingImplementationError.message);
-      return;
-    }
-
-    if ((existingImplementationTasks || []).length > 0) {
-      await fetchCorrectionTasks();
-      alert(
-        "A pending or completed Correction / Corrective Action implementation task already exists. A duplicate task was not created."
-      );
-      return;
-    }
-
     const taskType =
       implementationTaskType === "corrective_action"
         ? "corrective_action_task"
@@ -3658,6 +3791,47 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
         ? "Corrective Action Owner"
         : "Correction Owner";
 
+    if (submittingImplementationTask) return;
+
+    const normalizedAssignee = correctionTaskAssignee.trim().toLowerCase();
+    const normalizedInstructions = correctionTaskInstructions.trim();
+    const normalizedDueDate = correctionTaskDueDate || null;
+
+    const { data: pendingImplementationTasks, error: pendingImplementationError } =
+      await supabase
+        .from("approval_tasks")
+        .select("id, task_type, assigned_to_email, due_date, task_instructions, comments")
+        .eq("entity_type", "ncmr")
+        .eq("entity_id", id)
+        .in("task_type", ["correction_task", "corrective_action_task"])
+        .eq("status", "pending");
+
+    if (pendingImplementationError) {
+      alert(pendingImplementationError.message);
+      return;
+    }
+
+    const exactDuplicate = (pendingImplementationTasks || []).some((task: any) => {
+      const taskInstructions = String(task?.task_instructions || task?.comments || "").trim();
+      const taskDueDate = task?.due_date || null;
+
+      return (
+        String(task?.task_type || "") === taskType &&
+        normalizeApproverEmail(task?.assigned_to_email) === normalizedAssignee &&
+        taskDueDate === normalizedDueDate &&
+        taskInstructions === normalizedInstructions
+      );
+    });
+
+    if (exactDuplicate) {
+      alert(
+        "An identical pending implementation task already exists for this assignee, due date, type, and instruction. A duplicate task was not submitted."
+      );
+      return;
+    }
+
+    setSubmittingImplementationTask(true);
+
     const { data: insertedTasks, error } = await supabase
       .from("approval_tasks")
       .insert({
@@ -3666,16 +3840,17 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
         task_type: taskType,
         required_function: requiredFunction,
         task_title: `${implementationLabel} implementation for ${record?.ncmr_number || "NCMR"}`,
-        task_instructions: correctionTaskInstructions,
-        assigned_to_email: correctionTaskAssignee.trim().toLowerCase(),
+        task_instructions: normalizedInstructions,
+        assigned_to_email: normalizedAssignee,
         assigned_by_email: userEmail,
         status: "pending",
-        due_date: correctionTaskDueDate || null,
-        comments: correctionTaskInstructions,
+        due_date: normalizedDueDate,
+        comments: normalizedInstructions,
       })
       .select();
 
     if (error) {
+      setSubmittingImplementationTask(false);
       alert(error.message);
       return;
     }
@@ -3720,7 +3895,9 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
     setCorrectionTaskAssignee("");
     setCorrectionTaskDueDate("");
     setCorrectionTaskInstructions("");
-    fetchCorrectionTasks();
+    setShowAdditionalImplementationTaskForm(false);
+    setSubmittingImplementationTask(false);
+    await fetchCorrectionTasks();
   };
 
   const submitReworkTask = async () => {
@@ -3863,28 +4040,182 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
     const errors: string[] = [];
 
     if (isCorrectionTaskRequired()) {
-      const completedImplementationTask = correctionTasks.find(
-        (task) =>
-          task.status === "completed" &&
-          ["correction_task", "corrective_action_task"].includes(task.task_type)
-      );
+      const activeImplementationTasks = getActiveImplementationTasks();
 
-      if (!completedImplementationTask) {
+      if (activeImplementationTasks.length === 0) {
         errors.push(
-          "At least one Correction / Corrective Action implementation task must be completed before closure."
+          "At least one active Correction / Corrective Action implementation task is required before closure."
         );
+      } else {
+        const incompleteImplementationTasks = activeImplementationTasks.filter(
+          (task: any) =>
+            String(task?.status || "").trim().toLowerCase() !== "completed"
+        );
+
+        if (incompleteImplementationTasks.length > 0) {
+          errors.push(
+            `All active Correction / Corrective Action implementation tasks must be completed before closure. ${incompleteImplementationTasks.length} task(s) remain incomplete.`
+          );
+        }
       }
     }
 
     if (hasReworkDisposition()) {
-      const completedReworkTask = getCompletedReworkTask();
+      const activeReworkTasks = reworkTasks.filter(
+        (task: any) =>
+          String(task?.status || "").trim().toLowerCase() !== "cancelled"
+      );
 
-      if (!completedReworkTask) {
-        errors.push("At least one rework task must be completed before closure when rework is applicable.");
+      if (activeReworkTasks.length === 0) {
+        errors.push("At least one active rework task is required before closure when rework is applicable.");
+      } else if (
+        activeReworkTasks.some(
+          (task: any) =>
+            String(task?.status || "").trim().toLowerCase() !== "completed"
+        )
+      ) {
+        errors.push("All active rework tasks must be completed before closure when rework is applicable.");
       }
     }
 
     return errors;
+  };
+
+  const saveDispositionImplementation = async (
+    itemId: string,
+    implementationNotes: string,
+    quantityDiscrepancy: boolean,
+    discrepancyQuantity: string,
+    discrepancyType: string,
+    discrepancyRationale: string,
+    finalQuantityAccepted: string,
+    finalQuantityRejected: string
+  ) => {
+    if (record?.is_locked) {
+      alert("This record is locked after electronic signature and cannot be edited.");
+      return;
+    }
+
+    if (!isMrbApproved()) {
+      alertMrbApprovalRequired();
+      return;
+    }
+
+    const item = affectedItems.find((affectedItem: any) => affectedItem.id === itemId);
+    if (!item) {
+      alert("Affected item not found.");
+      return;
+    }
+
+    if (!requiresDispositionImplementation(item)) {
+      alert("This disposition does not use the non-Rework Disposition Implementation pathway.");
+      return;
+    }
+
+    if (!implementationNotes.trim()) {
+      alert("Disposition implementation notes are required.");
+      return;
+    }
+
+    const disposition = normalizeDispositionValue(item.product_disposition);
+    const affectedQty = toQuantityNumber(item.quantity_affected);
+    const mrbAcceptedQty = toQuantityNumber(item.quantity_accepted);
+    const mrbRejectedQty = toQuantityNumber(item.quantity_rejected);
+    const allowsDiscrepancy =
+      disposition === "use_as_is" ||
+      disposition === "accept_per_specification";
+
+    let finalAcceptedQty = mrbAcceptedQty;
+    let finalRejectedQty = mrbRejectedQty;
+    let savedDiscrepancy = false;
+    let savedDiscrepancyQty: number | null = null;
+    let savedDiscrepancyType: string | null = null;
+    let savedDiscrepancyRationale: string | null = null;
+
+    if (allowsDiscrepancy && quantityDiscrepancy) {
+      if (finalQuantityAccepted === "" || finalQuantityRejected === "") {
+        alert("Final Quantity Accepted and Final Quantity Rejected are required when a quantity discrepancy is identified.");
+        return;
+      }
+
+      finalAcceptedQty = toQuantityNumber(finalQuantityAccepted);
+      finalRejectedQty = toQuantityNumber(finalQuantityRejected);
+      savedDiscrepancy = true;
+      savedDiscrepancyQty = toQuantityNumber(discrepancyQuantity);
+      savedDiscrepancyType = discrepancyType || null;
+      savedDiscrepancyRationale = discrepancyRationale.trim() || null;
+
+      if (savedDiscrepancyQty <= 0) {
+        alert("Discrepancy Quantity must be greater than zero.");
+        return;
+      }
+
+      if (!["accepted_quantity", "rejected_quantity"].includes(savedDiscrepancyType || "")) {
+        alert("Select whether the discrepancy is in Accepted Quantity or Rejected Quantity.");
+        return;
+      }
+
+      if (!savedDiscrepancyRationale) {
+        alert("Discrepancy Rationale is required.");
+        return;
+      }
+
+      const selectedDifference =
+        savedDiscrepancyType === "accepted_quantity"
+          ? Math.abs(finalAcceptedQty - mrbAcceptedQty)
+          : Math.abs(finalRejectedQty - mrbRejectedQty);
+
+      if (selectedDifference !== savedDiscrepancyQty) {
+        alert(
+          `Discrepancy validation failed. Declared discrepancy ${savedDiscrepancyQty}; actual change in selected MRB quantity ${selectedDifference}.`
+        );
+        return;
+      }
+    }
+
+    if (finalAcceptedQty + finalRejectedQty !== affectedQty) {
+      alert(
+        `Final quantity reconciliation failed. Final Accepted (${finalAcceptedQty}) + Final Rejected (${finalRejectedQty}) must equal Initial Quantity (${affectedQty}).`
+      );
+      return;
+    }
+
+    if (!allowsDiscrepancy) {
+      finalAcceptedQty = mrbAcceptedQty;
+      finalRejectedQty = mrbRejectedQty;
+    }
+
+    const now = new Date().toISOString();
+
+    const { error } = await supabase
+      .from("ncmr_affected_items")
+      .update({
+        disposition_implementation_status: "completed",
+        disposition_implementation_notes: implementationNotes.trim(),
+        disposition_implemented_by: userEmail,
+        disposition_implemented_at: now,
+        quantity_discrepancy: savedDiscrepancy,
+        discrepancy_quantity: savedDiscrepancyQty,
+        discrepancy_type: savedDiscrepancyType,
+        discrepancy_rationale: savedDiscrepancyRationale,
+        final_quantity_accepted: finalAcceptedQty,
+        final_quantity_rejected: finalRejectedQty,
+      })
+      .eq("id", itemId)
+      .eq("ncmr_id", id);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    await addAuditLog(
+      "disposition_implementation_completed",
+      `${formatDispositionLabel(disposition)} disposition implemented for affected item ${item.product_part_number || item.lot_number || itemId}. MRB Accepted/Rejected: ${mrbAcceptedQty}/${mrbRejectedQty}. Final Accepted/Rejected: ${finalAcceptedQty}/${finalRejectedQty}. Quantity discrepancy: ${savedDiscrepancy ? `Yes - ${savedDiscrepancyQty} (${savedDiscrepancyType})` : "No"}.`
+    );
+
+    alert("Disposition implementation recorded and final quantities reconciled.");
+    await fetchAffectedItems();
   };
 
   const markCorrectionImplemented = async () => {
@@ -4093,7 +4424,8 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
     { label: "Correction Proposal", complete: !!correctionActionProposal && !!correctiveAction },
     { label: "Risk Assessment", complete: !!riskAssessment && severity !== "not_assessed" },
     { label: "MRB Approval", complete: !!record?.mrb_approved_by },
-    { label: "Implementation", complete: isCorrectionNotRequired() ? !!correctiveAction : !!record?.correction_implemented_by },
+    { label: "Disposition Implementation", complete: !!record?.mrb_approved_by && areDispositionImplementationsComplete() },
+    { label: "Correction Implementation", complete: isCorrectionNotRequired() ? !!correctiveAction : (!!record?.correction_implemented_by && areAllActiveImplementationTasksComplete()) },
     { label: "Evidence", complete: !!evidenceUrl || !!record?.evidence_url },
     { label: "Closure", complete: !!record?.ncmr_closed_by || record?.status === "closed" },
   ];
@@ -4163,7 +4495,11 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
   const isCorrectionProposalComplete = !!correctionActionProposal && !!correctiveAction;
   const isRiskAssessmentComplete = !!riskAssessment && severity !== "not_assessed";
   const isMrbComplete = !!record?.mrb_approved_by;
-  const isImplementationComplete = isCorrectionNotRequired() ? !!correctiveAction : !!record?.correction_implemented_by;
+  const isDispositionImplementationComplete =
+    !!record?.mrb_approved_by && areDispositionImplementationsComplete();
+  const isImplementationComplete = isCorrectionNotRequired()
+    ? !!correctiveAction
+    : !!record?.correction_implemented_by && areAllActiveImplementationTasksComplete();
   const isEvidenceComplete = !!evidenceUrl || !!record?.evidence_url;
   const isClosureComplete = !!record?.ncmr_closed_by || record?.status === "closed";
 
@@ -4218,6 +4554,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
     setCorrectionTaskAssignee("");
     setCorrectionTaskDueDate("");
     setCorrectionTaskInstructions("");
+    setShowAdditionalImplementationTaskForm(false);
     setReworkTaskAssignee("");
     setReworkTaskDueDate("");
     setReworkTaskInstructions("");
@@ -4352,7 +4689,8 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
           <div style={{ marginTop: "8px", display: "grid", gap: "6px" }}>
             <div>{isRiskAssessmentComplete ? "✓" : "○"} Risk assessment complete</div>
             <div>{isMrbComplete ? "✓" : "○"} MRB approval complete</div>
-            <div>{isImplementationComplete ? "✓" : "○"} Correction implementation complete</div>
+            <div>{isDispositionImplementationComplete ? "✓" : "○"} Disposition implementation complete</div>
+            <div>{isImplementationComplete ? "✓" : "○"} Correction / Corrective Action implementation complete</div>
             <div>{isClosureComplete ? "✓" : "○"} NCMR closure complete</div>
           </div>
         </div>
@@ -5647,7 +5985,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
             )}
 
             <h4>Rework Task Status</h4>
-            {reworkTasks.length === 0 ? <p>No rework tasks generated.</p> : <TaskStatusList tasks={reworkTasks} />}
+            {reworkTasks.length === 0 ? <p>No rework tasks submitted.</p> : <TaskStatusList tasks={reworkTasks} />}
 
             {hasCompletedReworkTask() ? (
               <div
@@ -5701,7 +6039,74 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
       </SectionCard>
 
       <SectionCard
-        title="10. Correction / Corrective Action Implementation"
+        title="10. Disposition Implementation"
+        subtitle={
+          !isMrbApproved()
+            ? "Pending: MRB approval is required before disposition implementation."
+            : isDispositionImplementationComplete
+            ? "Complete: all applicable non-Rework dispositions are implemented and reconciled."
+            : "Pending: implement each applicable approved disposition and reconcile final quantities."
+        }
+        defaultOpen={false}
+        rightAction={sectionStatusBadge(isDispositionImplementationComplete, "Disposition Implementation")}
+      >
+        {!isMrbApproved() ? (
+          <div
+            style={{
+              border: "1px solid #facc15",
+              background: "#fefce8",
+              color: "#854d0e",
+              padding: "12px",
+              borderRadius: "8px",
+              marginBottom: "12px",
+            }}
+          >
+            <strong>MRB approval required</strong>
+            <br />
+            Approved item dispositions become available for implementation after MRB approval.
+          </div>
+        ) : getDispositionImplementationItems().length === 0 ? (
+          <div
+            style={{
+              border: "1px solid #86efac",
+              background: "#f0fdf4",
+              color: "#166534",
+              padding: "12px",
+              borderRadius: "8px",
+            }}
+          >
+            No separate non-Rework disposition implementation is required. Rework items continue through the dedicated Rework task and final disposition pathway.
+          </div>
+        ) : (
+          <div style={{ display: "grid", gap: "14px" }}>
+            <div
+              style={{
+                border: "1px solid #bfdbfe",
+                background: "#eff6ff",
+                color: "#1e3a8a",
+                padding: "12px",
+                borderRadius: "8px",
+              }}
+            >
+              <strong>MRB decision is preserved.</strong> MRB Quantity Accepted and Quantity Rejected are read-only here. Disposition Implementation records what actually occurred. Use As Is and Accept Per Specification may document a controlled quantity discrepancy and final quantities without rewriting the approved MRB decision.
+            </div>
+
+            {getDispositionImplementationItems().map((item: any) => (
+              <DispositionImplementationCard
+                key={item.id}
+                item={item}
+                isLocked={isPostMrbSectionLocked()}
+                onSave={saveDispositionImplementation}
+              />
+            ))}
+          </div>
+        )}
+
+        <SectionSaveCancelActions />
+      </SectionCard>
+
+      <SectionCard
+        title="11. Correction / Corrective Action Implementation"
         subtitle={isImplementationComplete ? "Complete: implementation requirements are satisfied." : isCorrectionNotRequired() ? "Pending: document correction-not-required justification." : "Pending: assign/complete a Correction or Corrective Action task and document implementation."}
         defaultOpen={false}
         rightAction={sectionStatusBadge(isImplementationComplete, "Implementation")}
@@ -5760,8 +6165,23 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
             Choose the implementation type, then assign the work to an owner. The assignee completes only the assigned implementation package from My Workspace.
           </p>
 
-          {!hasActiveOrCompletedImplementationTask() ? (
+          {(getActiveImplementationTasks().length === 0 || showAdditionalImplementationTaskForm) ? (
             <>
+              {getActiveImplementationTasks().length > 0 ? (
+                <div
+                  style={{
+                    border: "1px solid #bfdbfe",
+                    background: "#eff6ff",
+                    color: "#1e3a8a",
+                    borderRadius: "8px",
+                    padding: "10px",
+                    marginBottom: "12px",
+                  }}
+                >
+                  Add an independent Correction or Corrective Action implementation task. Existing tasks remain unchanged and independently traceable.
+                </div>
+              ) : null}
+
               <div style={{ display: "grid", gap: "12px", maxWidth: "700px" }}>
                 <div>
                   <label>Implementation Type</label><br />
@@ -5813,8 +6233,13 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
                 />
               </div>
 
-              <button type="button" onClick={submitImplementationTask} disabled={isPostMrbSectionLocked()} style={{ marginTop: "10px" }}>
-                Submit Implementation Task
+              <button
+                type="button"
+                onClick={submitImplementationTask}
+                disabled={isPostMrbSectionLocked() || submittingImplementationTask}
+                style={{ marginTop: "10px" }}
+              >
+                {submittingImplementationTask ? "Submitting..." : "Submit Implementation Task"}
               </button>
               <button
                 type="button"
@@ -5822,6 +6247,8 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
                   setCorrectionTaskAssignee("");
                   setCorrectionTaskDueDate("");
                   setCorrectionTaskInstructions("");
+                  setImplementationTaskType("correction");
+                  setShowAdditionalImplementationTaskForm(false);
                 }}
                 disabled={isPostMrbSectionLocked()}
                 style={{ marginTop: "10px", marginLeft: "8px" }}
@@ -5840,12 +6267,28 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
                 color: "#1e3a8a",
               }}
             >
-              Implementation task assignment is locked because a pending or completed Correction / Corrective Action task already exists.
+              <div>
+                The current implementation task assignment is submitted. Existing tasks remain independently traceable below.
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setImplementationTaskType("correction");
+                  setCorrectionTaskAssignee("");
+                  setCorrectionTaskDueDate("");
+                  setCorrectionTaskInstructions("");
+                  setShowAdditionalImplementationTaskForm(true);
+                }}
+                disabled={isPostMrbSectionLocked()}
+                style={{ marginTop: "10px" }}
+              >
+                Add Another Implementation Task
+              </button>
             </div>
           )}
 
           <h4>Correction / Corrective Action Task Status</h4>
-          {correctionTasks.length === 0 ? <p>No implementation tasks generated.</p> : <TaskStatusList tasks={correctionTasks} />}
+          {correctionTasks.length === 0 ? <p>No implementation tasks submitted.</p> : <TaskStatusList tasks={correctionTasks} />}
         </div>
 
         <textarea
@@ -5877,7 +6320,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
       </SectionCard>
 
       <SectionCard
-        title="11. Evidence"
+        title="12. Evidence"
         subtitle={isEvidenceComplete ? "Complete: evidence is linked." : "Optional/Pending: upload or link supporting evidence."}
         defaultOpen={false}
         rightAction={sectionStatusBadge(isEvidenceComplete, "Evidence")}
@@ -6073,7 +6516,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
       </SectionCard>
 
       <SectionCard
-        title="12. Closure"
+        title="13. Closure"
         subtitle={isClosureComplete ? "Complete: NCMR is closed and locked." : "Pending: complete closure review and e-signature."}
         defaultOpen={false}
         rightAction={sectionStatusBadge(isClosureComplete, "Closure")}
@@ -6606,6 +7049,297 @@ function ReworkVerificationCard({
           }}
         >
           Final rework disposition saved.
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function formatDispositionLabel(value: any) {
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+
+  if (normalized === "use_as_is") return "Use As Is";
+  if (normalized === "accept_per_specification") return "Accept Per Specification";
+  if (normalized === "scrap") return "Scrap";
+  if (normalized === "return_to_supplier") return "Return to Supplier";
+  if (normalized === "rework") return "Rework";
+
+  return String(value || "Disposition")
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+function DispositionImplementationCard({
+  item,
+  isLocked,
+  onSave,
+}: {
+  item: any;
+  isLocked: boolean;
+  onSave: (
+    itemId: string,
+    implementationNotes: string,
+    quantityDiscrepancy: boolean,
+    discrepancyQuantity: string,
+    discrepancyType: string,
+    discrepancyRationale: string,
+    finalQuantityAccepted: string,
+    finalQuantityRejected: string
+  ) => void;
+}) {
+  const disposition = String(item?.product_disposition || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+
+  const allowsDiscrepancy =
+    disposition === "use_as_is" ||
+    disposition === "accept_per_specification";
+
+  const mrbAccepted = Number(item?.quantity_accepted || 0);
+  const mrbRejected = Number(item?.quantity_rejected || 0);
+  const affectedQuantity = Number(item?.quantity_affected || 0);
+
+  const [implementationNotes, setImplementationNotes] = useState(
+    item?.disposition_implementation_notes || ""
+  );
+  const [quantityDiscrepancy, setQuantityDiscrepancy] = useState(
+    item?.quantity_discrepancy === true
+  );
+  const [discrepancyQuantity, setDiscrepancyQuantity] = useState(
+    item?.discrepancy_quantity !== null &&
+      item?.discrepancy_quantity !== undefined
+      ? String(item.discrepancy_quantity)
+      : ""
+  );
+  const [discrepancyType, setDiscrepancyType] = useState(
+    item?.discrepancy_type || ""
+  );
+  const [discrepancyRationale, setDiscrepancyRationale] = useState(
+    item?.discrepancy_rationale || ""
+  );
+  const [finalQuantityAccepted, setFinalQuantityAccepted] = useState(
+    item?.final_quantity_accepted !== null &&
+      item?.final_quantity_accepted !== undefined
+      ? String(item.final_quantity_accepted)
+      : String(mrbAccepted)
+  );
+  const [finalQuantityRejected, setFinalQuantityRejected] = useState(
+    item?.final_quantity_rejected !== null &&
+      item?.final_quantity_rejected !== undefined
+      ? String(item.final_quantity_rejected)
+      : String(mrbRejected)
+  );
+
+  useEffect(() => {
+    setImplementationNotes(item?.disposition_implementation_notes || "");
+    setQuantityDiscrepancy(item?.quantity_discrepancy === true);
+    setDiscrepancyQuantity(
+      item?.discrepancy_quantity !== null &&
+        item?.discrepancy_quantity !== undefined
+        ? String(item.discrepancy_quantity)
+        : ""
+    );
+    setDiscrepancyType(item?.discrepancy_type || "");
+    setDiscrepancyRationale(item?.discrepancy_rationale || "");
+    setFinalQuantityAccepted(
+      item?.final_quantity_accepted !== null &&
+        item?.final_quantity_accepted !== undefined
+        ? String(item.final_quantity_accepted)
+        : String(Number(item?.quantity_accepted || 0))
+    );
+    setFinalQuantityRejected(
+      item?.final_quantity_rejected !== null &&
+        item?.final_quantity_rejected !== undefined
+        ? String(item.final_quantity_rejected)
+        : String(Number(item?.quantity_rejected || 0))
+    );
+  }, [
+    item?.disposition_implementation_notes,
+    item?.quantity_discrepancy,
+    item?.discrepancy_quantity,
+    item?.discrepancy_type,
+    item?.discrepancy_rationale,
+    item?.final_quantity_accepted,
+    item?.final_quantity_rejected,
+    item?.quantity_accepted,
+    item?.quantity_rejected,
+  ]);
+
+  const displayedFinalAccepted =
+    allowsDiscrepancy && quantityDiscrepancy
+      ? Number(finalQuantityAccepted || 0)
+      : mrbAccepted;
+  const displayedFinalRejected =
+    allowsDiscrepancy && quantityDiscrepancy
+      ? Number(finalQuantityRejected || 0)
+      : mrbRejected;
+
+  const reconciled =
+    displayedFinalAccepted + displayedFinalRejected === affectedQuantity;
+
+  const status = String(
+    item?.disposition_implementation_status || "not_started"
+  ).toLowerCase();
+
+  return (
+    <div
+      style={{
+        border:
+          status === "completed" && reconciled
+            ? "1px solid #86efac"
+            : "1px solid #d1d5db",
+        background:
+          status === "completed" && reconciled ? "#f0fdf4" : "#f9fafb",
+        borderRadius: "10px",
+        padding: "14px",
+      }}
+    >
+      <h3 style={{ marginTop: 0 }}>
+        {formatDispositionLabel(disposition)} —{" "}
+        {item?.product_part_number || "Part N/A"} / Lot{" "}
+        {item?.lot_number || "Lot N/A"}
+      </h3>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
+          gap: "10px",
+          marginBottom: "12px",
+        }}
+      >
+        <div><strong>Initial Quantity</strong><div style={{ marginTop: "4px" }}>{affectedQuantity}</div></div>
+        <div><strong>MRB Quantity Accepted</strong><div style={{ marginTop: "4px" }}>{mrbAccepted}</div></div>
+        <div><strong>MRB Quantity Rejected</strong><div style={{ marginTop: "4px" }}>{mrbRejected}</div></div>
+        <div>
+          <strong>Implementation Status</strong>
+          <div style={{ marginTop: "4px" }}>
+            {status === "completed"
+              ? "Completed"
+              : status === "superseded"
+              ? "Superseded — Reconfirmation Required"
+              : "Not Started"}
+          </div>
+        </div>
+      </div>
+
+      {allowsDiscrepancy ? (
+        <div style={{ marginBottom: "12px" }}>
+          <label><strong>Quantity Discrepancy?</strong></label><br />
+          <select
+            value={quantityDiscrepancy ? "yes" : "no"}
+            onChange={(event) => {
+              const hasDiscrepancy = event.target.value === "yes";
+              setQuantityDiscrepancy(hasDiscrepancy);
+              if (!hasDiscrepancy) {
+                setDiscrepancyQuantity("");
+                setDiscrepancyType("");
+                setDiscrepancyRationale("");
+                setFinalQuantityAccepted(String(mrbAccepted));
+                setFinalQuantityRejected(String(mrbRejected));
+              }
+            }}
+            disabled={isLocked}
+            style={{ padding: "8px", minWidth: "180px", marginTop: "4px" }}
+          >
+            <option value="no">No</option>
+            <option value="yes">Yes</option>
+          </select>
+        </div>
+      ) : null}
+
+      {allowsDiscrepancy && quantityDiscrepancy ? (
+        <div style={{ border: "1px solid #facc15", background: "#fefce8", borderRadius: "8px", padding: "12px", marginBottom: "12px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "10px" }}>
+            <div>
+              <label>Discrepancy Quantity</label><br />
+              <input type="number" min="0" value={discrepancyQuantity} onChange={(e) => setDiscrepancyQuantity(e.target.value)} disabled={isLocked} style={{ padding: "8px", width: "100%" }} />
+            </div>
+            <div>
+              <label>Discrepancy Type</label><br />
+              <select value={discrepancyType} onChange={(e) => setDiscrepancyType(e.target.value)} disabled={isLocked} style={{ padding: "8px", width: "100%" }}>
+                <option value="">Select quantity</option>
+                <option value="accepted_quantity">Accepted Quantity</option>
+                <option value="rejected_quantity">Rejected Quantity</option>
+              </select>
+            </div>
+            <div>
+              <label>Final Quantity Accepted</label><br />
+              <input type="number" min="0" value={finalQuantityAccepted} onChange={(e) => setFinalQuantityAccepted(e.target.value)} disabled={isLocked} style={{ padding: "8px", width: "100%" }} />
+            </div>
+            <div>
+              <label>Final Quantity Rejected</label><br />
+              <input type="number" min="0" value={finalQuantityRejected} onChange={(e) => setFinalQuantityRejected(e.target.value)} disabled={isLocked} style={{ padding: "8px", width: "100%" }} />
+            </div>
+          </div>
+          <div style={{ marginTop: "10px" }}>
+            <label>Discrepancy Rationale</label><br />
+            <textarea value={discrepancyRationale} onChange={(e) => setDiscrepancyRationale(e.target.value)} disabled={isLocked} rows={3} style={{ width: "100%", maxWidth: "850px" }} />
+          </div>
+        </div>
+      ) : null}
+
+      {!allowsDiscrepancy ? (
+        <div style={{ border: "1px solid #e5e7eb", background: "white", borderRadius: "8px", padding: "10px", marginBottom: "12px" }}>
+          Final quantities remain equal to the MRB-approved quantities for <strong>{formatDispositionLabel(disposition)}</strong>.
+        </div>
+      ) : null}
+
+      <div style={{ marginBottom: "12px" }}>
+        <label>Disposition Implementation Notes</label><br />
+        <textarea
+          value={implementationNotes}
+          onChange={(e) => setImplementationNotes(e.target.value)}
+          disabled={isLocked}
+          rows={4}
+          placeholder={`Document how the approved ${formatDispositionLabel(disposition)} disposition was implemented.`}
+          style={{ width: "100%", maxWidth: "850px" }}
+        />
+      </div>
+
+      <div
+        style={{
+          border: reconciled ? "1px solid #86efac" : "1px solid #fca5a5",
+          background: reconciled ? "#f0fdf4" : "#fef2f2",
+          color: reconciled ? "#166534" : "#991b1b",
+          borderRadius: "8px",
+          padding: "10px",
+          marginBottom: "12px",
+        }}
+      >
+        <strong>Final Quantity Reconciliation:</strong>{" "}
+        {displayedFinalAccepted} Accepted + {displayedFinalRejected} Rejected ={" "}
+        {displayedFinalAccepted + displayedFinalRejected} / Initial {affectedQuantity} —{" "}
+        {reconciled ? "✓ Reconciled" : "⚠ Not Reconciled"}
+      </div>
+
+      <button
+        type="button"
+        onClick={() =>
+          onSave(
+            item.id,
+            implementationNotes,
+            allowsDiscrepancy ? quantityDiscrepancy : false,
+            discrepancyQuantity,
+            discrepancyType,
+            discrepancyRationale,
+            allowsDiscrepancy && quantityDiscrepancy ? finalQuantityAccepted : String(mrbAccepted),
+            allowsDiscrepancy && quantityDiscrepancy ? finalQuantityRejected : String(mrbRejected)
+          )
+        }
+        disabled={isLocked}
+      >
+        {status === "completed" ? "Update Disposition Implementation" : "Record Disposition Implemented"}
+      </button>
+
+      {item?.disposition_implemented_by ? (
+        <div style={{ marginTop: "10px", fontSize: "14px" }}>
+          <strong>Implemented By:</strong> {item.disposition_implemented_by}<br />
+          <strong>Implemented At:</strong> {item.disposition_implemented_at || "N/A"}
         </div>
       ) : null}
     </div>
