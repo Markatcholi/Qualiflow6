@@ -3593,7 +3593,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
       )
     );
 
-  const generateCorrectionTask = async () => {
+  const submitImplementationTask = async () => {
     if (record?.is_locked) {
       alert("This record is locked after electronic signature and cannot be edited.");
       return;
@@ -3711,11 +3711,11 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
     }
 
     await addAuditLog(
-      `${taskType}_generated`,
-      `${implementationLabel} implementation task assigned to ${correctionTaskAssignee}.`
+      `${taskType}_submitted`,
+      `${implementationLabel} implementation task submitted to ${correctionTaskAssignee}.`
     );
 
-    alert(`${implementationLabel} implementation task generated.`);
+    alert(`${implementationLabel} implementation task submitted.`);
     setImplementationTaskType("correction");
     setCorrectionTaskAssignee("");
     setCorrectionTaskDueDate("");
@@ -3723,7 +3723,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
     fetchCorrectionTasks();
   };
 
-  const generateReworkTask = async () => {
+  const submitReworkTask = async () => {
     if (record?.is_locked) {
       alert("This record is locked after electronic signature and cannot be edited.");
       return;
@@ -3821,11 +3821,11 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
     }
 
     await addAuditLog(
-      "rework_task_generated",
-      `Rework task assigned to ${reworkTaskAssignee}.`
+      "rework_task_submitted",
+      `Rework task submitted to ${reworkTaskAssignee}.`
     );
 
-    alert("Rework task generated.");
+    alert("Rework task submitted.");
     setReworkTaskAssignee("");
     setReworkTaskDueDate("");
     setReworkTaskInstructions("");
@@ -5615,8 +5615,8 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
                   />
                 </div>
 
-                <button type="button" onClick={generateReworkTask} disabled={isLocked} style={{ marginTop: "10px" }}>
-                  Generate Rework Task
+                <button type="button" onClick={submitReworkTask} disabled={isLocked} style={{ marginTop: "10px" }}>
+                  Submit Rework Task
                 </button>
                 <button
                   type="button"
@@ -5813,8 +5813,8 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
                 />
               </div>
 
-              <button type="button" onClick={generateCorrectionTask} disabled={isPostMrbSectionLocked()} style={{ marginTop: "10px" }}>
-                Generate Implementation Task
+              <button type="button" onClick={submitImplementationTask} disabled={isPostMrbSectionLocked()} style={{ marginTop: "10px" }}>
+                Submit Implementation Task
               </button>
               <button
                 type="button"
