@@ -105,6 +105,12 @@ export default function NcmrDetailPage() {
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [validationAttempted, setValidationAttempted] = useState(false);
 
+  const [autoSaveStatus, setAutoSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [returnRevisionOpen, setReturnRevisionOpen] = useState(false);
+  const [returnRevisionDestination, setReturnRevisionDestination] = useState("correction / corrective action proposal");
+  const [returnRevisionJustification, setReturnRevisionJustification] = useState("");
+  const [returnRevisionSubmitting, setReturnRevisionSubmitting] = useState(false);
+
   const [summaryIssueDescription, setSummaryIssueDescription] = useState("");
   const [summaryProductPartNumber, setSummaryProductPartNumber] = useState("");
   const [summaryLotNumber, setSummaryLotNumber] = useState("");
@@ -2592,6 +2598,12 @@ This approval task was created by the MRB approval task issue recovery action. E
   };
 
   const allRequiredMrbApprovalTasksApproved = () => {
+    // Auto-completion is valid only for a deliberately submitted current cycle.
+    // A returned MRB is reset to draft, so historical approvals cannot re-approve it.
+    if (String(record?.review_status || "").toLowerCase() !== "pending_approval") {
+      return false;
+    }
+
     const requiredFunctions = getRequiredMrbApprovalFunctions();
     const activeApprovalTasks = getActiveMrbApprovalTasks();
 
@@ -3779,7 +3791,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
     await fetchRecord();
   };
 
-  const returnAfterMrbApproval = async () => {
+  const openReturnAfterMrbApproval = () => {
     if (!record?.mrb_approved_by || !record?.mrb_approved_at) {
       alert("Return for Revision is available only after MRB approval.");
       return;
@@ -3793,44 +3805,80 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
       return;
     }
 
-    const destination = window.prompt("Return destination: Investigation / Root Cause, Risk Assessment, Correction / Corrective Action Proposal, Product Disposition, or MRB Preparation");
-    if (!destination?.trim()) return;
-    const allowed = ["investigation / root cause","risk assessment","correction / corrective action proposal","product disposition","mrb preparation"];
-    if (!allowed.includes(destination.trim().toLowerCase())) return alert("Enter one of the listed return destinations.");
+    setReturnRevisionDestination("correction / corrective action proposal");
+    setReturnRevisionJustification("");
+    setReturnRevisionOpen(true);
+  };
 
-    const justification = window.prompt("Return justification is required:");
-    if (!justification?.trim()) return alert("Return for Revision requires a justification.");
-    if (!window.confirm("Return this approved MRB for revision? Prior approval history will be preserved and a new MRB approval cycle will be required.")) return;
+  const returnAfterMrbApproval = async () => {
+    const destination = returnRevisionDestination.trim().toLowerCase();
+    const justification = returnRevisionJustification.trim();
 
-    const { error: taskError } = await supabase
-      .from("approval_tasks")
-      .update({ status: "cancelled", comments: `Approved MRB returned for revision. Destination: ${destination.trim()}. Justification: ${justification.trim()}` })
-      .eq("entity_type", "ncmr").eq("entity_id", id).eq("status", "pending");
-    if (taskError) return alert(taskError.message);
+    if (!destination) return alert("Select a Return To destination.");
+    if (!justification) return alert("Return for Revision requires a justification.");
 
-    const { error } = await supabase.from("ncmrs").update({
-      mrb_approved_by: null,
-      mrb_approved_at: null,
-      mrb_signature_email_entered: null,
-      mrb_signature_meaning: null,
-      review_status: "draft",
-      is_locked: false,
-    }).eq("id", id);
-    if (error) return alert(error.message);
+    setReturnRevisionSubmitting(true);
+    try {
+      const activeTasks = getActiveMrbApprovalTasks();
+      const pendingTaskIds = activeTasks
+        .filter((task: any) => String(task?.status || "").toLowerCase() === "pending")
+        .map((task: any) => task.id)
+        .filter(Boolean);
 
-    const { error: supersedeDispositionImplementationError } = await supabase
-      .from("ncmr_affected_items")
-      .update({ disposition_implementation_status: "superseded" })
-      .eq("ncmr_id", id)
-      .eq("disposition_implementation_status", "completed");
+      if (pendingTaskIds.length > 0) {
+        const { error: taskError } = await supabase
+          .from("approval_tasks")
+          .update({
+            status: "cancelled",
+            comments: `Approved MRB returned for revision. Destination: ${returnRevisionDestination}. Justification: ${justification}`,
+          })
+          .in("id", pendingTaskIds);
+        if (taskError) throw new Error(taskError.message);
+      }
 
-    if (supersedeDispositionImplementationError) {
-      return alert(supersedeDispositionImplementationError.message);
+      const { error } = await supabase.from("ncmrs").update({
+        mrb_approved_by: null,
+        mrb_approved_at: null,
+        mrb_signature_email_entered: null,
+        mrb_signature_meaning: null,
+        review_status: "draft",
+        is_locked: false,
+      }).eq("id", id);
+      if (error) throw new Error(error.message);
+
+      const { error: supersedeDispositionImplementationError } = await supabase
+        .from("ncmr_affected_items")
+        .update({ disposition_implementation_status: "superseded" })
+        .eq("ncmr_id", id)
+        .eq("disposition_implementation_status", "completed");
+      if (supersedeDispositionImplementationError) throw new Error(supersedeDispositionImplementationError.message);
+
+      // This audit event is the hard approval-cycle boundary used by
+      // getActiveMrbApprovalTasks(). Prior approved tasks remain historical
+      // and can never auto-approve the newly returned workflow.
+      await addAuditLog(
+        "mrb_approval_cycle_returned",
+        `Approved MRB returned by ${userEmail}. Destination: ${returnRevisionDestination}. Justification: ${justification}. Prior approval history preserved. A new MRB approval cycle is required.`
+      );
+
+      setReturnRevisionOpen(false);
+      await fetchRecord();
+      window.setTimeout(() => {
+        const targetId: Record<string, string> = {
+          "investigation / root cause": "ncmr-section-investigation",
+          "risk assessment": "ncmr-section-risk-assessment",
+          "correction / corrective action proposal": "ncmr-section-correction-proposal",
+          "product disposition": "ncmr-section-product-disposition",
+          "mrb preparation": "ncmr-section-mrb-approval",
+        };
+        document.getElementById(targetId[destination])?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 150);
+      alert(`MRB returned for revision to ${returnRevisionDestination}. Complete the revision and submit a new MRB approval package when ready.`);
+    } catch (error: any) {
+      alert(error?.message || "Unable to return the MRB for revision.");
+    } finally {
+      setReturnRevisionSubmitting(false);
     }
-
-    await addAuditLog("mrb_returned_for_revision", `Approved MRB returned by ${userEmail}. Destination: ${destination.trim()}. Justification: ${justification.trim()}. Prior approval history preserved. Completed disposition implementations were marked superseded and must be reconfirmed after the new MRB approval cycle.`);
-    alert("MRB returned for revision. A new MRB approval cycle is required.");
-    await fetchRecord();
   };
 
   const getActiveImplementationTasks = () =>
@@ -4622,6 +4670,67 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
   };
 
   useEffect(() => {
+    if (!id || !record || isPreMrbSectionReadOnly()) return;
+
+    const capaRecommendation = getCapaRecommendation();
+    const payload: any = {
+      investigator,
+      problem_description: problemDescription,
+      containment_action: containmentAction,
+      investigation_summary: investigationSummary,
+      root_cause: rootCause,
+      root_cause_category: rootCauseCategory,
+      correction_action_proposal: correctionActionProposal,
+      corrective_action: correctiveAction,
+      risk_assessment: riskAssessment,
+      severity,
+      capa_recommended: capaRecommendation.recommended,
+      product_disposition: productDisposition,
+      disposition: productDisposition,
+      disposition_justification: dispositionJustification,
+      review_status: reviewStatus,
+    };
+
+    const unchanged =
+      String(record?.investigator || "") === investigator &&
+      String(record?.problem_description || "") === problemDescription &&
+      String(record?.containment_action || "") === containmentAction &&
+      String(record?.investigation_summary || "") === investigationSummary &&
+      String(record?.root_cause || "") === rootCause &&
+      String(record?.root_cause_category || "") === rootCauseCategory &&
+      String(record?.correction_action_proposal || "") === correctionActionProposal &&
+      String(record?.corrective_action || "") === correctiveAction &&
+      String(record?.risk_assessment || "") === riskAssessment &&
+      String(record?.severity || "not_assessed") === severity &&
+      Boolean(record?.capa_recommended) === Boolean(capaRecommendation.recommended) &&
+      String(record?.product_disposition || record?.disposition || "") === productDisposition &&
+      String(record?.disposition_justification || "") === dispositionJustification &&
+      String(record?.review_status || "draft") === reviewStatus;
+
+    if (unchanged) return;
+
+    setAutoSaveStatus("saving");
+    const timer = window.setTimeout(async () => {
+      if (!record?.investigation_opened_at) payload.investigation_opened_at = new Date().toISOString();
+      const { error } = await supabase.from("ncmrs").update(payload).eq("id", id);
+      if (error) {
+        console.error("NCMR autosave failed:", error.message);
+        setAutoSaveStatus("error");
+        return;
+      }
+      setRecord((current: any) => current ? { ...current, ...payload } : current);
+      setAutoSaveStatus("saved");
+    }, 900);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    id, investigator, problemDescription, containmentAction, investigationSummary,
+    rootCause, rootCauseCategory, correctionActionProposal, correctiveAction,
+    riskAssessment, severity, productDisposition, dispositionJustification, reviewStatus,
+    record?.id, record?.mrb_approved_by, record?.is_locked, approvalTasks,
+  ]);
+
+  useEffect(() => {
     if (id) {
       fetchUserRole();
       fetchRecord();
@@ -4811,28 +4920,21 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
   };
 
   const SectionSaveCancelActions = ({
-    onSave,
     disabled = false,
   }: {
     onSave?: () => void;
     disabled?: boolean;
   }) => (
-    <div
-      style={{
-        display: "flex",
-        gap: "8px",
-        flexWrap: "wrap",
-        marginTop: "14px",
-        borderTop: "1px solid #e5e7eb",
-        paddingTop: "12px",
-      }}
-    >
-      <button type="button" onClick={onSave || saveWorkflow} disabled={isLocked || disabled}>
-        Save Section
-      </button>
-      <button type="button" onClick={cancelCurrentFormChanges} disabled={isLocked || disabled}>
-        Cancel Section Changes
-      </button>
+    <div style={{ marginTop: "12px", color: "#64748b", fontSize: "12px" }}>
+      {disabled || preMrbReadOnly
+        ? "Read-only"
+        : autoSaveStatus === "saving"
+          ? "Saving…"
+          : autoSaveStatus === "error"
+            ? "Autosave failed — retry by editing the field again."
+            : autoSaveStatus === "saved"
+              ? "✓ Saved automatically"
+              : "Changes save automatically"}
     </div>
   );
 
@@ -4860,6 +4962,31 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
   return (
     <main style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
       <h1>NCMR Controlled Workflow</h1>
+
+      {returnRevisionOpen ? (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.45)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px" }}>
+          <div style={{ width: "100%", maxWidth: "560px", background: "white", borderRadius: "12px", padding: "20px", boxShadow: "0 20px 50px rgba(0,0,0,0.25)" }}>
+            <h2 style={{ marginTop: 0 }}>Return Approved MRB for Revision</h2>
+            <p style={{ color: "#475569" }}>Prior approval history will be preserved. The selected section will reopen for revision and a new MRB approval cycle will be required.</p>
+            <label style={{ fontWeight: 700 }}>Return To</label><br />
+            <select value={returnRevisionDestination} onChange={(e) => setReturnRevisionDestination(e.target.value)} disabled={returnRevisionSubmitting} style={{ width: "100%", padding: "9px", marginTop: "6px", marginBottom: "14px" }}>
+              <option value="investigation / root cause">Investigation / Root Cause</option>
+              <option value="risk assessment">Risk Assessment</option>
+              <option value="correction / corrective action proposal">Correction / Corrective Action Proposal</option>
+              <option value="product disposition">Product Disposition</option>
+              <option value="mrb preparation">MRB Preparation</option>
+            </select>
+            <label style={{ fontWeight: 700 }}>Return Justification</label><br />
+            <textarea value={returnRevisionJustification} onChange={(e) => setReturnRevisionJustification(e.target.value)} disabled={returnRevisionSubmitting} rows={4} style={{ width: "100%", marginTop: "6px" }} placeholder="Document why the approved MRB package is being returned for revision." />
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "16px" }}>
+              <button type="button" onClick={() => setReturnRevisionOpen(false)} disabled={returnRevisionSubmitting}>Cancel</button>
+              <button type="button" onClick={returnAfterMrbApproval} disabled={returnRevisionSubmitting || !returnRevisionJustification.trim()}>
+                {returnRevisionSubmitting ? "Returning…" : "Return for Revision"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {/* NCMR Executive Status Strip */}
       <div
@@ -4902,7 +5029,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
             <button type="button" onClick={cancelNcmr}>Cancel NCMR</button>
           ) : null}
           {record?.mrb_approved_by && isElevatedNcmrAuthority() ? (
-            <button type="button" onClick={returnAfterMrbApproval}>Return Approved MRB for Revision</button>
+            <button type="button" onClick={openReturnAfterMrbApproval}>Return Approved MRB for Revision</button>
           ) : null}
         </div>
       ) : null}
@@ -5347,6 +5474,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
         <SectionSaveCancelActions disabled={preMrbReadOnly} />
       </SectionCard>
 
+      <div id="ncmr-section-investigation" />
       <SectionCard
         title="3. Investigation / Root Cause"
         subtitle={isInvestigationComplete ? "Complete: investigator, problem statement, investigation, and root cause are documented." : "Pending: document the investigator, problem statement, investigation summary, root cause category, and root cause."}
@@ -5457,10 +5585,11 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
         <SectionSaveCancelActions disabled={preMrbReadOnly} />
       </SectionCard>
 
+      <div id="ncmr-section-correction-proposal" />
       <SectionCard
         title="4. Correction / Corrective Action Proposal"
         subtitle={isCorrectionProposalComplete ? "Complete: correction proposal and recommendation are documented." : "Pending: document correction proposal and corrective action recommendation."}
-        defaultOpen={false}
+        defaultOpen={true}
         rightAction={sectionStatusBadge(isCorrectionProposalComplete, "Correction Proposal")}
       >
 
@@ -5499,6 +5628,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
         <SectionSaveCancelActions disabled={preMrbReadOnly} />
       </SectionCard>
 
+      <div id="ncmr-section-risk-assessment" />
       <SectionCard
         title="5. Risk Assessment"
         subtitle={isRiskAssessmentComplete ? "Complete: risk assessment and severity are documented." : "Pending: document risk assessment and severity."}
@@ -5568,6 +5698,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
         <SectionSaveCancelActions onSave={saveRiskAssessmentSection} />
       </SectionCard>
 
+      <div id="ncmr-section-product-disposition" />
       <SectionCard
         title="6. Product Disposition"
         subtitle={isMrbComplete ? "Complete: product disposition package is approved." : "Pending: complete overall and affected product disposition."}
@@ -5864,6 +5995,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
         ) : null}
       </SectionCard>
 
+      <div id="ncmr-section-mrb-approval" />
       <SectionCard
         title="9. MRB Approval"
         subtitle={isMrbComplete ? "Complete: all required MRB approvals are complete." : "Pending: generate approval tasks and complete MRB approval."}
