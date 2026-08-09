@@ -161,7 +161,7 @@ export default function NcmrReworkWorkPackagePage() {
     }
 
     for (const item of reworkItems) {
-      const outcome = reworkOutcomes[item.id] || {};
+      const outcome = reworkOutcomes[item.id] || { finalDispositionAfterRework: "", finalQuantityAccepted: "", finalQuantityRejected: "" };
       const affectedQty = Number(item.quantity_affected || 0);
       const acceptedQty = Number(outcome.finalQuantityAccepted || 0);
       const rejectedQty = Number(outcome.finalQuantityRejected || 0);
