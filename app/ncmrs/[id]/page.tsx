@@ -91,6 +91,9 @@ export default function NcmrDetailPage() {
   const [reworkTaskAssignee, setReworkTaskAssignee] = useState("");
   const [reworkTaskDueDate, setReworkTaskDueDate] = useState("");
   const [reworkTaskInstructions, setReworkTaskInstructions] = useState("");
+  const [reworkTaskAssignmentFiles, setReworkTaskAssignmentFiles] = useState<File[]>([]);
+  const [editingReturnedReworkTaskId, setEditingReturnedReworkTaskId] = useState("");
+  const [submittingReworkTask, setSubmittingReworkTask] = useState(false);
   const [investigationAttachmentFile, setInvestigationAttachmentFile] = useState<File | null>(null);
   const [uploadingInvestigationAttachment, setUploadingInvestigationAttachment] = useState(false);
 
@@ -1881,33 +1884,43 @@ export default function NcmrDetailPage() {
   const validateWorkflowBeforeGeneratingMrbTasks = () => {
     const errors: string[] = [];
 
-    if (!riskAssessment) errors.push("Risk assessment is required before submitting for MRB approval.");
+    // Full pre-MRB workflow-failure gate. Missing decision-package content
+    // must stop MRB submission rather than first appearing at closure.
+    if (!containmentAction.trim()) errors.push("Containment action is required before submitting for MRB approval.");
+    if (!investigator.trim()) errors.push("Investigator is required before submitting for MRB approval.");
+    if (!problemDescription.trim()) errors.push("Problem statement is required before submitting for MRB approval.");
+    if (!investigationSummary.trim()) errors.push("Investigation summary is required before submitting for MRB approval.");
+    if (!rootCauseCategory.trim()) errors.push("Root cause category is required before submitting for MRB approval.");
+    if (!rootCause.trim()) errors.push("Root cause is required before submitting for MRB approval.");
+    if (!correctionActionProposal.trim()) errors.push("Correction / Corrective Action Proposal is required before submitting for MRB approval.");
+    if (!correctiveAction.trim()) errors.push("Corrective Action Recommendation / justification is required before submitting for MRB approval.");
+    if (!riskAssessment.trim()) errors.push("Risk assessment is required before submitting for MRB approval.");
     if (severity === "not_assessed") errors.push("Severity must be assessed before submitting for MRB approval.");
-    if (!productDisposition) errors.push("Overall product disposition is required before submitting for MRB approval.");
-    if (!dispositionJustification) errors.push("Overall disposition justification is required before submitting for MRB approval.");
 
-    if (affectedItems.length === 0) {
-      errors.push("At least one affected item is required before submitting for MRB approval.");
+    const capaRecommendation = getCapaRecommendation();
+    if (capaRecommendation.recommended && !record?.capa_id && !isNoCapaDecisionAccepted()) {
+      errors.push("CAPA recommendation requires either a linked CAPA or a documented No-CAPA justification in CAPA Governance before submitting for MRB approval.");
     }
+
+    if (!productDisposition) errors.push("Overall product disposition is required before submitting for MRB approval.");
+    if (!dispositionJustification.trim()) errors.push("Overall disposition justification is required before submitting for MRB approval.");
+
+    if (affectedItems.length === 0) errors.push("At least one affected material item is required before submitting for MRB approval.");
 
     affectedItems.forEach((item, index) => {
       const label = `Affected Item ${index + 1}`;
-
+      if (!item.product_part_number && !item.lot_number && !item.workorder_number) errors.push(`${label}: part number, lot number, or work order is required.`);
+      if (item.quantity_affected === null || item.quantity_affected === undefined) errors.push(`${label}: quantity affected is required.`);
+      if (item.quarantined_quantity === null || item.quarantined_quantity === undefined) errors.push(`${label}: quantity quarantined is required.`);
       if (!item.product_disposition) errors.push(`${label}: item disposition is required before submitting for MRB approval.`);
       if (!item.disposition_justification) errors.push(`${label}: item disposition justification is required before submitting for MRB approval.`);
-      if (item.quantity_accepted === null || item.quantity_accepted === undefined) {
-        errors.push(`${label}: quantity accepted is required before submitting for MRB approval.`);
-      }
-      if (item.quantity_rejected === null || item.quantity_rejected === undefined) {
-        errors.push(`${label}: quantity rejected is required before submitting for MRB approval.`);
-      }
-
+      if (item.quantity_accepted === null || item.quantity_accepted === undefined) errors.push(`${label}: quantity accepted is required before submitting for MRB approval.`);
+      if (item.quantity_rejected === null || item.quantity_rejected === undefined) errors.push(`${label}: quantity rejected is required before submitting for MRB approval.`);
       errors.push(...buildQuantityReconciliationErrors(item, label));
     });
 
     setValidationErrors(errors);
     setValidationAttempted(true);
-
     return errors;
   };
 
@@ -3845,10 +3858,49 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
 
   const hasActiveOrCompletedReworkTask = () =>
     reworkTasks.some((task: any) =>
-      ["pending", "completed"].includes(
+      ["pending", "returned", "completed"].includes(
         String(task?.status || "").trim().toLowerCase()
       )
     );
+
+  const getReturnedReworkTask = () =>
+    reworkTasks.find((task: any) => String(task?.status || "").trim().toLowerCase() === "returned") || null;
+
+  const clearReworkTaskAssignmentDraft = () => {
+    setReworkTaskAssignee("");
+    setReworkTaskDueDate("");
+    setReworkTaskInstructions("");
+    setReworkTaskAssignmentFiles([]);
+    setEditingReturnedReworkTaskId("");
+  };
+
+  const prepareReturnedReworkTaskForRevision = (task: any, clearAssignee = false) => {
+    if (!task || String(task?.status || "").toLowerCase() !== "returned") {
+      alert("Only a returned Rework task can be revised and resubmitted.");
+      return;
+    }
+    setEditingReturnedReworkTaskId(task.id);
+    setReworkTaskAssignee(clearAssignee ? "" : normalizeApproverEmail(task.assigned_to_email));
+    setReworkTaskDueDate(task.due_date || "");
+    setReworkTaskInstructions(task.task_instructions || task.comments || "");
+    setReworkTaskAssignmentFiles([]);
+    window.setTimeout(() => document.getElementById("rework-task-assignment-editor")?.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
+  };
+
+  const uploadReworkAssignmentAttachments = async (existingAttachments: any[] = []) => {
+    if (reworkTaskAssignmentFiles.length === 0) return Array.isArray(existingAttachments) ? existingAttachments : [];
+    const uploaded: any[] = [];
+    for (let index = 0; index < reworkTaskAssignmentFiles.length; index += 1) {
+      const file = reworkTaskAssignmentFiles[index];
+      const safeName = file.name.trim().replace(/[^a-zA-Z0-9._-]+/g, "_").replace(/_+/g, "_");
+      const storagePath = `ncmrs/${id}/rework-assignment/${Date.now()}_${index + 1}_${safeName}`;
+      const upload = await supabase.storage.from("evidence").upload(storagePath, file, { upsert: false, contentType: file.type || undefined });
+      if (upload.error) throw new Error(`Unable to upload Rework assignment attachment ${file.name}: ${upload.error.message}`);
+      const publicUrl = supabase.storage.from("evidence").getPublicUrl(storagePath).data.publicUrl;
+      uploaded.push({ name: file.name, url: publicUrl, storage_path: storagePath, uploaded_at: new Date().toISOString(), uploaded_by: userEmail || "unknown" });
+    }
+    return [...(Array.isArray(existingAttachments) ? existingAttachments : []), ...uploaded];
+  };
 
   const submitImplementationTask = async () => {
     if (record?.is_locked) {
@@ -3996,112 +4048,93 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
   };
 
   const submitReworkTask = async () => {
-    if (record?.is_locked) {
-      alert("This record is locked after electronic signature and cannot be edited.");
+    if (submittingReworkTask) return;
+    if (record?.is_locked) return alert("This record is locked after electronic signature and cannot be edited.");
+    if (!isMrbApproved()) return alertMrbApprovalRequired();
+
+    const normalizedAssignee = normalizeApproverEmail(reworkTaskAssignee);
+    if (!normalizedAssignee) return alert("Rework task assignee email is required.");
+    if (!reworkTaskInstructions.trim()) return alert("Rework task instructions are required.");
+
+    const assigneeValidation = await validateApproverEmails([normalizedAssignee]);
+    if (!assigneeValidation.valid) return alert(assigneeValidation.message);
+
+    const editingReturnedTask = editingReturnedReworkTaskId
+      ? reworkTasks.find((task: any) => task.id === editingReturnedReworkTaskId && String(task?.status || "").trim().toLowerCase() === "returned")
+      : null;
+
+    if (editingReturnedReworkTaskId && !editingReturnedTask) {
+      alert("The returned Rework task is no longer available for revision. Reload the NCMR and try again.");
+      clearReworkTaskAssignmentDraft();
       return;
     }
 
-    if (!isMrbApproved()) {
-      alertMrbApprovalRequired();
-      return;
+    if (!editingReturnedTask && hasActiveOrCompletedReworkTask()) {
+      return alert("A pending, returned, or completed Rework task already exists. Resolve the existing task before creating another Rework task.");
     }
 
-    if (!reworkTaskAssignee) {
-      alert("Rework task assignee email is required.");
-      return;
-    }
+    setSubmittingReworkTask(true);
+    try {
+      const assignmentAttachments = await uploadReworkAssignmentAttachments(editingReturnedTask?.assignment_attachments || []);
+      let task: any = null;
 
-    if (!reworkTaskInstructions) {
-      alert("Rework task instructions are required.");
-      return;
-    }
+      if (editingReturnedTask) {
+        const priorAssignee = normalizeApproverEmail(editingReturnedTask.assigned_to_email);
+        const { data: updatedTask, error: updateError } = await supabase.from("approval_tasks").update({
+          task_instructions: reworkTaskInstructions.trim(),
+          assigned_to_email: normalizedAssignee,
+          assigned_by_email: userEmail,
+          due_date: reworkTaskDueDate || null,
+          comments: reworkTaskInstructions.trim(),
+          assignment_attachments: assignmentAttachments,
+          status: "pending",
+          returned_reason: null,
+          returned_by: null,
+          returned_at: null,
+          implementation_verification_status: "pending",
+          implementation_verification_comment: null,
+          implementation_verified_by: null,
+          implementation_verified_at: null,
+        }).eq("id", editingReturnedTask.id).eq("entity_type", "ncmr").eq("entity_id", id).eq("task_type", "rework_task").eq("status", "returned").select("*").maybeSingle();
+        if (updateError) throw new Error(updateError.message);
+        if (!updatedTask) throw new Error("The returned Rework task could not be revised and resubmitted. Reload the page and try again.");
+        task = updatedTask;
+        await addAuditLog("rework_task_revised_resubmitted", `Returned Rework task revised and resubmitted by ${userEmail}. Prior assignee: ${priorAssignee || "N/A"}. New assignee: ${normalizedAssignee}.`);
+      } else {
+        const { data: insertedTask, error: insertError } = await supabase.from("approval_tasks").insert({
+          entity_type: "ncmr", entity_id: id, task_type: "rework_task", required_function: "Rework Owner",
+          task_title: `Rework task for ${record?.ncmr_number || "NCMR"}`, task_instructions: reworkTaskInstructions.trim(),
+          assigned_to_email: normalizedAssignee, assigned_by_email: userEmail, status: "pending", due_date: reworkTaskDueDate || null,
+          comments: reworkTaskInstructions.trim(), assignment_attachments: assignmentAttachments,
+        }).select("*").single();
+        if (insertError) throw new Error(insertError.message);
+        task = insertedTask;
+        await addAuditLog("rework_task_submitted", `Rework task submitted to ${normalizedAssignee}.`);
+      }
 
-    if (hasActiveOrCompletedReworkTask()) {
-      alert(
-        "A pending or completed Rework task already exists. A duplicate task was not created."
-      );
-      return;
-    }
-
-    const { data: existingReworkTasks, error: existingReworkError } =
-      await supabase
-        .from("approval_tasks")
-        .select("id, status")
-        .eq("entity_type", "ncmr")
-        .eq("entity_id", id)
-        .eq("task_type", "rework_task")
-        .in("status", ["pending", "completed"]);
-
-    if (existingReworkError) {
-      alert(existingReworkError.message);
-      return;
-    }
-
-    if ((existingReworkTasks || []).length > 0) {
-      await fetchReworkTasks();
-      alert(
-        "A pending or completed Rework task already exists. A duplicate task was not created."
-      );
-      return;
-    }
-
-    const { data: insertedTasks, error } = await supabase
-      .from("approval_tasks")
-      .insert({
-        entity_type: "ncmr",
-        entity_id: id,
-        task_type: "rework_task",
-        required_function: "Rework Owner",
-        task_title: `Rework task for ${record?.ncmr_number || "NCMR"}`,
-        task_instructions: reworkTaskInstructions,
-        assigned_to_email: reworkTaskAssignee.trim().toLowerCase(),
-        assigned_by_email: userEmail,
-        status: "pending",
-        due_date: reworkTaskDueDate || null,
-        comments: reworkTaskInstructions,
-      })
-      .select();
-
-    if (error) {
-      alert(error.message);
-      return;
-    }
-
-    if (insertedTasks && insertedTasks.length > 0) {
-      const task = insertedTasks[0];
       const reworkPackageUrl = `/ncmrs/${id}/rework?taskId=${task.id}`;
-
       await supabase.from("notification_queue").insert({
-        recipient_email: reworkTaskAssignee.trim().toLowerCase(),
-        subject: `Rework task assigned: ${record?.ncmr_number || "NCMR"}`,
-        body: `You have been assigned a rework task for ${record?.ncmr_number || "this NCMR"}. Please log in to QualiSphere and open My Workspace.`,
-        entity_type: "ncmr",
-        entity_id: id,
-        task_id: task.id,
-        status: "pending",
+        recipient_email: normalizedAssignee,
+        subject: editingReturnedTask ? `Rework task revised and resubmitted: ${record?.ncmr_number || "NCMR"}` : `Rework task assigned: ${record?.ncmr_number || "NCMR"}`,
+        body: editingReturnedTask ? `A returned Rework task for ${record?.ncmr_number || "this NCMR"} was revised and resubmitted to you. Please log in to QualiSphere and open My Workspace.` : `You have been assigned a Rework task for ${record?.ncmr_number || "this NCMR"}. Please log in to QualiSphere and open My Workspace.`,
+        entity_type: "ncmr", entity_id: id, task_id: task.id, status: "pending",
       });
-
       await createInAppNotification({
-        recipientEmail: reworkTaskAssignee,
-        notificationType: "ncmr_rework_assignment",
-        title: `Rework task assigned: ${record?.ncmr_number || "NCMR"}`,
-        message: `A rework task for ${record?.ncmr_number || "this NCMR"} is waiting in My Workspace.`,
+        recipientEmail: normalizedAssignee,
+        notificationType: editingReturnedTask ? "ncmr_rework_resubmitted" : "ncmr_rework_assignment",
+        title: editingReturnedTask ? `Rework task revised and resubmitted: ${record?.ncmr_number || "NCMR"}` : `Rework task assigned: ${record?.ncmr_number || "NCMR"}`,
+        message: editingReturnedTask ? `A returned Rework task for ${record?.ncmr_number || "this NCMR"} was revised and resubmitted and is waiting in My Workspace.` : `A Rework task for ${record?.ncmr_number || "this NCMR"} is waiting in My Workspace.`,
         severityLevel: severity === "critical" ? "critical" : severity === "major" ? "high" : "info",
-        assignedRole: "Rework Owner",
-        relatedUrl: reworkPackageUrl,
+        assignedRole: "Rework Owner", relatedUrl: reworkPackageUrl,
       });
+      alert(editingReturnedTask ? "Returned Rework task revised and resubmitted." : "Rework task submitted.");
+      clearReworkTaskAssignmentDraft();
+      await fetchReworkTasks();
+    } catch (error: any) {
+      alert(error?.message || "Unable to submit Rework task.");
+    } finally {
+      setSubmittingReworkTask(false);
     }
-
-    await addAuditLog(
-      "rework_task_submitted",
-      `Rework task submitted to ${reworkTaskAssignee}.`
-    );
-
-    alert("Rework task submitted.");
-    setReworkTaskAssignee("");
-    setReworkTaskDueDate("");
-    setReworkTaskInstructions("");
-    fetchReworkTasks();
   };
 
   const hasReworkDisposition = () => {
@@ -6155,126 +6188,67 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
         </div>
 
         {hasReworkDisposition() && record.mrb_approved_by ? (
-          <div
-            style={{
-              marginTop: "18px",
-              border: "1px solid #bfdbfe",
-              borderRadius: "8px",
-              padding: "12px",
-              background: "#eff6ff",
-            }}
-          >
+          <div style={{ marginTop: "18px", border: "1px solid #bfdbfe", borderRadius: "8px", padding: "12px", background: "#eff6ff" }}>
             <h3 style={{ marginTop: 0 }}>Rework Task Assignment</h3>
-            <p style={{ color: "#1f2937", fontSize: "14px" }}>
-              Rework is applicable based on the approved MRB disposition. Assign rework execution after MRB approval.
-            </p>
+            <p style={{ color: "#1f2937", fontSize: "14px" }}>Rework is applicable based on the approved MRB disposition. The NCMR owner may provide the task and an optional assignment attachment. A returned task must be revised/reassigned and resubmitted using the same task record.</p>
 
-            {!hasActiveOrCompletedReworkTask() ? (
-              <>
-                <div style={{ display: "grid", gap: "12px", maxWidth: "700px" }}>
-                  <div>
-                    <label>Assigned To Email</label><br />
-                    <input
-                      value={reworkTaskAssignee}
-                      onChange={(e) => setReworkTaskAssignee(e.target.value)}
-                      disabled={isLocked}
-                      style={{ padding: "8px", width: "100%" }}
-                    />
-                  </div>
-
-                  <div>
-                    <label>Due Date</label><br />
-                    <input
-                      type="date"
-                      value={reworkTaskDueDate}
-                      onChange={(e) => setReworkTaskDueDate(e.target.value)}
-                      disabled={isLocked}
-                      style={{ padding: "8px", width: "100%" }}
-                    />
-                  </div>
+            {getReturnedReworkTask() && !editingReturnedReworkTaskId ? (
+              <div style={{ marginBottom: "14px", border: "1px solid #facc15", borderRadius: "10px", padding: "12px", background: "#fefce8", color: "#854d0e" }}>
+                <strong>Rework Task Returned — Owner Action Required</strong>
+                <div style={{ marginTop: "8px" }}>
+                  <strong>Assigned To:</strong> {getReturnedReworkTask()?.assigned_to_email || "N/A"}<br />
+                  <strong>Returned By:</strong> {getReturnedReworkTask()?.returned_by || "N/A"}<br />
+                  <strong>Returned At:</strong> {formatIsoDateTime(getReturnedReworkTask()?.returned_at)}<br />
+                  <strong>Return Reason:</strong> {getReturnedReworkTask()?.returned_reason || "N/A"}
                 </div>
-
-                <div style={{ marginTop: "10px" }}>
-                  <label>Rework Task Instructions</label><br />
-                  <textarea
-                    value={reworkTaskInstructions}
-                    onChange={(e) => setReworkTaskInstructions(e.target.value)}
-                    disabled={isLocked}
-                    rows={3}
-                    style={{ width: "100%", maxWidth: "700px" }}
-                  />
+                <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginTop: "12px" }}>
+                  <button type="button" onClick={() => prepareReturnedReworkTaskForRevision(getReturnedReworkTask(), false)} disabled={isLocked}>Revise & Resubmit Rework Task</button>
+                  <button type="button" onClick={() => prepareReturnedReworkTaskForRevision(getReturnedReworkTask(), true)} disabled={isLocked}>Reassign Returned Rework Task</button>
                 </div>
-
-                <button type="button" onClick={submitReworkTask} disabled={isLocked} style={{ marginTop: "10px" }}>
-                  Submit Rework Task
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setReworkTaskAssignee("");
-                    setReworkTaskDueDate("");
-                    setReworkTaskInstructions("");
-                  }}
-                  disabled={isLocked}
-                  style={{ marginTop: "10px", marginLeft: "8px" }}
-                >
-                  Cancel Rework Task Entry
-                </button>
-              </>
-            ) : (
-              <div
-                style={{
-                  marginTop: "10px",
-                  border: "1px solid #bfdbfe",
-                  borderRadius: "8px",
-                  padding: "10px",
-                  background: "#eff6ff",
-                  color: "#1e3a8a",
-                }}
-              >
-                Rework task assignment is locked because a pending or completed Rework task already exists.
               </div>
-            )}
+            ) : null}
+
+            {(!hasActiveOrCompletedReworkTask() || !!editingReturnedReworkTaskId) ? (
+              <div id="rework-task-assignment-editor" style={{ border: editingReturnedReworkTaskId ? "1px solid #facc15" : "none", background: editingReturnedReworkTaskId ? "#fffdf2" : "transparent", borderRadius: "10px", padding: editingReturnedReworkTaskId ? "12px" : "0" }}>
+                {editingReturnedReworkTaskId ? <div style={{ fontWeight: 800, color: "#854d0e", marginBottom: "10px" }}>Revise / Reassign Returned Rework Task</div> : null}
+                <div style={{ display: "grid", gap: "12px", maxWidth: "700px" }}>
+                  <div><label>Assigned To Email</label><br /><input value={reworkTaskAssignee} onChange={(e) => setReworkTaskAssignee(e.target.value)} disabled={isLocked || submittingReworkTask} style={{ padding: "8px", width: "100%" }} /></div>
+                  <div><label>Due Date</label><br /><input type="date" value={reworkTaskDueDate} onChange={(e) => setReworkTaskDueDate(e.target.value)} disabled={isLocked || submittingReworkTask} style={{ padding: "8px", width: "100%" }} /></div>
+                </div>
+                <div style={{ marginTop: "10px" }}><label>Rework Task</label><br /><textarea value={reworkTaskInstructions} onChange={(e) => setReworkTaskInstructions(e.target.value)} disabled={isLocked || submittingReworkTask} rows={4} placeholder="Describe the assigned Rework activity. The task may instruct the assignee to develop/review a detailed Rework instruction externally, execute it, inspect the material, and document final disposition." style={{ width: "100%", maxWidth: "700px" }} /></div>
+                <div style={{ marginTop: "12px", maxWidth: "700px" }}>
+                  <label><strong>Rework Task Assignment Attachment (Optional)</strong></label><br />
+                  <input type="file" multiple disabled={isLocked || submittingReworkTask} onChange={(event) => { const files = Array.from(event.target.files || []) as File[]; setReworkTaskAssignmentFiles((current) => { const keys = new Set(current.map((file) => `${file.name}:${file.size}:${file.lastModified}`)); return [...current, ...files.filter((file) => !keys.has(`${file.name}:${file.size}:${file.lastModified}`))]; }); event.currentTarget.value = ""; }} style={{ marginTop: "6px" }} />
+                  <div style={{ color: "#64748b", fontSize: "13px", marginTop: "6px" }}>Optional: attach an existing approved Rework instruction, traveler, drawing, protocol, or other information provided to the Rework Owner before execution.</div>
+                  {editingReturnedReworkTaskId && Array.isArray(getReturnedReworkTask()?.assignment_attachments) && getReturnedReworkTask().assignment_attachments.length > 0 ? <div style={{ marginTop: "10px" }}><strong>Existing Assignment Attachment(s)</strong><div style={{ display: "grid", gap: "5px", marginTop: "5px" }}>{getReturnedReworkTask().assignment_attachments.map((attachment: any, index: number) => <a key={`existing-${attachment?.storage_path || attachment?.url || index}`} href={attachment?.url} target="_blank" rel="noreferrer">📎 {attachment?.name || `Assignment Attachment ${index + 1}`}</a>)}</div></div> : null}
+                  {reworkTaskAssignmentFiles.length > 0 ? <div style={{ display: "grid", gap: "6px", marginTop: "10px" }}>{reworkTaskAssignmentFiles.map((file, index) => <div key={`${file.name}-${file.size}-${file.lastModified}`} style={{ display: "flex", justifyContent: "space-between", gap: "10px", border: "1px solid #e2e8f0", background: "white", borderRadius: "8px", padding: "8px 10px" }}><span>📎 {file.name}</span><button type="button" onClick={() => setReworkTaskAssignmentFiles((current) => current.filter((_, itemIndex) => itemIndex !== index))} disabled={submittingReworkTask}>Remove</button></div>)}</div> : null}
+                </div>
+                <button type="button" onClick={submitReworkTask} disabled={isLocked || submittingReworkTask} style={{ marginTop: "12px" }}>{submittingReworkTask ? "Submitting..." : editingReturnedReworkTaskId ? "Resubmit Rework Task" : "Submit Rework Task"}</button>
+                <button type="button" onClick={clearReworkTaskAssignmentDraft} disabled={isLocked || submittingReworkTask} style={{ marginTop: "12px", marginLeft: "8px" }}>{editingReturnedReworkTaskId ? "Cancel Revision" : "Cancel Rework Task Entry"}</button>
+              </div>
+            ) : !getReturnedReworkTask() ? (
+              <div style={{ marginTop: "10px", border: "1px solid #bfdbfe", borderRadius: "8px", padding: "10px", background: "#eff6ff", color: "#1e3a8a" }}>Rework task assignment is locked because a pending or completed Rework task already exists.</div>
+            ) : null}
 
             <div id="rework-verification" />
-          <h4>Rework Task Status</h4>
+            <h4>Rework Task Status</h4>
             {reworkTasks.length === 0 ? <p>No rework tasks submitted.</p> : <TaskStatusList tasks={reworkTasks} />}
 
             {hasCompletedReworkTask() ? (
               <div style={{ marginTop: "18px", border: "1px solid #86efac", borderRadius: "8px", padding: "12px", background: "#f0fdf4" }}>
                 <h3 style={{ marginTop: 0 }}>Rework Implementation Verification</h3>
-                <p style={{ color: "#166534", fontSize: "14px" }}>
-                  Review the approved Rework instructions, task completion comment, objective evidence, attachments, final disposition, and reconciled final quantities before independently verifying the Rework.
-                </p>
+                <p style={{ color: "#166534", fontSize: "14px" }}>Review the assigned Rework task, task completion comment, objective evidence, attachments, final disposition, and reconciled final quantities before independently verifying the Rework.</p>
                 <div style={{ display: "grid", gap: "12px" }}>
-                  {reworkTasks.filter((task: any) => String(task?.status || "").toLowerCase() !== "cancelled").map((task: any) => (
-                    <ReworkOwnerVerificationCard
-                      key={task.id}
-                      task={task}
-                      items={getReworkAffectedItems()}
-                      canVerify={!record?.is_locked && normalizeApproverEmail(record?.owner || record?.owner_email) === normalizeApproverEmail(userEmail)}
-                      onVerify={verifyReworkTask}
-                    />
+                  {reworkTasks.filter((task: any) => String(task?.status || "").trim().toLowerCase() === "completed").map((task: any) => (
+                    <ReworkOwnerVerificationCard key={task.id} task={task} items={getReworkAffectedItems()} canVerify={!record?.is_locked && normalizeApproverEmail(record?.owner || record?.owner_email) === normalizeApproverEmail(userEmail)} onVerify={verifyReworkTask} />
                   ))}
                 </div>
               </div>
             ) : (
-              <div
-                style={{
-                  marginTop: "14px",
-                  border: "1px solid #facc15",
-                  borderRadius: "8px",
-                  padding: "10px",
-                  background: "#fefce8",
-                  color: "#854d0e",
-                }}
-              >
-                Rework Verification & Final Disposition unlocks after a rework task is completed.
-              </div>
+              <div style={{ marginTop: "14px", border: "1px solid #facc15", borderRadius: "8px", padding: "10px", background: "#fefce8", color: "#854d0e" }}>Rework Implementation Verification unlocks after the active Rework task is completed.</div>
             )}
           </div>
         ) : null}
-
 
 
       </SectionCard>
@@ -7121,17 +7095,26 @@ function ImplementationTaskVerificationCard({
 }
 
 function TaskStatusList({ tasks }: { tasks: any[] }) {
-  return <div style={{ display: "grid", gap: "10px" }}>{tasks.map((task) => (
-    <div key={task.id} style={{ border: task.status === "completed" ? "1px solid #86efac" : task.status === "rejected" ? "1px solid #fca5a5" : "1px solid #facc15", background: task.status === "completed" ? "#f0fdf4" : task.status === "rejected" ? "#fef2f2" : "#fefce8", borderRadius: "8px", padding: "10px" }}>
-      <strong>{task.task_title || task.required_function}</strong> — {task.status}<br />
-      <strong>Assigned To:</strong> {task.assigned_to_email}<br />
-      <strong>Due Date:</strong> {formatNcmrDate(task.due_date)}<br />
-      <strong>Completed By:</strong> {task.completed_by || task.signed_by || "N/A"}<br />
-      <strong>Completed At:</strong> {formatNcmrDateTime(task.completed_at || task.signed_at)}<br />
-      <strong>Completion Comment:</strong> {task.completion_comment || task.approver_comment || "N/A"}
-      {Array.isArray(task?.task_attachments) && task.task_attachments.length > 0 ? <div style={{ marginTop: "8px" }}><strong>Completion Evidence:</strong><div style={{ display: "grid", gap: "5px", marginTop: "5px" }}>{task.task_attachments.map((attachment: any, index: number) => <div key={`${attachment?.storage_path || attachment?.url || index}`}><a href={attachment?.url} target="_blank" rel="noreferrer">📎 {attachment?.name || `Completion Attachment ${index + 1}`}</a><span style={{ color: "#64748b", fontSize: "12px", marginLeft: "8px" }}>{formatNcmrDateTime(attachment?.uploaded_at)}</span></div>)}</div></div> : null}
+  return (
+    <div style={{ display: "grid", gap: "10px" }}>
+      {tasks.map((task) => {
+        const status = String(task?.status || "").trim().toLowerCase();
+        return (
+          <div key={task.id} style={{ border: status === "completed" ? "1px solid #86efac" : status === "rejected" ? "1px solid #fca5a5" : "1px solid #facc15", background: status === "completed" ? "#f0fdf4" : status === "rejected" ? "#fef2f2" : "#fefce8", borderRadius: "8px", padding: "10px" }}>
+            <strong>{task.task_title || task.required_function}</strong> — {task.status}<br />
+            <strong>Assigned To:</strong> {task.assigned_to_email}<br />
+            <strong>Due Date:</strong> {formatNcmrDate(task.due_date)}<br />
+            <strong>Completed By:</strong> {task.completed_by || task.signed_by || "N/A"}<br />
+            <strong>Completed At:</strong> {formatNcmrDateTime(task.completed_at || task.signed_at)}<br />
+            <strong>Completion Comment:</strong> {task.completion_comment || task.approver_comment || "N/A"}
+            {status === "returned" ? <div style={{ marginTop: "8px", border: "1px solid #facc15", background: "#fffdf2", borderRadius: "7px", padding: "8px" }}><strong>Returned By:</strong> {task?.returned_by || "N/A"}<br /><strong>Returned At:</strong> {formatNcmrDateTime(task?.returned_at)}<br /><strong>Return Reason:</strong> {task?.returned_reason || "N/A"}</div> : null}
+            {Array.isArray(task?.assignment_attachments) && task.assignment_attachments.length > 0 ? <div style={{ marginTop: "8px" }}><strong>Assignment Attachment:</strong><div style={{ display: "grid", gap: "5px", marginTop: "5px" }}>{task.assignment_attachments.map((attachment: any, index: number) => <div key={`${attachment?.storage_path || attachment?.url || index}`}><a href={attachment?.url} target="_blank" rel="noreferrer">📎 {attachment?.name || `Assignment Attachment ${index + 1}`}</a></div>)}</div></div> : null}
+            {Array.isArray(task?.task_attachments) && task.task_attachments.length > 0 ? <div style={{ marginTop: "8px" }}><strong>Completion Evidence:</strong><div style={{ display: "grid", gap: "5px", marginTop: "5px" }}>{task.task_attachments.map((attachment: any, index: number) => <div key={`${attachment?.storage_path || attachment?.url || index}`}><a href={attachment?.url} target="_blank" rel="noreferrer">📎 {attachment?.name || `Completion Attachment ${index + 1}`}</a><span style={{ color: "#64748b", fontSize: "12px", marginLeft: "8px" }}>{formatNcmrDateTime(attachment?.uploaded_at)}</span></div>)}</div></div> : null}
+          </div>
+        );
+      })}
     </div>
-  ))}</div>;
+  );
 }
 
 function MrbApproverAssignmentRow({
