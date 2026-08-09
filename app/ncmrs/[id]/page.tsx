@@ -1308,11 +1308,6 @@ export default function NcmrDetailPage() {
       if (!correctiveAction.trim()) {
         errors.push("Correction not required requires documented justification before closure.");
       }
-    } else {
-      if (!correctionImplementation) errors.push("Correction implementation is required before closure.");
-      if (!record?.correction_implemented_by) {
-        errors.push("Correction implementation must be formally recorded before closure.");
-      }
     }
 
     if (!investigationSummary) errors.push("Investigation summary is required before closure.");
@@ -3745,13 +3740,19 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
         String(task?.status || "").trim().toLowerCase() !== "cancelled"
     );
 
-  const areAllActiveImplementationTasksComplete = () => {
+  const areAllActiveImplementationTasksVerified = () => {
     const activeTasks = getActiveImplementationTasks();
+
     return (
       activeTasks.length > 0 &&
       activeTasks.every(
         (task: any) =>
-          String(task?.status || "").trim().toLowerCase() === "completed"
+          String(task?.status || "").trim().toLowerCase() === "completed" &&
+          String(task?.implementation_verification_status || "")
+            .trim()
+            .toLowerCase() === "verified" &&
+          !!task?.implementation_verified_by &&
+          !!task?.implementation_verified_at
       )
     );
   };
@@ -4060,9 +4061,23 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
             String(task?.status || "").trim().toLowerCase() !== "completed"
         );
 
+        const unverifiedImplementationTasks = activeImplementationTasks.filter(
+          (task: any) =>
+            String(task?.status || "").trim().toLowerCase() === "completed" &&
+            String(task?.implementation_verification_status || "")
+              .trim()
+              .toLowerCase() !== "verified"
+        );
+
         if (incompleteImplementationTasks.length > 0) {
           errors.push(
             `All active Correction / Corrective Action implementation tasks must be completed before closure. ${incompleteImplementationTasks.length} task(s) remain incomplete.`
+          );
+        }
+
+        if (unverifiedImplementationTasks.length > 0) {
+          errors.push(
+            `Every completed Correction / Corrective Action implementation task must be independently verified by the NCMR owner before closure. ${unverifiedImplementationTasks.length} task(s) remain unverified.`
           );
         }
       }
@@ -4236,7 +4251,10 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
     await fetchAffectedItems();
   };
 
-  const markCorrectionImplemented = async () => {
+  const verifyImplementationTask = async (
+    taskId: string,
+    verificationComment: string
+  ) => {
     if (record?.is_locked) {
       alert("This record is locked after electronic signature and cannot be edited.");
       return;
@@ -4247,30 +4265,77 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
       return;
     }
 
-    if (!correctionImplementation) {
-      alert("Correction / Corrective Action implementation must be documented.");
+    const currentNcmrOwner = normalizeApproverEmail(
+      record?.owner || record?.owner_email
+    );
+    const currentUser = normalizeApproverEmail(userEmail);
+
+    if (!currentNcmrOwner || currentNcmrOwner !== currentUser) {
+      alert("Only the current NCMR owner can verify Correction / Corrective Action implementation tasks.");
+      return;
+    }
+
+    if (!verificationComment.trim()) {
+      alert("Implementation verification comment is required.");
+      return;
+    }
+
+    const task = correctionTasks.find((item: any) => item.id === taskId);
+
+    if (!task) {
+      alert("Implementation task was not found.");
+      return;
+    }
+
+    if (String(task?.status || "").trim().toLowerCase() !== "completed") {
+      alert("The task owner must complete this implementation task before the NCMR owner can verify it.");
+      return;
+    }
+
+    if (
+      String(task?.implementation_verification_status || "")
+        .trim()
+        .toLowerCase() === "verified"
+    ) {
+      alert("This implementation task has already been verified.");
       return;
     }
 
     const now = new Date().toISOString();
 
-    const { error } = await supabase
-      .from("ncmrs")
+    const { data: verifiedTask, error } = await supabase
+      .from("approval_tasks")
       .update({
-        correction_implementation: correctionImplementation,
-        correction_implemented_by: userEmail,
-        correction_implemented_at: now,
+        implementation_verification_status: "verified",
+        implementation_verification_comment: verificationComment.trim(),
+        implementation_verified_by: currentUser,
+        implementation_verified_at: now,
       })
-      .eq("id", id);
+      .eq("id", taskId)
+      .eq("entity_type", "ncmr")
+      .eq("entity_id", id)
+      .in("task_type", ["correction_task", "corrective_action_task"])
+      .eq("status", "completed")
+      .select("id")
+      .maybeSingle();
 
     if (error) {
       alert(error.message);
       return;
     }
 
-    await addAuditLog("implementation_verified", "Correction / Corrective Action implementation verification documented.");
-    alert("Implementation verification recorded.");
-    fetchRecord();
+    if (!verifiedTask?.id) {
+      alert("The implementation task could not be verified. Reload the page and confirm that the task is completed.");
+      return;
+    }
+
+    await addAuditLog(
+      "implementation_task_verified",
+      `${task?.task_title || task?.required_function || "Implementation task"} independently verified by NCMR owner ${currentUser}. Verification: ${verificationComment.trim()}`
+    );
+
+    alert("Implementation task verification recorded.");
+    await fetchCorrectionTasks();
   };
 
   const closeNcmr = async () => {
@@ -4323,15 +4388,10 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
     if (!productDisposition) return alert("Product disposition is required.");
     if (!dispositionJustification) return alert("Disposition justification is required.");
     if (!record?.mrb_approved_by) return alert("MRB approval is required before closure.");
-    if (!isCorrectionNotRequired() && !correctionImplementation) return alert("Correction implementation is required.");
 
     if (isCorrectionNotRequired()) {
       if (!correctiveAction.trim()) {
         return alert("Correction not required requires documented justification before closure.");
-      }
-    } else {
-      if (!record?.correction_implemented_by) {
-        return alert("Correction implementation must be formally recorded before closure.");
       }
     }
 
@@ -4443,7 +4503,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
     { label: "Risk Assessment", complete: !!riskAssessment && severity !== "not_assessed" },
     { label: "MRB Approval", complete: !!record?.mrb_approved_by },
     { label: "Disposition Implementation", complete: !!record?.mrb_approved_by && areDispositionImplementationsComplete() },
-    { label: "Correction Implementation", complete: isCorrectionNotRequired() ? !!correctiveAction : (!!record?.correction_implemented_by && areAllActiveImplementationTasksComplete()) },
+    { label: "Correction Implementation", complete: isCorrectionNotRequired() ? !!correctiveAction : (!!record?.correction_implemented_by && areAllActiveImplementationTasksVerified()) },
     { label: "Evidence", complete: !!evidenceUrl || !!record?.evidence_url },
     { label: "Closure", complete: !!record?.ncmr_closed_by || record?.status === "closed" },
   ];
@@ -4517,7 +4577,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
     !!record?.mrb_approved_by && areDispositionImplementationsComplete();
   const isImplementationComplete = isCorrectionNotRequired()
     ? !!correctiveAction
-    : !!record?.correction_implemented_by && areAllActiveImplementationTasksComplete();
+    : !!record?.correction_implemented_by && areAllActiveImplementationTasksVerified();
   const isEvidenceComplete = !!evidenceUrl || !!record?.evidence_url;
   const isClosureComplete = !!record?.ncmr_closed_by || record?.status === "closed";
 
@@ -6305,31 +6365,21 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
             </div>
           )}
 
-          <h4>Correction / Corrective Action Task Status</h4>
-          {correctionTasks.length === 0 ? <p>No implementation tasks submitted.</p> : <TaskStatusList tasks={correctionTasks} />}
+          <h4>Correction / Corrective Action Task Status & Verification</h4>
+          {correctionTasks.length === 0 ? (
+            <p>No implementation tasks submitted.</p>
+          ) : (
+            <ImplementationTaskVerificationList
+              tasks={correctionTasks}
+              canVerify={
+                !isPostMrbSectionLocked() &&
+                normalizeApproverEmail(record?.owner || record?.owner_email) ===
+                  normalizeApproverEmail(userEmail)
+              }
+              onVerify={verifyImplementationTask}
+            />
+          )}
         </div>
-
-        <textarea
-          value={correctionImplementation}
-          onChange={(e) => setCorrectionImplementation(e.target.value)}
-          placeholder="Describe how the correction or corrective action was implemented and verified by the NCMR owner."
-          rows={4}
-          disabled={isPostMrbSectionLocked()}
-          style={{ width: "100%", maxWidth: "700px" }}
-        />
-
-        <div style={{ marginTop: "12px" }}>
-          <button onClick={markCorrectionImplemented} disabled={isPostMrbSectionLocked()}>
-            Record Implementation Verification
-          </button>
-        </div>
-
-        {record.correction_implemented_by ? (
-          <div style={{ marginTop: "12px" }}>
-            <strong>Implemented By:</strong> {record.correction_implemented_by}<br />
-            <strong>Implemented At:</strong> {record.correction_implemented_at}
-          </div>
-        ) : null}
 
 </>
         )}
@@ -6640,6 +6690,259 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
   );
 }
 
+
+function ImplementationTaskVerificationList({
+  tasks,
+  canVerify,
+  onVerify,
+}: {
+  tasks: any[];
+  canVerify: boolean;
+  onVerify: (taskId: string, verificationComment: string) => void;
+}) {
+  return (
+    <div style={{ display: "grid", gap: "12px" }}>
+      {tasks.map((task: any) => (
+        <ImplementationTaskVerificationCard
+          key={task.id}
+          task={task}
+          canVerify={canVerify}
+          onVerify={onVerify}
+        />
+      ))}
+    </div>
+  );
+}
+
+function ImplementationTaskVerificationCard({
+  task,
+  canVerify,
+  onVerify,
+}: {
+  task: any;
+  canVerify: boolean;
+  onVerify: (taskId: string, verificationComment: string) => void;
+}) {
+  const [verificationComment, setVerificationComment] = useState(
+    task?.implementation_verification_comment || ""
+  );
+
+  useEffect(() => {
+    setVerificationComment(task?.implementation_verification_comment || "");
+  }, [task?.implementation_verification_comment]);
+
+  const taskStatus = String(task?.status || "").trim().toLowerCase();
+  const verificationStatus = String(
+    task?.implementation_verification_status || "pending"
+  )
+    .trim()
+    .toLowerCase();
+
+  const isCancelled = taskStatus === "cancelled";
+  const isCompleted = taskStatus === "completed";
+  const isVerified =
+    isCompleted &&
+    verificationStatus === "verified" &&
+    !!task?.implementation_verified_by &&
+    !!task?.implementation_verified_at;
+
+  const taskTypeLabel =
+    task?.task_type === "corrective_action_task"
+      ? "Corrective Action"
+      : "Correction";
+
+  const border = isCancelled
+    ? "1px solid #d1d5db"
+    : isVerified
+    ? "1px solid #86efac"
+    : isCompleted
+    ? "1px solid #93c5fd"
+    : "1px solid #facc15";
+
+  const background = isCancelled
+    ? "#f9fafb"
+    : isVerified
+    ? "#f0fdf4"
+    : isCompleted
+    ? "#eff6ff"
+    : "#fefce8";
+
+  return (
+    <div
+      style={{
+        border,
+        background,
+        borderRadius: "10px",
+        padding: "12px",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          gap: "12px",
+          flexWrap: "wrap",
+          alignItems: "center",
+          marginBottom: "10px",
+        }}
+      >
+        <div>
+          <strong>
+            {taskTypeLabel}: {task?.task_title || task?.required_function || "Implementation Task"}
+          </strong>
+        </div>
+
+        <div>
+          <strong>Task Status:</strong>{" "}
+          {taskStatus || "pending"}
+          {isCompleted ? (
+            <>
+              {" "}• <strong>Owner Verification:</strong>{" "}
+              {isVerified ? "Verified" : "Pending"}
+            </>
+          ) : null}
+        </div>
+      </div>
+
+      <div
+        style={{
+          border: "1px solid #dbeafe",
+          background: "#ffffff",
+          borderRadius: "8px",
+          padding: "10px",
+          marginBottom: "10px",
+        }}
+      >
+        <strong>Task Instructions</strong>
+        <div style={{ marginTop: "5px", whiteSpace: "pre-wrap" }}>
+          {task?.task_instructions || task?.comments || "N/A"}
+        </div>
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+          gap: "8px",
+          marginBottom: "10px",
+        }}
+      >
+        <div>
+          <strong>Assigned To:</strong> {task?.assigned_to_email || "N/A"}
+        </div>
+        <div>
+          <strong>Due Date:</strong> {task?.due_date || "N/A"}
+        </div>
+        <div>
+          <strong>Completed By:</strong>{" "}
+          {task?.completed_by || task?.signed_by || "N/A"}
+        </div>
+        <div>
+          <strong>Completed At:</strong>{" "}
+          {task?.completed_at || task?.signed_at || "N/A"}
+        </div>
+      </div>
+
+      <div
+        style={{
+          border: "1px solid #e5e7eb",
+          background: "#ffffff",
+          borderRadius: "8px",
+          padding: "10px",
+          marginBottom: "10px",
+        }}
+      >
+        <strong>Task Owner Completion Comment</strong>
+        <div style={{ marginTop: "5px", whiteSpace: "pre-wrap" }}>
+          {task?.completion_comment || task?.approver_comment || "N/A"}
+        </div>
+      </div>
+
+      {isCancelled ? (
+        <div style={{ color: "#6b7280" }}>
+          This task is cancelled and does not require implementation verification.
+        </div>
+      ) : !isCompleted ? (
+        <div
+          style={{
+            border: "1px solid #facc15",
+            background: "#fefce8",
+            color: "#854d0e",
+            borderRadius: "8px",
+            padding: "10px",
+          }}
+        >
+          Owner verification becomes available after the assigned task owner completes this task.
+        </div>
+      ) : isVerified ? (
+        <div
+          style={{
+            border: "1px solid #86efac",
+            background: "#f0fdf4",
+            color: "#166534",
+            borderRadius: "8px",
+            padding: "10px",
+          }}
+        >
+          <strong>✓ Independently Verified by NCMR Owner</strong>
+          <div style={{ marginTop: "6px", whiteSpace: "pre-wrap" }}>
+            <strong>Verification:</strong>{" "}
+            {task?.implementation_verification_comment || "N/A"}
+          </div>
+          <div style={{ marginTop: "6px" }}>
+            <strong>Verified By:</strong>{" "}
+            {task?.implementation_verified_by || "N/A"}
+            <br />
+            <strong>Verified At:</strong>{" "}
+            {task?.implementation_verified_at || "N/A"}
+          </div>
+        </div>
+      ) : (
+        <div
+          style={{
+            border: "1px solid #93c5fd",
+            background: "#eff6ff",
+            borderRadius: "8px",
+            padding: "10px",
+          }}
+        >
+          <label>
+            <strong>NCMR Owner Implementation Verification</strong>
+          </label>
+          <br />
+          <textarea
+            value={verificationComment}
+            onChange={(event) => setVerificationComment(event.target.value)}
+            rows={4}
+            placeholder="Document the independent review and verification of this specific completed task."
+            disabled={!canVerify}
+            style={{
+              width: "100%",
+              maxWidth: "900px",
+              marginTop: "6px",
+            }}
+          />
+
+          <div style={{ marginTop: "8px" }}>
+            <button
+              type="button"
+              onClick={() => onVerify(task.id, verificationComment)}
+              disabled={!canVerify || !verificationComment.trim()}
+            >
+              Verify This Implementation Task
+            </button>
+          </div>
+
+          {!canVerify ? (
+            <div style={{ marginTop: "8px", color: "#1e3a8a" }}>
+              Only the current NCMR owner can record implementation verification.
+            </div>
+          ) : null}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function TaskStatusList({ tasks }: { tasks: any[] }) {
   return (
