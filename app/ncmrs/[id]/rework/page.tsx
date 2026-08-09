@@ -20,6 +20,7 @@ export default function NcmrReworkWorkPackagePage() {
   const [signatureEmail, setSignatureEmail] = useState("");
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [completionFiles, setCompletionFiles] = useState<File[]>([]);
 
   const normalizeEmail = (value: any) =>
     String(value || "").trim().toLowerCase();
@@ -113,6 +114,22 @@ export default function NcmrReworkWorkPackagePage() {
     fetchPackage();
   }, [id, taskId]);
 
+  const uploadCompletionAttachments = async () => {
+    if (completionFiles.length === 0) return Array.isArray(task?.task_attachments) ? task.task_attachments : [];
+    const existingAttachments = Array.isArray(task?.task_attachments) ? task.task_attachments : [];
+    const uploaded: any[] = [];
+    for (let index = 0; index < completionFiles.length; index += 1) {
+      const file = completionFiles[index];
+      const safeName = file.name.trim().replace(/[^a-zA-Z0-9._-]+/g, "_").replace(/_+/g, "_");
+      const storagePath = `ncmrs/${id}/rework-tasks/${task.id}/${Date.now()}_${index + 1}_${safeName}`;
+      const upload = await supabase.storage.from("evidence").upload(storagePath, file, { upsert: false, contentType: file.type || undefined });
+      if (upload.error) throw new Error(`Unable to upload ${file.name}: ${upload.error.message}`);
+      const publicUrl = supabase.storage.from("evidence").getPublicUrl(storagePath).data.publicUrl;
+      uploaded.push({ name: file.name, url: publicUrl, storage_path: storagePath, uploaded_at: new Date().toISOString(), uploaded_by: userEmail });
+    }
+    return [...existingAttachments, ...uploaded];
+  };
+
   const completeTask = async () => {
     if (!task || !record) return;
 
@@ -159,6 +176,8 @@ export default function NcmrReworkWorkPackagePage() {
       const signatureMeaning =
         "NCMR Rework Implementation: I confirm that the assigned Rework has been completed as documented.";
 
+      const taskAttachments = await uploadCompletionAttachments();
+
       const { data: updatedRows, error: taskError } = await supabase
         .from("approval_tasks")
         .update({
@@ -170,6 +189,7 @@ export default function NcmrReworkWorkPackagePage() {
           completed_at: now,
           signed_by: userEmail,
           signed_at: now,
+          task_attachments: taskAttachments,
         })
         .eq("id", task.id)
         .eq("entity_type", "ncmr")
@@ -206,10 +226,10 @@ export default function NcmrReworkWorkPackagePage() {
           title: `Rework completed: ${record?.ncmr_number || "NCMR"}`,
           message:
             `${userEmail} completed the assigned Rework task. ` +
-            "Open the NCMR to review Rework Verification & Final Disposition.",
+            "Open Rework Verification & Final Disposition to review the completion comment and attached objective evidence.",
           related_module: "ncmr",
           related_record_id: id,
-          related_url: `/ncmrs/${id}`,
+          related_url: `/ncmrs/${id}#rework-verification`,
           severity: "info",
           read_status: false,
         });
@@ -341,7 +361,7 @@ export default function NcmrReworkWorkPackagePage() {
         <div style={gridStyle}>
           <ReadOnlyField label="Assigned To" value={task.assigned_to_email} />
           <ReadOnlyField label="Assigned By" value={task.assigned_by_email} />
-          <ReadOnlyField label="Due Date" value={task.due_date} />
+          <ReadOnlyField label="Due Date" value={formatIsoDate(task.due_date)} />
           <ReadOnlyField label="Task Status" value={task.status} />
         </div>
 
@@ -366,6 +386,10 @@ export default function NcmrReworkWorkPackagePage() {
               disabled={!isAssignedUser || submitting}
               style={textareaStyle}
             />
+
+            <label style={labelStyle}>Completion Attachment (Optional)</label>
+            <input type="file" multiple disabled={!isAssignedUser || submitting} onChange={(event) => { const files = Array.from(event.target.files || []) as File[]; setCompletionFiles((current) => { const keys = new Set(current.map((file) => `${file.name}:${file.size}:${file.lastModified}`)); return [...current, ...files.filter((file) => !keys.has(`${file.name}:${file.size}:${file.lastModified}`))]; }); event.currentTarget.value = ""; }} style={{ marginBottom: "10px" }} />
+            {completionFiles.length > 0 ? <div style={{ display: "grid", gap: "6px", marginBottom: "14px" }}>{completionFiles.map((file, index) => <div key={`${file.name}-${file.size}-${file.lastModified}`} style={attachmentDraftStyle}><span>📎 {file.name}</span><button type="button" onClick={() => setCompletionFiles((current) => current.filter((_, i) => i !== index))} disabled={submitting}>Remove</button></div>)}</div> : <div style={{ color: "#64748b", fontSize: "13px", marginBottom: "14px" }}>Optional: attach completed travelers, inspection records, photographs, test results, or other objective evidence.</div>}
 
             <label style={labelStyle}>Electronic Signature Email</label>
             <input
@@ -407,12 +431,13 @@ export default function NcmrReworkWorkPackagePage() {
             </div>
             <div>
               <strong>Completed At:</strong>{" "}
-              {formatDateTime(task.completed_at || task.signed_at)}
+              {formatIsoDateTime(task.completed_at || task.signed_at)}
             </div>
             <div style={{ marginTop: "8px" }}>
               <strong>Completion Notes:</strong>{" "}
               {task.completion_comment || task.approver_comment || "N/A"}
             </div>
+            <div style={{ marginTop: "10px" }}><strong>Completion Evidence:</strong>{Array.isArray(task?.task_attachments) && task.task_attachments.length > 0 ? <div style={{ display: "grid", gap: "6px", marginTop: "6px" }}>{task.task_attachments.map((attachment: any, index: number) => <a key={`${attachment?.storage_path || attachment?.url || index}`} href={attachment?.url} target="_blank" rel="noreferrer">📎 {attachment?.name || `Completion Attachment ${index + 1}`}</a>)}</div> : <div style={{ color: "#64748b", marginTop: "5px" }}>No optional completion attachment was provided.</div>}</div>
           </div>
         )}
       </section>
@@ -594,3 +619,7 @@ const errorPanelStyle: React.CSSProperties = {
   padding: "14px",
   marginBottom: "16px",
 };
+
+function formatIsoDate(value: any) { if (!value) return "N/A"; const date=new Date(value); if (Number.isNaN(date.getTime())) return String(value); const day=String(date.getDate()).padStart(2,"0"); const month=date.toLocaleString("en-US",{month:"short"}); return `${day}-${month}-${date.getFullYear()}`; }
+function formatIsoDateTime(value: any) { if (!value) return "N/A"; const date=new Date(value); if (Number.isNaN(date.getTime())) return String(value); return `${formatIsoDate(value)} ${date.toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit"})}`; }
+const attachmentDraftStyle: React.CSSProperties = { display:"flex", justifyContent:"space-between", gap:"10px", alignItems:"center", border:"1px solid #e2e8f0", borderRadius:"8px", padding:"8px 10px", background:"#f8fafc" };
