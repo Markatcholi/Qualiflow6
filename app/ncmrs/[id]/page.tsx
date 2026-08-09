@@ -4177,13 +4177,21 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
 
       if (activeReworkTasks.length === 0) {
         errors.push("At least one active rework task is required before closure when rework is applicable.");
-      } else if (
-        activeReworkTasks.some(
+      } else {
+        const incompleteReworkTasks = activeReworkTasks.filter(
+          (task: any) => String(task?.status || "").trim().toLowerCase() !== "completed"
+        );
+        const unverifiedReworkTasks = activeReworkTasks.filter(
           (task: any) =>
-            String(task?.status || "").trim().toLowerCase() !== "completed"
-        )
-      ) {
-        errors.push("All active rework tasks must be completed before closure when rework is applicable.");
+            String(task?.status || "").trim().toLowerCase() === "completed" &&
+            String(task?.implementation_verification_status || "").trim().toLowerCase() !== "verified"
+        );
+        if (incompleteReworkTasks.length > 0) {
+          errors.push(`All active rework tasks must be completed before closure when rework is applicable. ${incompleteReworkTasks.length} task(s) remain incomplete.`);
+        }
+        if (unverifiedReworkTasks.length > 0) {
+          errors.push(`Every completed Rework task must be independently verified by the NCMR owner before closure. ${unverifiedReworkTasks.length} task(s) remain unverified.`);
+        }
       }
     }
 
@@ -4422,6 +4430,49 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
 
     alert("Implementation task verification recorded.");
     await fetchCorrectionTasks();
+  };
+
+  const verifyReworkTask = async (taskId: string, verificationComment: string) => {
+    if (record?.is_locked) return alert("This record is locked after electronic signature and cannot be edited.");
+    if (!isMrbApproved()) return alertMrbApprovalRequired();
+
+    const currentNcmrOwner = normalizeApproverEmail(record?.owner || record?.owner_email);
+    const currentUser = normalizeApproverEmail(userEmail);
+    if (!currentNcmrOwner || currentNcmrOwner !== currentUser) return alert("Only the current NCMR owner can verify Rework implementation.");
+    if (!verificationComment.trim()) return alert("Rework implementation verification comment is required.");
+
+    const task = reworkTasks.find((item: any) => item.id === taskId);
+    if (!task) return alert("Rework task was not found.");
+    if (String(task?.status || "").trim().toLowerCase() !== "completed") return alert("The Rework Owner must complete the Rework task before owner verification.");
+
+    const outcomeErrors: string[] = [];
+    getReworkAffectedItems().forEach((item: any, index: number) => {
+      const affected = toQuantityNumber(item.quantity_affected);
+      const accepted = toQuantityNumber(item.final_rework_quantity_accepted);
+      const rejected = toQuantityNumber(item.final_rework_quantity_rejected);
+      if (!item.final_disposition_after_rework) outcomeErrors.push(`Rework Item ${index + 1}: final disposition is missing.`);
+      if (item.final_rework_quantity_accepted === null || item.final_rework_quantity_accepted === undefined || item.final_rework_quantity_rejected === null || item.final_rework_quantity_rejected === undefined) {
+        outcomeErrors.push(`Rework Item ${index + 1}: final quantities are missing.`);
+      } else if (accepted + rejected !== affected) {
+        outcomeErrors.push(`Rework Item ${index + 1}: final accepted + final rejected (${accepted + rejected}) must equal affected quantity (${affected}).`);
+      }
+    });
+    if (outcomeErrors.length > 0) return alert(`Rework verification cannot be recorded until the Rework Owner's final outcome is complete:\n\n${outcomeErrors.join("\n")}`);
+
+    const now = new Date().toISOString();
+    const { data: verifiedTask, error } = await supabase.from("approval_tasks").update({
+      implementation_verification_status: "verified",
+      implementation_verification_comment: verificationComment.trim(),
+      implementation_verified_by: currentUser,
+      implementation_verified_at: now,
+    }).eq("id", taskId).eq("entity_type", "ncmr").eq("entity_id", id).eq("task_type", "rework_task").eq("status", "completed").select("id").maybeSingle();
+
+    if (error) return alert(error.message);
+    if (!verifiedTask?.id) return alert("The Rework task could not be verified. Reload the page and confirm that the task is completed.");
+
+    await addAuditLog("rework_implementation_verified", `Rework task independently verified by NCMR owner ${currentUser}. Verification: ${verificationComment.trim()}`);
+    alert("Rework implementation verification recorded.");
+    await Promise.all([fetchReworkTasks(), fetchAffectedItems()]);
   };
 
   const closeNcmr = async () => {
@@ -5495,6 +5546,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
         <select
           value={productDisposition}
           onChange={(e) => setProductDisposition(e.target.value)}
+          disabled={preMrbReadOnly}
           style={{ padding: "8px", minWidth: "240px", marginBottom: "12px" }}
         >
           <option value="">Select disposition</option>
@@ -5513,6 +5565,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
         <textarea
           value={dispositionJustification}
           onChange={(e) => setDispositionJustification(e.target.value)}
+          disabled={preMrbReadOnly}
           placeholder="Justify disposition based on risk assessment and investigation."
           rows={4}
           style={{ width: "100%", maxWidth: "700px" }}
@@ -5523,7 +5576,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
           <p style={{ color: "#4b5563", fontSize: "14px" }}>
             Add one disposition decision per affected item. Include quantity accepted and quantity rejected.
             If disposition is Rework, enter Accepted Quantity = 0 and Rejected Quantity = Quantity Impacted.
-            Final rework disposition becomes available after MRB approval and rework task completion.
+            Final rework disposition and final quantities are recorded by the Rework Owner in the dedicated Rework work package after MRB approval.
           </p>
 
           {affectedItems.length === 0 ? (
@@ -5534,7 +5587,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
                 <AffectedItemCard
                   key={item.id}
                   item={item}
-                  isLocked={isLocked}
+                  isLocked={preMrbReadOnly}
                   mrbApproved={!!record.mrb_approved_by}
                   dispositionOptions={dispositionOptions}
                   onSave={updateAffectedItemDisposition}
@@ -6188,34 +6241,22 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
             {reworkTasks.length === 0 ? <p>No rework tasks submitted.</p> : <TaskStatusList tasks={reworkTasks} />}
 
             {hasCompletedReworkTask() ? (
-              <div
-                style={{
-                  marginTop: "18px",
-                  border: "1px solid #86efac",
-                  borderRadius: "8px",
-                  padding: "12px",
-                  background: "#f0fdf4",
-                }}
-              >
-                <h3 style={{ marginTop: 0 }}>Rework Verification & Final Disposition</h3>
+              <div style={{ marginTop: "18px", border: "1px solid #86efac", borderRadius: "8px", padding: "12px", background: "#f0fdf4" }}>
+                <h3 style={{ marginTop: 0 }}>Rework Implementation Verification</h3>
                 <p style={{ color: "#166534", fontSize: "14px" }}>
-                  Rework task completion has been recorded. Document the final disposition and quantity outcome for each reworked item before closure.
+                  Review the approved Rework instructions, task completion comment, objective evidence, attachments, final disposition, and reconciled final quantities before independently verifying the Rework.
                 </p>
-
-                {getReworkAffectedItems().length === 0 ? (
-                  <p>No rework disposition items found.</p>
-                ) : (
-                  <div style={{ display: "grid", gap: "12px" }}>
-                    {getReworkAffectedItems().map((item) => (
-                      <ReworkVerificationCard
-                        key={item.id}
-                        item={item}
-                        isLocked={isLocked}
-                        onSave={updateAffectedItemDisposition}
-                      />
-                    ))}
-                  </div>
-                )}
+                <div style={{ display: "grid", gap: "12px" }}>
+                  {reworkTasks.filter((task: any) => String(task?.status || "").toLowerCase() !== "cancelled").map((task: any) => (
+                    <ReworkOwnerVerificationCard
+                      key={task.id}
+                      task={task}
+                      items={getReworkAffectedItems()}
+                      canVerify={!record?.is_locked && normalizeApproverEmail(record?.owner || record?.owner_email) === normalizeApproverEmail(userEmail)}
+                      onVerify={verifyReworkTask}
+                    />
+                  ))}
+                </div>
               </div>
             ) : (
               <div
@@ -7330,160 +7371,89 @@ function AffectedMaterialEditCard({
   );
 }
 
-function ReworkVerificationCard({
-  item,
-  isLocked,
-  onSave,
+function ReworkOwnerVerificationCard({
+  task, items, canVerify, onVerify,
 }: {
-  item: any;
-  isLocked: boolean;
-  onSave: (
-    itemId: string,
-    productDisposition: string,
-    dispositionJustification: string,
-    quantityAccepted: string,
-    quantityRejected: string,
-    finalDispositionAfterRework: string,
-    finalReworkQuantityAccepted: string,
-    finalReworkQuantityRejected: string
-  ) => void;
+  task: any; items: any[]; canVerify: boolean;
+  onVerify: (taskId: string, verificationComment: string) => void;
 }) {
-  const [finalDispositionAfterRework, setFinalDispositionAfterRework] = useState(
-    item.final_disposition_after_rework || ""
-  );
-  const [finalReworkQuantityAccepted, setFinalReworkQuantityAccepted] = useState(
-    item.final_rework_quantity_accepted !== null &&
-      item.final_rework_quantity_accepted !== undefined
-      ? String(item.final_rework_quantity_accepted)
-      : ""
-  );
-  const [finalReworkQuantityRejected, setFinalReworkQuantityRejected] = useState(
-    item.final_rework_quantity_rejected !== null &&
-      item.final_rework_quantity_rejected !== undefined
-      ? String(item.final_rework_quantity_rejected)
-      : ""
-  );
+  const [verificationComment, setVerificationComment] = useState(task?.implementation_verification_comment || "");
+  useEffect(() => { setVerificationComment(task?.implementation_verification_comment || ""); }, [task?.implementation_verification_comment]);
 
-  useEffect(() => {
-    setFinalDispositionAfterRework(item.final_disposition_after_rework || "");
-    setFinalReworkQuantityAccepted(
-      item.final_rework_quantity_accepted !== null &&
-        item.final_rework_quantity_accepted !== undefined
-        ? String(item.final_rework_quantity_accepted)
-        : ""
-    );
-    setFinalReworkQuantityRejected(
-      item.final_rework_quantity_rejected !== null &&
-        item.final_rework_quantity_rejected !== undefined
-        ? String(item.final_rework_quantity_rejected)
-        : ""
-    );
-  }, [
-    item.final_disposition_after_rework,
-    item.final_rework_quantity_accepted,
-    item.final_rework_quantity_rejected,
-  ]);
+  const isVerified =
+    String(task?.implementation_verification_status || "").toLowerCase() === "verified" &&
+    !!task?.implementation_verified_by &&
+    !!task?.implementation_verified_at;
 
   return (
-    <div
-      style={{
-        border: "1px solid #bbf7d0",
-        borderRadius: "8px",
-        padding: "12px",
-        background: "white",
-        display: "grid",
-        gap: "12px",
-      }}
-    >
-      <h4 style={{ margin: 0 }}>
-        Rework Verification — {item.product_part_number || "Part N/A"} / Lot {item.lot_number || "Lot N/A"}
-      </h4>
-
-      <div style={{ fontSize: "13px", color: "#374151" }}>
-        Original impacted quantity: {item.quantity_affected ?? "N/A"} | Initial rework rejected quantity: {item.quantity_rejected ?? "N/A"}
-      </div>
-
-      <div>
-        <label>Final Disposition After Rework</label>
-        <br />
-        <select
-          value={finalDispositionAfterRework}
-          onChange={(e) => setFinalDispositionAfterRework(e.target.value)}
-          disabled={isLocked}
-          style={{ padding: "8px", width: "100%" }}
-        >
-          <option value="">Select final disposition</option>
-          <option value="accepted_after_rework">Accepted After Rework</option>
-          <option value="scrap_after_rework">Scrap After Rework</option>
-          <option value="additional_rework_required">Additional Rework Required</option>
-          <option value="use_as_is_after_rework">Use As Is After Rework</option>
-        </select>
-      </div>
-
-      <div>
-        <label>Final Rework Quantity Accepted</label>
-        <br />
-        <input
-          type="number"
-          value={finalReworkQuantityAccepted}
-          onChange={(e) => setFinalReworkQuantityAccepted(e.target.value)}
-          disabled={isLocked}
-          style={{ padding: "8px", width: "100%" }}
-        />
-      </div>
-
-      <div>
-        <label>Final Rework Quantity Rejected</label>
-        <br />
-        <input
-          type="number"
-          value={finalReworkQuantityRejected}
-          onChange={(e) => setFinalReworkQuantityRejected(e.target.value)}
-          disabled={isLocked}
-          style={{ padding: "8px", width: "100%" }}
-        />
-      </div>
-
-      <button
-        type="button"
-        disabled={isLocked}
-        style={{ width: "fit-content" }}
-        onClick={() =>
-          onSave(
-            item.id,
-            item.product_disposition || "rework",
-            item.disposition_justification || "Rework final disposition verified.",
-            item.quantity_accepted !== null && item.quantity_accepted !== undefined
-              ? String(item.quantity_accepted)
-              : "0",
-            item.quantity_rejected !== null && item.quantity_rejected !== undefined
-              ? String(item.quantity_rejected)
-              : String(item.quantity_affected || 0),
-            finalDispositionAfterRework,
-            finalReworkQuantityAccepted,
-            finalReworkQuantityRejected
-          )
-        }
-      >
-        Save Rework Verification
-      </button>
-
-      {item.final_disposition_after_rework ? (
-        <div
-          style={{
-            border: "1px solid #86efac",
-            background: "#f0fdf4",
-            color: "#166534",
-            borderRadius: "8px",
-            padding: "10px",
-          }}
-        >
-          Final rework disposition saved.
+    <div style={{ border: isVerified ? "1px solid #86efac" : "1px solid #93c5fd", background: isVerified ? "#f0fdf4" : "#fff", borderRadius: "10px", padding: "14px" }}>
+      <div style={{ marginBottom: "12px" }}>
+        <strong>Approved Rework Instructions</strong>
+        <div style={{ marginTop: "6px", whiteSpace: "pre-wrap", border: "1px solid #bfdbfe", background: "#eff6ff", borderRadius: "8px", padding: "10px" }}>
+          {task?.task_instructions || task?.comments || "N/A"}
         </div>
-      ) : null}
+      </div>
+
+      <div style={{ marginBottom: "12px" }}>
+        <strong>Rework Owner Completion Comment</strong>
+        <div style={{ marginTop: "6px", whiteSpace: "pre-wrap", border: "1px solid #e5e7eb", borderRadius: "8px", padding: "10px" }}>
+          {task?.completion_comment || task?.approver_comment || "N/A"}
+        </div>
+      </div>
+
+      <div style={{ marginBottom: "12px" }}>
+        <strong>Rework Completion Evidence</strong>
+        {Array.isArray(task?.task_attachments) && task.task_attachments.length > 0 ? (
+          <div style={{ display: "grid", gap: "6px", marginTop: "7px" }}>
+            {task.task_attachments.map((attachment: any, index: number) => (
+              <div key={`${attachment?.storage_path || attachment?.url || index}`}>
+                <a href={attachment?.url} target="_blank" rel="noreferrer">📎 {attachment?.name || `Rework Attachment ${index + 1}`}</a>
+                <span style={{ color: "#64748b", fontSize: "12px", marginLeft: "8px" }}>{formatNcmrDateTime(attachment?.uploaded_at)}</span>
+              </div>
+            ))}
+          </div>
+        ) : <div style={{ marginTop: "5px", color: "#64748b" }}>No optional completion attachment was provided.</div>}
+      </div>
+
+      <div style={{ display: "grid", gap: "10px", marginBottom: "12px" }}>
+        {items.map((item: any, index: number) => {
+          const affected = Number(item?.quantity_affected || 0);
+          const accepted = Number(item?.final_rework_quantity_accepted || 0);
+          const rejected = Number(item?.final_rework_quantity_rejected || 0);
+          const reconciled = accepted + rejected === affected;
+          return (
+            <div key={item.id || index} style={{ border: reconciled ? "1px solid #86efac" : "1px solid #fca5a5", background: reconciled ? "#f0fdf4" : "#fef2f2", borderRadius: "8px", padding: "10px" }}>
+              <strong>Final Rework Outcome — {item?.product_part_number || "Part N/A"} / Lot {item?.lot_number || "N/A"}</strong>
+              <div style={{ marginTop: "6px" }}>
+                <strong>MRB Disposition:</strong> Rework<br/>
+                <strong>Final Disposition After Rework:</strong> {formatDispositionLabel(item?.final_disposition_after_rework)}<br/>
+                <strong>Final Quantity Accepted:</strong> {item?.final_rework_quantity_accepted ?? "N/A"}<br/>
+                <strong>Final Quantity Rejected:</strong> {item?.final_rework_quantity_rejected ?? "N/A"}<br/>
+                <strong>Reconciliation:</strong> {accepted} + {rejected} = {accepted+rejected} / Affected {affected} — {reconciled ? "✓ Reconciled":"⚠ Not Reconciled"}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {isVerified ? (
+        <div style={{ border: "1px solid #86efac", background: "#f0fdf4", color: "#166534", borderRadius: "8px", padding: "10px" }}>
+          <strong>✓ Independently Verified by NCMR Owner</strong>
+          <div style={{ marginTop: "6px", whiteSpace: "pre-wrap" }}><strong>Verification:</strong> {task?.implementation_verification_comment || "N/A"}</div>
+          <div style={{ marginTop: "6px" }}><strong>Verified By:</strong> {task?.implementation_verified_by || "N/A"}<br/><strong>Verified At:</strong> {formatNcmrDateTime(task?.implementation_verified_at)}</div>
+        </div>
+      ) : (
+        <div style={{ border: "1px solid #93c5fd", background: "#eff6ff", borderRadius: "8px", padding: "10px" }}>
+          <label><strong>NCMR Owner Rework Implementation Verification</strong></label><br/>
+          <textarea value={verificationComment} onChange={(e)=>setVerificationComment(e.target.value)} rows={4} placeholder="Verify that the completed Rework, evidence, attachments, final disposition, and reconciled quantities align with the approved Rework instructions." disabled={!canVerify} style={{ width:"100%", maxWidth:"900px", marginTop:"6px" }}/>
+          <div style={{ marginTop:"8px" }}><button type="button" onClick={()=>onVerify(task.id,verificationComment)} disabled={!canVerify || !verificationComment.trim()}>Verify Rework Implementation</button></div>
+          {!canVerify ? <div style={{ marginTop:"8px", color:"#1e3a8a" }}>Only the current NCMR owner can record Rework implementation verification.</div> : null}
+        </div>
+      )}
     </div>
   );
 }
+
 
 function formatDispositionLabel(value: any) {
   const normalized = String(value || "")
@@ -7959,7 +7929,7 @@ function AffectedItemCard({
             }}
           >
             Rework selected. Enter Accepted Quantity = 0 and Rejected Quantity = Quantity Impacted.
-            Final rework disposition becomes available after MRB approval and rework task completion.
+            Final rework disposition and final quantities are recorded by the Rework Owner in the dedicated Rework work package after MRB approval.
           </div>
         ) : null}
 
