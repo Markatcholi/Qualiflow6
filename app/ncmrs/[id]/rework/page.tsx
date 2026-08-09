@@ -21,6 +21,7 @@ export default function NcmrReworkWorkPackagePage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [completionFiles, setCompletionFiles] = useState<File[]>([]);
+  const [reworkOutcomes, setReworkOutcomes] = useState<Record<string, { finalDispositionAfterRework: string; finalQuantityAccepted: string; finalQuantityRejected: string }>>({});
 
   const normalizeEmail = (value: any) =>
     String(value || "").trim().toLowerCase();
@@ -97,12 +98,18 @@ export default function NcmrReworkWorkPackagePage() {
 
       if (affectedError) throw new Error(affectedError.message);
 
-      setReworkItems(
-        (affectedData || []).filter(
-          (item: any) =>
-            normalizeDisposition(item?.product_disposition) === "rework"
-        )
+      const loadedReworkItems = (affectedData || []).filter(
+        (item: any) => normalizeDisposition(item?.product_disposition) === "rework"
       );
+      setReworkItems(loadedReworkItems);
+      setReworkOutcomes(loadedReworkItems.reduce((acc: any, item: any) => {
+        acc[item.id] = {
+          finalDispositionAfterRework: item.final_disposition_after_rework || "",
+          finalQuantityAccepted: item.final_rework_quantity_accepted ?? "",
+          finalQuantityRejected: item.final_rework_quantity_rejected ?? "",
+        };
+        return acc;
+      }, {}));
     } catch (error: any) {
       alert(error?.message || "Unable to load Rework work package.");
     } finally {
@@ -153,6 +160,16 @@ export default function NcmrReworkWorkPackagePage() {
       return;
     }
 
+    for (const item of reworkItems) {
+      const outcome = reworkOutcomes[item.id] || {};
+      const affectedQty = Number(item.quantity_affected || 0);
+      const acceptedQty = Number(outcome.finalQuantityAccepted || 0);
+      const rejectedQty = Number(outcome.finalQuantityRejected || 0);
+      if (!outcome.finalDispositionAfterRework) return alert(`Final Disposition After Rework is required for ${item.product_part_number || "the affected item"}.`);
+      if (outcome.finalQuantityAccepted === "" || outcome.finalQuantityRejected === "") return alert(`Final accepted and rejected quantities are required for ${item.product_part_number || "the affected item"}.`);
+      if (acceptedQty + rejectedQty !== affectedQty) return alert(`Final quantity reconciliation failed. Accepted (${acceptedQty}) + Rejected (${rejectedQty}) must equal Affected (${affectedQty}).`);
+    }
+
     if (!signatureEmail.trim()) {
       alert("Enter your email for electronic signature.");
       return;
@@ -177,6 +194,16 @@ export default function NcmrReworkWorkPackagePage() {
         "NCMR Rework Implementation: I confirm that the assigned Rework has been completed as documented.";
 
       const taskAttachments = await uploadCompletionAttachments();
+
+      for (const item of reworkItems) {
+        const outcome = reworkOutcomes[item.id];
+        const { error: outcomeError } = await supabase.from("ncmr_affected_items").update({
+          final_disposition_after_rework: outcome.finalDispositionAfterRework,
+          final_rework_quantity_accepted: Number(outcome.finalQuantityAccepted),
+          final_rework_quantity_rejected: Number(outcome.finalQuantityRejected),
+        }).eq("id", item.id).eq("ncmr_id", id);
+        if (outcomeError) throw new Error(outcomeError.message);
+      }
 
       const { data: updatedRows, error: taskError } = await supabase
         .from("approval_tasks")
@@ -365,15 +392,48 @@ export default function NcmrReworkWorkPackagePage() {
           <ReadOnlyField label="Task Status" value={task.status} />
         </div>
 
-        <ReadOnlyField
-          label="Rework Instructions"
-          value={task.task_instructions || task.comments}
-          multiline
-        />
+        <div style={{ marginTop: "12px", border: "1px solid #93c5fd", background: "#eff6ff", borderRadius: "10px", padding: "14px" }}>
+          <div style={{ fontWeight: 900, marginBottom: "6px" }}>Approved Rework Instructions</div>
+          <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.55 }}>{task.task_instructions || task.comments || "No rework instructions were recorded."}</div>
+        </div>
       </section>
 
       <section style={cardStyle}>
-        <h2 style={sectionTitleStyle}>4. Completion</h2>
+        <h2 style={sectionTitleStyle}>4. Final Rework Outcome</h2>
+        <p style={{ color: "#475569", marginTop: 0 }}>The Rework Owner records the actual final disposition and reconciled quantities before completing the task.</p>
+        <div style={{ display: "grid", gap: "12px" }}>
+          {reworkItems.map((item: any, index: number) => {
+            const outcome = reworkOutcomes[item.id] || { finalDispositionAfterRework: "", finalQuantityAccepted: "", finalQuantityRejected: "" };
+            const affected = Number(item.quantity_affected || 0);
+            const accepted = Number(outcome.finalQuantityAccepted || 0);
+            const rejected = Number(outcome.finalQuantityRejected || 0);
+            const reconciled = outcome.finalQuantityAccepted !== "" && outcome.finalQuantityRejected !== "" && accepted + rejected === affected;
+            return (
+              <div key={item.id || index} style={materialCardStyle}>
+                <strong>{item.product_part_number || "Part N/A"} / Lot {item.lot_number || "N/A"}</strong>
+                <div style={{ margin: "8px 0" }}>MRB Disposition: <strong>Rework</strong> · Quantity Affected: <strong>{affected}</strong></div>
+                <label style={labelStyle}>Final Disposition After Rework</label>
+                <select value={outcome.finalDispositionAfterRework} onChange={(e) => setReworkOutcomes((c) => ({...c,[item.id]:{...outcome,finalDispositionAfterRework:e.target.value}}))} disabled={!isAssignedUser || !isPending || submitting} style={inputStyle}>
+                  <option value="">Select final disposition</option>
+                  <option value="accepted_after_rework">Accepted After Rework</option>
+                  <option value="scrap_after_rework">Scrap After Rework</option>
+                  <option value="use_as_is_after_rework">Use As Is After Rework</option>
+                </select>
+                <div style={{ ...gridStyle, marginTop: "12px" }}>
+                  <div><label style={labelStyle}>Final Quantity Accepted</label><input type="number" min="0" value={outcome.finalQuantityAccepted} onChange={(e)=>setReworkOutcomes((c)=>({...c,[item.id]:{...outcome,finalQuantityAccepted:e.target.value}}))} disabled={!isAssignedUser || !isPending || submitting} style={inputStyle}/></div>
+                  <div><label style={labelStyle}>Final Quantity Rejected</label><input type="number" min="0" value={outcome.finalQuantityRejected} onChange={(e)=>setReworkOutcomes((c)=>({...c,[item.id]:{...outcome,finalQuantityRejected:e.target.value}}))} disabled={!isAssignedUser || !isPending || submitting} style={inputStyle}/></div>
+                </div>
+                <div style={{ marginTop:"10px", border: reconciled ? "1px solid #86efac":"1px solid #fca5a5", background: reconciled ? "#f0fdf4":"#fef2f2", borderRadius:"8px", padding:"10px" }}>
+                  <strong>Final Quantity Reconciliation:</strong> {accepted} + {rejected} = {accepted+rejected} / {affected} — {reconciled ? "✓ Reconciled":"⚠ Not Reconciled"}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      <section style={cardStyle}>
+        <h2 style={sectionTitleStyle}>5. Completion & Electronic Signature</h2>
 
         {isPending ? (
           <>
