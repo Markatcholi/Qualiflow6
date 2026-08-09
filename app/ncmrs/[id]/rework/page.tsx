@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
-import { supabase } from "../../../../lib/supabaseClient";
+import { supabase } from "../../../lib/supabaseClient";
 
 export default function NcmrReworkWorkPackagePage() {
   const params = useParams<{ id: string }>();
@@ -622,6 +622,15 @@ const completeButtonStyle: React.CSSProperties = {
   background: "#2563eb",
   color: "#ffffff",
   border: "none",
+  borderRadius: "9px",
+  padding: "11px 16px",
+  fontWeight: 900,
+};
+
+const secondaryButtonStyle: React.CSSProperties = {
+  background: "#ffffff",
+  color: "#1d4ed8",
+  border: "1px solid #93c5fd",
   borderRadius: "9px",
   padding: "11px 16px",
   fontWeight: 900,
