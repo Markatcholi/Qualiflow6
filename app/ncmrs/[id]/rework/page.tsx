@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
-import { supabase } from "../../../lib/supabaseClient";
+import { supabase } from "../../../../lib/supabaseClient";
 
 export default function NcmrReworkWorkPackagePage() {
   const params = useParams<{ id: string }>();
