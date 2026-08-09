@@ -69,6 +69,9 @@ export default function NcmrCollaborationPage() {
   const [userEmail, setUserEmail] = useState("");
   const [newComment, setNewComment] = useState("");
   const [selectedCollaborators, setSelectedCollaborators] = useState<string[]>([]);
+  const [draftCollaborators, setDraftCollaborators] = useState<string[]>([]);
+  const [initialInstructions, setInitialInstructions] = useState("");
+  const [initialFiles, setInitialFiles] = useState<File[]>([]);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [dueDate, setDueDate] = useState("");
   const [resolutionSummary, setResolutionSummary] = useState("");
@@ -76,6 +79,7 @@ export default function NcmrCollaborationPage() {
   const [loading, setLoading] = useState(true);
   const [posting, setPosting] = useState(false);
   const [assigning, setAssigning] = useState(false);
+  const [submittingCollaboration, setSubmittingCollaboration] = useState(false);
   const [resolving, setResolving] = useState(false);
 
   const activeEmails = useMemo(
@@ -229,7 +233,7 @@ export default function NcmrCollaborationPage() {
         notification_type: "collaboration_assignment",
         severity: "info",
         title: `Collaboration assigned: ${currentThread.record_number || "NCMR"}`,
-        message: `${userEmail || "A QualiSphere user"} added you to an NCMR investigation collaboration.`,
+        message: `${userEmail || "The NCMR owner"} submitted an NCMR investigation collaboration for your input. Open the Collaboration Workspace to review the owner instructions and respond.`,
         related_module: MODULE,
         related_record_id: id,
         related_url: `/ncmrs/${id}/collaboration`,
@@ -242,7 +246,7 @@ export default function NcmrCollaborationPage() {
       supabase.from("notification_queue").insert({
         recipient_email: email,
         subject: `Collaboration assigned: ${currentThread.record_number || "NCMR"}`,
-        body: `${userEmail || "A QualiSphere user"} added you to an NCMR investigation collaboration. Open My Workspace to review and respond.`,
+        body: `${userEmail || "The NCMR owner"} submitted an NCMR investigation collaboration for your input. Open My Workspace to review the owner instructions and respond.`,
         entity_type: MODULE,
         entity_id: id,
         status: "pending",
@@ -250,68 +254,45 @@ export default function NcmrCollaborationPage() {
     ]);
   };
 
-  const assignCollaborators = async () => {
-    if (!thread || selectedCollaborators.length === 0) return alert("Select at least one collaborator.");
-    if (thread.status !== "open") return alert("This collaboration is not open.");
-
-    setAssigning(true);
-    try {
-      if (dueDate !== (thread.due_date || "")) {
-        const update = await supabase.from("collaboration_threads").update({ due_date: dueDate || null }).eq("id", thread.id);
-        if (update.error) throw new Error(update.error.message);
-        setThread({ ...thread, due_date: dueDate || null });
-      }
-
-      for (const rawEmail of selectedCollaborators) {
-        const email = normalizeEmail(rawEmail);
-        const participant = await supabase.from("collaboration_participants").upsert({
-          thread_id: thread.id,
-          user_email: email,
-          assigned_role: "Investigation Collaborator",
-          status: "active",
-          assigned_by: userEmail,
-          assigned_at: new Date().toISOString(),
-          completed_at: null,
-        }, { onConflict: "thread_id,user_email" });
-        if (participant.error) throw new Error(participant.error.message);
-        await createTaskAndNotification(email, thread);
-        await addAuditLog("collaboration_participant_assigned", `${email} was assigned as an investigation collaborator.`);
-      }
-
-      setSelectedCollaborators([]);
-      setShowPicker(false);
-      await refreshThread(thread.id);
-      alert("Collaborators assigned.");
-    } catch (error: any) {
-      alert(error?.message || "Unable to assign collaborators.");
-    } finally {
-      setAssigning(false);
-    }
+  const stageCollaborators = () => {
+    if (selectedCollaborators.length === 0) return alert("Select at least one collaborator.");
+    setDraftCollaborators((current) => Array.from(new Set([...current, ...selectedCollaborators.map(normalizeEmail)])));
+    setSelectedCollaborators([]); setShowPicker(false);
   };
 
-  const uploadFiles = async (threadId: string) => {
+  const uploadFilesForCollaboration = async (threadId: string, files: File[]) => {
     const attachments: Attachment[] = [];
-    for (let index = 0; index < selectedFiles.length; index += 1) {
-      const file = selectedFiles[index];
-      const safeName = sanitizeFileName(file.name) || `attachment_${index + 1}`;
+    for (let index = 0; index < files.length; index += 1) {
+      const file = files[index]; const safeName = sanitizeFileName(file.name) || `attachment_${index + 1}`;
       const path = `collaboration/${MODULE}/${id}/${threadId}/${Date.now()}_${index + 1}_${safeName}`;
-      const upload = await supabase.storage.from("evidence").upload(path, file, {
-        cacheControl: "3600",
-        upsert: false,
-        contentType: file.type || undefined,
-      });
+      const upload = await supabase.storage.from("evidence").upload(path, file, { cacheControl: "3600", upsert: false, contentType: file.type || undefined });
       if (upload.error) throw new Error(`Unable to upload ${file.name}: ${upload.error.message}`);
       const publicUrl = supabase.storage.from("evidence").getPublicUrl(path).data.publicUrl;
-      attachments.push({
-        name: file.name,
-        url: publicUrl,
-        storage_path: path,
-        uploaded_at: new Date().toISOString(),
-        uploaded_by: userEmail || "unknown",
-      });
-    }
-    return attachments;
+      attachments.push({ name:file.name, url:publicUrl, storage_path:path, uploaded_at:new Date().toISOString(), uploaded_by:userEmail || "unknown" });
+    } return attachments;
   };
+
+  const submitForCollaboration = async () => {
+    if (!thread || !record) return;
+    const ownerEmail = normalizeEmail(record.owner_email || record.owner);
+    if (!ownerEmail || ownerEmail !== normalizeEmail(userEmail)) return alert("Only the NCMR owner can submit a collaboration package.");
+    if (participants.some((p) => p.status !== "removed")) return alert("This collaboration package has already been submitted.");
+    if (draftCollaborators.length === 0) return alert("Select at least one collaborator before submitting.");
+    if (!initialInstructions.trim() && initialFiles.length === 0) return alert("Enter the initial collaboration instructions/comment or attach supporting information before submitting.");
+    if (!window.confirm(`Submit this collaboration package to ${draftCollaborators.length} collaborator(s)? Tasks and notifications will be created only after you confirm.`)) return;
+    setSubmittingCollaboration(true);
+    try {
+      if (dueDate !== (thread.due_date || "")) { const update = await supabase.from("collaboration_threads").update({ due_date: dueDate || null }).eq("id",thread.id); if (update.error) throw new Error(update.error.message); setThread({...thread,due_date:dueDate || null}); }
+      const attachments = await uploadFilesForCollaboration(thread.id, initialFiles);
+      const ci = await supabase.from("collaboration_comments").insert({ thread_id:thread.id, comment_text:initialInstructions.trim() || "Initial collaboration supporting attachment.", created_by:userEmail || "unknown", tagged_users:draftCollaborators, attachments });
+      if (ci.error) throw new Error(ci.error.message);
+      for (const rawEmail of draftCollaborators) { const email=normalizeEmail(rawEmail); const p=await supabase.from("collaboration_participants").upsert({thread_id:thread.id,user_email:email,assigned_role:"Investigation Collaborator",status:"active",assigned_by:userEmail,assigned_at:new Date().toISOString(),completed_at:null},{onConflict:"thread_id,user_email"}); if (p.error) throw new Error(p.error.message); await createTaskAndNotification(email,{...thread,due_date:dueDate || null}); await addAuditLog("collaboration_participant_submitted",`${email} was submitted as an investigation collaborator.`); }
+      await addAuditLog("collaboration_submitted",`Collaboration submitted by NCMR owner ${userEmail} to ${draftCollaborators.length} collaborator(s).`);
+      setInitialInstructions(""); setInitialFiles([]); setDraftCollaborators([]); await refreshThread(thread.id); alert("Collaboration submitted. Collaborator tasks and notifications were created.");
+    } catch (error:any) { alert(error?.message || "Unable to submit collaboration."); } finally { setSubmittingCollaboration(false); }
+  };
+
+  const uploadFiles = async (threadId: string) => uploadFilesForCollaboration(threadId, selectedFiles);
 
   const postComment = async () => {
     if (!thread) return;
@@ -374,8 +355,10 @@ export default function NcmrCollaborationPage() {
       .eq("entity_type", MODULE).eq("entity_id", id).eq("task_type", "collaboration_task").eq("assigned_to_email", userEmail).eq("status", "pending");
 
     await addAuditLog("collaboration_assignment_completed", `${userEmail} completed their collaboration assignment.`);
+    const ownerEmail = normalizeEmail(record?.owner_email || record?.owner);
+    if (ownerEmail && ownerEmail !== normalizeEmail(userEmail)) await supabase.from("notifications").insert({ user_email:ownerEmail, assigned_role:"NCMR Owner", notification_type:"collaboration_completed", severity:"info", title:`Collaboration response completed: ${thread.record_number || record?.ncmr_number || "NCMR"}`, message:`${userEmail} completed their collaboration assignment. Open the Collaboration Workspace to review the response and supporting attachments.`, related_module:MODULE, related_record_id:id, related_url:`/ncmrs/${id}/collaboration`, read_status:false, created_by:userEmail || null, delivery_frequency:"immediate", delivery_status:"in_app" });
     await fetchParticipants(thread.id);
-    alert("Your collaboration assignment is complete.");
+    alert("Your collaboration assignment is complete. The NCMR owner has been notified.");
   };
 
   const resolveCollaboration = async () => {
@@ -513,7 +496,7 @@ export default function NcmrCollaborationPage() {
       <section style={summaryGridStyle}>
         <SummaryCard label="Module" value="NCMR" />
         <SummaryCard label="Record" value={record.ncmr_number || thread.record_number || "NCMR"} />
-        <SummaryCard label="Due Date" value={thread.due_date || "Not set"} />
+        <SummaryCard label="Due Date" value={formatIsoDate(thread.due_date)} />
         <SummaryCard label="Logged In" value={userEmail || "Not available"} />
       </section>
 
@@ -527,9 +510,9 @@ export default function NcmrCollaborationPage() {
           <div style={sectionHeaderStyle}>
             <div>
               <h2 style={sectionTitleStyle}>Collaborators</h2>
-              <p style={mutedStyle}>Assigned users receive a Workspace task and notification.</p>
+              <p style={mutedStyle}>Select collaborators first. Tasks and notifications are created only when the NCMR owner submits the collaboration package.</p>
             </div>
-            {isOpen ? <button onClick={() => setShowPicker((v) => !v)} style={primaryButtonStyle}>+ Add Collaborator</button> : null}
+            {isOpen && isNcmrOwner && participants.length === 0 ? <button onClick={() => setShowPicker((v) => !v)} style={primaryButtonStyle}>+ Select Collaborator</button> : null}
           </div>
 
           {showPicker && isOpen ? (
@@ -552,12 +535,25 @@ export default function NcmrCollaborationPage() {
               )}
               <div style={actionRowStyle}>
                 <button onClick={() => { setShowPicker(false); setSelectedCollaborators([]); }} style={secondaryButtonStyle}>Cancel</button>
-                <button onClick={assignCollaborators} disabled={assigning || selectedCollaborators.length === 0} style={primaryButtonStyle}>{assigning ? "Assigning..." : "Add Selected"}</button>
+                <button onClick={stageCollaborators} disabled={selectedCollaborators.length === 0} style={primaryButtonStyle}>Add Selected to Draft</button>
               </div>
             </div>
           ) : null}
 
-          {participants.length === 0 ? <div style={emptyStyle}>No collaborators assigned yet.</div> : (
+          {isNcmrOwner && participants.length === 0 ? (
+            <div style={draftPackageStyle}>
+              <h3 style={{ marginTop: 0 }}>Prepare Collaboration Package</h3>
+              <div style={{ marginBottom: "12px" }}><strong>Draft Collaborators</strong>{draftCollaborators.length === 0 ? <div style={{ ...mutedStyle, marginTop: "5px" }}>No collaborators selected yet.</div> : <div style={{ display: "grid", gap: "6px", marginTop: "7px" }}>{draftCollaborators.map((email) => <div key={email} style={participantStyle}><span>{email}</span><button type="button" onClick={() => setDraftCollaborators((current) => current.filter((item) => item !== email))} disabled={submittingCollaboration}>Remove</button></div>)}</div>}</div>
+              <label style={labelStyle}>Initial Collaboration Instructions / Comment</label>
+              <textarea value={initialInstructions} onChange={(event) => setInitialInstructions(event.target.value)} rows={5} disabled={submittingCollaboration} placeholder="Tell the collaborators what input, review, analysis, or feedback is needed." style={textareaStyle} />
+              <label style={labelStyle}>Initial Supporting Attachment (Optional)</label>
+              <input type="file" multiple disabled={submittingCollaboration} onChange={(event) => { addFiles(event.target.files, initialFiles, setInitialFiles); event.currentTarget.value = ""; }} />
+              {initialFiles.length > 0 ? <div style={{ display:"grid", gap:"7px", margin:"10px 0" }}>{initialFiles.map((file,index) => <div key={`${file.name}-${file.size}-${file.lastModified}`} style={fileStyle}><span><strong>{file.name}</strong> <span style={metaStyle}>({formatFileSize(file.size)})</span></span><button type="button" onClick={() => setInitialFiles((current) => current.filter((_,i)=>i!==index))} disabled={submittingCollaboration}>Remove</button></div>)}</div> : null}
+              <button type="button" onClick={submitForCollaboration} disabled={submittingCollaboration || draftCollaborators.length === 0 || (!initialInstructions.trim() && initialFiles.length === 0)} style={primaryButtonStyle}>{submittingCollaboration ? "Submitting..." : "Submit for Collaboration"}</button>
+            </div>
+          ) : null}
+
+          {participants.length === 0 ? <div style={emptyStyle}>No collaboration package submitted yet.</div> : (
             <div style={{ display: "grid", gap: "8px" }}>
               {participants.map((p) => (
                 <div key={p.id} style={participantStyle}>
@@ -574,9 +570,9 @@ export default function NcmrCollaborationPage() {
         <div style={cardStyle}>
           <h2 style={sectionTitleStyle}>Post Collaboration Comment</h2>
           <label style={labelStyle}>Comment</label>
-          <textarea value={newComment} onChange={(e) => setNewComment(e.target.value)} rows={6} disabled={!isOpen || posting} placeholder="Enter investigation discussion, SME input, supplier update, manufacturing feedback, or technical review notes." style={textareaStyle} />
+          <textarea value={newComment} onChange={(e) => setNewComment(e.target.value)} rows={6} disabled={!isOpen || posting || participants.length === 0} placeholder="Enter investigation discussion, SME input, supplier update, manufacturing feedback, or technical review notes." style={textareaStyle} />
           <label style={labelStyle}>Attachments (Optional)</label>
-          <input type="file" multiple disabled={!isOpen || posting} onChange={(e) => { addFiles(e.target.files, selectedFiles, setSelectedFiles); e.currentTarget.value = ""; }} />
+          <input type="file" multiple disabled={!isOpen || posting || participants.length === 0} onChange={(e) => { addFiles(e.target.files, selectedFiles, setSelectedFiles); e.currentTarget.value = ""; }} />
           {selectedFiles.length > 0 ? (
             <div style={{ display: "grid", gap: "7px", margin: "10px 0" }}>
               {selectedFiles.map((file, index) => (
@@ -587,7 +583,7 @@ export default function NcmrCollaborationPage() {
               ))}
             </div>
           ) : null}
-          <button onClick={postComment} disabled={!isOpen || posting} style={primaryButtonStyle}>{posting ? "Posting..." : "Post Comment"}</button>
+          <button onClick={postComment} disabled={!isOpen || posting || participants.length === 0} style={primaryButtonStyle}>{posting ? "Posting..." : "Post Comment"}</button>
         </div>
       </section>
 
@@ -598,7 +594,7 @@ export default function NcmrCollaborationPage() {
             {comments.map((comment) => (
               <article key={comment.id} style={commentStyle}>
                 <strong>{comment.created_by || "Unknown user"}</strong>
-                <span style={metaStyle}>{formatDateTime(comment.created_at)}</span>
+                <span style={metaStyle}>{formatIsoDateTime(comment.created_at)}</span>
                 <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.55, marginTop: "10px" }}>{comment.comment_text}</div>
                 {Array.isArray(comment.attachments) && comment.attachments.length > 0 ? (
                   <div style={attachmentRowStyle}>{comment.attachments.map((a, index) => <a key={`${a.storage_path}-${index}`} href={a.url} target="_blank" rel="noreferrer" style={attachmentLinkStyle}>📎 {a.name}</a>)}</div>
@@ -617,7 +613,7 @@ export default function NcmrCollaborationPage() {
           <div style={resolvedPanelStyle}>
             <strong>Resolved by:</strong> {thread.resolved_by || "N/A"}
             <br />
-            <strong>Resolved:</strong> {formatDateTime(thread.resolved_at)}
+            <strong>Resolved:</strong> {formatIsoDateTime(thread.resolved_at)}
             <br />
             <strong>Summary:</strong>
             <div style={{ marginTop: "6px", whiteSpace: "pre-wrap" }}>
@@ -714,7 +710,8 @@ function SummaryCard({ label, value }: { label: string; value: string }) {
 function normalizeEmail(value?: string | null) { return String(value || "").trim().toLowerCase(); }
 function sanitizeFileName(value: string) { return value.trim().replace(/[^a-zA-Z0-9._-]+/g, "_").replace(/_+/g, "_"); }
 function formatLabel(value?: string | null) { return String(value || "unknown").replaceAll("_", " ").replace(/\b\w/g, (c) => c.toUpperCase()); }
-function formatDateTime(value?: string | null) { if (!value) return "N/A"; try { return new Date(value).toLocaleString(); } catch { return value; } }
+function formatIsoDate(value?: string | null) { if (!value) return "Not set"; try { const d=new Date(value); if(Number.isNaN(d.getTime())) return value; const day=String(d.getDate()).padStart(2,"0"); const m=d.toLocaleString("en-US",{month:"short"}); return `${day}-${m}-${d.getFullYear()}`; } catch { return value; } }
+function formatIsoDateTime(value?: string | null) { if(!value) return "N/A"; try { const d=new Date(value); if(Number.isNaN(d.getTime())) return value; return `${formatIsoDate(value)} ${d.toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit"})}`; } catch { return value; } }
 function formatFileSize(bytes: number) { if (!bytes) return "0 KB"; const units = ["B", "KB", "MB", "GB"]; const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1); const value = bytes / Math.pow(1024, index); return `${value >= 10 || index === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[index]}`; }
 function addFiles(files: FileList | null, current: File[], setter: React.Dispatch<React.SetStateAction<File[]>>) { if (!files) return; const keys = new Set(current.map((f) => `${f.name}:${f.size}:${f.lastModified}`)); setter([...current, ...Array.from(files).filter((f) => !keys.has(`${f.name}:${f.size}:${f.lastModified}`))]); }
 
@@ -806,3 +803,5 @@ const readyToResolveNoticeStyle: React.CSSProperties = {
 };
 
 const resolvedPanelStyle: React.CSSProperties = { border: "1px solid #bbf7d0", background: "#f0fdf4", color: "#166534", borderRadius: "10px", padding: "14px", lineHeight: 1.6 };
+
+const draftPackageStyle: React.CSSProperties = { border:"1px solid #93c5fd", background:"#eff6ff", borderRadius:"12px", padding:"14px", marginBottom:"14px" };
