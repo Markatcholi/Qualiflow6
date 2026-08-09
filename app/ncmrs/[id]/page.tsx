@@ -91,6 +91,8 @@ export default function NcmrDetailPage() {
   const [reworkTaskAssignee, setReworkTaskAssignee] = useState("");
   const [reworkTaskDueDate, setReworkTaskDueDate] = useState("");
   const [reworkTaskInstructions, setReworkTaskInstructions] = useState("");
+  const [investigationAttachmentFile, setInvestigationAttachmentFile] = useState<File | null>(null);
+  const [uploadingInvestigationAttachment, setUploadingInvestigationAttachment] = useState(false);
 
   const [evidenceUrl, setEvidenceUrl] = useState("");
   const [evidenceNotes, setEvidenceNotes] = useState("");
@@ -597,6 +599,31 @@ export default function NcmrDetailPage() {
     return !!record?.is_locked || !isMrbApproved();
   };
 
+  const isPreMrbSectionReadOnly = () => {
+    return !!record?.is_locked || !!record?.mrb_approved_by ||
+      (hasPendingMrbApprovalTasks() && !hasRejectedMrbApprovalTask());
+  };
+
+  const formatIsoDate = (value: any) => {
+    if (!value) return "N/A";
+    try {
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return String(value);
+      const day = String(date.getDate()).padStart(2, "0");
+      const month = date.toLocaleString("en-US", { month: "short" });
+      return `${day}-${month}-${date.getFullYear()}`;
+    } catch { return String(value); }
+  };
+
+  const formatIsoDateTime = (value: any) => {
+    if (!value) return "N/A";
+    try {
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return String(value);
+      return `${formatIsoDate(value)} ${date.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}`;
+    } catch { return String(value); }
+  };
+
   const alertMrbApprovalRequired = () => {
     alert("MRB approval is required before implementation, evidence, rework execution, or closure activities can begin.");
   };
@@ -1046,6 +1073,13 @@ export default function NcmrDetailPage() {
   ) => {
     if (record?.is_locked) {
       alert("This record is locked after electronic signature and cannot be edited.");
+      return;
+    }
+
+    const currentItemForLock = affectedItems.find((item) => item.id === itemId);
+    const isFinalReworkVerificationSave = !!record?.mrb_approved_by && isReworkDisposition(currentItemForLock?.product_disposition) && productDisposition === (currentItemForLock?.product_disposition || "rework");
+    if (record?.mrb_approved_by && !isFinalReworkVerificationSave) {
+      alert("Approved MRB product disposition is read-only. Use Return for Revision if the approved disposition must change.");
       return;
     }
 
@@ -2656,6 +2690,11 @@ This approval task was created by the MRB approval task issue recovery action. E
   };
 
   const createCapaFromNcmr = async () => {
+    if (record?.mrb_approved_by || record?.is_locked) {
+      alert("This section is read-only after MRB approval or final record lock. Use the authorized Return for Revision workflow when a change to the approved MRB package is required.");
+      return;
+    }
+
     if (record?.is_locked) {
       alert("This record is locked after electronic signature and cannot be edited.");
       return;
@@ -2761,6 +2800,11 @@ This approval task was created by the MRB approval task issue recovery action. E
   };
 
   const createScarFromNcmr = async () => {
+    if (record?.mrb_approved_by || record?.is_locked) {
+      alert("This section is read-only after MRB approval or final record lock. Use the authorized Return for Revision workflow when a change to the approved MRB package is required.");
+      return;
+    }
+
     if (record?.is_locked) {
       alert("This record is locked and cannot be edited.");
       return;
@@ -2876,6 +2920,11 @@ This approval task was created by the MRB approval task issue recovery action. E
   };
 
   const saveScarJustification = async () => {
+    if (record?.mrb_approved_by || record?.is_locked) {
+      alert("This section is read-only after MRB approval or final record lock. Use the authorized Return for Revision workflow when a change to the approved MRB package is required.");
+      return;
+    }
+
     if (record?.is_locked) {
       alert("This record is locked and cannot be edited.");
       return;
@@ -2998,6 +3047,11 @@ This approval task was created by the MRB approval task issue recovery action. E
   };
 
   const saveCapaGovernanceEvaluation = async () => {
+    if (record?.mrb_approved_by || record?.is_locked) {
+      alert("This section is read-only after MRB approval or final record lock. Use the authorized Return for Revision workflow when a change to the approved MRB package is required.");
+      return;
+    }
+
     if (record?.is_locked) {
       alert("This record is locked and cannot be edited.");
       return;
@@ -3029,6 +3083,11 @@ This approval task was created by the MRB approval task issue recovery action. E
   };
 
   const createGovernedCapaFromNcmr = async () => {
+    if (record?.mrb_approved_by || record?.is_locked) {
+      alert("CAPA Governance is read-only after MRB approval or final record lock. Use Return for Revision when the approved governance decision must change.");
+      return;
+    }
+
     if (record?.is_locked) {
       alert("This record is locked and cannot be edited.");
       return;
@@ -3155,6 +3214,11 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
   };
 
   const saveCapaNotRequiredJustification = async () => {
+    if (record?.mrb_approved_by || record?.is_locked) {
+      alert("This section is read-only after MRB approval or final record lock. Use the authorized Return for Revision workflow when a change to the approved MRB package is required.");
+      return;
+    }
+
     if (record?.is_locked) {
       alert("This record is locked and cannot be edited.");
       return;
@@ -3189,6 +3253,31 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
 
     alert("CAPA risk-based justification saved.");
     fetchRecord();
+  };
+
+  const uploadInvestigationAttachment = async () => {
+    if (isPreMrbSectionReadOnly()) {
+      alert("Investigation / Root Cause attachments are read-only after MRB approval, during a pending MRB approval package, or after final record lock.");
+      return;
+    }
+    if (!investigationAttachmentFile) return alert("Choose an investigation attachment first.");
+    setUploadingInvestigationAttachment(true);
+    try {
+      const safeName = investigationAttachmentFile.name.trim().replace(/[^a-zA-Z0-9._-]+/g, "_").replace(/_+/g, "_");
+      const storagePath = `ncmrs/${id}/investigation/${Date.now()}_${safeName}`;
+      const upload = await supabase.storage.from("evidence").upload(storagePath, investigationAttachmentFile, { upsert: false, contentType: investigationAttachmentFile.type || undefined });
+      if (upload.error) throw new Error(upload.error.message);
+      const publicUrl = supabase.storage.from("evidence").getPublicUrl(storagePath).data.publicUrl;
+      const currentAttachments = Array.isArray(record?.investigation_attachments) ? record.investigation_attachments : [];
+      const attachment = { name: investigationAttachmentFile.name, url: publicUrl, storage_path: storagePath, uploaded_at: new Date().toISOString(), uploaded_by: userEmail || "unknown" };
+      const { error } = await supabase.from("ncmrs").update({ investigation_attachments: [...currentAttachments, attachment] }).eq("id", id);
+      if (error) throw new Error(error.message);
+      await addAuditLog("investigation_attachment_added", `Optional Investigation / Root Cause attachment added: ${investigationAttachmentFile.name}.`);
+      setInvestigationAttachmentFile(null);
+      alert("Investigation / Root Cause attachment uploaded.");
+      await fetchRecord();
+    } catch (error: any) { alert(error?.message || "Unable to upload Investigation / Root Cause attachment."); }
+    finally { setUploadingInvestigationAttachment(false); }
   };
 
   const uploadEvidence = async () => {
@@ -3230,6 +3319,11 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
   };
 
   const markContainmentComplete = async () => {
+    if (record?.mrb_approved_by || record?.is_locked) {
+      alert("This section is read-only after MRB approval or final record lock. Use the authorized Return for Revision workflow when a change to the approved MRB package is required.");
+      return;
+    }
+
     if (record?.is_locked) {
       alert("This record is locked after electronic signature and cannot be edited.");
       return;
@@ -3272,6 +3366,11 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
   };
 
   const saveRiskAssessmentSection = async () => {
+    if (record?.mrb_approved_by || record?.is_locked) {
+      alert("This section is read-only after MRB approval or final record lock. Use the authorized Return for Revision workflow when a change to the approved MRB package is required.");
+      return;
+    }
+
     if (record?.is_locked) {
       alert("This record is locked after electronic signature and cannot be edited.");
       return;
@@ -3300,6 +3399,11 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
   };
 
   const saveMrbDispositionSection = async () => {
+    if (record?.mrb_approved_by || record?.is_locked) {
+      alert("This section is read-only after MRB approval or final record lock. Use the authorized Return for Revision workflow when a change to the approved MRB package is required.");
+      return;
+    }
+
     if (record?.is_locked) {
       alert("This record is locked after electronic signature and cannot be edited.");
       return;
@@ -3336,39 +3440,21 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
 
     const capaRecommendation = getCapaRecommendation();
 
-    const payload: any = {
-      investigator,
-      problem_description: problemDescription,
-      containment_action: containmentAction,
-      investigation_summary: investigationSummary,
-      root_cause: rootCause,
-      root_cause_category: rootCauseCategory,
-      correction_action_proposal: correctionActionProposal,
-      corrective_action: correctiveAction,
-      risk_assessment: riskAssessment,
-      severity,
-      capa_recommended: capaRecommendation.recommended,
-      capa_decision: capaRecommendation.recommended ? capaDecision || null : null,
-      capa_decision_justification:
-        capaRecommendation.recommended && capaDecision === "no"
-          ? capaDecisionJustification
-          : null,
-      capa_justification:
-        capaRecommendation.recommended && capaDecision === "no"
-          ? capaDecisionJustification
-          : capaJustification,
-      product_disposition: productDisposition,
-      disposition: productDisposition,
-      disposition_justification: dispositionJustification,
-      correction_implementation: correctionImplementation,
-      review_status: reviewStatus,
-      evidence_url: evidenceUrl,
-      evidence_notes: evidenceNotes,
-    };
+    const payload: any = record?.mrb_approved_by
+      ? { review_status: reviewStatus, evidence_url: evidenceUrl, evidence_notes: evidenceNotes }
+      : {
+          investigator, problem_description: problemDescription, containment_action: containmentAction,
+          investigation_summary: investigationSummary, root_cause: rootCause, root_cause_category: rootCauseCategory,
+          correction_action_proposal: correctionActionProposal, corrective_action: correctiveAction, risk_assessment: riskAssessment, severity,
+          capa_recommended: capaRecommendation.recommended,
+          capa_decision: capaRecommendation.recommended ? capaDecision || null : null,
+          capa_decision_justification: capaRecommendation.recommended && capaDecision === "no" ? capaDecisionJustification : null,
+          capa_justification: capaRecommendation.recommended && capaDecision === "no" ? capaDecisionJustification : capaJustification,
+          product_disposition: productDisposition, disposition: productDisposition, disposition_justification: dispositionJustification,
+          correction_implementation: correctionImplementation, review_status: reviewStatus, evidence_url: evidenceUrl, evidence_notes: evidenceNotes,
+        };
 
-    if (!record?.investigation_opened_at) {
-      payload.investigation_opened_at = new Date().toISOString();
-    }
+    if (!record?.mrb_approved_by && !record?.investigation_opened_at) payload.investigation_opened_at = new Date().toISOString();
 
     const { error } = await supabase.from("ncmrs").update(payload).eq("id", id);
 
@@ -4493,7 +4579,8 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
   const isLocked =
     record?.is_locked === true ||
     (hasPendingMrbApprovalTasks() && !hasRejectedMrbApprovalTask());
-  const canEditInitiation = !isLocked && !record?.mrb_approved_by;
+  const preMrbReadOnly = isLocked || !!record?.mrb_approved_by;
+  const canEditInitiation = !preMrbReadOnly;
 
   const workflowProgressSteps = [
     { label: "Initiation", complete: affectedItems.length > 0 && !!summaryIssueDescription },
@@ -4503,7 +4590,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
     { label: "Risk Assessment", complete: !!riskAssessment && severity !== "not_assessed" },
     { label: "MRB Approval", complete: !!record?.mrb_approved_by },
     { label: "Disposition Implementation", complete: !!record?.mrb_approved_by && areDispositionImplementationsComplete() },
-    { label: "Correction Implementation", complete: isCorrectionNotRequired() ? !!correctiveAction : (!!record?.correction_implemented_by && areAllActiveImplementationTasksVerified()) },
+    { label: "Correction Implementation", complete: isCorrectionNotRequired() ? !!correctiveAction : areAllActiveImplementationTasksVerified() },
     { label: "Evidence", complete: !!evidenceUrl || !!record?.evidence_url },
     { label: "Closure", complete: !!record?.ncmr_closed_by || record?.status === "closed" },
   ];
@@ -4577,7 +4664,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
     !!record?.mrb_approved_by && areDispositionImplementationsComplete();
   const isImplementationComplete = isCorrectionNotRequired()
     ? !!correctiveAction
-    : !!record?.correction_implemented_by && areAllActiveImplementationTasksVerified();
+    : areAllActiveImplementationTasksVerified();
   const isEvidenceComplete = !!evidenceUrl || !!record?.evidence_url;
   const isClosureComplete = !!record?.ncmr_closed_by || record?.status === "closed";
 
@@ -4641,8 +4728,10 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
 
   const SectionSaveCancelActions = ({
     onSave,
+    disabled = false,
   }: {
     onSave?: () => void;
+    disabled?: boolean;
   }) => (
     <div
       style={{
@@ -4654,10 +4743,10 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
         paddingTop: "12px",
       }}
     >
-      <button type="button" onClick={onSave || saveWorkflow} disabled={isLocked}>
+      <button type="button" onClick={onSave || saveWorkflow} disabled={isLocked || disabled}>
         Save Section
       </button>
-      <button type="button" onClick={cancelCurrentFormChanges} disabled={isLocked}>
+      <button type="button" onClick={cancelCurrentFormChanges} disabled={isLocked || disabled}>
         Cancel Section Changes
       </button>
     </div>
@@ -5131,6 +5220,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
         <textarea
           value={containmentAction}
           onChange={(e) => setContainmentAction(e.target.value)}
+          disabled={preMrbReadOnly}
           rows={4}
           style={{ width: "100%", maxWidth: "700px" }}
         />
@@ -5150,7 +5240,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
                 <strong>Containment Completed By:</strong> {record.containment_completed_by || "N/A"}
                 <br />
                 <strong>Containment Completed At:</strong>{" "}
-                {new Date(record.containment_completed_at).toLocaleString()}
+                {formatIsoDateTime(record.containment_completed_at)}
               </div>
             ) : (
               <p style={{ color: "#1e3a8a", marginTop: 0 }}>
@@ -5162,7 +5252,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
             <button
               type="button"
               onClick={markContainmentComplete}
-              disabled={isLocked || !!record?.containment_completed_at}
+              disabled={preMrbReadOnly || !!record?.containment_completed_at}
               style={{ marginTop: "10px" }}
             >
               {record?.containment_completed_at ? "Containment Complete" : "Mark Containment Complete"}
@@ -5170,7 +5260,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
           </div>
 
 
-        <SectionSaveCancelActions />
+        <SectionSaveCancelActions disabled={preMrbReadOnly} />
       </SectionCard>
 
       <SectionCard
@@ -5184,6 +5274,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
         <input
           value={investigator}
           onChange={(e) => setInvestigator(e.target.value)}
+          disabled={preMrbReadOnly}
           style={{ width: "100%", maxWidth: "500px", padding: "8px", marginBottom: "12px" }}
         />
 
@@ -5192,6 +5283,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
         <textarea
           value={problemDescription}
           onChange={(e) => setProblemDescription(e.target.value)}
+          disabled={preMrbReadOnly}
           rows={4}
           style={{ width: "100%", maxWidth: "800px", marginBottom: "12px" }}
         />
@@ -5201,6 +5293,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
         <textarea
           value={investigationSummary}
           onChange={(e) => setInvestigationSummary(e.target.value)}
+          disabled={preMrbReadOnly}
           rows={4}
           style={{ width: "100%", maxWidth: "800px", marginBottom: "12px" }}
         />
@@ -5234,6 +5327,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
         <select
           value={rootCauseCategory}
           onChange={(e) => setRootCauseCategory(e.target.value)}
+          disabled={preMrbReadOnly}
           style={{ padding: "8px", minWidth: "300px", marginBottom: "12px" }}
         >
           <option value="">Select category</option>
@@ -5249,11 +5343,34 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
         <textarea
           value={rootCause}
           onChange={(e) => setRootCause(e.target.value)}
+          disabled={preMrbReadOnly}
           rows={4}
           style={{ width: "100%", maxWidth: "700px" }}
         />
 
-        <SectionSaveCancelActions />
+        <div style={{ marginTop: "16px", border: "1px solid #dbeafe", background: "#f8fafc", borderRadius: "10px", padding: "12px", maxWidth: "850px" }}>
+          <strong>Investigation / Root Cause Attachment (Optional)</strong>
+          <p style={{ color: "#64748b", fontSize: "13px", margin: "6px 0 10px" }}>Attach supporting investigation data, test results, photographs, analysis, or other objective evidence. Attachments become read-only with the approved MRB package.</p>
+          {!preMrbReadOnly ? (
+            <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
+              <input type="file" onChange={(event) => { setInvestigationAttachmentFile(event.target.files?.[0] || null); event.currentTarget.value = ""; }} disabled={uploadingInvestigationAttachment} />
+              <button type="button" onClick={uploadInvestigationAttachment} disabled={!investigationAttachmentFile || uploadingInvestigationAttachment}>{uploadingInvestigationAttachment ? "Uploading..." : "Upload Attachment"}</button>
+              {investigationAttachmentFile ? <span style={{ fontSize: "13px", color: "#475569" }}>Selected: {investigationAttachmentFile.name}</span> : null}
+            </div>
+          ) : <div style={{ color: "#64748b", fontSize: "13px" }}>Read-only after MRB approval / record lock.</div>}
+          {Array.isArray(record?.investigation_attachments) && record.investigation_attachments.length > 0 ? (
+            <div style={{ display: "grid", gap: "7px", marginTop: "12px" }}>
+              {record.investigation_attachments.map((attachment: any, index: number) => (
+                <div key={`${attachment?.storage_path || attachment?.url || index}`} style={{ border: "1px solid #e2e8f0", background: "white", borderRadius: "8px", padding: "8px 10px" }}>
+                  <a href={attachment?.url} target="_blank" rel="noreferrer">📎 {attachment?.name || `Investigation Attachment ${index + 1}`}</a>
+                  <div style={{ color: "#64748b", fontSize: "12px", marginTop: "3px" }}>Uploaded by {attachment?.uploaded_by || "N/A"} · {formatIsoDateTime(attachment?.uploaded_at)}</div>
+                </div>
+              ))}
+            </div>
+          ) : <div style={{ marginTop: "10px", color: "#64748b", fontSize: "13px" }}>No Investigation / Root Cause attachment added.</div>}
+        </div>
+
+        <SectionSaveCancelActions disabled={preMrbReadOnly} />
       </SectionCard>
 
       <SectionCard
@@ -5267,6 +5384,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
         <select
           value={correctionActionProposal}
           onChange={(e) => setCorrectionActionProposal(e.target.value)}
+          disabled={preMrbReadOnly}
           style={{ padding: "8px", minWidth: "330px", marginBottom: "12px" }}
         >
           <option value="">Select proposal</option>
@@ -5289,11 +5407,12 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
         <textarea
           value={correctiveAction}
           onChange={(e) => setCorrectiveAction(e.target.value)}
+          disabled={preMrbReadOnly}
           rows={4}
           style={{ width: "100%", maxWidth: "700px" }}
         />
 
-        <SectionSaveCancelActions />
+        <SectionSaveCancelActions disabled={preMrbReadOnly} />
       </SectionCard>
 
       <SectionCard
@@ -5307,6 +5426,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
         <textarea
           value={riskAssessment}
           onChange={(e) => setRiskAssessment(e.target.value)}
+          disabled={preMrbReadOnly}
           placeholder="Assess product, process, patient/user, regulatory, and quality risk."
           rows={4}
           style={{ width: "100%", maxWidth: "700px" }}
@@ -5317,6 +5437,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
           <select
             value={severity}
             onChange={(e) => setSeverity(e.target.value)}
+            disabled={preMrbReadOnly}
             style={{ padding: "8px", minWidth: "180px" }}
           >
             <option value="not_assessed">Not Assessed</option>
@@ -5481,11 +5602,11 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
         ) : (
           <>
             <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "14px" }}>
-              <button type="button" onClick={saveCapaGovernanceEvaluation} disabled={isLocked}>
+              <button type="button" onClick={saveCapaGovernanceEvaluation} disabled={preMrbReadOnly}>
                 Save CAPA Evaluation
               </button>
 
-              <button type="button" onClick={createGovernedCapaFromNcmr} disabled={isLocked}>
+              <button type="button" onClick={createGovernedCapaFromNcmr} disabled={preMrbReadOnly}>
                 Create Linked CAPA
               </button>
             </div>
@@ -5497,7 +5618,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
                 value={capaNotRequiredJustification}
                 onChange={(e) => setCapaNotRequiredJustification(e.target.value)}
                 rows={4}
-                disabled={isLocked}
+                disabled={preMrbReadOnly}
                 placeholder="Document rationale if CAPA is recommended or required but not opened."
                 style={{ width: "100%", maxWidth: "900px", padding: "8px" }}
               />
@@ -5506,7 +5627,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
             <button
               type="button"
               onClick={saveCapaNotRequiredJustification}
-              disabled={isLocked}
+              disabled={preMrbReadOnly}
               style={{ marginTop: "10px" }}
             >
               Save No-CAPA Justification
@@ -5621,7 +5742,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
         ) : (
           <>
             <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "14px" }}>
-              <button type="button" onClick={createScarFromNcmr} disabled={isLocked}>
+              <button type="button" onClick={createScarFromNcmr} disabled={preMrbReadOnly}>
                 Create Linked SCAR
               </button>
             </div>
@@ -5633,7 +5754,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
                 value={scarJustification}
                 onChange={(e) => setScarJustification(e.target.value)}
                 rows={4}
-                disabled={isLocked}
+                disabled={preMrbReadOnly}
                 placeholder="Document the risk-based rationale if supplier corrective action is not required."
                 style={{ width: "100%", maxWidth: "800px", padding: "8px" }}
               />
@@ -5642,7 +5763,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
             <button
               type="button"
               onClick={saveScarJustification}
-              disabled={isLocked}
+              disabled={preMrbReadOnly}
               style={{ marginTop: "10px" }}
             >
               Save SCAR Justification
@@ -5927,7 +6048,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
                               {approver.is_required === false ? "No" : "Yes"}
                             </td>
                             <td style={approvalTableCellStyle}>
-                              {approver.approver_due_date || "Not set"}
+                              {formatIsoDate(approver.approver_due_date)}
                             </td>
                             <td style={approvalTableCellStyle}>
                               <button
@@ -6062,7 +6183,8 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
               </div>
             )}
 
-            <h4>Rework Task Status</h4>
+            <div id="rework-verification" />
+          <h4>Rework Task Status</h4>
             {reworkTasks.length === 0 ? <p>No rework tasks submitted.</p> : <TaskStatusList tasks={reworkTasks} />}
 
             {hasCompletedReworkTask() ? (
@@ -6183,6 +6305,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
         <SectionSaveCancelActions />
       </SectionCard>
 
+      <div id="correction-implementation" />
       <SectionCard
         title="11. Correction / Corrective Action Implementation"
         subtitle={isImplementationComplete ? "Complete: implementation requirements are satisfied." : isCorrectionNotRequired() ? "Pending: document correction-not-required justification." : "Pending: assign/complete a Correction or Corrective Action task and document implementation."}
@@ -6566,7 +6689,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
                 >
                   <strong>{event.action || "Activity"}</strong>
                   <span style={{ color: "#4b5563", fontSize: "13px" }}>
-                    {event.created_at ? new Date(event.created_at).toLocaleString() : "N/A"}
+                    {formatIsoDateTime(event.created_at)}
                   </span>
                 </div>
 
@@ -6690,6 +6813,9 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
   );
 }
 
+
+function formatNcmrDate(value: any) { if (!value) return "N/A"; try { const date = new Date(value); if (Number.isNaN(date.getTime())) return String(value); const day=String(date.getDate()).padStart(2,"0"); const month=date.toLocaleString("en-US",{month:"short"}); return `${day}-${month}-${date.getFullYear()}`; } catch { return String(value); } }
+function formatNcmrDateTime(value: any) { if (!value) return "N/A"; try { const date = new Date(value); if (Number.isNaN(date.getTime())) return String(value); return `${formatNcmrDate(value)} ${date.toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit"})}`; } catch { return String(value); } }
 
 function ImplementationTaskVerificationList({
   tasks,
@@ -6831,7 +6957,7 @@ function ImplementationTaskVerificationCard({
           <strong>Assigned To:</strong> {task?.assigned_to_email || "N/A"}
         </div>
         <div>
-          <strong>Due Date:</strong> {task?.due_date || "N/A"}
+          <strong>Due Date:</strong> {formatNcmrDate(task?.due_date)}
         </div>
         <div>
           <strong>Completed By:</strong>{" "}
@@ -6839,7 +6965,7 @@ function ImplementationTaskVerificationCard({
         </div>
         <div>
           <strong>Completed At:</strong>{" "}
-          {task?.completed_at || task?.signed_at || "N/A"}
+          {formatNcmrDateTime(task?.completed_at || task?.signed_at)}
         </div>
       </div>
 
@@ -6856,6 +6982,15 @@ function ImplementationTaskVerificationCard({
         <div style={{ marginTop: "5px", whiteSpace: "pre-wrap" }}>
           {task?.completion_comment || task?.approver_comment || "N/A"}
         </div>
+      </div>
+
+      <div style={{ border: "1px solid #e5e7eb", background: "#ffffff", borderRadius: "8px", padding: "10px", marginBottom: "10px" }}>
+        <strong>Task Owner Completion Evidence</strong>
+        {Array.isArray(task?.task_attachments) && task.task_attachments.length > 0 ? (
+          <div style={{ display: "grid", gap: "7px", marginTop: "8px" }}>{task.task_attachments.map((attachment: any, index: number) => (
+            <div key={`${attachment?.storage_path || attachment?.url || index}`}><a href={attachment?.url} target="_blank" rel="noreferrer">📎 {attachment?.name || `Completion Attachment ${index + 1}`}</a><div style={{ color: "#64748b", fontSize: "12px", marginTop: "3px" }}>Uploaded by {attachment?.uploaded_by || "N/A"} · {formatNcmrDateTime(attachment?.uploaded_at)}</div></div>
+          ))}</div>
+        ) : <div style={{ marginTop: "5px", color: "#64748b" }}>No optional completion attachment was provided.</div>}
       </div>
 
       {isCancelled ? (
@@ -6894,7 +7029,7 @@ function ImplementationTaskVerificationCard({
             {task?.implementation_verified_by || "N/A"}
             <br />
             <strong>Verified At:</strong>{" "}
-            {task?.implementation_verified_at || "N/A"}
+            {formatNcmrDateTime(task?.implementation_verified_at)}
           </div>
         </div>
       ) : (
@@ -6945,43 +7080,17 @@ function ImplementationTaskVerificationCard({
 }
 
 function TaskStatusList({ tasks }: { tasks: any[] }) {
-  return (
-    <div style={{ display: "grid", gap: "10px" }}>
-      {tasks.map((task) => (
-        <div
-          key={task.id}
-          style={{
-            border:
-              task.status === "completed"
-                ? "1px solid #86efac"
-                : task.status === "rejected"
-                ? "1px solid #fca5a5"
-                : "1px solid #facc15",
-            background:
-              task.status === "completed"
-                ? "#f0fdf4"
-                : task.status === "rejected"
-                ? "#fef2f2"
-                : "#fefce8",
-            borderRadius: "8px",
-            padding: "10px",
-          }}
-        >
-          <strong>{task.task_title || task.required_function}</strong> — {task.status}
-          <br />
-          <strong>Assigned To:</strong> {task.assigned_to_email}
-          <br />
-          <strong>Due Date:</strong> {task.due_date || "N/A"}
-          <br />
-          <strong>Completed By:</strong> {task.completed_by || task.signed_by || "N/A"}
-          <br />
-          <strong>Completed At:</strong> {task.completed_at || task.signed_at || "N/A"}
-          <br />
-          <strong>Completion Comment:</strong> {task.completion_comment || task.approver_comment || "N/A"}
-        </div>
-      ))}
+  return <div style={{ display: "grid", gap: "10px" }}>{tasks.map((task) => (
+    <div key={task.id} style={{ border: task.status === "completed" ? "1px solid #86efac" : task.status === "rejected" ? "1px solid #fca5a5" : "1px solid #facc15", background: task.status === "completed" ? "#f0fdf4" : task.status === "rejected" ? "#fef2f2" : "#fefce8", borderRadius: "8px", padding: "10px" }}>
+      <strong>{task.task_title || task.required_function}</strong> — {task.status}<br />
+      <strong>Assigned To:</strong> {task.assigned_to_email}<br />
+      <strong>Due Date:</strong> {formatNcmrDate(task.due_date)}<br />
+      <strong>Completed By:</strong> {task.completed_by || task.signed_by || "N/A"}<br />
+      <strong>Completed At:</strong> {formatNcmrDateTime(task.completed_at || task.signed_at)}<br />
+      <strong>Completion Comment:</strong> {task.completion_comment || task.approver_comment || "N/A"}
+      {Array.isArray(task?.task_attachments) && task.task_attachments.length > 0 ? <div style={{ marginTop: "8px" }}><strong>Completion Evidence:</strong><div style={{ display: "grid", gap: "5px", marginTop: "5px" }}>{task.task_attachments.map((attachment: any, index: number) => <div key={`${attachment?.storage_path || attachment?.url || index}`}><a href={attachment?.url} target="_blank" rel="noreferrer">📎 {attachment?.name || `Completion Attachment ${index + 1}`}</a><span style={{ color: "#64748b", fontSize: "12px", marginLeft: "8px" }}>{formatNcmrDateTime(attachment?.uploaded_at)}</span></div>)}</div></div> : null}
     </div>
-  );
+  ))}</div>;
 }
 
 function MrbApproverAssignmentRow({
@@ -7670,7 +7779,7 @@ function DispositionImplementationCard({
       {item?.disposition_implemented_by ? (
         <div style={{ marginTop: "10px", fontSize: "14px" }}>
           <strong>Implemented By:</strong> {item.disposition_implemented_by}<br />
-          <strong>Implemented At:</strong> {item.disposition_implemented_at || "N/A"}
+          <strong>Implemented At:</strong> {formatNcmrDateTime(item.disposition_implemented_at)}
         </div>
       ) : null}
     </div>
