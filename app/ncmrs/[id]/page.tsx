@@ -47,6 +47,13 @@ export default function NcmrDetailPage() {
   const [correctiveAction, setCorrectiveAction] = useState("");
   const [riskAssessment, setRiskAssessment] = useState("");
   const [severity, setSeverity] = useState("not_assessed");
+  const [occurrenceRating, setOccurrenceRating] = useState("");
+  const [detectionRating, setDetectionRating] = useState("");
+  const [riskAssessmentMethod, setRiskAssessmentMethod] = useState<"automatic" | "manual">("automatic");
+  const [riskLevel, setRiskLevel] = useState("");
+  const [riskOverrideEnabled, setRiskOverrideEnabled] = useState(false);
+  const [riskOverrideLevel, setRiskOverrideLevel] = useState("");
+  const [riskOverrideJustification, setRiskOverrideJustification] = useState("");
   const [capaJustification, setCapaJustification] = useState("");
   const [capaNotRequiredJustification, setCapaNotRequiredJustification] = useState("");
   const [capaEvaluationOutcome, setCapaEvaluationOutcome] = useState("");
@@ -107,7 +114,7 @@ export default function NcmrDetailPage() {
 
   const [autoSaveStatus, setAutoSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [returnRevisionOpen, setReturnRevisionOpen] = useState(false);
-  const [returnRevisionDestination, setReturnRevisionDestination] = useState("correction / corrective action proposal");
+  const [returnRevisionDestination, setReturnRevisionDestination] = useState("correction");
   const [returnRevisionJustification, setReturnRevisionJustification] = useState("");
   const [returnRevisionSubmitting, setReturnRevisionSubmitting] = useState(false);
 
@@ -456,6 +463,13 @@ export default function NcmrDetailPage() {
     setCorrectiveAction(data.corrective_action || "");
     setRiskAssessment(data.risk_assessment || "");
     setSeverity(data.severity || "not_assessed");
+    setOccurrenceRating(data.occurrence_rating || "");
+    setDetectionRating(data.detection_rating || "");
+    setRiskAssessmentMethod(data.risk_assessment_method === "manual" ? "manual" : "automatic");
+    setRiskLevel(data.risk_level || "");
+    setRiskOverrideEnabled(Boolean(data.risk_override_enabled));
+    setRiskOverrideLevel(data.risk_override_level || "");
+    setRiskOverrideJustification(data.risk_override_justification || "");
     setCapaJustification(data.capa_justification || "");
     setScarJustification(data.scar_justification || "");
     setCapaRecommended(data.capa_recommended || false);
@@ -585,7 +599,7 @@ export default function NcmrDetailPage() {
       notificationType: "ncmr_assignment",
       title: `NCMR assigned: ${record?.ncmr_number || "NCMR"}`,
       message: `You have been assigned as the owner of ${record?.ncmr_number || "this NCMR"}. Open My Workspace to review and coordinate the required activities.`,
-      severityLevel: severity === "critical" ? "critical" : severity === "major" ? "high" : "info",
+      severityLevel: severity === "critical" ? "critical" : severity === "high" ? "high" : "info",
       assignedRole: "NCMR Owner",
     });
 
@@ -1224,6 +1238,111 @@ export default function NcmrDetailPage() {
     fetchAffectedItems();
   };
 
+  const getNormalizedRiskValue = (value: any) =>
+    String(value || "")
+      .trim()
+      .toLowerCase();
+
+  // Matches the CAPA risk calculation model so NCMR and CAPA use the same
+  // Severity + Occurrence + Detection governance.
+  const calculateNcmrRiskLevel = (
+    severityValue: any,
+    occurrenceValue: any,
+    detectionValue: any
+  ) => {
+    const severityScore =
+      getNormalizedRiskValue(severityValue) === "critical"
+        ? 4
+        : getNormalizedRiskValue(severityValue) === "high"
+        ? 3
+        : getNormalizedRiskValue(severityValue) === "medium"
+        ? 2
+        : getNormalizedRiskValue(severityValue) === "low"
+        ? 1
+        : 0;
+
+    const occurrenceScore =
+      getNormalizedRiskValue(occurrenceValue) === "high"
+        ? 3
+        : getNormalizedRiskValue(occurrenceValue) === "medium"
+        ? 2
+        : getNormalizedRiskValue(occurrenceValue) === "low"
+        ? 1
+        : 0;
+
+    const detectionScore =
+      getNormalizedRiskValue(detectionValue) === "low_detection"
+        ? 3
+        : getNormalizedRiskValue(detectionValue) === "medium_detection"
+        ? 2
+        : getNormalizedRiskValue(detectionValue) === "high_detection"
+        ? 1
+        : 0;
+
+    const totalScore = severityScore + occurrenceScore + detectionScore;
+
+    if (severityScore >= 4 || totalScore >= 9) return "critical";
+    if (totalScore >= 7) return "high";
+    if (totalScore >= 4) return "medium";
+    if (totalScore > 0) return "low";
+
+    return "";
+  };
+
+  const getEffectiveRiskLevel = () => {
+    if (riskAssessmentMethod === "manual") {
+      return riskLevel;
+    }
+
+    if (riskOverrideEnabled && riskOverrideLevel) {
+      return riskOverrideLevel;
+    }
+
+    return calculateNcmrRiskLevel(severity, occurrenceRating, detectionRating);
+  };
+
+  const getRiskAssessmentValidationErrors = () => {
+    const errors: string[] = [];
+
+    if (severity === "not_assessed" || !severity) {
+      errors.push("Severity is required.");
+    }
+
+    if (!occurrenceRating) {
+      errors.push("Occurrence is required.");
+    }
+
+    if (!detectionRating) {
+      errors.push("Detection is required.");
+    }
+
+    if (riskAssessmentMethod === "manual" && !riskLevel) {
+      errors.push("Manual Risk Level is required when Risk Assessment Method is Manual.");
+    }
+
+    if (riskAssessmentMethod === "automatic" && riskOverrideEnabled) {
+      if (!riskOverrideLevel) {
+        errors.push("Override Risk Level is required when calculated risk is overridden.");
+      }
+      if (!riskOverrideJustification.trim()) {
+        errors.push("Risk Override Justification is required when calculated risk is overridden.");
+      }
+    }
+
+    if (
+      riskAssessmentMethod === "automatic" &&
+      !riskOverrideEnabled &&
+      severity !== "not_assessed" &&
+      occurrenceRating &&
+      detectionRating &&
+      !calculateNcmrRiskLevel(severity, occurrenceRating, detectionRating)
+    ) {
+      errors.push("Calculated Risk Level could not be determined.");
+    }
+
+    return errors;
+  };
+
   const getCapaRecommendation = () => {
     const reasons: string[] = [];
 
@@ -1231,16 +1350,12 @@ export default function NcmrDetailPage() {
       reasons.push("Critical severity requires CAPA escalation review.");
     }
 
-    if (severity === "major") {
-      reasons.push("Major severity requires documented CAPA decision.");
+    if (severity === "high") {
+      reasons.push("High severity requires documented CAPA decision.");
     }
 
     if (record?.recurring_issue) {
       reasons.push("Recurring issue was identified.");
-    }
-
-    if (correctionActionProposal === "escalate_to_capa") {
-      reasons.push("Correction / corrective action proposal indicates escalation to CAPA.");
     }
 
     return {
@@ -1282,9 +1397,8 @@ export default function NcmrDetailPage() {
     if (!problemDescription) errors.push("Problem statement is required before MRB approval.");
     if (!investigationSummary) errors.push("Investigation summary is required before MRB approval.");
     if (!rootCauseCategory) errors.push("Root cause category is required before MRB approval.");
-    if (!rootCause) errors.push("Root cause is required before MRB approval.");
-    if (!riskAssessment) errors.push("Risk assessment is required before MRB approval.");
-    if (severity === "not_assessed") errors.push("Severity must be assessed before MRB approval.");
+    if (!rootCause) errors.push("Root Cause Summary is required before MRB approval.");
+    errors.push(...getRiskAssessmentValidationErrors().map((error) => `${error} Before MRB approval.`));
 
     const capaRecommendation = getCapaRecommendation();
 
@@ -1354,7 +1468,7 @@ export default function NcmrDetailPage() {
     }
 
     if (!investigationSummary) errors.push("Investigation summary is required before closure.");
-    if (!riskAssessment) errors.push("Risk assessment is required before closure.");
+    errors.push(...getRiskAssessmentValidationErrors().map((error) => `${error} Before closure.`));
     const closureCapaRecommendation = getCapaRecommendation();
 
     if (
@@ -1897,11 +2011,10 @@ export default function NcmrDetailPage() {
     if (!problemDescription.trim()) errors.push("Problem statement is required before submitting for MRB approval.");
     if (!investigationSummary.trim()) errors.push("Investigation summary is required before submitting for MRB approval.");
     if (!rootCauseCategory.trim()) errors.push("Root cause category is required before submitting for MRB approval.");
-    if (!rootCause.trim()) errors.push("Root cause is required before submitting for MRB approval.");
-    if (!correctionActionProposal.trim()) errors.push("Correction / Corrective Action Proposal is required before submitting for MRB approval.");
-    if (!correctiveAction.trim()) errors.push("Corrective Action Recommendation / justification is required before submitting for MRB approval.");
-    if (!riskAssessment.trim()) errors.push("Risk assessment is required before submitting for MRB approval.");
-    if (severity === "not_assessed") errors.push("Severity must be assessed before submitting for MRB approval.");
+    if (!rootCause.trim()) errors.push("Root Cause Summary is required before submitting for MRB approval.");
+    if (!correctionActionProposal.trim()) errors.push("Correction Proposal is required before submitting for MRB approval.");
+    if (!correctiveAction.trim()) errors.push("Corrective Action Proposal / justification is required before submitting for MRB approval.");
+    errors.push(...getRiskAssessmentValidationErrors().map((error) => `${error} Before submitting for MRB approval.`));
 
     const capaRecommendation = getCapaRecommendation();
     if (capaRecommendation.recommended && !record?.capa_id && !isNoCapaDecisionAccepted()) {
@@ -1995,6 +2108,13 @@ export default function NcmrDetailPage() {
       .update({
         risk_assessment: riskAssessment,
         severity,
+        occurrence_rating: occurrenceRating || null,
+        detection_rating: detectionRating || null,
+        risk_assessment_method: riskAssessmentMethod,
+        risk_level: riskAssessmentMethod === "manual" ? riskLevel || null : calculateNcmrRiskLevel(severity, occurrenceRating, detectionRating) || null,
+        risk_override_enabled: riskAssessmentMethod === "automatic" ? riskOverrideEnabled : false,
+        risk_override_level: riskAssessmentMethod === "automatic" && riskOverrideEnabled ? riskOverrideLevel || null : null,
+        risk_override_justification: riskAssessmentMethod === "automatic" && riskOverrideEnabled ? riskOverrideJustification || null : null,
         product_disposition:
           productDisposition ||
           record?.product_disposition ||
@@ -2138,7 +2258,7 @@ This approval becomes part of the official electronic quality record. MRB approv
             severityLevel:
               severity === "critical"
                 ? "critical"
-                : severity === "major"
+                : severity === "high"
                   ? "high"
                   : "info",
             assignedRole: task.required_function || "MRB Approver",
@@ -2494,7 +2614,7 @@ This approval task was created by the MRB approval task issue recovery action. E
             notificationType: "ncmr_approval",
             title: `MRB approval assigned: ${record?.ncmr_number || "NCMR"}`,
             message: `An MRB approval task for ${record?.ncmr_number || "this NCMR"} is waiting in My Workspace.`,
-            severityLevel: severity === "critical" ? "critical" : severity === "major" ? "high" : "info",
+            severityLevel: severity === "critical" ? "critical" : severity === "high" ? "high" : "info",
             assignedRole: task.required_function || "MRB Approver",
             relatedUrl: `/ncmrs/${id}/approval-review?taskId=${task.id}`,
           })
@@ -2685,6 +2805,13 @@ This approval task was created by the MRB approval task issue recovery action. E
       .update({
         risk_assessment: riskAssessment || record?.risk_assessment || null,
         severity: severity || record?.severity || "not_assessed",
+        occurrence_rating: occurrenceRating || record?.occurrence_rating || null,
+        detection_rating: detectionRating || record?.detection_rating || null,
+        risk_assessment_method: riskAssessmentMethod || record?.risk_assessment_method || "automatic",
+        risk_level: riskAssessmentMethod === "manual" ? riskLevel || record?.risk_level || null : calculateNcmrRiskLevel(severity, occurrenceRating, detectionRating) || record?.risk_level || null,
+        risk_override_enabled: riskAssessmentMethod === "automatic" ? riskOverrideEnabled : false,
+        risk_override_level: riskAssessmentMethod === "automatic" && riskOverrideEnabled ? riskOverrideLevel || null : null,
+        risk_override_justification: riskAssessmentMethod === "automatic" && riskOverrideEnabled ? riskOverrideJustification || null : null,
         capa_justification: capaJustification || record?.capa_justification || null,
         product_disposition: productDisposition || record?.product_disposition || record?.disposition || null,
         disposition: productDisposition || record?.product_disposition || record?.disposition || null,
@@ -2986,8 +3113,9 @@ This approval task was created by the MRB approval task issue recovery action. E
     const severityValue = String(severity || record?.severity || "").toLowerCase();
 
     const isCritical = severityValue.includes("critical");
-    const isMajor = severityValue.includes("major");
-    const isMinor = severityValue.includes("minor");
+    const isHigh = severityValue.includes("high") || severityValue.includes("major");
+    const isMedium = severityValue.includes("medium");
+    const isLow = severityValue.includes("low") || severityValue.includes("minor");
 
     const hasRecurrence =
       record?.recurring_issue === true ||
@@ -2997,10 +3125,12 @@ This approval task was created by the MRB approval task issue recovery action. E
 
     if (isCritical) {
       signals.push("Critical severity identified.");
-    } else if (isMajor) {
-      signals.push("Major severity identified.");
-    } else if (isMinor) {
-      signals.push("Minor severity identified.");
+    } else if (isHigh) {
+      signals.push("High severity identified.");
+    } else if (isMedium) {
+      signals.push("Medium severity identified.");
+    } else if (isLow) {
+      signals.push("Low severity identified.");
     } else {
       signals.push("Severity not assessed.");
     }
@@ -3021,12 +3151,12 @@ This approval task was created by the MRB approval task issue recovery action. E
       };
     }
 
-    if (isMajor) {
+    if (isHigh) {
       return {
         outcome: "recommended",
         label: "CAPA Recommended",
         rationale:
-          "CAPA is recommended because major severity was identified. If CAPA is not initiated, a documented risk-based justification is required.",
+          "CAPA is recommended because high severity was identified. If CAPA is not initiated, a documented risk-based justification is required.",
         signals,
       };
     }
@@ -3045,7 +3175,7 @@ This approval task was created by the MRB approval task issue recovery action. E
       outcome: "not_required",
       label: "CAPA Not Required",
       rationale:
-        "CAPA is not required because the NCMR is not recurring and severity is not major or critical. If CAPA is opened, document the business or quality justification for the governance override.",
+        "CAPA is not required because the NCMR is not recurring and severity is not high or critical. If CAPA is opened, document the business or quality justification for the governance override.",
       signals,
     };
   };
@@ -3151,7 +3281,7 @@ This approval task was created by the MRB approval task issue recovery action. E
     const capaProblemDescription = [
       `CAPA initiated from NCMR: ${record?.ncmr_number || id}.`,
       problemDescription || record?.issue_description || "",
-      rootCause ? `Root Cause: ${rootCause}` : "",
+      rootCause ? `Root Cause Summary: ${rootCause}` : "",
       containmentAction ? `Containment: ${containmentAction}` : "",
       investigationSummary ? `Investigation: ${investigationSummary}` : "",
       riskAssessment ? `Risk Assessment: ${riskAssessment}` : "",
@@ -3282,7 +3412,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
 
   const uploadInvestigationAttachment = async () => {
     if (isPreMrbSectionReadOnly()) {
-      alert("Investigation / Root Cause attachments are read-only after MRB approval, during a pending MRB approval package, or after final record lock.");
+      alert("Investigation / Root Cause Summary attachments are read-only after MRB approval, during a pending MRB approval package, or after final record lock.");
       return;
     }
     if (!investigationAttachmentFile) return alert("Choose an investigation attachment first.");
@@ -3297,11 +3427,11 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
       const attachment = { name: investigationAttachmentFile.name, url: publicUrl, storage_path: storagePath, uploaded_at: new Date().toISOString(), uploaded_by: userEmail || "unknown" };
       const { error } = await supabase.from("ncmrs").update({ investigation_attachments: [...currentAttachments, attachment] }).eq("id", id);
       if (error) throw new Error(error.message);
-      await addAuditLog("investigation_attachment_added", `Optional Investigation / Root Cause attachment added: ${investigationAttachmentFile.name}.`);
+      await addAuditLog("investigation_attachment_added", `Optional Investigation / Root Cause Summary attachment added: ${investigationAttachmentFile.name}.`);
       setInvestigationAttachmentFile(null);
-      alert("Investigation / Root Cause attachment uploaded.");
+      alert("Investigation / Root Cause Summary attachment uploaded.");
       await fetchRecord();
-    } catch (error: any) { alert(error?.message || "Unable to upload Investigation / Root Cause attachment."); }
+    } catch (error: any) { alert(error?.message || "Unable to upload Investigation / Root Cause Summary attachment."); }
     finally { setUploadingInvestigationAttachment(false); }
   };
 
@@ -3406,6 +3536,13 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
       .update({
         risk_assessment: riskAssessment,
         severity,
+        occurrence_rating: occurrenceRating || null,
+        detection_rating: detectionRating || null,
+        risk_assessment_method: riskAssessmentMethod,
+        risk_level: riskAssessmentMethod === "manual" ? riskLevel || null : calculateNcmrRiskLevel(severity, occurrenceRating, detectionRating) || null,
+        risk_override_enabled: riskAssessmentMethod === "automatic" ? riskOverrideEnabled : false,
+        risk_override_level: riskAssessmentMethod === "automatic" && riskOverrideEnabled ? riskOverrideLevel || null : null,
+        risk_override_justification: riskAssessmentMethod === "automatic" && riskOverrideEnabled ? riskOverrideJustification || null : null,
       })
       .eq("id", id);
 
@@ -3416,7 +3553,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
 
     await addAuditLog(
       "risk_assessment_saved",
-      "Risk assessment and severity were saved from the Risk Assessment section."
+      "Risk assessment method, Severity, Occurrence, Detection, effective risk level, and any controlled override were saved from the Risk Assessment section."
     );
 
     alert("Risk assessment saved.");
@@ -3471,6 +3608,13 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
           investigator, problem_description: problemDescription, containment_action: containmentAction,
           investigation_summary: investigationSummary, root_cause: rootCause, root_cause_category: rootCauseCategory,
           correction_action_proposal: correctionActionProposal, corrective_action: correctiveAction, risk_assessment: riskAssessment, severity,
+          occurrence_rating: occurrenceRating || null,
+          detection_rating: detectionRating || null,
+          risk_assessment_method: riskAssessmentMethod,
+          risk_level: riskAssessmentMethod === "manual" ? riskLevel || null : calculateNcmrRiskLevel(severity, occurrenceRating, detectionRating) || null,
+          risk_override_enabled: riskAssessmentMethod === "automatic" ? riskOverrideEnabled : false,
+          risk_override_level: riskAssessmentMethod === "automatic" && riskOverrideEnabled ? riskOverrideLevel || null : null,
+          risk_override_justification: riskAssessmentMethod === "automatic" && riskOverrideEnabled ? riskOverrideJustification || null : null,
           capa_recommended: capaRecommendation.recommended,
           capa_decision: capaRecommendation.recommended ? capaDecision || null : null,
           capa_decision_justification: capaRecommendation.recommended && capaDecision === "no" ? capaDecisionJustification : null,
@@ -3569,7 +3713,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
       );
     }
 
-    if (severity === "major" && record?.capa_id) {
+    if (severity === "high" && record?.capa_id) {
       await supabase
         .from("ncmrs")
         .update({ capa_required: true })
@@ -3611,8 +3755,10 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
       return;
     }
 
-    if (!riskAssessment) return alert("Risk assessment is required before MRB approval.");
-    if (severity === "not_assessed") return alert("Severity must be assessed before MRB approval.");
+    const directMrbRiskErrors = getRiskAssessmentValidationErrors();
+    if (directMrbRiskErrors.length > 0) {
+      return alert(`Risk assessment is incomplete:\n\n${directMrbRiskErrors.join("\n")}`);
+    }
 
     const mrbCapaRecommendation = getCapaRecommendation();
 
@@ -3628,20 +3774,20 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
     if (!dispositionJustification) return alert("Disposition justification is required before MRB approval.");
 
     if (
-      (severity === "critical" || severity === "major") &&
+      (severity === "critical" || severity === "high") &&
       productDisposition === "use_as_is" &&
       !isVpQuality
     ) {
-      alert("MRB rule: Use As Is disposition for Major or Critical severity requires VP Quality approval.");
+      alert("MRB rule: Use As Is disposition for High or Critical severity requires VP Quality approval.");
       return;
     }
 
     if (
-      severity === "major" &&
+      severity === "high" &&
       productDisposition === "use_as_is" &&
       dispositionJustification.trim().length < 50
     ) {
-      alert("MRB rule: Major severity with Use As Is requires a stronger disposition justification.");
+      alert("MRB rule: High severity with Use As Is requires a stronger disposition justification.");
       return;
     }
 
@@ -3682,7 +3828,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
     }
 
     const confirmed = window.confirm(
-      "Electronic Signature - MRB Approval:\n\nBy selecting OK, I certify that I am the logged-in user, I have reviewed the nonconformance record, investigation, risk assessment, severity assessment, CAPA decision, product disposition, MRB approval tasks, and I approve the MRB decision.\n\nThis action will be recorded with signer identity, timestamp, and signature meaning."
+      "Electronic Signature - MRB Approval:\n\nBy selecting OK, I certify that I am the logged-in user, I have reviewed the nonconformance record, investigation, Severity / Occurrence / Detection risk assessment, effective risk level, CAPA decision, product disposition, MRB approval tasks, and I approve the MRB decision.\n\nThis action will be recorded with signer identity, timestamp, and signature meaning."
     );
 
     if (!confirmed) return;
@@ -3690,13 +3836,20 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
     const now = new Date().toISOString();
 
     const meaning =
-      "MRB Approval: I certify that I am the logged-in user, I have reviewed the nonconformance record, investigation, risk assessment, severity assessment, CAPA decision, product disposition, MRB approval tasks, and I approve the MRB decision.";
+      "MRB Approval: I certify that I am the logged-in user, I have reviewed the nonconformance record, investigation, Severity / Occurrence / Detection risk assessment, effective risk level, CAPA decision, product disposition, MRB approval tasks, and I approve the MRB decision.";
 
     const { error } = await supabase
       .from("ncmrs")
       .update({
         risk_assessment: riskAssessment,
         severity,
+        occurrence_rating: occurrenceRating || null,
+        detection_rating: detectionRating || null,
+        risk_assessment_method: riskAssessmentMethod,
+        risk_level: riskAssessmentMethod === "manual" ? riskLevel || null : calculateNcmrRiskLevel(severity, occurrenceRating, detectionRating) || null,
+        risk_override_enabled: riskAssessmentMethod === "automatic" ? riskOverrideEnabled : false,
+        risk_override_level: riskAssessmentMethod === "automatic" && riskOverrideEnabled ? riskOverrideLevel || null : null,
+        risk_override_justification: riskAssessmentMethod === "automatic" && riskOverrideEnabled ? riskOverrideJustification || null : null,
         capa_justification: capaJustification,
         product_disposition: productDisposition,
         disposition: productDisposition,
@@ -3805,7 +3958,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
       return;
     }
 
-    setReturnRevisionDestination("correction / corrective action proposal");
+    setReturnRevisionDestination("correction");
     setReturnRevisionJustification("");
     setReturnRevisionOpen(true);
   };
@@ -3865,9 +4018,10 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
       await fetchRecord();
       window.setTimeout(() => {
         const targetId: Record<string, string> = {
-          "investigation / root cause": "ncmr-section-investigation",
+          "investigation / root cause summary": "ncmr-section-investigation",
+          "correction": "ncmr-section-correction",
+          "corrective action": "ncmr-section-corrective-action",
           "risk assessment": "ncmr-section-risk-assessment",
-          "correction / corrective action proposal": "ncmr-section-correction-proposal",
           "product disposition": "ncmr-section-product-disposition",
           "mrb preparation": "ncmr-section-mrb-approval",
         };
@@ -4072,7 +4226,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
         severityLevel:
           severity === "critical"
             ? "critical"
-            : severity === "major"
+            : severity === "high"
               ? "high"
               : "info",
         assignedRole: requiredFunction,
@@ -4172,7 +4326,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
         notificationType: editingReturnedTask ? "ncmr_rework_resubmitted" : "ncmr_rework_assignment",
         title: editingReturnedTask ? `Rework task revised and resubmitted: ${record?.ncmr_number || "NCMR"}` : `Rework task assigned: ${record?.ncmr_number || "NCMR"}`,
         message: editingReturnedTask ? `A returned Rework task for ${record?.ncmr_number || "this NCMR"} was revised and resubmitted and is waiting in My Workspace.` : `A Rework task for ${record?.ncmr_number || "this NCMR"} is waiting in My Workspace.`,
-        severityLevel: severity === "critical" ? "critical" : severity === "major" ? "high" : "info",
+        severityLevel: severity === "critical" ? "critical" : severity === "high" ? "high" : "info",
         assignedRole: "Rework Owner", relatedUrl: reworkPackageUrl,
       });
       alert(editingReturnedTask ? "Returned Rework task revised and resubmitted." : "Rework task submitted.");
@@ -4587,11 +4741,13 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
     if (!containmentAction) return alert("Containment action is required.");
     if (!investigationSummary) return alert("Investigation summary is required.");
     if (!rootCauseCategory) return alert("Root cause category is required.");
-    if (!rootCause) return alert("Root cause is required.");
-    if (!correctionActionProposal) return alert("Correction / corrective action proposal is required.");
-    if (!correctiveAction) return alert("Corrective action recommendation is required.");
-    if (!riskAssessment) return alert("Risk assessment is required.");
-    if (severity === "not_assessed") return alert("Severity must be assessed.");
+    if (!rootCause) return alert("Root Cause Summary is required.");
+    if (!correctionActionProposal) return alert("Correction Proposal is required.");
+    if (!correctiveAction) return alert("Corrective Action Proposal / justification is required.");
+    const directClosureRiskErrors = getRiskAssessmentValidationErrors();
+    if (directClosureRiskErrors.length > 0) {
+      return alert(`Risk assessment is incomplete:\n\n${directClosureRiskErrors.join("\n")}`);
+    }
 
     const closureCapaRecommendationDirect = getCapaRecommendation();
 
@@ -4630,14 +4786,14 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
     }
 
     const confirmed = window.confirm(
-      "Electronic Signature - NCMR Closure:\n\nBy selecting OK, I certify that I am the logged-in user, I have completed final quality review of this NCMR, including investigation, risk assessment, severity assessment, CAPA decision, disposition, MRB approval, correction implementation, evidence, and closure readiness.\n\nThis action will close and lock the record and will be recorded with signer identity, timestamp, and signature meaning."
+      "Electronic Signature - NCMR Closure:\n\nBy selecting OK, I certify that I am the logged-in user, I have completed final quality review of this NCMR, including investigation, Severity / Occurrence / Detection risk assessment, effective risk level, CAPA decision, disposition, MRB approval, correction implementation, evidence, and closure readiness.\n\nThis action will close and lock the record and will be recorded with signer identity, timestamp, and signature meaning."
     );
 
     if (!confirmed) return;
 
     const now = new Date().toISOString();
     const meaning =
-      "NCMR Closure: I certify that I am the logged-in user, I have completed final quality review of this NCMR, including investigation, risk assessment, severity assessment, CAPA decision, disposition, MRB approval, correction implementation, evidence, and closure readiness.";
+      "NCMR Closure: I certify that I am the logged-in user, I have completed final quality review of this NCMR, including investigation, Severity / Occurrence / Detection risk assessment, effective risk level, CAPA decision, disposition, MRB approval, correction implementation, evidence, and closure readiness.";
 
     const { error } = await supabase
       .from("ncmrs")
@@ -4684,6 +4840,13 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
       corrective_action: correctiveAction,
       risk_assessment: riskAssessment,
       severity,
+      occurrence_rating: occurrenceRating || null,
+      detection_rating: detectionRating || null,
+      risk_assessment_method: riskAssessmentMethod,
+      risk_level: riskAssessmentMethod === "manual" ? riskLevel || null : calculateNcmrRiskLevel(severity, occurrenceRating, detectionRating) || null,
+      risk_override_enabled: riskAssessmentMethod === "automatic" ? riskOverrideEnabled : false,
+      risk_override_level: riskAssessmentMethod === "automatic" && riskOverrideEnabled ? riskOverrideLevel || null : null,
+      risk_override_justification: riskAssessmentMethod === "automatic" && riskOverrideEnabled ? riskOverrideJustification || null : null,
       capa_recommended: capaRecommendation.recommended,
       product_disposition: productDisposition,
       disposition: productDisposition,
@@ -4702,6 +4865,13 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
       String(record?.corrective_action || "") === correctiveAction &&
       String(record?.risk_assessment || "") === riskAssessment &&
       String(record?.severity || "not_assessed") === severity &&
+      String(record?.occurrence_rating || "") === occurrenceRating &&
+      String(record?.detection_rating || "") === detectionRating &&
+      String(record?.risk_assessment_method || "automatic") === riskAssessmentMethod &&
+      String(record?.risk_level || "") === (riskAssessmentMethod === "manual" ? riskLevel : calculateNcmrRiskLevel(severity, occurrenceRating, detectionRating)) &&
+      Boolean(record?.risk_override_enabled) === Boolean(riskAssessmentMethod === "automatic" ? riskOverrideEnabled : false) &&
+      String(record?.risk_override_level || "") === (riskAssessmentMethod === "automatic" && riskOverrideEnabled ? riskOverrideLevel : "") &&
+      String(record?.risk_override_justification || "") === (riskAssessmentMethod === "automatic" && riskOverrideEnabled ? riskOverrideJustification : "") &&
       Boolean(record?.capa_recommended) === Boolean(capaRecommendation.recommended) &&
       String(record?.product_disposition || record?.disposition || "") === productDisposition &&
       String(record?.disposition_justification || "") === dispositionJustification &&
@@ -4726,7 +4896,9 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
   }, [
     id, investigator, problemDescription, containmentAction, investigationSummary,
     rootCause, rootCauseCategory, correctionActionProposal, correctiveAction,
-    riskAssessment, severity, productDisposition, dispositionJustification, reviewStatus,
+    riskAssessment, severity, occurrenceRating, detectionRating, riskAssessmentMethod,
+    riskLevel, riskOverrideEnabled, riskOverrideLevel, riskOverrideJustification,
+    productDisposition, dispositionJustification, reviewStatus,
     record?.id, record?.mrb_approved_by, record?.is_locked, approvalTasks,
   ]);
 
@@ -4779,8 +4951,9 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
     { label: "Initiation", complete: affectedItems.length > 0 && !!summaryIssueDescription },
     { label: "Containment", complete: !!containmentAction },
     { label: "Investigation", complete: !!investigator && !!problemDescription && !!investigationSummary && !!rootCauseCategory && !!rootCause },
-    { label: "Correction Proposal", complete: !!correctionActionProposal && !!correctiveAction },
-    { label: "Risk Assessment", complete: !!riskAssessment && severity !== "not_assessed" },
+    { label: "Correction", complete: !!correctionActionProposal },
+    { label: "Corrective Action", complete: !!correctiveAction.trim() },
+    { label: "Risk Assessment", complete: getRiskAssessmentValidationErrors().length === 0 },
     { label: "MRB Approval", complete: !!record?.mrb_approved_by },
     { label: "Disposition Implementation", complete: !!record?.mrb_approved_by && areDispositionImplementationsComplete() },
     { label: "Correction Implementation", complete: isCorrectionNotRequired() ? !!correctiveAction : areAllActiveImplementationTasksVerified() },
@@ -4850,8 +5023,9 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
   const isInitiationComplete = affectedItems.length > 0 && !!summaryIssueDescription;
   const isContainmentComplete = !!containmentAction;
   const isInvestigationComplete = !!investigator && !!problemDescription && !!investigationSummary && !!rootCauseCategory && !!rootCause;
-  const isCorrectionProposalComplete = !!correctionActionProposal && !!correctiveAction;
-  const isRiskAssessmentComplete = !!riskAssessment && severity !== "not_assessed";
+  const isCorrectionComplete = !!correctionActionProposal;
+  const isCorrectiveActionComplete = !!correctiveAction.trim();
+  const isRiskAssessmentComplete = getRiskAssessmentValidationErrors().length === 0;
   const isMrbComplete = !!record?.mrb_approved_by;
   const isDispositionImplementationComplete =
     !!record?.mrb_approved_by && areDispositionImplementationsComplete();
@@ -4970,9 +5144,10 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
             <p style={{ color: "#475569" }}>Prior approval history will be preserved. The selected section will reopen for revision and a new MRB approval cycle will be required.</p>
             <label style={{ fontWeight: 700 }}>Return To</label><br />
             <select value={returnRevisionDestination} onChange={(e) => setReturnRevisionDestination(e.target.value)} disabled={returnRevisionSubmitting} style={{ width: "100%", padding: "9px", marginTop: "6px", marginBottom: "14px" }}>
-              <option value="investigation / root cause">Investigation / Root Cause</option>
+              <option value="investigation / root cause summary">Investigation / Root Cause Summary</option>
+              <option value="correction">Correction</option>
+              <option value="corrective action">Corrective Action</option>
               <option value="risk assessment">Risk Assessment</option>
-              <option value="correction / corrective action proposal">Correction / Corrective Action Proposal</option>
               <option value="product disposition">Product Disposition</option>
               <option value="mrb preparation">MRB Preparation</option>
             </select>
@@ -5010,6 +5185,10 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
           <div>
             <div style={{ color: "#4b5563", fontSize: "13px" }}>Severity</div>
             <strong>{record.severity || "not_assessed"}</strong>
+          </div>
+          <div>
+            <div style={{ color: "#4b5563", fontSize: "13px" }}>Risk Level</div>
+            <strong>{getEffectiveRiskLevel() || record.risk_level || "not_assessed"}</strong>
           </div>
           <div>
             <div style={{ color: "#4b5563", fontSize: "13px" }}>MRB</div>
@@ -5476,8 +5655,8 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
 
       <div id="ncmr-section-investigation" />
       <SectionCard
-        title="3. Investigation / Root Cause"
-        subtitle={isInvestigationComplete ? "Complete: investigator, problem statement, investigation, and root cause are documented." : "Pending: document the investigator, problem statement, investigation summary, root cause category, and root cause."}
+        title="3. Investigation / Root Cause Summary"
+        subtitle={isInvestigationComplete ? "Complete: investigator, problem statement, investigation, and Root Cause Summary are documented." : "Pending: document the investigator, problem statement, investigation summary, root cause category, and Root Cause Summary."}
         defaultOpen={true}
         rightAction={sectionStatusBadge(isInvestigationComplete, "Investigation")}
       >
@@ -5551,7 +5730,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
         </select>
 
         <br />
-        <label>Root Cause</label><br />
+        <label>Root Cause Summary</label><br />
         <textarea
           value={rootCause}
           onChange={(e) => setRootCause(e.target.value)}
@@ -5561,7 +5740,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
         />
 
         <div style={{ marginTop: "16px", border: "1px solid #dbeafe", background: "#f8fafc", borderRadius: "10px", padding: "12px", maxWidth: "850px" }}>
-          <strong>Investigation / Root Cause Attachment (Optional)</strong>
+          <strong>Investigation / Root Cause Summary Attachment (Optional)</strong>
           <p style={{ color: "#64748b", fontSize: "13px", margin: "6px 0 10px" }}>Attach supporting investigation data, test results, photographs, analysis, or other objective evidence. Attachments become read-only with the approved MRB package.</p>
           {!preMrbReadOnly ? (
             <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
@@ -5579,28 +5758,27 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
                 </div>
               ))}
             </div>
-          ) : <div style={{ marginTop: "10px", color: "#64748b", fontSize: "13px" }}>No Investigation / Root Cause attachment added.</div>}
+          ) : <div style={{ marginTop: "10px", color: "#64748b", fontSize: "13px" }}>No Investigation / Root Cause Summary attachment added.</div>}
         </div>
 
         <SectionSaveCancelActions disabled={preMrbReadOnly} />
       </SectionCard>
 
-      <div id="ncmr-section-correction-proposal" />
+      <div id="ncmr-section-correction" />
       <SectionCard
-        title="4. Correction / Corrective Action Proposal"
-        subtitle={isCorrectionProposalComplete ? "Complete: correction proposal and recommendation are documented." : "Pending: document correction proposal and corrective action recommendation."}
+        title="4. Correction"
+        subtitle={isCorrectionComplete ? "Complete: correction proposal is documented." : "Pending: document the immediate correction proposal."}
         defaultOpen={true}
-        rightAction={sectionStatusBadge(isCorrectionProposalComplete, "Correction Proposal")}
+        rightAction={sectionStatusBadge(isCorrectionComplete, "Correction")}
       >
-
-        <label>Correction / Corrective Action Proposal</label><br />
+        <label>Correction Proposal</label><br />
         <select
           value={correctionActionProposal}
           onChange={(e) => setCorrectionActionProposal(e.target.value)}
           disabled={preMrbReadOnly}
           style={{ padding: "8px", minWidth: "330px", marginBottom: "12px" }}
         >
-          <option value="">Select proposal</option>
+          <option value="">Select correction proposal</option>
           <option value="no_correction_required">No correction required</option>
           <option value="immediate_correction_only">Immediate correction only</option>
           <option value="rework">Rework</option>
@@ -5609,20 +5787,30 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
           <option value="scrap">Scrap</option>
           <option value="return_to_supplier">Return to supplier</option>
           <option value="process_correction">Process correction</option>
-          <option value="training_required">Training required</option>
-          <option value="procedure_update">Procedure update</option>
-          <option value="supplier_corrective_action">Supplier corrective action</option>
-          <option value="escalate_to_capa">Escalate to CAPA</option>
         </select>
 
-        <br />
-        <label>Corrective Action Recommendation</label><br />
+        <p style={{ color: "#64748b", fontSize: "13px", marginTop: "4px" }}>
+          Correction addresses the detected nonconformance. If no correction is required, select that option and document the rationale in Corrective Action.
+        </p>
+
+        <SectionSaveCancelActions disabled={preMrbReadOnly} />
+      </SectionCard>
+
+      <div id="ncmr-section-corrective-action" />
+      <SectionCard
+        title="5. Corrective Action"
+        subtitle={isCorrectiveActionComplete ? "Complete: corrective action proposal or justification is documented." : "Pending: document the corrective action proposal or justification."}
+        defaultOpen={true}
+        rightAction={sectionStatusBadge(isCorrectiveActionComplete, "Corrective Action")}
+      >
+        <label>Corrective Action Proposal / Justification</label><br />
         <textarea
           value={correctiveAction}
           onChange={(e) => setCorrectiveAction(e.target.value)}
           disabled={preMrbReadOnly}
           rows={4}
-          style={{ width: "100%", maxWidth: "700px" }}
+          placeholder="Document the action proposed to address the cause and prevent recurrence. If no corrective action is required, document the justification."
+          style={{ width: "100%", maxWidth: "800px" }}
         />
 
         <SectionSaveCancelActions disabled={preMrbReadOnly} />
@@ -5630,35 +5818,202 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
 
       <div id="ncmr-section-risk-assessment" />
       <SectionCard
-        title="5. Risk Assessment"
-        subtitle={isRiskAssessmentComplete ? "Complete: risk assessment and severity are documented." : "Pending: document risk assessment and severity."}
+        title="6. Risk Assessment"
+        subtitle={isRiskAssessmentComplete ? "Complete: Severity, Occurrence, Detection, and risk level are documented." : "Pending: complete Severity, Occurrence, Detection, and risk level."}
         defaultOpen={true}
         rightAction={sectionStatusBadge(isRiskAssessmentComplete, "Risk Assessment")}
       >
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
+            gap: "12px",
+            maxWidth: "950px",
+          }}
+        >
+          <div>
+            <label>Risk Assessment Method</label><br />
+            <select
+              value={riskAssessmentMethod}
+              onChange={(e) => {
+                const nextMethod = e.target.value === "manual" ? "manual" : "automatic";
+                setRiskAssessmentMethod(nextMethod);
+                if (nextMethod === "manual") {
+                  setRiskOverrideEnabled(false);
+                  setRiskOverrideLevel("");
+                  setRiskOverrideJustification("");
+                }
+              }}
+              disabled={preMrbReadOnly}
+              style={{ width: "100%", padding: "8px" }}
+            >
+              <option value="automatic">Automatic</option>
+              <option value="manual">Manual</option>
+            </select>
+          </div>
 
-        <label>Risk Assessment</label><br />
-        <textarea
-          value={riskAssessment}
-          onChange={(e) => setRiskAssessment(e.target.value)}
-          disabled={preMrbReadOnly}
-          placeholder="Assess product, process, patient/user, regulatory, and quality risk."
-          rows={4}
-          style={{ width: "100%", maxWidth: "700px" }}
-        />
+          <div>
+            <label>Severity</label><br />
+            <select
+              value={severity}
+              onChange={(e) => setSeverity(e.target.value)}
+              disabled={preMrbReadOnly}
+              style={{ width: "100%", padding: "8px" }}
+            >
+              <option value="not_assessed">Select</option>
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+              <option value="critical">Critical</option>
+            </select>
+          </div>
 
-        <div style={{ marginTop: "12px" }}>
-          <label>Severity</label><br />
-          <select
-            value={severity}
-            onChange={(e) => setSeverity(e.target.value)}
-            disabled={preMrbReadOnly}
-            style={{ padding: "8px", minWidth: "180px" }}
+          <div>
+            <label>Occurrence</label><br />
+            <select
+              value={occurrenceRating}
+              onChange={(e) => setOccurrenceRating(e.target.value)}
+              disabled={preMrbReadOnly}
+              style={{ width: "100%", padding: "8px" }}
+            >
+              <option value="">Select</option>
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+            </select>
+          </div>
+
+          <div>
+            <label>Detection</label><br />
+            <select
+              value={detectionRating}
+              onChange={(e) => setDetectionRating(e.target.value)}
+              disabled={preMrbReadOnly}
+              style={{ width: "100%", padding: "8px" }}
+            >
+              <option value="">Select</option>
+              <option value="high_detection">High Detection</option>
+              <option value="medium_detection">Medium Detection</option>
+              <option value="low_detection">Low Detection</option>
+            </select>
+          </div>
+        </div>
+
+        {riskAssessmentMethod === "manual" ? (
+          <div style={{ marginTop: "14px", maxWidth: "420px" }}>
+            <label>Manual Risk Level</label><br />
+            <select
+              value={riskLevel}
+              onChange={(e) => setRiskLevel(e.target.value)}
+              disabled={preMrbReadOnly}
+              style={{ width: "100%", padding: "8px" }}
+            >
+              <option value="">Select</option>
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+              <option value="critical">Critical</option>
+            </select>
+          </div>
+        ) : (
+          <div
+            style={{
+              border: "1px solid #bfdbfe",
+              background: "#eff6ff",
+              padding: "12px",
+              borderRadius: "10px",
+              marginTop: "14px",
+              maxWidth: "850px",
+            }}
           >
-            <option value="not_assessed">Not Assessed</option>
-            <option value="minor">Minor</option>
-            <option value="major">Major</option>
-            <option value="critical">Critical</option>
-          </select>
+            <strong>Calculated Risk Level:</strong>{" "}
+            {calculateNcmrRiskLevel(severity, occurrenceRating, detectionRating) || "Not Calculated"}
+          </div>
+        )}
+
+        {riskAssessmentMethod === "automatic" ? (
+          <div style={{ marginTop: "14px", maxWidth: "850px" }}>
+            <label>Override Calculated Risk?</label><br />
+            <select
+              value={riskOverrideEnabled ? "yes" : "no"}
+              onChange={(e) => {
+                const enabled = e.target.value === "yes";
+                setRiskOverrideEnabled(enabled);
+                if (!enabled) {
+                  setRiskOverrideLevel("");
+                  setRiskOverrideJustification("");
+                }
+              }}
+              disabled={preMrbReadOnly}
+              style={{ padding: "8px", minWidth: "180px" }}
+            >
+              <option value="no">No</option>
+              <option value="yes">Yes</option>
+            </select>
+
+            {riskOverrideEnabled ? (
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+                  gap: "12px",
+                  marginTop: "12px",
+                }}
+              >
+                <div>
+                  <label>Override Risk Level</label><br />
+                  <select
+                    value={riskOverrideLevel}
+                    onChange={(e) => setRiskOverrideLevel(e.target.value)}
+                    disabled={preMrbReadOnly}
+                    style={{ width: "100%", padding: "8px" }}
+                  >
+                    <option value="">Select</option>
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                    <option value="critical">Critical</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label>Risk Override Justification</label><br />
+                  <textarea
+                    value={riskOverrideJustification}
+                    onChange={(e) => setRiskOverrideJustification(e.target.value)}
+                    disabled={preMrbReadOnly}
+                    rows={3}
+                    style={{ width: "100%" }}
+                  />
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
+        <div style={{ marginTop: "14px", maxWidth: "850px" }}>
+          <label>Risk Assessment Notes (Optional)</label><br />
+          <textarea
+            value={riskAssessment}
+            onChange={(e) => setRiskAssessment(e.target.value)}
+            disabled={preMrbReadOnly}
+            placeholder="Optional rationale or supporting risk assessment notes."
+            rows={3}
+            style={{ width: "100%" }}
+          />
+        </div>
+
+        <div
+          style={{
+            marginTop: "14px",
+            border: "1px solid #d1d5db",
+            borderRadius: "8px",
+            padding: "10px 12px",
+            background: "#f8fafc",
+            maxWidth: "850px",
+          }}
+        >
+          <strong>Effective Risk Level:</strong> {getEffectiveRiskLevel() || "Not Calculated"}
         </div>
 
         {getCapaRecommendation().recommended && !linkedCapa ? (
@@ -5695,12 +6050,12 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
           </div>
         ) : null}
 
-        <SectionSaveCancelActions onSave={saveRiskAssessmentSection} />
+        <SectionSaveCancelActions disabled={preMrbReadOnly} />
       </SectionCard>
 
       <div id="ncmr-section-product-disposition" />
       <SectionCard
-        title="6. Product Disposition"
+        title="7. Product Disposition"
         subtitle={isMrbComplete ? "Complete: product disposition package is approved." : "Pending: complete overall and affected product disposition."}
         defaultOpen={true}
         rightAction={sectionStatusBadge(isMrbComplete, "MRB")}
@@ -5766,7 +6121,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
       </SectionCard>
 
       <SectionCard
-        title="7. CAPA Governance"
+        title="8. CAPA Governance"
         subtitle={linkedCapa || record?.linked_capa_id || record?.capa_id ? "Complete: linked CAPA exists." : record?.capa_not_required_justification ? "Complete: CAPA not-required justification documented." : "Evaluate whether CAPA is required based on recurrence, severity, risk, or governance rules."}
         defaultOpen={false}
         rightAction={sectionStatusBadge(!!linkedCapa || !!record?.linked_capa_id || !!record?.capa_id || !!record?.capa_not_required_justification, "CAPA")}
@@ -5860,7 +6215,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
       </SectionCard>
 
       <SectionCard
-        title="8. Supplier / SCAR Governance"
+        title="9. Supplier / SCAR Governance"
         subtitle={linkedScar ? "Complete: linked SCAR exists for supplier governance." : scarJustification ? "Complete: no-SCAR justification documented." : "Evaluate SCAR using supplier part recorded and supplier recurrence detected."}
         defaultOpen={false}
         rightAction={sectionStatusBadge(!!linkedScar || !!scarJustification, "SCAR")}
@@ -5997,7 +6352,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
 
       <div id="ncmr-section-mrb-approval" />
       <SectionCard
-        title="9. MRB Approval"
+        title="10. MRB Approval"
         subtitle={isMrbComplete ? "Complete: all required MRB approvals are complete." : "Pending: generate approval tasks and complete MRB approval."}
         defaultOpen={true}
         rightAction={sectionStatusBadge(isMrbComplete, "MRB")}
@@ -6386,7 +6741,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
       </SectionCard>
 
       <SectionCard
-        title="10. Disposition Implementation"
+        title="11. Disposition Implementation"
         subtitle={
           !isMrbApproved()
             ? "Pending: MRB approval is required before disposition implementation."
@@ -6454,7 +6809,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
 
       <div id="correction-implementation" />
       <SectionCard
-        title="11. Correction / Corrective Action Implementation"
+        title="12. Correction / Corrective Action Implementation"
         subtitle={isImplementationComplete ? "Complete: implementation requirements are satisfied." : isCorrectionNotRequired() ? "Pending: document correction-not-required justification." : "Pending: assign/complete a Correction or Corrective Action task and document implementation."}
         defaultOpen={false}
         rightAction={sectionStatusBadge(isImplementationComplete, "Implementation")}
@@ -6494,7 +6849,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
             </p>
             <strong>Required Justification:</strong>
             <div style={{ marginTop: "6px", color: "#14532d" }}>
-              {correctiveAction || "Document the justification in the Correction / Corrective Action Proposal section."}
+              {correctiveAction || "Document the justification in the Corrective Action section."}
             </div>
           </div>
         ) : (
@@ -6658,7 +7013,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
       </SectionCard>
 
       <SectionCard
-        title="12. Evidence"
+        title="13. Evidence"
         subtitle={isEvidenceComplete ? "Complete: evidence is linked." : "Optional/Pending: upload or link supporting evidence."}
         defaultOpen={false}
         rightAction={sectionStatusBadge(isEvidenceComplete, "Evidence")}
@@ -6854,7 +7209,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
       </SectionCard>
 
       <SectionCard
-        title="13. Closure"
+        title="14. Closure"
         subtitle={isClosureComplete ? "Complete: NCMR is closed and locked." : "Pending: complete closure review and e-signature."}
         defaultOpen={false}
         rightAction={sectionStatusBadge(isClosureComplete, "Closure")}
