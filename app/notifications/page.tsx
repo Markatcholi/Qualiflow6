@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
 
 type NotificationRecord = {
@@ -83,33 +83,6 @@ export default function NotificationsPage() {
     fetchNotifications();
   }, [filter]);
 
-  const unreadCount = useMemo(
-    () => notifications.filter((n) => !n.read_status).length,
-    [notifications]
-  );
-
-  const criticalCount = useMemo(
-    () => notifications.filter((n) => n.severity === "critical" && !n.read_status).length,
-    [notifications]
-  );
-
-  const workflowCount = useMemo(
-    () =>
-      notifications.filter(
-        (notification) =>
-          !notification.read_status &&
-          !["training", "system", "general"].includes(
-            String(notification.related_module || "").toLowerCase()
-          )
-      ).length,
-    [notifications]
-  );
-
-  const trainingCount = useMemo(
-    () => notifications.filter((n) => n.related_module === "training" && !n.read_status).length,
-    [notifications]
-  );
-
   const markRead = async (id: string) => {
     const { error } = await supabase
       .from("notifications")
@@ -176,18 +149,7 @@ export default function NotificationsPage() {
         </div>
       </header>
 
-      <section style={kpiGridStyle}>
-        <KpiCard title="Unread" value={unreadCount} color="#2563eb" />
-        <KpiCard title="Critical" value={criticalCount} color="#991b1b" />
-        <KpiCard title="Workflow" value={workflowCount} color="#7c3aed" />
-        <KpiCard title="Training" value={trainingCount} color="#15803d" />
-      </section>
-
-      <section style={summaryStyle}>
-        <div>
-          <strong>User:</strong> {userEmail || "N/A"}
-        </div>
-
+      <section style={filterBarStyle}>
         <div style={buttonRowStyle}>
           <button
             onClick={() => setFilter("unread")}
@@ -219,10 +181,11 @@ export default function NotificationsPage() {
           >
             All
           </button>
-          <button onClick={markAllRead} style={secondaryButtonStyle}>
-            Mark All Read
-          </button>
         </div>
+
+        <button onClick={markAllRead} style={secondaryButtonStyle}>
+          Mark All Read
+        </button>
       </section>
 
       <section style={{ display: "grid", gap: "12px" }}>
@@ -413,15 +376,6 @@ function formatDateTime(value: string | null | undefined) {
   }
 }
 
-function KpiCard({ title, value, color }: { title: string; value: number | string; color: string }) {
-  return (
-    <div style={{ ...kpiCardStyle, borderLeft: `8px solid ${color}` }}>
-      <div style={kpiTitleStyle}>{title}</div>
-      <div style={{ fontSize: "30px", fontWeight: 800, color }}>{value}</div>
-    </div>
-  );
-}
-
 const pageStyle: React.CSSProperties = {
   padding: "24px",
   background: "#f8fafc",
@@ -449,36 +403,13 @@ const subtleText: React.CSSProperties = {
   color: "#6b7280",
 };
 
-const kpiGridStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-  gap: "14px",
-  marginBottom: "20px",
-};
-
-const kpiCardStyle: React.CSSProperties = {
-  background: "white",
-  border: "1px solid #d1d5db",
-  borderRadius: "14px",
-  padding: "16px",
-};
-
-const kpiTitleStyle: React.CSSProperties = {
-  color: "#6b7280",
-  marginBottom: "8px",
-};
-
-const summaryStyle: React.CSSProperties = {
-  background: "white",
-  border: "1px solid #d1d5db",
-  borderRadius: "14px",
-  padding: "16px",
-  marginBottom: "20px",
+const filterBarStyle: React.CSSProperties = {
   display: "flex",
   justifyContent: "space-between",
   alignItems: "center",
   gap: "12px",
   flexWrap: "wrap",
+  marginBottom: "20px",
 };
 
 const cardStyle: React.CSSProperties = {
