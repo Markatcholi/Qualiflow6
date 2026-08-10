@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
 import {
   SectionCard,
@@ -114,6 +114,7 @@ export default function NcmrPage() {
   const [showCreateForm, setShowCreateForm] = useState(true);
   const [draftSaveStatus, setDraftSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
   const [draftRestored, setDraftRestored] = useState(false);
+  const dateDetectedPickerRef = useRef<HTMLInputElement | null>(null);
 
   const [affectedItems, setAffectedItems] = useState<AffectedItemInput[]>([
     {
@@ -674,6 +675,11 @@ export default function NcmrPage() {
       return;
     }
 
+    if (dateDetected.trim() && !dateDisplayToIso(dateDetected)) {
+      alert("Date Detected must use the format DD-MMM-YYYY, for example 09-Aug-2026.");
+      return;
+    }
+
     if (isSupplierSource && !supplierId) {
       alert("Select a supplier for a supplier-related NCMR.");
       return;
@@ -747,7 +753,7 @@ export default function NcmrPage() {
         workorder_number: primaryAffectedItem?.workorder_number || null,
         source_of_detection: sourceOfDetection,
         department,
-        date_detected: dateDetected || null,
+        date_detected: dateDisplayToIso(dateDetected),
         quantity_affected: primaryAffectedItem?.quantity_affected
           ? Number(primaryAffectedItem.quantity_affected)
           : null,
@@ -931,7 +937,7 @@ export default function NcmrPage() {
       setIssueDescription(draft.issueDescription || "");
       setSourceOfDetection(draft.sourceOfDetection || "");
       setDepartment(draft.department || "");
-      setDateDetected(draft.dateDetected || "");
+      setDateDetected(formatDisplayDate(draft.dateDetected || ""));
       setContainmentAction(draft.containmentAction || "");
       setContainmentOwner(draft.containmentOwner || "");
       setMaterialStatus(draft.materialStatus || "");
@@ -1024,20 +1030,76 @@ export default function NcmrPage() {
     setDraftSaveStatus("idle");
   };
 
-  const formatIsoDate = (value: any) => {
-    if (!value) return "N/A";
+  const monthAbbreviations = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+  ];
 
-    const raw = String(value);
-    const dateOnlyMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const formatDisplayDate = (value: any) => {
+    if (!value) return "";
 
-    if (dateOnlyMatch) {
-      return raw;
+    const raw = String(value).trim();
+
+    const isoMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (isoMatch) {
+      const [, year, month, day] = isoMatch;
+      const monthIndex = Number(month) - 1;
+      if (monthIndex >= 0 && monthIndex <= 11) {
+        return `${day}-${monthAbbreviations[monthIndex]}-${year}`;
+      }
     }
 
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return raw;
+    const displayMatch = raw.match(/^(\d{2})-([A-Za-z]{3})-(\d{4})$/);
+    if (displayMatch) {
+      const [, day, monthText, year] = displayMatch;
+      const normalizedMonth = monthAbbreviations.find(
+        (month) => month.toLowerCase() === monthText.toLowerCase()
+      );
+      if (normalizedMonth) return `${day}-${normalizedMonth}-${year}`;
+    }
 
-    return date.toISOString().slice(0, 10);
+    const parsed = new Date(raw);
+    if (Number.isNaN(parsed.getTime())) return raw;
+
+    const day = String(parsed.getDate()).padStart(2, "0");
+    return `${day}-${monthAbbreviations[parsed.getMonth()]}-${parsed.getFullYear()}`;
+  };
+
+  const dateDisplayToIso = (value: string) => {
+    const raw = String(value || "").trim();
+    if (!raw) return null;
+
+    const isoMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (isoMatch) return raw;
+
+    const displayMatch = raw.match(/^(\d{2})-([A-Za-z]{3})-(\d{4})$/);
+    if (!displayMatch) return null;
+
+    const [, day, monthText, year] = displayMatch;
+    const monthIndex = monthAbbreviations.findIndex(
+      (month) => month.toLowerCase() === monthText.toLowerCase()
+    );
+
+    if (monthIndex < 0) return null;
+
+    const iso = `${year}-${String(monthIndex + 1).padStart(2, "0")}-${day}`;
+    const parsed = new Date(`${iso}T00:00:00`);
+
+    if (
+      Number.isNaN(parsed.getTime()) ||
+      parsed.getFullYear() !== Number(year) ||
+      parsed.getMonth() !== monthIndex ||
+      parsed.getDate() !== Number(day)
+    ) {
+      return null;
+    }
+
+    return iso;
+  };
+
+  const formatNcmrDate = (value: any) => {
+    const formatted = formatDisplayDate(value);
+    return formatted || "N/A";
   };
 
   const formatFileSize = (bytes: number) => {
@@ -1277,14 +1339,65 @@ export default function NcmrPage() {
         <div style={rowStyle}>
           <label>Date Detected</label>
           <br />
-          <input
-            type="date"
-            value={dateDetected}
-            onChange={(e) => setDateDetected(e.target.value)}
-            style={fieldStyle}
-          />
-          <div style={{ color: "#6b7280", fontSize: "12px", marginTop: "4px" }}>
-            Stored as ISO 8601 date (YYYY-MM-DD).
+          <div
+            style={{
+              display: "flex",
+              gap: "8px",
+              alignItems: "center",
+              maxWidth: "720px",
+            }}
+          >
+            <input
+              type="text"
+              value={dateDetected}
+              onChange={(e) => setDateDetected(e.target.value)}
+              onBlur={() => {
+                const isoValue = dateDisplayToIso(dateDetected);
+                if (isoValue) {
+                  setDateDetected(formatDisplayDate(isoValue));
+                }
+              }}
+              placeholder="09-Aug-2026"
+              style={{ ...fieldStyle, flex: 1, marginTop: 0 }}
+            />
+            <button
+              type="button"
+              onClick={() => {
+                const picker = dateDetectedPickerRef.current;
+                if (!picker) return;
+
+                const isoValue = dateDisplayToIso(dateDetected);
+                if (isoValue) picker.value = isoValue;
+
+                if (typeof (picker as any).showPicker === "function") {
+                  (picker as any).showPicker();
+                } else {
+                  picker.click();
+                }
+              }}
+              style={{ padding: "8px 12px", whiteSpace: "nowrap" }}
+              aria-label="Choose Date Detected"
+            >
+              Calendar
+            </button>
+            <input
+              ref={dateDetectedPickerRef}
+              type="date"
+              tabIndex={-1}
+              aria-hidden="true"
+              onChange={(e) => {
+                if (e.target.value) {
+                  setDateDetected(formatDisplayDate(e.target.value));
+                }
+              }}
+              style={{
+                position: "absolute",
+                width: "1px",
+                height: "1px",
+                opacity: 0,
+                pointerEvents: "none",
+              }}
+            />
           </div>
         </div>
 
@@ -1946,12 +2059,12 @@ export default function NcmrPage() {
                   <div><strong>Work Order:</strong> {item.workorder_number || "N/A"}</div>
                   <div><strong>Source:</strong> {item.source_of_detection || "N/A"}</div>
                   <div><strong>Department:</strong> {item.department || "N/A"}</div>
-                  <div><strong>Detected:</strong> {formatIsoDate(item.date_detected)}</div>
+                  <div><strong>Detected:</strong> {formatNcmrDate(item.date_detected)}</div>
                   <div><strong>Qty Affected:</strong> {item.quantity_affected ?? "N/A"}</div>
                   <div><strong>Material Status:</strong> {item.material_status || "N/A"}<br />
                     <strong>Containment Completed:</strong>{" "}
                     {item.containment_completed_at
-                      ? formatIsoDate(item.containment_completed_at)
+                      ? formatNcmrDate(item.containment_completed_at)
                       : "Pending"}</div>
                   <div><strong>Supplier:</strong> {item.supplier_name || "N/A"}</div>
                   <div><strong>PO:</strong> {item.purchase_order_number || "N/A"}</div>
