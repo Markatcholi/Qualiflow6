@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
 import {
   SectionCard,
@@ -42,6 +42,8 @@ type AffectedItemInput = {
   workorder_number: string;
   quantity_affected: string;
   quarantined_quantity: string;
+  defect_category: string;
+  defect_subcategory: string;
 };
 
 type InitiationAttachment = {
@@ -100,8 +102,6 @@ export default function NcmrPage() {
   const [containmentOwner, setContainmentOwner] = useState("");
   const [materialStatus, setMaterialStatus] = useState("");
   const [quarantinedQuantity, setQuarantinedQuantity] = useState("");
-  const [defectCategory, setDefectCategory] = useState("");
-  const [defectSubcategory, setDefectSubcategory] = useState("");
   const [supplierId, setSupplierId] = useState("");
   const [supplierName, setSupplierName] = useState("");
   const [supplierLot, setSupplierLot] = useState("");
@@ -112,6 +112,8 @@ export default function NcmrPage() {
   const [initiationAttachmentFiles, setInitiationAttachmentFiles] = useState<File[]>([]);
   const [uploadingAttachments, setUploadingAttachments] = useState(false);
   const [showCreateForm, setShowCreateForm] = useState(true);
+  const [draftSaveStatus, setDraftSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
+  const [draftRestored, setDraftRestored] = useState(false);
 
   const [affectedItems, setAffectedItems] = useState<AffectedItemInput[]>([
     {
@@ -122,6 +124,8 @@ export default function NcmrPage() {
       workorder_number: "",
       quantity_affected: "",
       quarantined_quantity: "",
+      defect_category: "",
+      defect_subcategory: "",
     },
   ]);
 
@@ -139,11 +143,11 @@ export default function NcmrPage() {
   const [defectSubcategoryOptions, setDefectSubcategoryOptions] = useState<DefectSubcategoryOption[]>([]);
   const [supplierOptions, setSupplierOptions] = useState<SupplierOption[]>([]);
 
-  const filteredDefectSubcategories = useMemo(() => {
-    return defectSubcategoryOptions.filter(
-      (item) => item.category_code === defectCategory
+  const getDefectSubcategoriesForCategory = (categoryCode: string) =>
+    defectSubcategoryOptions.filter(
+      (item) => item.category_code === categoryCode
     );
-  }, [defectSubcategoryOptions, defectCategory]);
+
 
   const isSupplierSource = sourceOfDetection
     .toLowerCase()
@@ -331,41 +335,54 @@ export default function NcmrPage() {
   };
 
   const checkRecurrence = async () => {
-    const primaryAffectedItem = affectedItems.find(
-      (item) => item.product_part_number || item.lot_number || item.workorder_number
-    );
-
-    const primaryPartNumber = primaryAffectedItem?.product_part_number || "";
-
-    if (!primaryPartNumber || !defectCategory) {
-      return { recurring: false, reason: "" };
-    }
-
     const sixtyDaysAgo = new Date();
     sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
 
-    const { data, error } = await supabase
-      .from("ncmrs")
-      .select("id")
-      .eq("product_part_number", primaryPartNumber)
-      .eq("defect_category", defectCategory)
-      .gte("created_at", sixtyDaysAgo.toISOString());
+    const candidates = affectedItems.filter(
+      (item) => item.product_part_number && item.defect_category
+    );
 
-    if (error) {
-      alert(error.message);
+    if (candidates.length === 0) {
       return { recurring: false, reason: "" };
     }
 
-    const count = data?.length || 0;
+    const reasons: string[] = [];
 
-    if (count > 0) {
-      return {
-        recurring: true,
-        reason: `Recurring issue detected: ${count} prior NCMR(s) with same affected part number and defect category in the last 60 days.`,
-      };
+    for (const item of candidates) {
+      const { data, error } = await supabase
+        .from("ncmr_affected_items")
+        .select("id, ncmr_id")
+        .eq("product_part_number", item.product_part_number)
+        .eq("defect_category", item.defect_category)
+        .gte("created_at", sixtyDaysAgo.toISOString());
+
+      if (error) {
+        alert(error.message);
+        return { recurring: false, reason: "" };
+      }
+
+      const priorNcmrIds = Array.from(
+        new Set((data || []).map((row: any) => row.ncmr_id).filter(Boolean))
+      );
+
+      if (priorNcmrIds.length > 0) {
+        const categoryLabel =
+          defectCategoryOptions.find((option) => option.code === item.defect_category)
+            ?.label || item.defect_category;
+
+        reasons.push(
+          `${item.product_part_number} / ${categoryLabel}: ${priorNcmrIds.length} prior NCMR(s) in the last 60 days.`
+        );
+      }
     }
 
-    return { recurring: false, reason: "" };
+    return {
+      recurring: reasons.length > 0,
+      reason:
+        reasons.length > 0
+          ? `Recurring issue detected by affected part and defect category: ${reasons.join(" ")}`
+          : "",
+    };
   };
 
   const checkSupplierScar = async () => {
@@ -413,6 +430,8 @@ export default function NcmrPage() {
         workorder_number: "",
         quantity_affected: "",
         quarantined_quantity: "",
+        defect_category: "",
+        defect_subcategory: "",
         },
     ]);
   };
@@ -426,6 +445,7 @@ export default function NcmrPage() {
     updated[index] = {
       ...updated[index],
       [field]: value,
+      ...(field === "defect_category" ? { defect_subcategory: "" } : {}),
     };
     setAffectedItems(updated);
   };
@@ -470,6 +490,8 @@ export default function NcmrPage() {
           workorder_number: "",
           quantity_affected: "",
           quarantined_quantity: "",
+          defect_category: "",
+          defect_subcategory: "",
             },
       ]);
       return;
@@ -611,8 +633,6 @@ export default function NcmrPage() {
     setContainmentOwner("");
     setMaterialStatus("");
     setQuarantinedQuantity("");
-    setDefectCategory("");
-    setDefectSubcategory("");
     setSupplierId("");
     setSupplierName("");
     setSupplierLot("");
@@ -630,6 +650,8 @@ export default function NcmrPage() {
         workorder_number: "",
         quantity_affected: "",
         quarantined_quantity: "",
+        defect_category: "",
+        defect_subcategory: "",
       },
     ]);
   };
@@ -654,6 +676,35 @@ export default function NcmrPage() {
 
     if (isSupplierSource && !supplierId) {
       alert("Select a supplier for a supplier-related NCMR.");
+      return;
+    }
+
+    const validAffectedItemsForValidation = affectedItems.filter(
+      (item) =>
+        item.product_part_number ||
+        item.lot_number ||
+        item.workorder_number ||
+        item.quantity_affected ||
+        item.quarantined_quantity ||
+        item.defect_category ||
+        item.defect_subcategory
+    );
+
+    if (validAffectedItemsForValidation.length === 0) {
+      alert("At least one affected item is required.");
+      return;
+    }
+
+    const missingDefectItems = validAffectedItemsForValidation
+      .map((item, index) => ({ item, index }))
+      .filter(({ item }) => !item.defect_category || !item.defect_subcategory);
+
+    if (missingDefectItems.length > 0) {
+      alert(
+        `Defect Category and Defect Subcategory are required for each affected item.\n\n${missingDefectItems
+          .map(({ index }) => `Affected Item ${index + 1}`)
+          .join("\n")}`
+      );
       return;
     }
 
@@ -710,8 +761,10 @@ export default function NcmrPage() {
           : quarantinedQuantity
           ? Number(quarantinedQuantity)
           : null,
-        defect_category: defectCategory,
-        defect_subcategory: defectSubcategory,
+        // Legacy summary fields retained for compatibility. The authoritative
+        // defect classification is stored on each ncmr_affected_items row.
+        defect_category: primaryAffectedItem?.defect_category || null,
+        defect_subcategory: primaryAffectedItem?.defect_subcategory || null,
         supplier_id: supplierIdForInsert,
         supplier_name: supplierNameForInsert,
         supplier_lot: supplierLotForInsert,
@@ -758,7 +811,9 @@ export default function NcmrPage() {
         item.lot_number ||
         item.workorder_number ||
         item.quantity_affected ||
-        item.quarantined_quantity
+        item.quarantined_quantity ||
+        item.defect_category ||
+        item.defect_subcategory
     );
 
     if (validAffectedItems.length > 0) {
@@ -775,6 +830,8 @@ export default function NcmrPage() {
         quarantined_quantity: item.quarantined_quantity
           ? Number(item.quarantined_quantity)
           : null,
+        defect_category: item.defect_category || null,
+        defect_subcategory: item.defect_subcategory || null,
       }));
 
       const { error: affectedItemsError } = await supabase
@@ -839,6 +896,7 @@ export default function NcmrPage() {
         ? `\n\nThe following file(s) did not upload and may be added from the workflow page:\n${attachmentUploadResult.failedFiles.join("\n")}`
         : "";
 
+    clearSavedIntakeDraft();
     resetNcmrForm();
     await fetchData();
 
@@ -856,19 +914,131 @@ export default function NcmrPage() {
     fetchData();
   }, []);
 
-  useEffect(() => {
-    if (filteredDefectSubcategories.length > 0) {
-      const stillValid = filteredDefectSubcategories.some(
-        (item) => item.code === defectSubcategory
-      );
+  const intakeDraftStorageKey = "qualisphere:ncmr-initiation-draft:v2";
 
-      if (!stillValid) {
-        setDefectSubcategory(filteredDefectSubcategories[0].code);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    try {
+      const savedDraft = window.localStorage.getItem(intakeDraftStorageKey);
+      if (!savedDraft) {
+        setDraftRestored(true);
+        return;
       }
-    } else {
-      setDefectSubcategory("");
+
+      const draft = JSON.parse(savedDraft);
+
+      setIssueDescription(draft.issueDescription || "");
+      setSourceOfDetection(draft.sourceOfDetection || "");
+      setDepartment(draft.department || "");
+      setDateDetected(draft.dateDetected || "");
+      setContainmentAction(draft.containmentAction || "");
+      setContainmentOwner(draft.containmentOwner || "");
+      setMaterialStatus(draft.materialStatus || "");
+      setQuarantinedQuantity(draft.quarantinedQuantity || "");
+      setSupplierId(draft.supplierId || "");
+      setSupplierName(draft.supplierName || "");
+      setSupplierLot(draft.supplierLot || "");
+      setPurchaseOrderNumber(draft.purchaseOrderNumber || "");
+      setSiteLocation(draft.siteLocation || "");
+      setImmediateCorrection(draft.immediateCorrection || "");
+      setOwner(draft.owner || "");
+
+      if (Array.isArray(draft.affectedItems) && draft.affectedItems.length > 0) {
+        setAffectedItems(
+          draft.affectedItems.map((item: any) => ({
+            product_part_number: item.product_part_number || "",
+            part_description: item.part_description || "",
+            part_revision: item.part_revision || "",
+            lot_number: item.lot_number || "",
+            workorder_number: item.workorder_number || "",
+            quantity_affected: item.quantity_affected || "",
+            quarantined_quantity: item.quarantined_quantity || "",
+            defect_category: item.defect_category || "",
+            defect_subcategory: item.defect_subcategory || "",
+          }))
+        );
+      }
+    } catch (error) {
+      console.warn("Unable to restore NCMR initiation draft:", error);
+    } finally {
+      setDraftRestored(true);
     }
-  }, [defectCategory, defectSubcategoryOptions]);
+  }, []);
+
+  useEffect(() => {
+    if (!draftRestored || typeof window === "undefined") return;
+
+    setDraftSaveStatus("saving");
+
+    const timer = window.setTimeout(() => {
+      const draft = {
+        issueDescription,
+        sourceOfDetection,
+        department,
+        dateDetected,
+        containmentAction,
+        containmentOwner,
+        materialStatus,
+        quarantinedQuantity,
+        supplierId,
+        supplierName,
+        supplierLot,
+        purchaseOrderNumber,
+        siteLocation,
+        immediateCorrection,
+        owner,
+        affectedItems,
+        savedAt: new Date().toISOString(),
+      };
+
+      window.localStorage.setItem(intakeDraftStorageKey, JSON.stringify(draft));
+      setDraftSaveStatus("saved");
+    }, 700);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    draftRestored,
+    issueDescription,
+    sourceOfDetection,
+    department,
+    dateDetected,
+    containmentAction,
+    containmentOwner,
+    materialStatus,
+    quarantinedQuantity,
+    supplierId,
+    supplierName,
+    supplierLot,
+    purchaseOrderNumber,
+    siteLocation,
+    immediateCorrection,
+    owner,
+    affectedItems,
+  ]);
+
+  const clearSavedIntakeDraft = () => {
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem(intakeDraftStorageKey);
+    }
+    setDraftSaveStatus("idle");
+  };
+
+  const formatIsoDate = (value: any) => {
+    if (!value) return "N/A";
+
+    const raw = String(value);
+    const dateOnlyMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+
+    if (dateOnlyMatch) {
+      return raw;
+    }
+
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return raw;
+
+    return date.toISOString().slice(0, 10);
+  };
 
   const formatFileSize = (bytes: number) => {
     if (!Number.isFinite(bytes) || bytes <= 0) return "0 KB";
@@ -927,8 +1097,15 @@ export default function NcmrPage() {
   const initiationProgressSteps = [
     { label: "Issue", complete: !!issueDescription.trim() },
     { label: "Detection", complete: !!sourceOfDetection && !!department && !!dateDetected },
-    { label: "Affected Material", complete: affectedItems.some((item) => item.product_part_number || item.lot_number || item.workorder_number || item.quantity_affected) },
-    { label: "Defect", complete: !!defectCategory },
+    {
+      label: "Affected Material",
+      complete: affectedItems.some(
+        (item) =>
+          (item.product_part_number || item.lot_number || item.workorder_number || item.quantity_affected) &&
+          !!item.defect_category &&
+          !!item.defect_subcategory
+      ),
+    },
     { label: "Supplier", complete: !isSupplierSource || !!supplierId },
     { label: "Containment", complete: !!containmentAction || !!materialStatus },
     { label: "Owner", complete: !!owner },
@@ -984,7 +1161,7 @@ export default function NcmrPage() {
 
       <SectionCard
         title="Create NCMR Intake"
-        subtitle="Capture the issue, affected material, containment, defect information, and owner."
+        subtitle="Capture the issue, part-specific affected material and defect classification, containment, and owner."
         defaultOpen={showCreateForm}
         rightAction={<StatusBadge status={`${completedInitiationSteps}/${initiationProgressSteps.length} complete`} />}
       >
@@ -1038,6 +1215,21 @@ export default function NcmrPage() {
                 ))}
               </div>
             </div>
+
+            <div
+              style={{
+                marginBottom: "16px",
+                fontSize: "13px",
+                color: draftSaveStatus === "saving" ? "#92400e" : "#166534",
+              }}
+            >
+              {draftSaveStatus === "saving"
+                ? "Saving intake draft…"
+                : draftSaveStatus === "saved"
+                ? "✓ Intake draft saved automatically in this browser."
+                : "Intake draft autosave is ready."}
+            </div>
+
             <SectionCard
               title="1. Initiation Information"
               subtitle="Capture issue description, detection source, department, date, and affected material."
@@ -1091,6 +1283,9 @@ export default function NcmrPage() {
             onChange={(e) => setDateDetected(e.target.value)}
             style={fieldStyle}
           />
+          <div style={{ color: "#6b7280", fontSize: "12px", marginTop: "4px" }}>
+            Stored as ISO 8601 date (YYYY-MM-DD).
+          </div>
         </div>
 
         <div style={{ marginTop: "18px" }}>
@@ -1224,6 +1419,41 @@ export default function NcmrPage() {
                   />
                 </div>
 
+                <div>
+                  <label>Defect Category</label>
+                  <br />
+                  <select
+                    value={item.defect_category}
+                    onChange={(e) =>
+                      updateAffectedItem(index, "defect_category", e.target.value)
+                    }
+                    style={{ width: "100%", padding: "8px" }}
+                  >
+                    <option value="">Select defect category</option>
+                    {renderOptions(defectCategoryOptions)}
+                  </select>
+                </div>
+
+                <div>
+                  <label>Defect Subcategory</label>
+                  <br />
+                  <select
+                    value={item.defect_subcategory}
+                    onChange={(e) =>
+                      updateAffectedItem(index, "defect_subcategory", e.target.value)
+                    }
+                    disabled={!item.defect_category}
+                    style={{ width: "100%", padding: "8px" }}
+                  >
+                    <option value="">Select defect subcategory</option>
+                    {getDefectSubcategoriesForCategory(item.defect_category).map((option) => (
+                      <option key={option.code} value={option.code}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
               </div>
 
               <button
@@ -1301,43 +1531,7 @@ export default function NcmrPage() {
             </SectionCard>
 
             <SectionCard
-              title="3. Defect Classification"
-              subtitle="Classify the nonconformance using the applicable defect category and subcategory."
-              defaultOpen={false}
-            >
-              <div style={rowStyle}>
-                <label>Defect Category</label>
-                <br />
-                <select
-                  value={defectCategory}
-                  onChange={(e) => setDefectCategory(e.target.value)}
-                  style={fieldStyle}
-                >
-                  <option value="">Select defect category</option>
-                  {renderOptions(defectCategoryOptions)}
-                </select>
-              </div>
-
-              <div style={rowStyle}>
-                <label>Defect Subcategory</label>
-                <br />
-                <select
-                  value={defectSubcategory}
-                  onChange={(e) => setDefectSubcategory(e.target.value)}
-                  style={fieldStyle}
-                >
-                  <option value="">Select defect subcategory</option>
-                  {filteredDefectSubcategories.map((option) => (
-                    <option key={option.code} value={option.code}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </SectionCard>
-
-            <SectionCard
-              title="4. Supplier Information (If Applicable)"
+              title="3. Supplier Information (If Applicable)"
               subtitle="Capture only the supplier traceability information needed for a supplier-related NCMR."
               defaultOpen={isSupplierSource}
             >
@@ -1423,7 +1617,7 @@ export default function NcmrPage() {
             </SectionCard>
 
             <SectionCard
-              title="5. Additional Information and Ownership"
+              title="4. Additional Information and Ownership"
               subtitle="Capture the location, immediate correction, and responsible NCMR owner."
               defaultOpen={false}
             >
@@ -1464,7 +1658,7 @@ export default function NcmrPage() {
             </SectionCard>
 
             <SectionCard
-              title="6. Supporting Attachments (Optional)"
+              title="5. Supporting Attachments (Optional)"
               subtitle="Attach photographs, inspection records, supplier documents, test results, or other evidence available when the NCMR is initiated."
               defaultOpen={false}
               rightAction={
@@ -1577,6 +1771,7 @@ export default function NcmrPage() {
               <button
                 type="button"
                 onClick={() => {
+                  clearSavedIntakeDraft();
                   resetNcmrForm();
                   setShowCreateForm(false);
                 }}
@@ -1751,15 +1946,13 @@ export default function NcmrPage() {
                   <div><strong>Work Order:</strong> {item.workorder_number || "N/A"}</div>
                   <div><strong>Source:</strong> {item.source_of_detection || "N/A"}</div>
                   <div><strong>Department:</strong> {item.department || "N/A"}</div>
-                  <div><strong>Detected:</strong> {item.date_detected || "N/A"}</div>
+                  <div><strong>Detected:</strong> {formatIsoDate(item.date_detected)}</div>
                   <div><strong>Qty Affected:</strong> {item.quantity_affected ?? "N/A"}</div>
                   <div><strong>Material Status:</strong> {item.material_status || "N/A"}<br />
                     <strong>Containment Completed:</strong>{" "}
                     {item.containment_completed_at
-                      ? new Date(item.containment_completed_at).toLocaleDateString()
+                      ? formatIsoDate(item.containment_completed_at)
                       : "Pending"}</div>
-                  <div><strong>Defect:</strong> {item.defect_category || "N/A"}</div>
-                  <div><strong>Subcategory:</strong> {item.defect_subcategory || "N/A"}</div>
                   <div><strong>Supplier:</strong> {item.supplier_name || "N/A"}</div>
                   <div><strong>PO:</strong> {item.purchase_order_number || "N/A"}</div>
                   <div><strong>Supplier Lot:</strong> {item.supplier_lot || "N/A"}</div>
