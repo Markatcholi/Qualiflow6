@@ -10,6 +10,7 @@ export default function NcmrFullRecordReportPage() {
 
   const [record, setRecord] = useState<any>(null);
   const [linkedCapa, setLinkedCapa] = useState<any>(null);
+  const [linkedScar, setLinkedScar] = useState<any>(null);
   const [mrbApprovers, setMrbApprovers] = useState<any[]>([]);
   const [affectedItems, setAffectedItems] = useState<any[]>([]);
   const [approvalTasks, setApprovalTasks] = useState<any[]>([]);
@@ -36,14 +37,25 @@ export default function NcmrFullRecordReportPage() {
       const ncmr = recordRes.data;
       setRecord(ncmr);
 
-      if (ncmr?.capa_id) {
+      const linkedCapaId = ncmr?.linked_capa_id || ncmr?.capa_id;
+      if (linkedCapaId) {
         const capaRes = await supabase
           .from("capas")
           .select("*")
-          .eq("id", ncmr.capa_id)
+          .eq("id", linkedCapaId)
           .maybeSingle();
 
         if (!capaRes.error) setLinkedCapa(capaRes.data || null);
+      }
+
+      if (ncmr?.linked_scar_id) {
+        const scarRes = await supabase
+          .from("scars")
+          .select("*")
+          .eq("id", ncmr.linked_scar_id)
+          .maybeSingle();
+
+        if (!scarRes.error) setLinkedScar(scarRes.data || null);
       }
 
       const approverRes = await supabase
@@ -72,7 +84,7 @@ export default function NcmrFullRecordReportPage() {
       if (!tasksRes.error) {
         const tasks = tasksRes.data || [];
         setApprovalTasks(tasks.filter((task) => task.task_type === "mrb_approval"));
-        setCorrectionTasks(tasks.filter((task) => task.task_type === "correction_task"));
+        setCorrectionTasks(tasks.filter((task) => ["correction_task", "corrective_action_task"].includes(task.task_type)));
         setReworkTasks(tasks.filter((task) => task.task_type === "rework_task"));
       }
 
@@ -99,23 +111,21 @@ export default function NcmrFullRecordReportPage() {
     return <main style={{ padding: "20px" }}>NCMR record not found.</main>;
   }
 
+  const effectiveRiskLevel =
+    record.risk_assessment_method === "automatic" && record.risk_override_enabled
+      ? record.risk_override_level || record.risk_level
+      : record.risk_level;
+
   return (
     <main style={pageStyle}>
       <div className="no-print" style={{ marginBottom: "18px" }}>
         <button onClick={() => window.print()} style={{ padding: "8px 12px", marginRight: "10px" }}>
           Print / Save as PDF
         </button>
-
         <label style={{ marginRight: "14px" }}>
-          <input
-            type="checkbox"
-            checked={includeAuditTrail}
-            onChange={(e) => setIncludeAuditTrail(e.target.checked)}
-            style={{ marginRight: "6px" }}
-          />
+          <input type="checkbox" checked={includeAuditTrail} onChange={(e) => setIncludeAuditTrail(e.target.checked)} style={{ marginRight: "6px" }} />
           Include Audit Trail
         </label>
-
         <a href={`/ncmrs/${id}`}>Back to NCMR Workflow</a>
       </div>
 
@@ -127,352 +137,408 @@ export default function NcmrFullRecordReportPage() {
           <div><strong>Status:</strong> {displayValue(record.status)}</div>
         </div>
         <div style={{ textAlign: "right" }}>
-          <div><strong>Generated:</strong> {new Date().toISOString()}</div>
+          <div><strong>Generated:</strong> {formatDateTime(new Date())}</div>
           <div><strong>QMS Record Type:</strong> Nonconforming Material Report</div>
           <div><strong>Print Use:</strong> Controlled record review</div>
         </div>
       </header>
 
-      <section style={sectionStyle}>
-        <h2>Record Summary</h2>
+      <ReportSection title="Record Summary">
         <div style={gridStyle}>
           <Field label="NCMR Number" value={record.ncmr_number} />
           <Field label="Title" value={record.title} />
           <Field label="Status" value={record.status} />
           <Field label="Review Status" value={record.review_status} />
-          <Field label="Created At" value={record.created_at} />
-          <Field label="Closed At" value={record.closed_at} />
-          <Field label="Owner" value={record.owner} />
+          <Field label="Created At" value={formatDateTime(record.created_at)} />
+          <Field label="Closed At" value={formatDateTime(record.closed_at)} />
+          <Field label="Owner" value={record.owner || record.owner_email} />
           <Field label="Investigator" value={record.investigator} />
+          <Field label="Severity" value={formatLabel(record.severity)} />
+          <Field label="Effective Risk Level" value={formatLabel(effectiveRiskLevel)} />
         </div>
-      </section>
+      </ReportSection>
 
-      <section style={sectionStyle}>
-        <h2>1. Initiation</h2>
+      <ReportSection title="1. Initiation Information">
         <div style={verticalGridStyle}>
           <Field label="Issue Description" value={record.issue_description} />
           <Field label="Source of Detection" value={record.source_of_detection} />
           <Field label="Department" value={record.department} />
-          <Field label="Date Detected" value={record.date_detected} />
+          <Field label="Date Detected" value={formatDate(record.date_detected)} />
           <Field label="Site / Location" value={record.site_location} />
-          <Field label="Defect Category" value={record.defect_category} />
-          <Field label="Defect Subcategory" value={record.defect_subcategory} />
-          <Field label="Supplier Name" value={record.supplier_name} />
-          <Field label="Supplier Lot" value={record.supplier_lot} />
+          <Field label="Immediate Correction" value={record.immediate_correction} />
+          <Field label="NCMR Owner" value={record.owner || record.owner_email} />
         </div>
 
         <h3>Affected Materials / Multiple Parts and Lots</h3>
-        {affectedItems.length === 0 ? (
-          <p>No affected materials recorded.</p>
-        ) : (
+        {affectedItems.length === 0 ? <p>No affected materials recorded.</p> : (
           <div style={{ display: "grid", gap: "10px" }}>
             {affectedItems.map((item, index) => (
               <div key={item.id || index} style={itemCardStyle}>
                 <h4 style={{ marginTop: 0 }}>Affected Material {index + 1}</h4>
-                <div style={verticalGridStyle}>
+                <div style={gridStyle}>
                   <Field label="Part Number" value={item.product_part_number} />
+                  <Field label="Part Description" value={item.part_description} />
+                  <Field label="Part Revision" value={item.part_revision} />
                   <Field label="Lot Number" value={item.lot_number} />
                   <Field label="Work Order" value={item.workorder_number} />
                   <Field label="Quantity Affected" value={item.quantity_affected} />
                   <Field label="Quantity Quarantined" value={item.quarantined_quantity} />
+                  <Field label="Defect Category" value={formatLabel(item.defect_category)} />
+                  <Field label="Defect Subcategory" value={formatLabel(item.defect_subcategory)} />
                 </div>
               </div>
             ))}
           </div>
         )}
-      </section>
 
-      <section style={sectionStyle}>
-        <h2>2. Containment</h2>
+        <h3>Supplier Information (If Applicable)</h3>
+        <div style={gridStyle}>
+          <Field label="Supplier Name" value={record.supplier_name} />
+          <Field label="Supplier Lot" value={record.supplier_lot} />
+          <Field label="Purchase Order Number" value={record.purchase_order_number} />
+        </div>
+
+        <AttachmentList title="Initiation Supporting Attachments" attachments={record.initiation_attachments} />
+      </ReportSection>
+
+      <ReportSection title="2. Containment">
+        <div style={verticalGridStyle}>
+          <Field label="Containment Action" value={record.containment_action} />
+          <Field label="Containment Owner" value={record.containment_owner} />
+          <Field label="Material Status" value={formatLabel(record.material_status)} />
+          <Field label="Quarantined Quantity" value={record.quarantined_quantity} />
+          <Field label="Containment Completed By" value={record.containment_completed_by} />
+          <Field label="Containment Completed At" value={formatDateTime(record.containment_completed_at)} />
+        </div>
+      </ReportSection>
+
+      <ReportSection title="3. Investigation / Root Cause Summary">
         <div style={verticalGridStyle}>
           <Field label="Investigator" value={record.investigator} />
           <Field label="Problem Description" value={record.problem_description} />
-          <Field label="Containment Action" value={record.containment_action} />
-          <Field label="Containment Owner" value={record.containment_owner} />
-          <Field label="Material Status" value={record.material_status} />
-          <Field label="Quarantined Quantity" value={record.quarantined_quantity} />
-          <Field label="Immediate Correction" value={record.immediate_correction} />
-        </div>
-      </section>
-
-      <section style={sectionStyle}>
-        <h2>3. Investigation / Root Cause</h2>
-        <div style={verticalGridStyle}>
           <Field label="Investigation Summary" value={record.investigation_summary} />
-          <Field label="Root Cause Category" value={record.root_cause_category} />
-          <Field label="Root Cause" value={record.root_cause} />
+          <Field label="Root Cause Category" value={formatLabel(record.root_cause_category)} />
+          <Field label="Root Cause Summary" value={record.root_cause} />
         </div>
-      </section>
+        <AttachmentList title="Investigation / Root Cause Summary Attachments" attachments={record.investigation_attachments} />
+      </ReportSection>
 
-      <section style={sectionStyle}>
-        <h2>4. Correction / Corrective Action Proposal</h2>
-        <div style={verticalGridStyle}>
-          <Field label="Correction / Corrective Action Proposal" value={record.correction_action_proposal} />
-          <Field label="Corrective Action Recommendation" value={record.corrective_action} />
+      <ReportSection title="4. Correction">
+        <Field label="Correction Proposal" value={formatLabel(record.correction_action_proposal)} />
+      </ReportSection>
+
+      <ReportSection title="5. Corrective Action">
+        <Field label="Corrective Action Proposal / Justification" value={record.corrective_action} />
+      </ReportSection>
+
+      <ReportSection title="6. Risk Assessment">
+        <div style={gridStyle}>
+          <Field label="Risk Assessment Method" value={formatLabel(record.risk_assessment_method || "automatic")} />
+          <Field label="Severity" value={formatLabel(record.severity)} />
+          <Field label="Occurrence" value={formatLabel(record.occurrence_rating)} />
+          <Field label="Detection" value={formatLabel(record.detection_rating)} />
+          <Field label="Calculated / Manual Risk Level" value={formatLabel(record.risk_level)} />
+          <Field label="Effective Risk Level" value={formatLabel(effectiveRiskLevel)} />
+          <Field label="Calculated Risk Overridden" value={record.risk_override_enabled ? "Yes" : "No"} />
+          {record.risk_override_enabled ? <Field label="Override Risk Level" value={formatLabel(record.risk_override_level)} /> : null}
         </div>
-      </section>
+        {record.risk_override_enabled ? <Field label="Risk Override Justification" value={record.risk_override_justification} /> : null}
+        <Field label="Risk Assessment Notes" value={record.risk_assessment} />
+      </ReportSection>
 
-      <section style={sectionStyle}>
-        <h2>5. Risk Assessment</h2>
+      <ReportSection title="7. Product Disposition / MRB Decision">
         <div style={verticalGridStyle}>
-          <Field label="Risk Assessment" value={record.risk_assessment} />
-          <Field label="Severity" value={record.severity} />
-          <Field label="CAPA Required" value={record.capa_required ? "Yes" : "No"} />
-          <Field label="CAPA Justification" value={record.capa_justification} />
-          <Field label="Recurring Issue" value={record.recurring_issue ? "Yes" : "No"} />
-          <Field label="Recurrence Reason" value={record.recurrence_reason} />
-          <Field label="Supplier CAPA / SCAR Required" value={record.supplier_capa_required ? "Yes" : "No"} />
-          <Field label="Supplier CAPA / SCAR Reason" value={record.supplier_capa_reason} />
-        </div>
-      </section>
-
-      <section style={sectionStyle}>
-        <h2>6. Product Disposition / MRB Decision</h2>
-        <div style={verticalGridStyle}>
-          <Field label="Overall Product Disposition" value={record.product_disposition || record.disposition} />
+          <Field label="Overall Product Disposition" value={formatLabel(record.product_disposition || record.disposition)} />
           <Field label="Overall Disposition Justification" value={record.disposition_justification} />
+          <Field label="MRB Decision Date" value={formatDateTime(record.mrb_decision_date || record.mrb_approved_at)} />
         </div>
-
         <h3>Disposition by Affected Item</h3>
-        {affectedItems.length === 0 ? (
-          <p>No item-level disposition records found.</p>
-        ) : (
-          <div style={{ display: "grid", gap: "12px" }}>
-            {affectedItems.map((item, index) => (
-              <div key={item.id || index} style={itemCardStyle}>
-                <h4 style={{ marginTop: 0 }}>
-                  Disposition Item {index + 1} — {displayValue(item.product_part_number)} / Lot {displayValue(item.lot_number)}
-                </h4>
-
-                <div style={verticalGridStyle}>
-                  <Field label="Disposition" value={item.product_disposition} />
-                  <Field label="Quantity Accepted" value={item.quantity_accepted} />
-                  <Field label="Quantity Rejected" value={item.quantity_rejected} />
-                  <Field label="Disposition Justification" value={item.disposition_justification} />
-
-                  {item.product_disposition === "rework" ? (
-                    <>
-                      <Field label="Final Disposition After Rework" value={item.final_disposition_after_rework} />
-                      <Field label="Final Rework Quantity Accepted" value={item.final_rework_quantity_accepted} />
-                      <Field label="Final Rework Quantity Rejected" value={item.final_rework_quantity_rejected} />
-                    </>
-                  ) : null}
-                </div>
-              </div>
-            ))}
+        {affectedItems.length === 0 ? <p>No item-level disposition records found.</p> : affectedItems.map((item, index) => (
+          <div key={item.id || index} style={itemCardStyle}>
+            <h4 style={{ marginTop: 0 }}>Disposition Item {index + 1} — {displayValue(item.product_part_number)} / Lot {displayValue(item.lot_number)}</h4>
+            <div style={gridStyle}>
+              <Field label="Disposition" value={formatLabel(item.product_disposition)} />
+              <Field label="Quantity Accepted" value={item.quantity_accepted} />
+              <Field label="Quantity Rejected" value={item.quantity_rejected} />
+              <Field label="Disposition Justification" value={item.disposition_justification} />
+            </div>
           </div>
-        )}
+        ))}
 
         <div style={signatureStyle}>
           <h3>MRB Electronic Signature</h3>
           <Field label="MRB Approved By" value={record.mrb_approved_by} />
-          <Field label="MRB Approved At" value={record.mrb_approved_at} />
+          <Field label="MRB Approved At" value={formatDateTime(record.mrb_approved_at)} />
           <Field label="Signature Email Entered" value={record.mrb_signature_email_entered} />
           <Field label="Signature Meaning" value={record.mrb_signature_meaning} />
-          <Field label="Additional Approvers Entered" value={record.mrb_additional_approvers} />
           <Field label="Authentication Method" value="Active authenticated session with email confirmation" />
         </div>
 
-        <h3>MRB Required Approval Tasks</h3>
-        {approvalTasks.length === 0 ? (
-          <p>No MRB approval tasks recorded.</p>
-        ) : (
-          <div style={{ display: "grid", gap: "10px" }}>
-            {approvalTasks.map((task) => (
-              <div key={task.id} style={taskCardStyle(task.status)}>
-                <Field label="Function" value={task.required_function} />
-                <Field label="Assigned To" value={task.assigned_to_email} />
-                <Field label="Status" value={task.status} />
-                <Field label="Signed By" value={task.signed_by} />
-                <Field label="Signed At" value={task.signed_at} />
-                <Field label="Approver Comment" value={task.approver_comment} />
-              </div>
-            ))}
-          </div>
-        )}
+        <h3>MRB Approval History</h3>
+        {approvalTasks.length === 0 ? <p>No MRB approval tasks recorded.</p> : approvalTasks.map((task, index) => (
+          <TaskRecord key={task.id || index} task={task} approvalMode />
+        ))}
+        {mrbApprovers.length > 0 ? <>
+          <h3>Configured / Additional MRB Approvers</h3>
+          {mrbApprovers.map((approver, index) => (
+            <div key={approver.id || index} style={itemCardStyle}>
+              <Field label="Approver Email" value={approver.approver_email} />
+              <Field label="Approver Role" value={approver.approver_role} />
+              <Field label="Approval Status" value={approver.approval_status} />
+              <Field label="Signed At" value={formatDateTime(approver.signed_at)} />
+              <Field label="Signature Meaning" value={approver.signature_meaning} />
+            </div>
+          ))}
+        </> : null}
+      </ReportSection>
 
-        {mrbApprovers.length > 0 ? (
-          <div>
-            <h3>Additional MRB Approvers</h3>
-            {mrbApprovers.map((approver) => (
-              <div key={approver.id} style={{ borderTop: "1px solid #ddd", paddingTop: "8px" }}>
-                <Field label="Approver Email" value={approver.approver_email} />
-                <Field label="Approver Role" value={approver.approver_role} />
-                <Field label="Approval Status" value={approver.approval_status} />
-                <Field label="Signed At" value={approver.signed_at} />
-                <Field label="Signature Meaning" value={approver.signature_meaning} />
-              </div>
-            ))}
-          </div>
-        ) : null}
-      </section>
-
-      <section style={sectionStyle}>
-        <h2>7. Correction Implementation</h2>
-
-        <h3>Correction Task Status</h3>
-        {correctionTasks.length === 0 ? (
-          <p>No correction tasks recorded.</p>
-        ) : (
-          <div style={{ display: "grid", gap: "10px" }}>
-            {correctionTasks.map((task) => (
-              <div key={task.id} style={taskCardStyle(task.status)}>
-                <Field label="Task Title" value={task.task_title || task.required_function} />
-                <Field label="Assigned To" value={task.assigned_to_email} />
-                <Field label="Due Date" value={task.due_date} />
-                <Field label="Status" value={task.status} />
-                <Field label="Completed By" value={task.completed_by || task.signed_by} />
-                <Field label="Completed At" value={task.completed_at || task.signed_at} />
-                <Field label="Completion Comment" value={task.completion_comment || task.approver_comment} />
-              </div>
-            ))}
-          </div>
-        )}
-
-        <div style={{ marginTop: "12px" }}>
-          <Field label="Correction Implementation" value={record.correction_implementation} />
-          <Field label="Implemented By" value={record.correction_implemented_by} />
-          <Field label="Implemented At" value={record.correction_implemented_at} />
+      <ReportSection title="8. CAPA Governance">
+        <div style={verticalGridStyle}>
+          <Field label="CAPA Governance Decision" value={formatLabel(record.capa_evaluation_outcome || record.capa_decision)} />
+          <Field label="CAPA Governance Rationale" value={record.capa_evaluation_rationale} />
+          <Field label="CAPA Recommended" value={record.capa_recommended ? "Yes" : "No"} />
+          <Field label="Recurring Issue" value={record.recurring_issue ? "Yes" : "No"} />
+          <Field label="Recurrence Reason" value={record.recurrence_reason} />
+          <Field label="No-CAPA Justification" value={record.capa_not_required_justification || record.capa_decision_justification || record.capa_justification} />
+          <Field label="Linked CAPA Number" value={linkedCapa?.capa_number} />
+          <Field label="Linked CAPA Title" value={linkedCapa?.title} />
+          <Field label="Linked CAPA Status" value={linkedCapa?.status} />
         </div>
-      </section>
+      </ReportSection>
 
-      {reworkTasks.length > 0 ? (
-        <section style={sectionStyle}>
-          <h2>8. Rework Execution</h2>
-          <div style={{ display: "grid", gap: "10px" }}>
-            {reworkTasks.map((task) => (
-              <div key={task.id} style={taskCardStyle(task.status)}>
-                <Field label="Task Title" value={task.task_title || task.required_function} />
-                <Field label="Assigned To" value={task.assigned_to_email} />
-                <Field label="Due Date" value={task.due_date} />
-                <Field label="Status" value={task.status} />
-                <Field label="Completed By" value={task.completed_by || task.signed_by} />
-                <Field label="Completed At" value={task.completed_at || task.signed_at} />
-                <Field label="Completion Comment" value={task.completion_comment || task.approver_comment} />
+      <ReportSection title="9. Supplier / SCAR Governance">
+        <div style={verticalGridStyle}>
+          <Field label="Supplier / SCAR Governance Required" value={(record.scar_required || record.supplier_scar_required || record.supplier_capa_required) ? "Yes" : "No"} />
+          <Field label="Supplier / SCAR Governance Reason" value={record.scar_reason || record.supplier_scar_reason || record.supplier_capa_reason} />
+          <Field label="No-SCAR Justification" value={record.scar_justification} />
+          <Field label="Linked SCAR Number" value={linkedScar?.scar_number} />
+          <Field label="Linked SCAR Title" value={linkedScar?.scar_title || linkedScar?.title} />
+          <Field label="Linked SCAR Status" value={linkedScar?.scar_status || linkedScar?.status} />
+        </div>
+      </ReportSection>
+
+      <ReportSection title="10. Disposition Implementation">
+        {affectedItems.length === 0 ? <p>No affected-item implementation records found.</p> : affectedItems.map((item, index) => (
+          <div key={item.id || index} style={itemCardStyle}>
+            <h4 style={{ marginTop: 0 }}>{formatLabel(item.product_disposition)} — {displayValue(item.product_part_number)} / Lot {displayValue(item.lot_number)}</h4>
+            <div style={gridStyle}>
+              <Field label="Implementation Status" value={formatLabel(item.disposition_implementation_status)} />
+              <Field label="MRB Quantity Accepted" value={item.quantity_accepted} />
+              <Field label="MRB Quantity Rejected" value={item.quantity_rejected} />
+              <Field label="Quantity Discrepancy" value={item.quantity_discrepancy ? "Yes" : "No"} />
+              <Field label="Discrepancy Quantity" value={item.discrepancy_quantity} />
+              <Field label="Discrepancy Type" value={formatLabel(item.discrepancy_type)} />
+              <Field label="Final Quantity Accepted" value={item.final_quantity_accepted} />
+              <Field label="Final Quantity Rejected" value={item.final_quantity_rejected} />
+              <Field label="Implemented By" value={item.disposition_implemented_by} />
+              <Field label="Implemented At" value={formatDateTime(item.disposition_implemented_at)} />
+            </div>
+            <Field label="Disposition Implementation Notes" value={item.disposition_implementation_notes} />
+            <Field label="Discrepancy Rationale" value={item.discrepancy_rationale} />
+          </div>
+        ))}
+      </ReportSection>
+
+      <ReportSection title="11. Rework Execution">
+        {reworkTasks.length === 0 ? <p>No Rework tasks recorded.</p> : reworkTasks.map((task, index) => (
+          <div key={task.id || index} style={taskCardStyle(task.status)}>
+            <h3 style={{ marginTop: 0 }}>Rework Task {index + 1}</h3>
+            <TaskRecord task={task} />
+            <AttachmentList title="Assignment Attachment(s)" attachments={task.assignment_attachments} />
+            <AttachmentList title="Completion Evidence / Attachment(s)" attachments={task.task_attachments} />
+            {task.returned_reason || task.returned_by || task.returned_at ? <div style={returnHistoryStyle}>
+              <strong>Return History</strong>
+              <Field label="Returned By" value={task.returned_by} />
+              <Field label="Returned At" value={formatDateTime(task.returned_at)} />
+              <Field label="Return Reason" value={task.returned_reason} />
+            </div> : null}
+            <div style={signatureStyle}>
+              <h4 style={{ marginTop: 0 }}>Rework Owner Completion / Electronic Signature</h4>
+              <Field label="Completed By / Signed By" value={task.completed_by || task.signed_by} />
+              <Field label="Completed At / Signed At" value={formatDateTime(task.completed_at || task.signed_at)} />
+      <Field label="Signature Meaning" value={task.signature_meaning} />
+              <Field label="Completion Comment" value={task.completion_comment || task.approver_comment} />
+            </div>
+            <h4>Final Rework Outcome</h4>
+            {affectedItems.filter((item) => normalize(item.product_disposition) === "rework").map((item, itemIndex) => (
+              <div key={item.id || itemIndex} style={itemCardStyle}>
+                <Field label="Part / Lot" value={`${displayValue(item.product_part_number)} / ${displayValue(item.lot_number)}`} />
+                <Field label="Final Disposition After Rework" value={formatLabel(item.final_disposition_after_rework)} />
+                <Field label="Final Rework Quantity Accepted" value={item.final_rework_quantity_accepted} />
+                <Field label="Final Rework Quantity Rejected" value={item.final_rework_quantity_rejected} />
+                <Field label="Quantity Reconciliation" value={reworkReconciliation(item)} />
               </div>
             ))}
+            <div style={signatureStyle}>
+              <h4 style={{ marginTop: 0 }}>NCMR Owner Rework Verification</h4>
+              <Field label="Verification Status" value={formatLabel(task.implementation_verification_status)} />
+              <Field label="Verification Comment" value={task.implementation_verification_comment} />
+              <Field label="Verified By" value={task.implementation_verified_by} />
+              <Field label="Verified At" value={formatDateTime(task.implementation_verified_at)} />
+            </div>
           </div>
-        </section>
-      ) : null}
+        ))}
+        <h3>Rework Lifecycle History</h3>
+        {auditLogs.filter((log) => String(log?.action || "").toLowerCase().includes("rework")).length === 0 ? (
+          <p>No Rework lifecycle audit events recorded.</p>
+        ) : auditLogs.filter((log) => String(log?.action || "").toLowerCase().includes("rework")).map((log) => (
+          <div key={log.id} style={itemCardStyle}>
+            <Field label="Date / Time" value={formatDateTime(log.created_at)} />
+            <Field label="User" value={log.user_email} />
+            <Field label="Action" value={formatLabel(log.action)} />
+            <Field label="Details" value={log.details} />
+          </div>
+        ))}
+      </ReportSection>
 
-      <section style={sectionStyle}>
-        <h2>{reworkTasks.length > 0 ? "9" : "8"}. Evidence / Attachments</h2>
+      <ReportSection title="12. Correction / Corrective Action Implementation">
+        {correctionTasks.length === 0 ? <p>No Correction or Corrective Action implementation tasks recorded.</p> : correctionTasks.map((task, index) => (
+          <div key={task.id || index} style={taskCardStyle(task.status)}>
+            <h3 style={{ marginTop: 0 }}>{task.task_type === "corrective_action_task" ? "Corrective Action" : "Correction"} Implementation Task {index + 1}</h3>
+            <TaskRecord task={task} />
+            <AttachmentList title="Completion Evidence / Attachment(s)" attachments={task.task_attachments} />
+            <div style={signatureStyle}>
+              <h4 style={{ marginTop: 0 }}>NCMR Owner Implementation Verification</h4>
+              <Field label="Verification Status" value={formatLabel(task.implementation_verification_status)} />
+              <Field label="Verification Comment" value={task.implementation_verification_comment} />
+              <Field label="Verified By" value={task.implementation_verified_by} />
+              <Field label="Verified At" value={formatDateTime(task.implementation_verified_at)} />
+            </div>
+          </div>
+        ))}
+        <Field label="Legacy / Summary Correction Implementation" value={record.correction_implementation} />
+        <Field label="Implemented By" value={record.correction_implemented_by} />
+        <Field label="Implemented At" value={formatDateTime(record.correction_implemented_at)} />
+      </ReportSection>
+
+      <ReportSection title="13. Evidence / Attachments">
         <Field label="Evidence URL" value={record.evidence_url} />
         <Field label="Evidence Notes" value={record.evidence_notes} />
-      </section>
+      </ReportSection>
 
-      <section style={sectionStyle}>
-        <h2>{reworkTasks.length > 0 ? "10" : "9"}. Linked Records</h2>
-        <Field label="Linked CAPA ID" value={record.capa_id} />
-        <Field label="Linked CAPA Number" value={linkedCapa?.capa_number} />
-        <Field label="Linked CAPA Title" value={linkedCapa?.title} />
-        <Field label="Linked CAPA Status" value={linkedCapa?.status} />
-      </section>
+      <ReportSection title="14. Linked Records">
+        <div style={gridStyle}>
+          <Field label="Linked CAPA ID" value={record.linked_capa_id || record.capa_id} />
+          <Field label="Linked CAPA Number" value={linkedCapa?.capa_number} />
+          <Field label="Linked CAPA Title" value={linkedCapa?.title} />
+          <Field label="Linked CAPA Status" value={linkedCapa?.status} />
+          <Field label="Linked SCAR ID" value={record.linked_scar_id} />
+          <Field label="Linked SCAR Number" value={linkedScar?.scar_number} />
+          <Field label="Linked SCAR Title" value={linkedScar?.scar_title || linkedScar?.title} />
+          <Field label="Linked SCAR Status" value={linkedScar?.scar_status || linkedScar?.status} />
+        </div>
+      </ReportSection>
 
-      <section style={sectionStyle}>
-        <h2>{reworkTasks.length > 0 ? "11" : "10"}. Closure / Electronic Signature</h2>
+      <ReportSection title="15. Closure / Electronic Signature">
         <div style={signatureStyle}>
+          <Field label="Closure Status" value={record.status} />
+          <Field label="Review Status" value={record.review_status} />
           <Field label="Closed By" value={record.ncmr_closed_by} />
-          <Field label="Closed At" value={record.closed_at} />
-          <Field label="Investigation Completed At" value={record.investigation_completed_at} />
+          <Field label="Closed At" value={formatDateTime(record.closed_at)} />
+          <Field label="Investigation Completed At" value={formatDateTime(record.investigation_completed_at)} />
+          <Field label="Closure Comments" value={record.closure_comments} />
+          <Field label="Signature Email Entered" value={record.ncmr_signature_email_entered} />
           <Field label="Signature Meaning" value={record.ncmr_signature_meaning} />
           <Field label="Authentication Method" value="Active authenticated session confirmation" />
         </div>
-      </section>
+      </ReportSection>
 
       {includeAuditTrail ? (
-        <section style={sectionStyle}>
-          <h2>{reworkTasks.length > 0 ? "12" : "11"}. Audit Trail Summary</h2>
-          {auditLogs.length === 0 ? (
-            <p>No audit log entries found for this NCMR.</p>
-          ) : (
-            auditLogs.map((log) => (
-              <div key={log.id} style={{ borderTop: "1px solid #ddd", paddingTop: "8px", marginTop: "8px" }}>
-                <Field label="Date / Time" value={log.created_at} />
-                <Field label="User" value={log.user_email} />
-                <Field label="Action" value={log.action} />
-                <Field label="Details" value={log.details} />
-              </div>
-            ))
-          )}
-        </section>
+        <ReportSection title="16. Audit Trail Summary">
+          {auditLogs.length === 0 ? <p>No audit log entries found for this NCMR.</p> : auditLogs.map((log) => (
+            <div key={log.id} style={{ borderTop: "1px solid #ddd", paddingTop: "8px", marginTop: "8px" }}>
+              <Field label="Date / Time" value={formatDateTime(log.created_at)} />
+              <Field label="User" value={log.user_email} />
+              <Field label="Action" value={formatLabel(log.action)} />
+              <Field label="Details" value={log.details} />
+            </div>
+          ))}
+        </ReportSection>
       ) : null}
 
       <footer className="print-footer">
-        NCMR Controlled Record | {record.ncmr_number || record.id} | Generated {new Date().toISOString()}
+        NCMR Controlled Record | {record.ncmr_number || record.id} | Generated {formatDateTime(new Date())}
       </footer>
 
       <style jsx global>{`
         @media print {
-          .no-print {
-            display: none !important;
-          }
-
-          body {
-            color: black;
-            background: white;
-            -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
-          }
-
-          main {
-            padding: 18px !important;
-          }
-
-          section {
-            page-break-inside: avoid;
-          }
-
-          .print-footer {
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            font-size: 10px;
-            border-top: 1px solid #999;
-            padding: 6px 20px;
-            background: white;
-          }
+          .no-print { display: none !important; }
+          body { color: black; background: white; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          main { padding: 18px !important; }
+          section { break-inside: auto; page-break-inside: auto; }
+          .report-card, .task-card, .signature-card { break-inside: avoid; page-break-inside: avoid; }
+          .print-footer { position: fixed; bottom: 0; left: 0; right: 0; font-size: 10px; border-top: 1px solid #999; padding: 6px 20px; background: white; }
         }
-
-        @page {
-          margin: 0.75in;
-        }
+        @page { margin: 0.65in 0.65in 0.8in; }
       `}</style>
     </main>
   );
 }
 
-function Field({ label, value }: { label: string; value: any }) {
-  return (
-    <div style={{ marginBottom: "8px" }}>
-      <strong>{label}:</strong> {displayValue(value)}
-    </div>
-  );
+function ReportSection({ title, children }: { title: string; children: any }) {
+  return <section style={sectionStyle}><h2>{title}</h2>{children}</section>;
 }
 
-function displayValue(input: any) {
-  return input === null || input === undefined || input === "" ? "N/A" : String(input);
+function Field({ label, value }: { label: string; value: any }) {
+  return <div style={{ marginBottom: "8px", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}><strong>{label}:</strong> {displayValue(value)}</div>;
+}
+
+function AttachmentList({ title, attachments }: { title: string; attachments: any }) {
+  const list = Array.isArray(attachments) ? attachments : [];
+  return <div style={{ marginTop: "12px" }}><h3>{title}</h3>{list.length === 0 ? <p>None recorded.</p> : list.map((attachment: any, index: number) => (
+    <div key={`${attachment?.storage_path || attachment?.url || index}`} style={itemCardStyle}>
+      <Field label="File" value={attachment?.name || `Attachment ${index + 1}`} />
+      <Field label="Uploaded By" value={attachment?.uploaded_by} />
+      <Field label="Uploaded At" value={formatDateTime(attachment?.uploaded_at)} />
+      {attachment?.url ? <div><strong>Link:</strong> <a href={attachment.url} target="_blank" rel="noreferrer">Open attachment</a></div> : null}
+    </div>
+  ))}</div>;
+}
+
+function TaskRecord({ task, approvalMode = false }: { task: any; approvalMode?: boolean }) {
+  return <div className="task-card" style={{ marginBottom: "10px" }}>
+    <div style={gridStyle}>
+      <Field label={approvalMode ? "Function" : "Task Type"} value={approvalMode ? task.required_function : (task.task_type === "corrective_action_task" ? "Corrective Action" : task.task_type === "correction_task" ? "Correction" : task.required_function || task.task_type)} />
+      <Field label="Task Title" value={task.task_title} />
+      <Field label="Assigned To" value={task.assigned_to_email} />
+      <Field label="Assigned By" value={task.assigned_by_email} />
+      <Field label="Due Date" value={formatDate(task.due_date)} />
+      <Field label="Status" value={formatLabel(task.status)} />
+      <Field label="Created At" value={formatDateTime(task.created_at)} />
+      <Field label="Completed By / Signed By" value={task.completed_by || task.signed_by} />
+      <Field label="Completed At / Signed At" value={formatDateTime(task.completed_at || task.signed_at)} />
+      <Field label="Signature Meaning" value={task.signature_meaning} />
+    </div>
+    <Field label={approvalMode ? "Approver Comment" : "Implementation Instructions"} value={approvalMode ? task.approver_comment : (task.task_instructions || task.comments)} />
+    {!approvalMode ? <Field label="Task Owner Completion Comment" value={task.completion_comment || task.approver_comment} /> : null}
+  </div>;
+}
+
+function displayValue(input: any) { return input === null || input === undefined || input === "" ? "N/A" : String(input); }
+function normalize(value: any) { return String(value || "").trim().toLowerCase().replace(/[\s-]+/g, "_"); }
+function formatLabel(value: any) { const raw=String(value || "").trim(); if(!raw) return "N/A"; return raw.replace(/_/g," ").replace(/\b\w/g,(m)=>m.toUpperCase()); }
+function formatDate(value: any) {
+  if (!value) return "N/A";
+  const raw=String(value).trim();
+  const match=raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if(match){ const months=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]; return `${match[3]}-${months[Number(match[2])-1]}-${match[1]}`; }
+  const d=new Date(value); if(Number.isNaN(d.getTime())) return raw;
+  const months=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  return `${String(d.getDate()).padStart(2,"0")}-${months[d.getMonth()]}-${d.getFullYear()}`;
+}
+function formatDateTime(value: any) {
+  if(!value) return "N/A"; const d=value instanceof Date ? value : new Date(value); if(Number.isNaN(d.getTime())) return String(value);
+  return `${formatDate(d)} ${d.toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit"})}`;
+}
+function reworkReconciliation(item: any) {
+  const affected=Number(item?.quantity_affected || 0); const accepted=Number(item?.final_rework_quantity_accepted || 0); const rejected=Number(item?.final_rework_quantity_rejected || 0);
+  return `${accepted} Accepted + ${rejected} Rejected = ${accepted+rejected} / Affected ${affected} — ${accepted+rejected===affected ? "Reconciled" : "Not Reconciled"}`;
 }
 
 function taskCardStyle(status: string): React.CSSProperties {
-  return {
-    border:
-      status === "approved" || status === "completed"
-        ? "1px solid #86efac"
-        : status === "rejected"
-        ? "1px solid #fca5a5"
-        : "1px solid #facc15",
-    background:
-      status === "approved" || status === "completed"
-        ? "#f0fdf4"
-        : status === "rejected"
-        ? "#fef2f2"
-        : "#fefce8",
-    borderRadius: "8px",
-    padding: "10px",
-  };
+  const s=normalize(status); return { border: s==="approved"||s==="completed" ? "1px solid #86efac" : s==="rejected"||s==="returned" ? "1px solid #fca5a5" : "1px solid #facc15", background: s==="approved"||s==="completed" ? "#f0fdf4" : s==="rejected"||s==="returned" ? "#fef2f2" : "#fefce8", borderRadius:"8px", padding:"10px", marginBottom:"10px" };
 }
+const returnHistoryStyle: React.CSSProperties = { border:"1px solid #facc15", background:"#fffdf2", borderRadius:"8px", padding:"10px", marginTop:"10px" };
 
 const pageStyle: React.CSSProperties = {
   padding: "36px",
