@@ -498,6 +498,20 @@ export default function NcmrFullRecordReportPage() {
           body { color: black; background: white; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
           main { padding: 18px !important; }
           section { break-inside: auto; page-break-inside: auto; }
+
+          /* Keep each section heading with the first content block.
+             This prevents an orphaned heading at the bottom of a printed page,
+             such as "12. Correction / Corrective Action Implementation". */
+          section > h2 {
+            break-after: avoid-page;
+            page-break-after: avoid;
+          }
+
+          section > h2 + * {
+            break-before: avoid-page;
+            page-break-before: avoid;
+          }
+
           .report-card, .task-card, .signature-card { break-inside: avoid; page-break-inside: avoid; }
           .print-footer { position: fixed; bottom: 0; left: 0; right: 0; font-size: 10px; border-top: 1px solid #999; padding: 6px 20px; background: white; }
         }
