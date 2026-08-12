@@ -11,6 +11,10 @@ type NcmrRecord = {
   issue_description: string | null;
   status: string | null;
   severity: string | null;
+  risk_level?: string | null;
+  risk_assessment_method?: string | null;
+  risk_override_enabled?: boolean | null;
+  risk_override_level?: string | null;
   created_at: string | null;
   mrb_approved_at?: string | null;
   mrb_approved_by?: string | null;
@@ -31,6 +35,11 @@ type NcmrRecord = {
   supplier_name?: string | null;
   supplier_id?: string | null;
   capa_required?: boolean | null;
+  capa_recommended?: boolean | null;
+  capa_decision?: string | null;
+  capa_evaluation_outcome?: string | null;
+  capa_id?: string | null;
+  linked_capa_id?: string | null;
   recurring_issue?: boolean | null;
   supplier_capa_required?: boolean | null;
   scar_required?: boolean | null;
@@ -49,25 +58,47 @@ type KpiTile = {
   statusColor?: string;
 };
 
+type AffectedItemRecord = {
+  id: string;
+  ncmr_id: string;
+  product_part_number?: string | null;
+  defect_category?: string | null;
+  defect_subcategory?: string | null;
+};
+
 export default function NcmrIntelligenceDashboardPage() {
   const [ncmrs, setNcmrs] = useState<NcmrRecord[]>([]);
+  const [affectedItems, setAffectedItems] = useState<AffectedItemRecord[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchData = async () => {
     setLoading(true);
 
-    const { data, error } = await supabase
-      .from("ncmrs")
-      .select("*")
-      .order("created_at", { ascending: false });
+    const [ncmrRes, affectedItemsRes] = await Promise.all([
+      supabase
+        .from("ncmrs")
+        .select("*")
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("ncmr_affected_items")
+        .select("id, ncmr_id, product_part_number, defect_category, defect_subcategory")
+        .order("created_at", { ascending: true }),
+    ]);
 
-    if (error) {
-      alert(error.message);
+    if (ncmrRes.error) {
+      alert(ncmrRes.error.message);
       setLoading(false);
       return;
     }
 
-    setNcmrs((data as NcmrRecord[]) || []);
+    if (affectedItemsRes.error) {
+      alert(affectedItemsRes.error.message);
+      setLoading(false);
+      return;
+    }
+
+    setNcmrs((ncmrRes.data as NcmrRecord[]) || []);
+    setAffectedItems((affectedItemsRes.data as AffectedItemRecord[]) || []);
     setLoading(false);
   };
 
@@ -166,19 +197,39 @@ export default function NcmrIntelligenceDashboardPage() {
       (ncmr) => String(ncmr.severity || "").toLowerCase() === "critical",
     );
 
-    const majorNcmrs = ncmrs.filter(
-      (ncmr) => String(ncmr.severity || "").toLowerCase() === "major",
-    );
+    const highSeverityNcmrs = ncmrs.filter((ncmr) => {
+      const value = String(ncmr.severity || "").toLowerCase();
+      return value === "high" || value === "major";
+    });
 
-    const capaRequired = ncmrs.filter((ncmr) => Boolean(ncmr.capa_required));
+    const highOrCriticalRiskNcmrs = ncmrs.filter((ncmr) => {
+      const effectiveRisk =
+        ncmr.risk_assessment_method === "automatic" && ncmr.risk_override_enabled
+          ? ncmr.risk_override_level || ncmr.risk_level
+          : ncmr.risk_level;
+      return ["high", "critical"].includes(String(effectiveRisk || "").toLowerCase());
+    });
+
+    const capaRecommended = ncmrs.filter((ncmr) => Boolean(ncmr.capa_recommended));
+    const capaOpened = ncmrs.filter(
+      (ncmr) => Boolean(ncmr.linked_capa_id || ncmr.capa_id),
+    );
     const recurringIssues = ncmrs.filter((ncmr) => Boolean(ncmr.recurring_issue));
 
-    const scarRequired = ncmrs.filter(
-      (ncmr) =>
-        Boolean(ncmr.scar_required) ||
-        Boolean(ncmr.supplier_capa_required) ||
-        Boolean(ncmr.supplier_scar_recommended),
-    );
+    const affectedItemsByNcmr = new Map<string, AffectedItemRecord[]>();
+    affectedItems.forEach((item) => {
+      const current = affectedItemsByNcmr.get(item.ncmr_id) || [];
+      current.push(item);
+      affectedItemsByNcmr.set(item.ncmr_id, current);
+    });
+
+    const scarRecommended = ncmrs.filter((ncmr) => {
+      const items = affectedItemsByNcmr.get(ncmr.id) || [];
+      const supplierPartRecorded =
+        items.some((item) => Boolean(item.product_part_number)) ||
+        Boolean((ncmr as any).product_part_number);
+      return supplierPartRecorded && Boolean(ncmr.recurring_issue);
+    });
 
     const supplierRelated = ncmrs.filter(
       (ncmr) => Boolean(ncmr.supplier_id) || Boolean(ncmr.supplier_name),
@@ -202,14 +253,14 @@ export default function NcmrIntelligenceDashboardPage() {
 
     const closureWithin45 = percentWithinTarget({
       records: closedNcmrs,
-      startFields: ["created_at", "date_detected"],
+      startFields: ["created_at"],
       endFields: ["closed_at"],
       targetDays: 45,
     });
 
     const containmentWithin5 = percentWithinTarget({
       records: ncmrs,
-      startFields: ["created_at", "date_detected"],
+      startFields: ["created_at"],
       endFields: [
         "containment_completed_at",
         "containment_completed_date",
@@ -220,25 +271,20 @@ export default function NcmrIntelligenceDashboardPage() {
 
     const dispositionWithin15 = percentWithinTarget({
       records: ncmrs,
-      startFields: ["created_at", "date_detected"],
-      endFields: [
-        "mrb_approved_at",
-        "disposition_at",
-        "disposition_date",
-        "disposition_completed_at",
-      ],
+      startFields: ["created_at"],
+      endFields: ["mrb_approved_at"],
       targetDays: 15,
     });
 
     const averageClosureTime = averageDuration({
       records: closedNcmrs,
-      startFields: ["created_at", "date_detected"],
+      startFields: ["created_at"],
       endFields: ["closed_at"],
     });
 
     const averageContainmentTime = averageDuration({
       records: ncmrs,
-      startFields: ["created_at", "date_detected"],
+      startFields: ["created_at"],
       endFields: [
         "containment_completed_at",
         "containment_completed_date",
@@ -248,23 +294,20 @@ export default function NcmrIntelligenceDashboardPage() {
 
     const averageDispositionTime = averageDuration({
       records: ncmrs,
-      startFields: ["created_at", "date_detected"],
-      endFields: [
-        "mrb_approved_at",
-        "disposition_at",
-        "disposition_date",
-        "disposition_completed_at",
-      ],
+      startFields: ["created_at"],
+      endFields: ["mrb_approved_at"],
     });
 
     return {
       openNcmrs,
       closedNcmrs,
       criticalNcmrs,
-      majorNcmrs,
-      capaRequired,
+      highSeverityNcmrs,
+      highOrCriticalRiskNcmrs,
+      capaRecommended,
+      capaOpened,
       recurringIssues,
-      scarRequired,
+      scarRecommended,
       supplierRelated,
       overdueNcmrs,
       averageOpenAge,
@@ -276,7 +319,7 @@ export default function NcmrIntelligenceDashboardPage() {
       averageContainmentTime,
       averageDispositionTime,
     };
-  }, [ncmrs]);
+  }, [ncmrs, affectedItems]);
 
   const getSlaStatus = (value: number) => {
     if (value >= 90) {
@@ -306,9 +349,14 @@ export default function NcmrIntelligenceDashboardPage() {
   const dispositionStatus = getSlaStatus(metrics.dispositionWithin15);
   const closureStatus = getSlaStatus(metrics.closureWithin45);
 
-  const capaConversionRate =
+  const capaRecommendedRate =
     ncmrs.length > 0
-      ? Number(((metrics.capaRequired.length / ncmrs.length) * 100).toFixed(1))
+      ? Number(((metrics.capaRecommended.length / ncmrs.length) * 100).toFixed(1))
+      : 0;
+
+  const capaConversionRate =
+    metrics.capaRecommended.length > 0
+      ? Number(((metrics.capaOpened.length / metrics.capaRecommended.length) * 100).toFixed(1))
       : 0;
 
   const recurrenceRate =
@@ -377,10 +425,10 @@ export default function NcmrIntelligenceDashboardPage() {
       color: metrics.averageClosureTime > 45 ? "#dc2626" : "#15803d",
     },
     {
-      title: "CAPA Conversion Rate",
-      value: capaConversionRate,
+      title: "CAPA Recommended Rate",
+      value: capaRecommendedRate,
       suffix: "%",
-      color: capaConversionRate > 20 ? "#d97706" : "#2563eb",
+      color: capaRecommendedRate > 20 ? "#d97706" : "#2563eb",
     },
     {
       title: "Recurrence Rate",
@@ -396,7 +444,26 @@ export default function NcmrIntelligenceDashboardPage() {
     },
   ];
 
-  const defectCounts = useMemo(() => buildCounts(ncmrs, ["defect_category"]), [ncmrs]);
+  const defectCounts = useMemo(
+    () => buildAffectedItemCounts(affectedItems, "defect_category"),
+    [affectedItems],
+  );
+  const defectSubcategoryCounts = useMemo(
+    () => buildAffectedItemCounts(affectedItems, "defect_subcategory"),
+    [affectedItems],
+  );
+  const riskCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    ncmrs.forEach((ncmr) => {
+      const effectiveRisk =
+        ncmr.risk_assessment_method === "automatic" && ncmr.risk_override_enabled
+          ? ncmr.risk_override_level || ncmr.risk_level
+          : ncmr.risk_level;
+      const label = effectiveRisk ? formatDashboardLabel(effectiveRisk) : "Unspecified";
+      counts[label] = (counts[label] || 0) + 1;
+    });
+    return Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  }, [ncmrs]);
   const dispositionCounts = useMemo(() => buildCounts(ncmrs, ["disposition_decision", "disposition"]), [ncmrs]);
   const departmentCounts = useMemo(() => buildCounts(ncmrs, ["department"]), [ncmrs]);
   const supplierCounts = useMemo(() => buildCounts(ncmrs, ["supplier_name"]), [ncmrs]);
@@ -464,8 +531,8 @@ export default function NcmrIntelligenceDashboardPage() {
           <div style={eyebrowStyle}>NCMR PROCESS PERFORMANCE</div>
           <h2 style={{ margin: "6px 0" }}>Timeliness & Quality Objective Control</h2>
           <p style={subtleText}>
-            Tracks whether NCMRs are contained within 5 days, dispositioned within
-            15 days, and closed within 45 days.
+            Tracks whether NCMRs are contained within 5 days, reach MRB approval
+            within 15 days, and close within 45 days, measured from NCMR initiation.
           </p>
         </div>
 
@@ -520,6 +587,28 @@ export default function NcmrIntelligenceDashboardPage() {
               ))
             )}
           </section>
+
+          <section style={cardStyle}>
+            <h3 style={{ marginTop: 0 }}>Defect Subcategory Intelligence</h3>
+            {defectSubcategoryCounts.length === 0 ? (
+              <p style={subtleText}>No defect subcategory data available.</p>
+            ) : (
+              defectSubcategoryCounts.map(([label, count]) => (
+                <BarRow key={label} label={label} value={count} max={defectSubcategoryCounts[0]?.[1] || 1} />
+              ))
+            )}
+          </section>
+
+          <section style={cardStyle}>
+            <h3 style={{ marginTop: 0 }}>Effective Risk Level Intelligence</h3>
+            {riskCounts.length === 0 ? (
+              <p style={subtleText}>No risk-level data available.</p>
+            ) : (
+              riskCounts.map(([label, count]) => (
+                <BarRow key={label} label={label} value={count} max={riskCounts[0]?.[1] || 1} />
+              ))
+            )}
+          </section>
         </div>
       </section>
 
@@ -536,10 +625,11 @@ export default function NcmrIntelligenceDashboardPage() {
         <div style={escalationGridStyle}>
           <EscalationCard title="Overdue NCMRs" count={metrics.overdueNcmrs.length} severity={metrics.overdueNcmrs.length > 0 ? "high" : "controlled"} items={metrics.overdueNcmrs} description="Open NCMRs greater than 45 days old." />
           <EscalationCard title="Critical NCMRs" count={metrics.criticalNcmrs.length} severity={metrics.criticalNcmrs.length > 0 ? "high" : "controlled"} items={metrics.criticalNcmrs} description="Critical severity nonconformances." />
-          <EscalationCard title="Major NCMRs" count={metrics.majorNcmrs.length} severity={metrics.majorNcmrs.length > 0 ? "medium" : "controlled"} items={metrics.majorNcmrs} description="Major severity nonconformances." />
-          <EscalationCard title="CAPA Evaluation Required" count={metrics.capaRequired.length} severity={metrics.capaRequired.length > 0 ? "medium" : "controlled"} items={metrics.capaRequired} description="NCMRs requiring CAPA evaluation." />
+          <EscalationCard title="High Severity NCMRs" count={metrics.highSeverityNcmrs.length} severity={metrics.highSeverityNcmrs.length > 0 ? "medium" : "controlled"} items={metrics.highSeverityNcmrs} description="High-severity nonconformances." />
+          <EscalationCard title="High / Critical Risk NCMRs" count={metrics.highOrCriticalRiskNcmrs.length} severity={metrics.highOrCriticalRiskNcmrs.length > 0 ? "high" : "controlled"} items={metrics.highOrCriticalRiskNcmrs} description="NCMRs with high or critical effective risk level." />
+          <EscalationCard title="CAPA Recommended" count={metrics.capaRecommended.length} severity={metrics.capaRecommended.length > 0 ? "medium" : "controlled"} items={metrics.capaRecommended} description="NCMRs where CAPA governance recommends escalation." />
           <EscalationCard title="Recurring Issues" count={metrics.recurringIssues.length} severity={metrics.recurringIssues.length > 0 ? "medium" : "controlled"} items={metrics.recurringIssues} description="NCMRs identified as repeat or recurring events." />
-          <EscalationCard title="Supplier / SCAR Exposure" count={metrics.scarRequired.length} severity={metrics.scarRequired.length > 0 ? "medium" : "controlled"} items={metrics.scarRequired} description="Supplier-related NCMRs or SCAR/CAPA candidates." />
+          <EscalationCard title="SCAR Recommended" count={metrics.scarRecommended.length} severity={metrics.scarRecommended.length > 0 ? "medium" : "controlled"} items={metrics.scarRecommended} description="NCMRs meeting both supplier governance signals: supplier part recorded and recurrence detected." />
         </div>
       </section>
 
@@ -568,10 +658,12 @@ export default function NcmrIntelligenceDashboardPage() {
 
         <section style={cardStyle}>
           <h2>Escalation Metrics</h2>
-          <MetricRow label="CAPA Required" value={metrics.capaRequired.length} />
+          <MetricRow label="CAPA Recommended" value={metrics.capaRecommended.length} />
+          <MetricRow label="CAPA Opened / Linked" value={metrics.capaOpened.length} />
           <MetricRow label="Recurring Issues" value={metrics.recurringIssues.length} />
           <MetricRow label="Supplier Related" value={metrics.supplierRelated.length} />
-          <MetricRow label="SCAR / Supplier CAPA Required" value={metrics.scarRequired.length} />
+          <MetricRow label="SCAR Recommended" value={metrics.scarRecommended.length} />
+          <MetricRow label="CAPA Recommended Rate" value={capaRecommendedRate} suffix="%" />
           <MetricRow label="CAPA Conversion Rate" value={capaConversionRate} suffix="%" />
           <MetricRow label="Recurrence Rate" value={recurrenceRate} suffix="%" />
           <MetricRow label="Supplier Exposure Rate" value={supplierExposureRate} suffix="%" />
@@ -586,6 +678,7 @@ export default function NcmrIntelligenceDashboardPage() {
                   <th style={thStyle}>NCMR</th>
                   <th style={thStyle}>Status</th>
                   <th style={thStyle}>Severity</th>
+                  <th style={thStyle}>Risk Level</th>
                   <th style={thStyle}>Owner</th>
                 </tr>
               </thead>
@@ -598,7 +691,12 @@ export default function NcmrIntelligenceDashboardPage() {
                       </Link>
                     </td>
                     <td style={tdStyle}>{ncmr.status || "N/A"}</td>
-                    <td style={tdStyle}>{ncmr.severity || "N/A"}</td>
+                    <td style={tdStyle}>{formatDashboardLabel(ncmr.severity)}</td>
+                    <td style={tdStyle}>{formatDashboardLabel(
+                      ncmr.risk_assessment_method === "automatic" && ncmr.risk_override_enabled
+                        ? ncmr.risk_override_level || ncmr.risk_level
+                        : ncmr.risk_level
+                    )}</td>
                     <td style={tdStyle}>{ncmr.owner || "N/A"}</td>
                   </tr>
                 ))}
@@ -609,6 +707,29 @@ export default function NcmrIntelligenceDashboardPage() {
       </div>
     </main>
   );
+}
+
+function formatDashboardLabel(value: any) {
+  const raw = String(value || "").trim();
+  if (!raw) return "N/A";
+  return raw.replace(/_/g, " ").replace(/\b\w/g, (m) => m.toUpperCase());
+}
+
+function buildAffectedItemCounts(
+  records: AffectedItemRecord[],
+  field: "defect_category" | "defect_subcategory",
+) {
+  const counts: Record<string, number> = {};
+
+  records.forEach((record) => {
+    const raw = record[field];
+    const value = raw ? formatDashboardLabel(raw) : "Unspecified";
+    counts[value] = (counts[value] || 0) + 1;
+  });
+
+  return Object.entries(counts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8);
 }
 
 function buildCounts(records: NcmrRecord[], fields: string[]) {
