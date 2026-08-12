@@ -11,9 +11,7 @@ export default function NcmrFullRecordReportPage() {
   const [record, setRecord] = useState<any>(null);
   const [linkedCapa, setLinkedCapa] = useState<any>(null);
   const [linkedScar, setLinkedScar] = useState<any>(null);
-  const [mrbApprovers, setMrbApprovers] = useState<any[]>([]);
   const [affectedItems, setAffectedItems] = useState<any[]>([]);
-  const [approvalTasks, setApprovalTasks] = useState<any[]>([]);
   const [correctionTasks, setCorrectionTasks] = useState<any[]>([]);
   const [reworkTasks, setReworkTasks] = useState<any[]>([]);
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
@@ -58,13 +56,6 @@ export default function NcmrFullRecordReportPage() {
         if (!scarRes.error) setLinkedScar(scarRes.data || null);
       }
 
-      const approverRes = await supabase
-        .from("ncmr_mrb_approvers")
-        .select("*")
-        .eq("ncmr_id", id)
-        .order("created_at", { ascending: true });
-
-      if (!approverRes.error) setMrbApprovers(approverRes.data || []);
 
       const affectedItemsRes = await supabase
         .from("ncmr_affected_items")
@@ -83,7 +74,6 @@ export default function NcmrFullRecordReportPage() {
 
       if (!tasksRes.error) {
         const tasks = tasksRes.data || [];
-        setApprovalTasks(tasks.filter((task) => task.task_type === "mrb_approval"));
         setCorrectionTasks(tasks.filter((task) => ["correction_task", "corrective_action_task"].includes(task.task_type)));
         setReworkTasks(tasks.filter((task) => task.task_type === "rework_task"));
       }
@@ -115,6 +105,44 @@ export default function NcmrFullRecordReportPage() {
     record.risk_assessment_method === "automatic" && record.risk_override_enabled
       ? record.risk_override_level || record.risk_level
       : record.risk_level;
+
+  const evaluateScarGovernanceForReport = () => {
+    const supplierPartRecorded =
+      !!record?.product_part_number ||
+      affectedItems.some((item: any) => !!item.product_part_number);
+
+    const supplierRecurrence =
+      record?.recurring_issue === true ||
+      record?.supplier_capa_required === true ||
+      record?.supplier_scar_required === true ||
+      String(record?.recurrence_reason || "").toLowerCase().includes("recurr") ||
+      String(record?.supplier_capa_reason || "").toLowerCase().includes("recurr") ||
+      String(record?.supplier_scar_reason || "").toLowerCase().includes("recurr") ||
+      String(record?.scar_reason || "").toLowerCase().includes("recurr");
+
+    const triggers = [
+      `${supplierPartRecorded ? "✓" : "✗"} Supplier Part Recorded`,
+      `${supplierRecurrence ? "✓" : "✗"} Supplier Recurrence Detected`,
+    ];
+
+    if (supplierPartRecorded && supplierRecurrence) {
+      return {
+        label: "SCAR Recommended",
+        rationale:
+          "SCAR is recommended because supplier part has been recorded and supplier recurrence has been detected.",
+        triggers,
+      };
+    }
+
+    return {
+      label: "SCAR Not Required",
+      rationale:
+        "SCAR is not automatically required because both supplier governance criteria have not been met. Supplier Part Recorded and Supplier Recurrence Detected are required for an automatic SCAR recommendation.",
+      triggers,
+    };
+  };
+
+  const scarGovernance = evaluateScarGovernanceForReport();
 
   return (
     <main style={pageStyle}>
@@ -148,7 +176,6 @@ export default function NcmrFullRecordReportPage() {
           <Field label="NCMR Number" value={record.ncmr_number} />
           <Field label="Title" value={record.title} />
           <Field label="Status" value={record.status} />
-          <Field label="Review Status" value={record.review_status} />
           <Field label="Created At" value={formatDateTime(record.created_at)} />
           <Field label="Closed At" value={formatDateTime(record.closed_at)} />
           <Field label="Owner" value={record.owner || record.owner_email} />
@@ -264,32 +291,6 @@ export default function NcmrFullRecordReportPage() {
             </div>
           </div>
         ))}
-
-        <div style={signatureStyle}>
-          <h3>MRB Electronic Signature</h3>
-          <Field label="MRB Approved By" value={record.mrb_approved_by} />
-          <Field label="MRB Approved At" value={formatDateTime(record.mrb_approved_at)} />
-          <Field label="Signature Email Entered" value={record.mrb_signature_email_entered} />
-          <Field label="Signature Meaning" value={record.mrb_signature_meaning} />
-          <Field label="Authentication Method" value="Active authenticated session with email confirmation" />
-        </div>
-
-        <h3>MRB Approval History</h3>
-        {approvalTasks.length === 0 ? <p>No MRB approval tasks recorded.</p> : approvalTasks.map((task, index) => (
-          <TaskRecord key={task.id || index} task={task} approvalMode />
-        ))}
-        {mrbApprovers.length > 0 ? <>
-          <h3>Configured / Additional MRB Approvers</h3>
-          {mrbApprovers.map((approver, index) => (
-            <div key={approver.id || index} style={itemCardStyle}>
-              <Field label="Approver Email" value={approver.approver_email} />
-              <Field label="Approver Role" value={approver.approver_role} />
-              <Field label="Approval Status" value={approver.approval_status} />
-              <Field label="Signed At" value={formatDateTime(approver.signed_at)} />
-              <Field label="Signature Meaning" value={approver.signature_meaning} />
-            </div>
-          ))}
-        </> : null}
       </ReportSection>
 
       <ReportSection title="8. CAPA Governance">
@@ -298,26 +299,39 @@ export default function NcmrFullRecordReportPage() {
           <Field label="CAPA Governance Rationale" value={record.capa_evaluation_rationale} />
           <Field label="CAPA Recommended" value={record.capa_recommended ? "Yes" : "No"} />
           <Field label="Recurring Issue" value={record.recurring_issue ? "Yes" : "No"} />
-          <Field label="Recurrence Reason" value={record.recurrence_reason} />
-          <Field label="No-CAPA Justification" value={record.capa_not_required_justification || record.capa_decision_justification || record.capa_justification} />
-          <Field label="Linked CAPA Number" value={linkedCapa?.capa_number} />
-          <Field label="Linked CAPA Title" value={linkedCapa?.title} />
-          <Field label="Linked CAPA Status" value={linkedCapa?.status} />
         </div>
       </ReportSection>
 
       <ReportSection title="9. Supplier / SCAR Governance">
         <div style={verticalGridStyle}>
-          <Field label="Supplier / SCAR Governance Required" value={(record.scar_required || record.supplier_scar_required || record.supplier_capa_required) ? "Yes" : "No"} />
-          <Field label="Supplier / SCAR Governance Reason" value={record.scar_reason || record.supplier_scar_reason || record.supplier_capa_reason} />
-          <Field label="No-SCAR Justification" value={record.scar_justification} />
-          <Field label="Linked SCAR Number" value={linkedScar?.scar_number} />
-          <Field label="Linked SCAR Title" value={linkedScar?.scar_title || linkedScar?.title} />
-          <Field label="Linked SCAR Status" value={linkedScar?.scar_status || linkedScar?.status} />
+          <Field label="Governance Decision" value={scarGovernance.label} />
+          <Field label="Rationale" value={scarGovernance.rationale} />
+          <div style={itemCardStyle}>
+            <strong>SCAR Governance Signal</strong>
+            <ul style={{ marginBottom: 0 }}>
+              {scarGovernance.triggers.map((trigger: string, index: number) => (
+                <li key={index}>{trigger}</li>
+              ))}
+            </ul>
+          </div>
+          {record.scar_justification ? (
+            <Field label="Risk-Based Justification if SCAR is Not Opened" value={record.scar_justification} />
+          ) : null}
         </div>
       </ReportSection>
 
-      <ReportSection title="10. Disposition Implementation">
+      <ReportSection title="10. MRB Approval">
+        <div style={signatureStyle}>
+          <h3 style={{ marginTop: 0 }}>MRB Electronic Signature</h3>
+          <Field label="MRB Approved By" value={record.mrb_approved_by} />
+          <Field label="MRB Approved At" value={formatDateTime(record.mrb_approved_at)} />
+          <Field label="Signature Email Entered" value={record.mrb_signature_email_entered} />
+          <Field label="Signature Meaning" value={record.mrb_signature_meaning} />
+          <Field label="Authentication Method" value="Active authenticated session with email confirmation" />
+        </div>
+      </ReportSection>
+
+      <ReportSection title="11. Disposition Implementation">
         {affectedItems.length === 0 ? <p>No affected-item implementation records found.</p> : affectedItems.map((item, index) => (
           <div key={item.id || index} style={itemCardStyle}>
             <h4 style={{ marginTop: 0 }}>{formatLabel(item.product_disposition)} — {displayValue(item.product_part_number)} / Lot {displayValue(item.lot_number)}</h4>
@@ -325,21 +339,31 @@ export default function NcmrFullRecordReportPage() {
               <Field label="Implementation Status" value={formatLabel(item.disposition_implementation_status)} />
               <Field label="MRB Quantity Accepted" value={item.quantity_accepted} />
               <Field label="MRB Quantity Rejected" value={item.quantity_rejected} />
-              <Field label="Quantity Discrepancy" value={item.quantity_discrepancy ? "Yes" : "No"} />
-              <Field label="Discrepancy Quantity" value={item.discrepancy_quantity} />
-              <Field label="Discrepancy Type" value={formatLabel(item.discrepancy_type)} />
+              {["use_as_is", "accept_per_specification"].includes(normalize(item.product_disposition)) ? (
+                <>
+                  <Field label="Quantity Discrepancy" value={item.quantity_discrepancy ? "Yes" : "No"} />
+                  {item.quantity_discrepancy ? (
+                    <>
+                      <Field label="Discrepancy Quantity" value={item.discrepancy_quantity} />
+                      <Field label="Discrepancy Type" value={formatLabel(item.discrepancy_type)} />
+                    </>
+                  ) : null}
+                </>
+              ) : null}
               <Field label="Final Quantity Accepted" value={item.final_quantity_accepted} />
               <Field label="Final Quantity Rejected" value={item.final_quantity_rejected} />
               <Field label="Implemented By" value={item.disposition_implemented_by} />
               <Field label="Implemented At" value={formatDateTime(item.disposition_implemented_at)} />
             </div>
             <Field label="Disposition Implementation Notes" value={item.disposition_implementation_notes} />
-            <Field label="Discrepancy Rationale" value={item.discrepancy_rationale} />
+            {["use_as_is", "accept_per_specification"].includes(normalize(item.product_disposition)) && item.quantity_discrepancy ? (
+              <Field label="Discrepancy Rationale" value={item.discrepancy_rationale} />
+            ) : null}
           </div>
         ))}
       </ReportSection>
 
-      <ReportSection title="11. Rework Execution">
+      <ReportSection title="Rework Execution">
         {reworkTasks.length === 0 ? <p>No Rework tasks recorded.</p> : reworkTasks.map((task, index) => (
           <div key={task.id || index} style={taskCardStyle(task.status)}>
             <h3 style={{ marginTop: 0 }}>Rework Task {index + 1}</h3>
@@ -416,7 +440,7 @@ export default function NcmrFullRecordReportPage() {
         <Field label="Evidence Notes" value={record.evidence_notes} />
       </ReportSection>
 
-      <ReportSection title="14. Linked Records">
+      <ReportSection title="Linked Records">
         <div style={gridStyle}>
           <Field label="Linked CAPA ID" value={record.linked_capa_id || record.capa_id} />
           <Field label="Linked CAPA Number" value={linkedCapa?.capa_number} />
@@ -429,22 +453,19 @@ export default function NcmrFullRecordReportPage() {
         </div>
       </ReportSection>
 
-      <ReportSection title="15. Closure / Electronic Signature">
+      <ReportSection title="14. Closure / Electronic Signature">
         <div style={signatureStyle}>
           <Field label="Closure Status" value={record.status} />
-          <Field label="Review Status" value={record.review_status} />
           <Field label="Closed By" value={record.ncmr_closed_by} />
           <Field label="Closed At" value={formatDateTime(record.closed_at)} />
-          <Field label="Investigation Completed At" value={formatDateTime(record.investigation_completed_at)} />
           <Field label="Closure Comments" value={record.closure_comments} />
-          <Field label="Signature Email Entered" value={record.ncmr_signature_email_entered} />
           <Field label="Signature Meaning" value={record.ncmr_signature_meaning} />
           <Field label="Authentication Method" value="Active authenticated session confirmation" />
         </div>
       </ReportSection>
 
       {includeAuditTrail ? (
-        <ReportSection title="16. Audit Trail Summary">
+        <ReportSection title="Audit Trail Summary">
           {auditLogs.length === 0 ? <p>No audit log entries found for this NCMR.</p> : auditLogs.map((log) => (
             <div key={log.id} style={{ borderTop: "1px solid #ddd", paddingTop: "8px", marginTop: "8px" }}>
               <Field label="Date / Time" value={formatDateTime(log.created_at)} />
