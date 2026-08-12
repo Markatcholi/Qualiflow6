@@ -484,6 +484,17 @@ export default function NcmrFullRecordReportPage() {
       <style jsx global>{`
         @media print {
           .no-print { display: none !important; }
+
+          /* The Home / user identity / Logout row comes from the shared application
+             layout, not this report component. Hide that application header only
+             in the printed controlled record while preserving the report itself. */
+          body > header,
+          body > nav,
+          body > div > header:first-child,
+          body > div > nav:first-child {
+            display: none !important;
+          }
+
           body { color: black; background: white; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
           main { padding: 18px !important; }
           section { break-inside: auto; page-break-inside: auto; }
