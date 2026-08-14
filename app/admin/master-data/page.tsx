@@ -832,6 +832,51 @@ export default function MasterDataPage() {
               marginBottom: "8px",
             }}
           >
+            RISK & CAPA GOVERNANCE
+          </div>
+
+          <h2 style={{ marginTop: 0 }}>NCMR Risk & CAPA Governance</h2>
+
+          <p style={{ color: "#4b5563" }}>
+            Configure the version-controlled automatic NCMR risk matrix and CAPA
+            governance rules. Activated versions are immutable and future changes
+            require a new controlled version.
+          </p>
+
+          <Link
+            href="/admin/ncmr-risk-governance"
+            style={{
+              display: "inline-block",
+              marginTop: "10px",
+              background: "#0f766e",
+              color: "white",
+              padding: "10px 14px",
+              borderRadius: "8px",
+              textDecoration: "none",
+              fontWeight: 700,
+            }}
+          >
+            Open Risk & CAPA Governance
+          </Link>
+        </div>
+
+        <div
+          style={{
+            border: "1px solid #d1d5db",
+            borderRadius: "12px",
+            padding: "20px",
+            background: "#f8fafc",
+          }}
+        >
+          <div
+            style={{
+              fontSize: "12px",
+              fontWeight: 800,
+              color: "#6b7280",
+              letterSpacing: "0.08em",
+              marginBottom: "8px",
+            }}
+          >
             ACCESS GOVERNANCE
           </div>
 
