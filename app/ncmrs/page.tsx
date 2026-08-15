@@ -87,6 +87,14 @@ type Ncmr = {
   supplier_capa_required: boolean | null;
   supplier_capa_reason: string | null;
   severity: string | null;
+  risk_level?: string | null;
+  risk_determination?: string | null;
+  workflow_version_id?: string | null;
+  workflow_version_code?: string | null;
+  risk_configuration_version_id?: string | null;
+  risk_configuration_version_code?: string | null;
+  capa_governance_version_id?: string | null;
+  capa_governance_version_code?: string | null;
   owner: string | null;
   status: string | null;
   capa_required: boolean | null;
@@ -134,7 +142,7 @@ export default function NcmrPage() {
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
-  const [severityFilter, setSeverityFilter] = useState("");
+  const [riskFilter, setRiskFilter] = useState("");
 
   const [partNumberOptions, setPartNumberOptions] = useState<MasterOption[]>([]);
   const [detectionSourceOptions, setDetectionSourceOptions] = useState<MasterOption[]>([]);
@@ -657,6 +665,29 @@ export default function NcmrPage() {
     ]);
   };
 
+  const getActiveNcmrWorkflowVersion = async () => {
+    const { data, error } = await supabase
+      .from("qms_workflow_versions")
+      .select("id,module_code,version_code,version_name,status,effective_at,activated_at")
+      .eq("module_code", "NCMR")
+      .eq("status", "active")
+      .order("activated_at", { ascending: false, nullsFirst: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    if (!data?.id) {
+      throw new Error(
+        "No active NCMR workflow version is configured. Activate an NCMR workflow version before creating new records."
+      );
+    }
+
+    return data;
+  };
+
   const addNcmr = async () => {
     if (!issueDescription.trim()) {
       alert("Issue Description is required.");
@@ -717,7 +748,17 @@ export default function NcmrPage() {
     const recurrence = await checkRecurrence();
     const supplierScar = await checkSupplierScar();
 
-    const capaRequired = recurrence.recurring;
+    let activeWorkflowVersion: any = null;
+
+    try {
+      activeWorkflowVersion = await getActiveNcmrWorkflowVersion();
+    } catch (workflowVersionError: any) {
+      alert(
+        `NCMR creation is blocked because the controlled workflow version could not be resolved.\n\n${workflowVersionError.message}`
+      );
+      return;
+    }
+
     const supplierNameForInsert = isSupplierSource
       ? selectedSupplier?.supplier_name || supplierName
       : "";
@@ -780,7 +821,11 @@ export default function NcmrPage() {
         owner: normalizedOwnerEmail,
         status: "open",
         severity: "not_assessed",
-        capa_required: capaRequired,
+        risk_determination: null,
+        risk_level: null,
+        workflow_version_id: activeWorkflowVersion.id,
+        workflow_version_code: activeWorkflowVersion.version_code,
+        capa_required: false,
         recurring_issue: recurrence.recurring,
         recurrence_reason: recurrence.reason,
         recurrence_checked_at: new Date().toISOString(),
@@ -799,7 +844,7 @@ export default function NcmrPage() {
       "ncmr",
       data.id,
       "created",
-      `Created NCMR: ${issueDescription.trim().slice(0, 120)}`
+      `Created NCMR under controlled workflow ${activeWorkflowVersion.version_code}: ${issueDescription.trim().slice(0, 120)}`
     );
 
     if (containmentCompletedAt) {
@@ -869,8 +914,8 @@ export default function NcmrPage() {
       await addAuditLog(
         "ncmr",
         data.id,
-        "capa_evaluation_required",
-        `CAPA evaluation required due to recurrence. Risk-based decision required before CAPA creation. Reason: ${recurrence.reason}`
+        "capa_governance_signal_identified",
+        `Recurrence signal identified at initiation. CAPA governance decision will be made later using Final Effective Risk, recurrence, and the active controlled CAPA Governance configuration. Reason: ${recurrence.reason}`
       );
     }
 
@@ -1151,9 +1196,11 @@ export default function NcmrPage() {
       : true;
 
     const matchesStatus = statusFilter ? item.status === statusFilter : true;
-    const matchesSeverity = severityFilter ? item.severity === severityFilter : true;
+    const matchesRisk = riskFilter
+      ? String(item.risk_level || "").toLowerCase() === riskFilter
+      : true;
 
-    return matchesSearch && matchesStatus && matchesSeverity;
+    return matchesSearch && matchesStatus && matchesRisk;
   });
 
   const initiationProgressSteps = [
@@ -1193,7 +1240,7 @@ export default function NcmrPage() {
         <div>
           <h1 style={{ marginBottom: "6px" }}>NCMR Initiation</h1>
           <p style={{ color: "#4b5563", marginTop: 0 }}>
-            Create a lightweight NCMR intake record. Detailed investigation, risk assessment, MRB, and closure are completed in the controlled workflow page.
+            Create a lightweight NCMR intake record. Each new NCMR is bound to the active controlled workflow version; detailed investigation, risk assessment, MRB, and closure are completed in the controlled workflow page.
           </p>
         </div>
 
@@ -1912,7 +1959,7 @@ export default function NcmrPage() {
 
       <SectionCard
         title="Existing NCMRs"
-        subtitle="Search, filter, and open existing NCMR workflows."
+        subtitle="Search, filter, and open existing NCMR workflows using stored controlled results."
         defaultOpen={true}
       >
 
@@ -1939,14 +1986,15 @@ export default function NcmrPage() {
         </select>
 
         <select
-          value={severityFilter}
-          onChange={(e) => setSeverityFilter(e.target.value)}
+          value={riskFilter}
+          onChange={(e) => setRiskFilter(e.target.value)}
           style={{ padding: "8px", marginRight: "10px", marginBottom: "8px" }}
         >
-          <option value="">All Severities</option>
-          <option value="not_assessed">Not Assessed</option>
-          <option value="minor">Minor</option>
-          <option value="major">Major</option>
+          <option value="">All Final Risks</option>
+          <option value="no_risk">No Risk</option>
+          <option value="low">Low</option>
+          <option value="medium">Medium</option>
+          <option value="high">High</option>
           <option value="critical">Critical</option>
         </select>
 
@@ -1954,7 +2002,7 @@ export default function NcmrPage() {
           onClick={() => {
             setSearch("");
             setStatusFilter("");
-            setSeverityFilter("");
+            setRiskFilter("");
           }}
         >
           Clear Filters
@@ -1985,14 +2033,27 @@ export default function NcmrPage() {
                 ? "#2563eb"
                 : "#f59e0b";
 
-            const severityColor =
-              item.severity === "critical"
+            const normalizedRisk = String(item.risk_level || "").toLowerCase();
+
+            const riskColor =
+              normalizedRisk === "critical"
                 ? "#dc2626"
-                : item.severity === "major"
+                : normalizedRisk === "high"
+                ? "#f97316"
+                : normalizedRisk === "medium"
                 ? "#f59e0b"
-                : item.severity === "minor"
+                : normalizedRisk === "low"
                 ? "#16a34a"
+                : normalizedRisk === "no_risk"
+                ? "#0f766e"
                 : "#6b7280";
+
+            const riskLabel =
+              normalizedRisk === "no_risk"
+                ? "No Risk"
+                : normalizedRisk
+                ? normalizedRisk.replace(/\b\w/g, (c) => c.toUpperCase())
+                : "Risk Not Assessed";
 
             return (
               <article
@@ -2027,8 +2088,8 @@ export default function NcmrPage() {
                     <span style={{ ...badgeStyle, background: statusColor }}>
                       {item.status || "unknown"}
                     </span>
-                    <span style={{ ...badgeStyle, background: severityColor }}>
-                      {item.severity || "not_assessed"}
+                    <span style={{ ...badgeStyle, background: riskColor }}>
+                      {riskLabel}
                     </span>
                   </div>
                 </div>
@@ -2038,7 +2099,7 @@ export default function NcmrPage() {
                     <span style={{ ...badgeStyle, background: "#f59e0b" }}>Recurring</span>
                   ) : null}
                   {item.capa_required ? (
-                    <span style={{ ...badgeStyle, background: "#dc2626" }}>CAPA Evaluation Required</span>
+                    <span style={{ ...badgeStyle, background: "#dc2626" }}>CAPA Required</span>
                   ) : null}
                   {item.supplier_capa_required ? (
                     <span style={{ ...badgeStyle, background: "#7c3aed" }}>Supplier CAPA / SCAR</span>
@@ -2070,6 +2131,7 @@ export default function NcmrPage() {
                   <div><strong>PO:</strong> {item.purchase_order_number || "N/A"}</div>
                   <div><strong>Supplier Lot:</strong> {item.supplier_lot || "N/A"}</div>
                   <div><strong>Owner:</strong> {item.owner || "N/A"}</div>
+                  <div><strong>Workflow:</strong> {item.workflow_version_code || "Legacy / Unstamped"}</div>
                 </div>
 
                 {(item.recurrence_reason || item.supplier_capa_reason) ? (
