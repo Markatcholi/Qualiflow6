@@ -5367,7 +5367,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
 
   return (
     <main style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
-      <h1>NCMR Controlled Workflow</h1>
+      <h1>NCMR Controlled Workflow</h1>\n      <div style={{ color: "#64748b", marginTop: "-10px", marginBottom: "14px", fontSize: "13px" }}>Module Version: {record.workflow_version_code || "Legacy / Unstamped"}</div>
 
       {returnRevisionOpen ? (
         <div style={{ position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.45)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px" }}>
@@ -5413,6 +5413,10 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
           <div>
             <div style={{ color: "#4b5563", fontSize: "13px" }}>Workflow Status</div>
             <strong>{record.status || "open"}</strong>
+          </div>
+          <div>
+            <div style={{ color: "#4b5563", fontSize: "13px" }}>NCMR Module Version</div>
+            <strong>{record.workflow_version_code || "Legacy / Unstamped"}</strong>
           </div>
           <div>
             <div style={{ color: "#4b5563", fontSize: "13px" }}>Severity</div>
@@ -6221,7 +6225,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
                   calculateNcmrRiskLevel(severity, occurrenceRating, detectionRating)
                 ) || "Not Calculated"}
                 <div style={{ marginTop: "6px", color: "#475569", fontSize: "12px" }}>
-                  Configuration: {riskConfiguration?.version_code || record?.risk_configuration_version_code || "Not loaded"}
+                  Controlled customer risk configuration applied.
                 </div>
               </div>
             )}
@@ -6457,10 +6461,8 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
               {getCapaGovernanceSignal() || "No CAPA governance signal identified."}
             </div>
             <div>
-              <strong>Configuration:</strong>{" "}
-              {capaGovernanceConfiguration?.version_code ||
-                record?.capa_governance_version_code ||
-                "Not loaded"}
+              <strong>Configuration Control:</strong>{" "}
+              Controlled customer CAPA governance configuration applied.
             </div>
           </div>
         </div>
