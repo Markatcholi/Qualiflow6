@@ -681,7 +681,7 @@ export default function NcmrPage() {
 
     if (!data?.id) {
       throw new Error(
-        "No active NCMR workflow version is configured. Activate an NCMR workflow version before creating new records."
+        "No active NCMR module version is configured. Activate an NCMR module release before creating new records."
       );
     }
 
@@ -754,7 +754,7 @@ export default function NcmrPage() {
       activeWorkflowVersion = await getActiveNcmrWorkflowVersion();
     } catch (workflowVersionError: any) {
       alert(
-        `NCMR creation is blocked because the controlled workflow version could not be resolved.\n\n${workflowVersionError.message}`
+        `NCMR creation is blocked because the controlled NCMR module version could not be resolved.\n\n${workflowVersionError.message}`
       );
       return;
     }
@@ -844,7 +844,7 @@ export default function NcmrPage() {
       "ncmr",
       data.id,
       "created",
-      `Created NCMR under controlled workflow ${activeWorkflowVersion.version_code}: ${issueDescription.trim().slice(0, 120)}`
+      `Created NCMR under controlled NCMR module ${activeWorkflowVersion.version_code}: ${issueDescription.trim().slice(0, 120)}`
     );
 
     if (containmentCompletedAt) {
@@ -1240,7 +1240,7 @@ export default function NcmrPage() {
         <div>
           <h1 style={{ marginBottom: "6px" }}>NCMR Initiation</h1>
           <p style={{ color: "#4b5563", marginTop: 0 }}>
-            Create a lightweight NCMR intake record. Each new NCMR is bound to the active controlled workflow version; detailed investigation, risk assessment, MRB, and closure are completed in the controlled workflow page.
+            Create a lightweight NCMR intake record. Each new NCMR is bound to the active controlled NCMR module version; detailed investigation, risk assessment, MRB, and closure remain part of that same module release.
           </p>
         </div>
 
@@ -2131,7 +2131,7 @@ export default function NcmrPage() {
                   <div><strong>PO:</strong> {item.purchase_order_number || "N/A"}</div>
                   <div><strong>Supplier Lot:</strong> {item.supplier_lot || "N/A"}</div>
                   <div><strong>Owner:</strong> {item.owner || "N/A"}</div>
-                  <div><strong>Workflow:</strong> {item.workflow_version_code || "Legacy / Unstamped"}</div>
+                  <div><strong>NCMR Module:</strong> {item.workflow_version_code || "Legacy / Unstamped"}</div>
                 </div>
 
                 {(item.recurrence_reason || item.supplier_capa_reason) ? (
