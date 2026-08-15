@@ -46,6 +46,8 @@ export default function NcmrDetailPage() {
   const [correctionActionProposal, setCorrectionActionProposal] = useState("");
   const [correctiveAction, setCorrectiveAction] = useState("");
   const [riskAssessment, setRiskAssessment] = useState("");
+  const [riskDetermination, setRiskDetermination] = useState<"" | "no_risk" | "overall_residual_risk">("");
+  const [noRiskJustification, setNoRiskJustification] = useState("");
   const [severity, setSeverity] = useState("not_assessed");
   const [occurrenceRating, setOccurrenceRating] = useState("");
   const [detectionRating, setDetectionRating] = useState("");
@@ -54,6 +56,11 @@ export default function NcmrDetailPage() {
   const [riskOverrideEnabled, setRiskOverrideEnabled] = useState(false);
   const [riskOverrideLevel, setRiskOverrideLevel] = useState("");
   const [riskOverrideJustification, setRiskOverrideJustification] = useState("");
+  const [riskConfiguration, setRiskConfiguration] = useState<any>(null);
+  const [riskMatrixRules, setRiskMatrixRules] = useState<any[]>([]);
+  const [capaGovernanceConfiguration, setCapaGovernanceConfiguration] = useState<any>(null);
+  const [capaGovernanceRules, setCapaGovernanceRules] = useState<any[]>([]);
+  const [governanceConfigurationLoading, setGovernanceConfigurationLoading] = useState(false);
   const [capaJustification, setCapaJustification] = useState("");
   const [capaNotRequiredJustification, setCapaNotRequiredJustification] = useState("");
   const [capaEvaluationOutcome, setCapaEvaluationOutcome] = useState("");
@@ -165,14 +172,6 @@ export default function NcmrDetailPage() {
       { code: "return_to_supplier", label: "Return to Supplier" },
     ];
 
-    const allowedDispositionCodes = new Set([
-      "accept_per_specification",
-      "use_as_is",
-      "rework",
-      "scrap",
-      "return_to_supplier",
-    ]);
-
     const normalizeOption = (item: any) => {
       const rawLabel =
         item?.label ||
@@ -210,60 +209,116 @@ export default function NcmrDetailPage() {
       return true;
     };
 
-    const candidateTables = [
-      "md_dispositions",
-      "md_ncmr_dispositions",
-      "md_product_dispositions",
-      "md_disposition_types",
-    ];
+    const { data, error } = await supabase
+      .from("md_dispositions")
+      .select("*")
+      .order("label");
 
-    let loadedOptions: any[] = [];
-
-    for (const tableName of candidateTables) {
-      const { data, error } = await supabase
-        .from(tableName)
-        .select("*");
-
-      if (error) {
-        console.warn(`Unable to load ${tableName}:`, error.message);
-        continue;
-      }
-
-      if (data && data.length > 0) {
-        loadedOptions = data
-          .filter(isActiveOption)
-          .map(normalizeOption)
-          .filter((item: any) => item.code && item.label);
-
-        if (loadedOptions.length > 0) {
-          break;
-        }
-      }
+    if (error) {
+      console.warn("Unable to load md_dispositions:", error.message);
     }
+
+    const loadedOptions = (data || [])
+      .filter(isActiveOption)
+      .map(normalizeOption)
+      .filter((item: any) => item.code && item.label);
 
     const mergedByCode: Record<string, any> = {};
 
     [...defaultDispositions, ...loadedOptions].forEach((option: any) => {
       const normalized = normalizeOption(option);
       if (!normalized.code) return;
-      mergedByCode[normalized.code] = normalized;
+      mergedByCode[normalizeDispositionValue(normalized.code)] = normalized;
     });
 
-    const mergedOptions = Object.values(mergedByCode)
-      .filter((option: any) =>
-        allowedDispositionCodes.has(
-          String(option?.code || "")
-            .trim()
-            .toLowerCase()
-            .replace(/[^a-z0-9]+/g, "_")
-            .replace(/^_+|_+$/g, "")
-        )
-      )
-      .sort((a: any, b: any) =>
-        String(a.label || "").localeCompare(String(b.label || ""))
-      );
+    const mergedOptions = Object.values(mergedByCode).sort((a: any, b: any) =>
+      String(a.label || "").localeCompare(String(b.label || ""))
+    );
 
     setDispositionOptions(mergedOptions);
+  };
+
+  const fetchGovernanceConfigurations = async (ncmrRecord?: any) => {
+    setGovernanceConfigurationLoading(true);
+
+    try {
+      const sourceRecord = ncmrRecord || record || {};
+
+      const loadConfiguration = async (
+        configurationType: "risk_assessment" | "capa_governance",
+        stampedId?: string | null
+      ) => {
+        let query = supabase
+          .from("qms_configuration_versions")
+          .select("id,module_code,configuration_type,version_code,version_name,status,effective_at,activated_at")
+          .eq("module_code", "NCMR")
+          .eq("configuration_type", configurationType);
+
+        if (stampedId) {
+          query = query.eq("id", stampedId);
+        } else {
+          // Locked/approved historical records without a stamped configuration
+          // retain their stored decisions and are not reinterpreted under today's rules.
+          if (sourceRecord?.is_locked || sourceRecord?.mrb_approved_by) {
+            return null;
+          }
+          query = query.eq("status", "active");
+        }
+
+        const { data, error } = await query
+          .order("activated_at", { ascending: false, nullsFirst: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (error) throw error;
+        return data || null;
+      };
+
+      const riskConfig = await loadConfiguration(
+        "risk_assessment",
+        sourceRecord?.risk_configuration_version_id || null
+      );
+
+      const capaConfig = await loadConfiguration(
+        "capa_governance",
+        sourceRecord?.capa_governance_version_id || null
+      );
+
+      setRiskConfiguration(riskConfig);
+      setCapaGovernanceConfiguration(capaConfig);
+
+      if (riskConfig?.id) {
+        const { data, error } = await supabase
+          .from("qms_risk_matrix_rules")
+          .select("*")
+          .eq("configuration_version_id", riskConfig.id);
+
+        if (error) throw error;
+        setRiskMatrixRules(data || []);
+      } else {
+        setRiskMatrixRules([]);
+      }
+
+      if (capaConfig?.id) {
+        const { data, error } = await supabase
+          .from("qms_capa_governance_rules")
+          .select("*")
+          .eq("configuration_version_id", capaConfig.id);
+
+        if (error) throw error;
+        setCapaGovernanceRules(data || []);
+      } else {
+        setCapaGovernanceRules([]);
+      }
+    } catch (error: any) {
+      console.error("Unable to load NCMR governance configuration:", error?.message || error);
+      setRiskConfiguration(null);
+      setRiskMatrixRules([]);
+      setCapaGovernanceConfiguration(null);
+      setCapaGovernanceRules([]);
+    } finally {
+      setGovernanceConfigurationLoading(false);
+    }
   };
 
   const fetchLinkedCapa = async (capaId: string | null) => {
@@ -462,11 +517,23 @@ export default function NcmrDetailPage() {
     setCorrectionActionProposal(data.correction_action_proposal || "");
     setCorrectiveAction(data.corrective_action || "");
     setRiskAssessment(data.risk_assessment || "");
+    setRiskDetermination(
+      data.risk_determination === "no_risk"
+        ? "no_risk"
+        : data.risk_determination === "overall_residual_risk"
+          ? "overall_residual_risk"
+          : data.risk_level === "no_risk"
+            ? "no_risk"
+            : (data.severity || data.occurrence_rating || data.detection_rating || data.risk_level)
+              ? "overall_residual_risk"
+              : ""
+    );
+    setNoRiskJustification(data.no_risk_justification || "");
     setSeverity(data.severity || "not_assessed");
     setOccurrenceRating(data.occurrence_rating || "");
     setDetectionRating(data.detection_rating || "");
     setRiskAssessmentMethod(data.risk_assessment_method === "manual" ? "manual" : "automatic");
-    setRiskLevel(data.risk_level || "");
+    setRiskLevel(data.risk_level === "no_risk" ? "" : data.risk_level || "");
     setRiskOverrideEnabled(Boolean(data.risk_override_enabled));
     setRiskOverrideLevel(data.risk_override_level || "");
     setRiskOverrideJustification(data.risk_override_justification || "");
@@ -487,6 +554,7 @@ export default function NcmrDetailPage() {
 
     await fetchLinkedCapa(data.linked_capa_id || data.capa_id || null);
     await fetchLinkedScar(data.linked_scar_id || null);
+    await fetchGovernanceConfigurations(data);
     await fetchApprovalMatrixTemplates();
     await fetchMrbApprovers();
     await fetchAffectedItems();
@@ -507,6 +575,27 @@ export default function NcmrDetailPage() {
     });
 
     fetchAuditTimeline();
+  };
+
+  const snapshotControlledNcmrDecision = async (
+    decisionType: "risk_assessment" | "capa_governance",
+    configurationVersionId: string | null | undefined,
+    inputSnapshot: any,
+    decisionSnapshot: any
+  ) => {
+    if (!configurationVersionId) {
+      throw new Error(`Controlled ${decisionType.replace(/_/g, " ")} configuration version is missing.`);
+    }
+
+    const { error } = await supabase.rpc("snapshot_ncmr_qms_decision", {
+      p_ncmr_id: id,
+      p_decision_type: decisionType,
+      p_configuration_version_id: configurationVersionId,
+      p_input_snapshot: inputSnapshot,
+      p_decision_snapshot: decisionSnapshot,
+    });
+
+    if (error) throw new Error(error.message);
   };
 
   const createInAppNotification = async ({
@@ -599,7 +688,7 @@ export default function NcmrDetailPage() {
       notificationType: "ncmr_assignment",
       title: `NCMR assigned: ${record?.ncmr_number || "NCMR"}`,
       message: `You have been assigned as the owner of ${record?.ncmr_number || "this NCMR"}. Open My Workspace to review and coordinate the required activities.`,
-      severityLevel: severity === "critical" ? "critical" : severity === "high" ? "high" : "info",
+      severityLevel: getEffectiveRiskLevel() === "critical" ? "critical" : getEffectiveRiskLevel() === "high" ? "high" : "info",
       assignedRole: "NCMR Owner",
     });
 
@@ -708,23 +797,23 @@ export default function NcmrDetailPage() {
 
   const isSupportedDisposition = (value: any) => {
     const disposition = normalizeDispositionValue(value);
-    return [
-      "accept_per_specification",
-      "use_as_is",
-      "rework",
-      "scrap",
-      "return_to_supplier",
-    ].includes(disposition);
+    if (!disposition) return false;
+
+    return dispositionOptions.some(
+      (option: any) =>
+        normalizeDispositionValue(
+          option?.code || option?.value || option?.label || option?.name
+        ) === disposition
+    );
   };
 
   const requiresDispositionImplementation = (item: any) => {
-    const disposition = normalizeDispositionValue(item?.product_disposition);
-    return [
-      "accept_per_specification",
-      "use_as_is",
-      "scrap",
-      "return_to_supplier",
-    ].includes(disposition);
+    const disposition = item?.product_disposition;
+    if (!disposition || isReworkDisposition(disposition)) return false;
+
+    // Every configured non-Rework disposition remains a controlled MRB
+    // disposition and therefore requires implementation confirmation.
+    return isSupportedDisposition(disposition);
   };
 
   const getDispositionImplementationItems = () =>
@@ -1243,53 +1332,56 @@ export default function NcmrDetailPage() {
       .trim()
       .toLowerCase();
 
-  // Matches the CAPA risk calculation model so NCMR and CAPA use the same
-  // Severity + Occurrence + Detection governance.
+  const normalizeDetectionForConfiguredMatrix = (value: any) =>
+    getNormalizedRiskValue(value).replace(/_detection$/, "");
+
+  const formatRiskLabel = (value: any) =>
+    String(value || "")
+      .replace(/_/g, " ")
+      .replace(/\b\w/g, (character) => character.toUpperCase());
+
+  // Automatic risk is now controlled by the versioned NCMR Risk Matrix.
+  // No Risk is a separate documented determination and is never produced
+  // by the 27-cell automatic matrix.
   const calculateNcmrRiskLevel = (
     severityValue: any,
     occurrenceValue: any,
     detectionValue: any
   ) => {
-    const severityScore =
-      getNormalizedRiskValue(severityValue) === "critical"
-        ? 4
-        : getNormalizedRiskValue(severityValue) === "high"
-        ? 3
-        : getNormalizedRiskValue(severityValue) === "medium"
-        ? 2
-        : getNormalizedRiskValue(severityValue) === "low"
-        ? 1
-        : 0;
+    if (riskDetermination === "no_risk") return "no_risk";
 
-    const occurrenceScore =
-      getNormalizedRiskValue(occurrenceValue) === "high"
-        ? 3
-        : getNormalizedRiskValue(occurrenceValue) === "medium"
-        ? 2
-        : getNormalizedRiskValue(occurrenceValue) === "low"
-        ? 1
-        : 0;
+    const normalizedSeverity = getNormalizedRiskValue(severityValue);
+    const normalizedOccurrence = getNormalizedRiskValue(occurrenceValue);
+    const normalizedDetection = normalizeDetectionForConfiguredMatrix(detectionValue);
 
-    const detectionScore =
-      getNormalizedRiskValue(detectionValue) === "low_detection"
-        ? 3
-        : getNormalizedRiskValue(detectionValue) === "medium_detection"
-        ? 2
-        : getNormalizedRiskValue(detectionValue) === "high_detection"
-        ? 1
-        : 0;
+    if (!normalizedSeverity || normalizedSeverity === "not_assessed") return "";
+    if (!normalizedOccurrence || !normalizedDetection) return "";
 
-    const totalScore = severityScore + occurrenceScore + detectionScore;
+    const configuredRule = riskMatrixRules.find(
+      (rule: any) =>
+        getNormalizedRiskValue(rule?.severity) === normalizedSeverity &&
+        getNormalizedRiskValue(rule?.occurrence) === normalizedOccurrence &&
+        getNormalizedRiskValue(rule?.detection) === normalizedDetection
+    );
 
-    if (severityScore >= 4 || totalScore >= 9) return "critical";
-    if (totalScore >= 7) return "high";
-    if (totalScore >= 4) return "medium";
-    if (totalScore > 0) return "low";
-
-    return "";
+    return configuredRule?.overall_risk || "";
   };
 
   const getEffectiveRiskLevel = () => {
+    if (riskDetermination === "no_risk") {
+      return "no_risk";
+    }
+
+    if (riskDetermination !== "overall_residual_risk") {
+      // Historical locked records retain their stored controlled result.
+      if ((record?.is_locked || record?.mrb_approved_by) && record?.risk_level) {
+        return record?.risk_override_enabled && record?.risk_override_level
+          ? record.risk_override_level
+          : record.risk_level;
+      }
+      return "";
+    }
+
     if (riskAssessmentMethod === "manual") {
       return riskLevel;
     }
@@ -1301,8 +1393,74 @@ export default function NcmrDetailPage() {
     return calculateNcmrRiskLevel(severity, occurrenceRating, detectionRating);
   };
 
+  const getRiskPersistencePayload = () => {
+    if (riskDetermination === "no_risk") {
+      return {
+        risk_determination: "no_risk",
+        no_risk_justification: noRiskJustification.trim() || null,
+        severity: null,
+        occurrence_rating: null,
+        detection_rating: null,
+        risk_assessment_method: "automatic",
+        risk_level: "no_risk",
+        risk_override_enabled: false,
+        risk_override_level: null,
+        risk_override_justification: null,
+        risk_configuration_version_id: riskConfiguration?.id || record?.risk_configuration_version_id || null,
+        risk_configuration_version_code: riskConfiguration?.version_code || record?.risk_configuration_version_code || null,
+      };
+    }
+
+    return {
+      risk_determination: riskDetermination || null,
+      no_risk_justification: null,
+      severity: severity === "not_assessed" ? null : severity,
+      occurrence_rating: occurrenceRating || null,
+      detection_rating: detectionRating || null,
+      risk_assessment_method: riskAssessmentMethod,
+      risk_level:
+        riskAssessmentMethod === "manual"
+          ? riskLevel || null
+          : calculateNcmrRiskLevel(severity, occurrenceRating, detectionRating) || null,
+      risk_override_enabled:
+        riskAssessmentMethod === "automatic" ? riskOverrideEnabled : false,
+      risk_override_level:
+        riskAssessmentMethod === "automatic" && riskOverrideEnabled
+          ? riskOverrideLevel || null
+          : null,
+      risk_override_justification:
+        riskAssessmentMethod === "automatic" && riskOverrideEnabled
+          ? riskOverrideJustification || null
+          : null,
+      risk_configuration_version_id:
+        riskConfiguration?.id || record?.risk_configuration_version_id || null,
+      risk_configuration_version_code:
+        riskConfiguration?.version_code || record?.risk_configuration_version_code || null,
+    };
+  };
+
   const getRiskAssessmentValidationErrors = () => {
     const errors: string[] = [];
+
+    if (!riskDetermination) {
+      errors.push("Risk Determination is required.");
+      return errors;
+    }
+
+    if (riskDetermination === "no_risk") {
+      if (!noRiskJustification.trim()) {
+        errors.push("No Risk Justification is required when Risk Determination is No Risk.");
+      }
+      return errors;
+    }
+
+    if (!riskConfiguration?.id && !(record?.is_locked || record?.mrb_approved_by)) {
+      errors.push("Active Risk Assessment configuration could not be loaded.");
+    }
+
+    if (riskMatrixRules.length !== 27 && riskAssessmentMethod === "automatic") {
+      errors.push(`Automatic Risk Matrix is incomplete. Expected 27 rules; loaded ${riskMatrixRules.length}.`);
+    }
 
     if (severity === "not_assessed" || !severity) {
       errors.push("Severity is required.");
@@ -1337,30 +1495,19 @@ export default function NcmrDetailPage() {
       detectionRating &&
       !calculateNcmrRiskLevel(severity, occurrenceRating, detectionRating)
     ) {
-      errors.push("Calculated Risk Level could not be determined.");
+      errors.push("Configured Overall Risk could not be determined.");
     }
 
     return errors;
   };
 
   const getCapaRecommendation = () => {
-    const reasons: string[] = [];
-
-    if (severity === "critical") {
-      reasons.push("Critical severity requires CAPA escalation review.");
-    }
-
-    if (severity === "high") {
-      reasons.push("High severity requires documented CAPA decision.");
-    }
-
-    if (record?.recurring_issue) {
-      reasons.push("Recurring issue was identified.");
-    }
-
+    const evaluation = evaluateCapaGovernance();
     return {
-      recommended: reasons.length > 0,
-      reason: reasons.join(" "),
+      recommended:
+        evaluation.outcome === "recommended" ||
+        evaluation.outcome === "required",
+      reason: evaluation.rationale,
     };
   };
 
@@ -1399,6 +1546,10 @@ export default function NcmrDetailPage() {
     if (!rootCauseCategory) errors.push("Root cause category is required before MRB approval.");
     if (!rootCause) errors.push("Root Cause Summary is required before MRB approval.");
     errors.push(...getRiskAssessmentValidationErrors().map((error) => `${error} Before MRB approval.`));
+
+    if (!capaGovernanceConfiguration?.id && !(record?.is_locked || record?.mrb_approved_by)) {
+      errors.push("Active CAPA Governance configuration could not be loaded.");
+    }
 
     const capaRecommendation = getCapaRecommendation();
 
@@ -2016,6 +2167,10 @@ export default function NcmrDetailPage() {
     if (!correctiveAction.trim()) errors.push("Corrective Action Proposal / justification is required before submitting for MRB approval.");
     errors.push(...getRiskAssessmentValidationErrors().map((error) => `${error} Before submitting for MRB approval.`));
 
+    if (!capaGovernanceConfiguration?.id && !(record?.is_locked || record?.mrb_approved_by)) {
+      errors.push("Active CAPA Governance configuration could not be loaded.");
+    }
+
     const capaRecommendation = getCapaRecommendation();
     if (capaRecommendation.recommended && !record?.capa_id && !isNoCapaDecisionAccepted()) {
       errors.push("CAPA recommendation requires either a linked CAPA or a documented No-CAPA justification in CAPA Governance before submitting for MRB approval.");
@@ -2107,14 +2262,11 @@ export default function NcmrDetailPage() {
       .from("ncmrs")
       .update({
         risk_assessment: riskAssessment,
-        severity,
-        occurrence_rating: occurrenceRating || null,
-        detection_rating: detectionRating || null,
-        risk_assessment_method: riskAssessmentMethod,
-        risk_level: riskAssessmentMethod === "manual" ? riskLevel || null : calculateNcmrRiskLevel(severity, occurrenceRating, detectionRating) || null,
-        risk_override_enabled: riskAssessmentMethod === "automatic" ? riskOverrideEnabled : false,
-        risk_override_level: riskAssessmentMethod === "automatic" && riskOverrideEnabled ? riskOverrideLevel || null : null,
-        risk_override_justification: riskAssessmentMethod === "automatic" && riskOverrideEnabled ? riskOverrideJustification || null : null,
+        ...getRiskPersistencePayload(),
+        capa_governance_version_id:
+          capaGovernanceConfiguration?.id || record?.capa_governance_version_id || null,
+        capa_governance_version_code:
+          capaGovernanceConfiguration?.version_code || record?.capa_governance_version_code || null,
         product_disposition:
           productDisposition ||
           record?.product_disposition ||
@@ -2139,6 +2291,69 @@ export default function NcmrDetailPage() {
 
     if (workflowSaveError) {
       alert(workflowSaveError.message);
+      setSubmittingMrbApproval(false);
+      return;
+    }
+
+    try {
+      const effectiveRisk = getEffectiveRiskLevel();
+      const capaEvaluation = evaluateCapaGovernance();
+
+      await snapshotControlledNcmrDecision(
+        "risk_assessment",
+        riskConfiguration?.id || record?.risk_configuration_version_id,
+        riskDetermination === "no_risk"
+          ? {
+              risk_determination: "no_risk",
+              no_risk_justification: noRiskJustification.trim(),
+            }
+          : {
+              risk_determination: "overall_residual_risk",
+              assessment_method: riskAssessmentMethod,
+              severity,
+              occurrence: occurrenceRating,
+              detection: detectionRating,
+              calculated_risk:
+                riskAssessmentMethod === "automatic"
+                  ? calculateNcmrRiskLevel(severity, occurrenceRating, detectionRating)
+                  : null,
+              override_enabled:
+                riskAssessmentMethod === "automatic" ? riskOverrideEnabled : false,
+              override_level:
+                riskAssessmentMethod === "automatic" && riskOverrideEnabled
+                  ? riskOverrideLevel
+                  : null,
+              override_justification:
+                riskAssessmentMethod === "automatic" && riskOverrideEnabled
+                  ? riskOverrideJustification
+                  : null,
+            },
+        {
+          final_effective_risk: effectiveRisk,
+          risk_notes: riskAssessment || null,
+        }
+      );
+
+      await snapshotControlledNcmrDecision(
+        "capa_governance",
+        capaGovernanceConfiguration?.id || record?.capa_governance_version_id,
+        {
+          final_effective_risk: effectiveRisk,
+          recurrence_detected:
+            record?.recurring_issue === true ||
+            String(record?.recurrence_reason || "").toLowerCase().includes("recurr"),
+        },
+        {
+          outcome: capaEvaluation.outcome,
+          label: capaEvaluation.label,
+          rationale: capaEvaluation.rationale,
+          signals: capaEvaluation.signals,
+        }
+      );
+    } catch (snapshotError: any) {
+      alert(
+        `MRB approval cannot be submitted because the controlled decision snapshot could not be recorded.\n\n${snapshotError.message}`
+      );
       setSubmittingMrbApproval(false);
       return;
     }
@@ -3110,72 +3325,95 @@ This approval task was created by the MRB approval task issue recovery action. E
   };
 
   const evaluateCapaGovernance = () => {
-    const severityValue = String(severity || record?.severity || "").toLowerCase();
-
-    const isCritical = severityValue.includes("critical");
-    const isHigh = severityValue.includes("high") || severityValue.includes("major");
-    const isMedium = severityValue.includes("medium");
-    const isLow = severityValue.includes("low") || severityValue.includes("minor");
-
+    const effectiveRisk = getNormalizedRiskValue(getEffectiveRiskLevel());
     const hasRecurrence =
       record?.recurring_issue === true ||
       String(record?.recurrence_reason || "").toLowerCase().includes("recurr");
 
+    const enabledRules = capaGovernanceRules.filter(
+      (rule: any) => rule?.is_enabled !== false
+    );
+
+    const riskRule = enabledRules.find(
+      (rule: any) =>
+        rule?.trigger_type === "risk_level" &&
+        getNormalizedRiskValue(rule?.trigger_value) === effectiveRisk
+    );
+
+    const recurrenceRule = hasRecurrence
+      ? enabledRules.find(
+          (rule: any) =>
+            rule?.trigger_type === "recurrence" &&
+            rule?.trigger_value === "recurring_issue"
+        )
+      : null;
+
     const signals: string[] = [];
 
-    if (isCritical) {
-      signals.push("Critical severity identified.");
-    } else if (isHigh) {
-      signals.push("High severity identified.");
-    } else if (isMedium) {
-      signals.push("Medium severity identified.");
-    } else if (isLow) {
-      signals.push("Low severity identified.");
+    if (effectiveRisk) {
+      signals.push(`Final Effective Risk: ${formatRiskLabel(effectiveRisk)}.`);
     } else {
-      signals.push("Severity not assessed.");
+      signals.push("Final Effective Risk is not yet determined.");
     }
 
-    if (hasRecurrence) {
-      signals.push("Recurring NCMR detected.");
-    } else {
-      signals.push("No recurrence detected.");
+    signals.push(
+      hasRecurrence ? "Recurring NCMR detected." : "No recurrence detected."
+    );
+
+    if (!capaGovernanceConfiguration?.id && !(record?.is_locked || record?.mrb_approved_by)) {
+      return {
+        outcome: "not_required",
+        label: "CAPA Governance Configuration Unavailable",
+        rationale:
+          "The active CAPA Governance configuration could not be loaded. MRB submission is blocked until the controlled configuration is available.",
+        signals,
+      };
     }
 
-    if (isCritical) {
+    const candidateActions = [
+      riskRule?.governance_action,
+      recurrenceRule?.governance_action,
+    ].filter(Boolean);
+
+    const actionRank: Record<string, number> = {
+      no_automatic_recommendation: 0,
+      capa_recommended: 1,
+      capa_required: 2,
+    };
+
+    const strongestAction = candidateActions.reduce(
+      (strongest: string, action: string) =>
+        (actionRank[action] ?? -1) > (actionRank[strongest] ?? -1)
+          ? action
+          : strongest,
+      "no_automatic_recommendation"
+    );
+
+    if (strongestAction === "capa_required") {
       return {
         outcome: "required",
         label: "CAPA Required",
         rationale:
-          "CAPA is required because critical severity was identified. If CAPA is not initiated, a documented risk-based justification is required.",
+          "The active CAPA Governance configuration identifies CAPA as required based on Final Effective Risk and/or recurrence. A documented governance decision is required before MRB approval.",
         signals,
       };
     }
 
-    if (isHigh) {
+    if (strongestAction === "capa_recommended") {
       return {
         outcome: "recommended",
         label: "CAPA Recommended",
         rationale:
-          "CAPA is recommended because high severity was identified. If CAPA is not initiated, a documented risk-based justification is required.",
-        signals,
-      };
-    }
-
-    if (hasRecurrence) {
-      return {
-        outcome: "recommended",
-        label: "CAPA Recommended",
-        rationale:
-          "CAPA is recommended because NCMR recurrence was detected. If CAPA is not initiated, a documented risk-based justification is required.",
+          "The active CAPA Governance configuration recommends CAPA based on Final Effective Risk and/or recurrence. If CAPA is not initiated, document the quality justification.",
         signals,
       };
     }
 
     return {
       outcome: "not_required",
-      label: "CAPA Not Required",
+      label: "No Automatic CAPA Recommendation",
       rationale:
-        "CAPA is not required because the NCMR is not recurring and severity is not high or critical. If CAPA is opened, document the business or quality justification for the governance override.",
+        "The active CAPA Governance configuration does not automatically recommend CAPA for the current Final Effective Risk and recurrence status. CAPA may still be opened using documented quality judgment.",
       signals,
     };
   };
@@ -3218,8 +3456,14 @@ This approval task was created by the MRB approval task issue recovery action. E
       .from("ncmrs")
       .update({
         capa_required: evaluation.outcome === "required",
+        capa_recommended:
+          evaluation.outcome === "required" || evaluation.outcome === "recommended",
         capa_evaluation_outcome: evaluation.outcome,
         capa_evaluation_rationale: evaluation.rationale,
+        capa_governance_version_id:
+          capaGovernanceConfiguration?.id || record?.capa_governance_version_id || null,
+        capa_governance_version_code:
+          capaGovernanceConfiguration?.version_code || record?.capa_governance_version_code || null,
       })
       .eq("id", id);
 
@@ -3535,14 +3779,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
       .from("ncmrs")
       .update({
         risk_assessment: riskAssessment,
-        severity,
-        occurrence_rating: occurrenceRating || null,
-        detection_rating: detectionRating || null,
-        risk_assessment_method: riskAssessmentMethod,
-        risk_level: riskAssessmentMethod === "manual" ? riskLevel || null : calculateNcmrRiskLevel(severity, occurrenceRating, detectionRating) || null,
-        risk_override_enabled: riskAssessmentMethod === "automatic" ? riskOverrideEnabled : false,
-        risk_override_level: riskAssessmentMethod === "automatic" && riskOverrideEnabled ? riskOverrideLevel || null : null,
-        risk_override_justification: riskAssessmentMethod === "automatic" && riskOverrideEnabled ? riskOverrideJustification || null : null,
+        ...getRiskPersistencePayload(),
       })
       .eq("id", id);
 
@@ -3553,7 +3790,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
 
     await addAuditLog(
       "risk_assessment_saved",
-      "Risk assessment method, Severity, Occurrence, Detection, effective risk level, and any controlled override were saved from the Risk Assessment section."
+      "Risk Determination, Overall/Residual Risk inputs when applicable, Final Effective Risk, configuration version, and any controlled override were saved from the Risk Assessment section."
     );
 
     alert("Risk assessment saved.");
@@ -3616,6 +3853,10 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
           risk_override_level: riskAssessmentMethod === "automatic" && riskOverrideEnabled ? riskOverrideLevel || null : null,
           risk_override_justification: riskAssessmentMethod === "automatic" && riskOverrideEnabled ? riskOverrideJustification || null : null,
           capa_recommended: capaRecommendation.recommended,
+          capa_governance_version_id:
+            capaGovernanceConfiguration?.id || record?.capa_governance_version_id || null,
+          capa_governance_version_code:
+            capaGovernanceConfiguration?.version_code || record?.capa_governance_version_code || null,
           capa_decision: capaRecommendation.recommended ? capaDecision || null : null,
           capa_decision_justification: capaRecommendation.recommended && capaDecision === "no" ? capaDecisionJustification : null,
           capa_justification: capaRecommendation.recommended && capaDecision === "no" ? capaDecisionJustification : capaJustification,
@@ -3713,10 +3954,12 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
       );
     }
 
-    if (severity === "high" && record?.capa_id) {
+    if (getEffectiveRiskLevel() === "critical" && record?.capa_id) {
       await supabase
         .from("ncmrs")
-        .update({ capa_required: true })
+        .update({
+          capa_required: evaluateCapaGovernance().outcome === "required",
+        })
         .eq("id", id);
     }
 
@@ -3774,20 +4017,20 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
     if (!dispositionJustification) return alert("Disposition justification is required before MRB approval.");
 
     if (
-      (severity === "critical" || severity === "high") &&
+      ["critical", "high"].includes(getEffectiveRiskLevel()) &&
       productDisposition === "use_as_is" &&
       !isVpQuality
     ) {
-      alert("MRB rule: Use As Is disposition for High or Critical severity requires VP Quality approval.");
+      alert("MRB rule: Use As Is disposition for High or Critical Final Effective Risk requires VP Quality approval.");
       return;
     }
 
     if (
-      severity === "high" &&
+      getEffectiveRiskLevel() === "high" &&
       productDisposition === "use_as_is" &&
       dispositionJustification.trim().length < 50
     ) {
-      alert("MRB rule: High severity with Use As Is requires a stronger disposition justification.");
+      alert("MRB rule: High Final Effective Risk with Use As Is requires a stronger disposition justification.");
       return;
     }
 
@@ -3842,14 +4085,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
       .from("ncmrs")
       .update({
         risk_assessment: riskAssessment,
-        severity,
-        occurrence_rating: occurrenceRating || null,
-        detection_rating: detectionRating || null,
-        risk_assessment_method: riskAssessmentMethod,
-        risk_level: riskAssessmentMethod === "manual" ? riskLevel || null : calculateNcmrRiskLevel(severity, occurrenceRating, detectionRating) || null,
-        risk_override_enabled: riskAssessmentMethod === "automatic" ? riskOverrideEnabled : false,
-        risk_override_level: riskAssessmentMethod === "automatic" && riskOverrideEnabled ? riskOverrideLevel || null : null,
-        risk_override_justification: riskAssessmentMethod === "automatic" && riskOverrideEnabled ? riskOverrideJustification || null : null,
+        ...getRiskPersistencePayload(),
         capa_justification: capaJustification,
         product_disposition: productDisposition,
         disposition: productDisposition,
@@ -4839,15 +5075,12 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
       correction_action_proposal: correctionActionProposal,
       corrective_action: correctiveAction,
       risk_assessment: riskAssessment,
-      severity,
-      occurrence_rating: occurrenceRating || null,
-      detection_rating: detectionRating || null,
-      risk_assessment_method: riskAssessmentMethod,
-      risk_level: riskAssessmentMethod === "manual" ? riskLevel || null : calculateNcmrRiskLevel(severity, occurrenceRating, detectionRating) || null,
-      risk_override_enabled: riskAssessmentMethod === "automatic" ? riskOverrideEnabled : false,
-      risk_override_level: riskAssessmentMethod === "automatic" && riskOverrideEnabled ? riskOverrideLevel || null : null,
-      risk_override_justification: riskAssessmentMethod === "automatic" && riskOverrideEnabled ? riskOverrideJustification || null : null,
+      ...getRiskPersistencePayload(),
       capa_recommended: capaRecommendation.recommended,
+      capa_governance_version_id:
+        capaGovernanceConfiguration?.id || record?.capa_governance_version_id || null,
+      capa_governance_version_code:
+        capaGovernanceConfiguration?.version_code || record?.capa_governance_version_code || null,
       product_disposition: productDisposition,
       disposition: productDisposition,
       disposition_justification: dispositionJustification,
@@ -4864,14 +5097,12 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
       String(record?.correction_action_proposal || "") === correctionActionProposal &&
       String(record?.corrective_action || "") === correctiveAction &&
       String(record?.risk_assessment || "") === riskAssessment &&
-      String(record?.severity || "not_assessed") === severity &&
-      String(record?.occurrence_rating || "") === occurrenceRating &&
-      String(record?.detection_rating || "") === detectionRating &&
-      String(record?.risk_assessment_method || "automatic") === riskAssessmentMethod &&
-      String(record?.risk_level || "") === (riskAssessmentMethod === "manual" ? riskLevel : calculateNcmrRiskLevel(severity, occurrenceRating, detectionRating)) &&
-      Boolean(record?.risk_override_enabled) === Boolean(riskAssessmentMethod === "automatic" ? riskOverrideEnabled : false) &&
-      String(record?.risk_override_level || "") === (riskAssessmentMethod === "automatic" && riskOverrideEnabled ? riskOverrideLevel : "") &&
-      String(record?.risk_override_justification || "") === (riskAssessmentMethod === "automatic" && riskOverrideEnabled ? riskOverrideJustification : "") &&
+      String(record?.risk_determination || (record?.risk_level === "no_risk" ? "no_risk" : "")) === riskDetermination &&
+      String(record?.no_risk_justification || "") === (riskDetermination === "no_risk" ? noRiskJustification : "") &&
+      String(record?.risk_level || "") === String(getRiskPersistencePayload().risk_level || "") &&
+      Boolean(record?.risk_override_enabled) === Boolean(getRiskPersistencePayload().risk_override_enabled) &&
+      String(record?.risk_override_level || "") === String(getRiskPersistencePayload().risk_override_level || "") &&
+      String(record?.risk_override_justification || "") === String(getRiskPersistencePayload().risk_override_justification || "") &&
       Boolean(record?.capa_recommended) === Boolean(capaRecommendation.recommended) &&
       String(record?.product_disposition || record?.disposition || "") === productDisposition &&
       String(record?.disposition_justification || "") === dispositionJustification &&
@@ -4896,8 +5127,9 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
   }, [
     id, investigator, problemDescription, containmentAction, investigationSummary,
     rootCause, rootCauseCategory, correctionActionProposal, correctiveAction,
-    riskAssessment, severity, occurrenceRating, detectionRating, riskAssessmentMethod,
+    riskAssessment, riskDetermination, noRiskJustification, severity, occurrenceRating, detectionRating, riskAssessmentMethod,
     riskLevel, riskOverrideEnabled, riskOverrideLevel, riskOverrideJustification,
+    riskConfiguration?.id, riskMatrixRules, capaGovernanceConfiguration?.id, capaGovernanceRules,
     productDisposition, dispositionJustification, reviewStatus,
     record?.id, record?.mrb_approved_by, record?.is_locked, approvalTasks,
   ]);
@@ -5819,176 +6051,241 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
       <div id="ncmr-section-risk-assessment" />
       <SectionCard
         title="6. Risk Assessment"
-        subtitle={isRiskAssessmentComplete ? "Complete: Severity, Occurrence, Detection, and risk level are documented." : "Pending: complete Severity, Occurrence, Detection, and risk level."}
+        subtitle={isRiskAssessmentComplete ? "Complete: Risk Determination and Final Effective Risk are documented." : "Pending: select No Risk or complete the Overall/Residual Risk assessment."}
         defaultOpen={true}
         rightAction={sectionStatusBadge(isRiskAssessmentComplete, "Risk Assessment")}
       >
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
-            gap: "12px",
-            maxWidth: "950px",
-          }}
-        >
-          <div>
-            <label>Risk Assessment Method</label><br />
-            <select
-              value={riskAssessmentMethod}
-              onChange={(e) => {
-                const nextMethod = e.target.value === "manual" ? "manual" : "automatic";
-                setRiskAssessmentMethod(nextMethod);
-                if (nextMethod === "manual") {
-                  setRiskOverrideEnabled(false);
-                  setRiskOverrideLevel("");
-                  setRiskOverrideJustification("");
-                }
-              }}
-              disabled={preMrbReadOnly}
-              style={{ width: "100%", padding: "8px" }}
-            >
-              <option value="automatic">Automatic</option>
-              <option value="manual">Manual</option>
-            </select>
-          </div>
+        <div style={{ maxWidth: "850px", marginBottom: "14px" }}>
+          <label><strong>Risk Determination</strong></label><br />
+          <select
+            value={riskDetermination}
+            onChange={(e) => {
+              const nextValue = e.target.value as "" | "no_risk" | "overall_residual_risk";
+              setRiskDetermination(nextValue);
 
-          <div>
-            <label>Severity</label><br />
-            <select
-              value={severity}
-              onChange={(e) => setSeverity(e.target.value)}
-              disabled={preMrbReadOnly}
-              style={{ width: "100%", padding: "8px" }}
-            >
-              <option value="not_assessed">Select</option>
-              <option value="low">Low</option>
-              <option value="medium">Medium</option>
-              <option value="high">High</option>
-              <option value="critical">Critical</option>
-            </select>
-          </div>
+              if (nextValue === "no_risk") {
+                setSeverity("not_assessed");
+                setOccurrenceRating("");
+                setDetectionRating("");
+                setRiskLevel("");
+                setRiskOverrideEnabled(false);
+                setRiskOverrideLevel("");
+                setRiskOverrideJustification("");
+              }
 
-          <div>
-            <label>Occurrence</label><br />
-            <select
-              value={occurrenceRating}
-              onChange={(e) => setOccurrenceRating(e.target.value)}
-              disabled={preMrbReadOnly}
-              style={{ width: "100%", padding: "8px" }}
-            >
-              <option value="">Select</option>
-              <option value="low">Low</option>
-              <option value="medium">Medium</option>
-              <option value="high">High</option>
-            </select>
-          </div>
-
-          <div>
-            <label>Detection</label><br />
-            <select
-              value={detectionRating}
-              onChange={(e) => setDetectionRating(e.target.value)}
-              disabled={preMrbReadOnly}
-              style={{ width: "100%", padding: "8px" }}
-            >
-              <option value="">Select</option>
-              <option value="high_detection">High Detection</option>
-              <option value="medium_detection">Medium Detection</option>
-              <option value="low_detection">Low Detection</option>
-            </select>
-          </div>
+              if (nextValue === "overall_residual_risk") {
+                setNoRiskJustification("");
+              }
+            }}
+            disabled={preMrbReadOnly}
+            style={{ width: "100%", maxWidth: "420px", padding: "8px" }}
+          >
+            <option value="">Select</option>
+            <option value="no_risk">No Risk</option>
+            <option value="overall_residual_risk">Overall/Residual Risk</option>
+          </select>
         </div>
 
-        {riskAssessmentMethod === "manual" ? (
-          <div style={{ marginTop: "14px", maxWidth: "420px" }}>
-            <label>Manual Risk Level</label><br />
-            <select
-              value={riskLevel}
-              onChange={(e) => setRiskLevel(e.target.value)}
-              disabled={preMrbReadOnly}
-              style={{ width: "100%", padding: "8px" }}
-            >
-              <option value="">Select</option>
-              <option value="low">Low</option>
-              <option value="medium">Medium</option>
-              <option value="high">High</option>
-              <option value="critical">Critical</option>
-            </select>
-          </div>
-        ) : (
+        {riskDetermination === "no_risk" ? (
           <div
             style={{
-              border: "1px solid #bfdbfe",
-              background: "#eff6ff",
+              border: "1px solid #fde68a",
+              background: "#fffbeb",
               padding: "12px",
               borderRadius: "10px",
-              marginTop: "14px",
               maxWidth: "850px",
+              marginBottom: "14px",
             }}
           >
-            <strong>Calculated Risk Level:</strong>{" "}
-            {calculateNcmrRiskLevel(severity, occurrenceRating, detectionRating) || "Not Calculated"}
-          </div>
-        )}
-
-        {riskAssessmentMethod === "automatic" ? (
-          <div style={{ marginTop: "14px", maxWidth: "850px" }}>
-            <label>Override Calculated Risk?</label><br />
-            <select
-              value={riskOverrideEnabled ? "yes" : "no"}
-              onChange={(e) => {
-                const enabled = e.target.value === "yes";
-                setRiskOverrideEnabled(enabled);
-                if (!enabled) {
-                  setRiskOverrideLevel("");
-                  setRiskOverrideJustification("");
-                }
-              }}
+            <label><strong>No Risk Justification *</strong></label><br />
+            <textarea
+              value={noRiskJustification}
+              onChange={(e) => setNoRiskJustification(e.target.value)}
               disabled={preMrbReadOnly}
-              style={{ padding: "8px", minWidth: "180px" }}
-            >
-              <option value="no">No</option>
-              <option value="yes">Yes</option>
-            </select>
+              rows={4}
+              placeholder="Document the rationale supporting the No Risk determination."
+              style={{ width: "100%", marginTop: "6px" }}
+            />
+          </div>
+        ) : null}
 
-            {riskOverrideEnabled ? (
+        {riskDetermination === "overall_residual_risk" ? (
+          <>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
+                gap: "12px",
+                maxWidth: "950px",
+              }}
+            >
+              <div>
+                <label>Risk Assessment Method</label><br />
+                <select
+                  value={riskAssessmentMethod}
+                  onChange={(e) => {
+                    const nextMethod = e.target.value === "manual" ? "manual" : "automatic";
+                    setRiskAssessmentMethod(nextMethod);
+                    if (nextMethod === "manual") {
+                      setRiskOverrideEnabled(false);
+                      setRiskOverrideLevel("");
+                      setRiskOverrideJustification("");
+                    }
+                  }}
+                  disabled={preMrbReadOnly}
+                  style={{ width: "100%", padding: "8px" }}
+                >
+                  <option value="automatic">Automatic</option>
+                  <option value="manual">Manual</option>
+                </select>
+              </div>
+
+              <div>
+                <label>Severity</label><br />
+                <select
+                  value={severity}
+                  onChange={(e) => setSeverity(e.target.value)}
+                  disabled={preMrbReadOnly}
+                  style={{ width: "100%", padding: "8px" }}
+                >
+                  <option value="not_assessed">Select</option>
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                  {severity === "critical" ? (
+                    <option value="critical">Critical (Legacy)</option>
+                  ) : null}
+                </select>
+              </div>
+
+              <div>
+                <label>Occurrence</label><br />
+                <select
+                  value={occurrenceRating}
+                  onChange={(e) => setOccurrenceRating(e.target.value)}
+                  disabled={preMrbReadOnly}
+                  style={{ width: "100%", padding: "8px" }}
+                >
+                  <option value="">Select</option>
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                </select>
+              </div>
+
+              <div>
+                <label>Detection</label><br />
+                <select
+                  value={detectionRating}
+                  onChange={(e) => setDetectionRating(e.target.value)}
+                  disabled={preMrbReadOnly}
+                  style={{ width: "100%", padding: "8px" }}
+                >
+                  <option value="">Select</option>
+                  <option value="high_detection">High Detection</option>
+                  <option value="medium_detection">Medium Detection</option>
+                  <option value="low_detection">Low Detection</option>
+                </select>
+              </div>
+            </div>
+
+            {riskAssessmentMethod === "manual" ? (
+              <div style={{ marginTop: "14px", maxWidth: "420px" }}>
+                <label>Manual Risk Level</label><br />
+                <select
+                  value={riskLevel}
+                  onChange={(e) => setRiskLevel(e.target.value)}
+                  disabled={preMrbReadOnly}
+                  style={{ width: "100%", padding: "8px" }}
+                >
+                  <option value="">Select</option>
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                  <option value="critical">Critical</option>
+                </select>
+              </div>
+            ) : (
               <div
                 style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-                  gap: "12px",
-                  marginTop: "12px",
+                  border: "1px solid #bfdbfe",
+                  background: "#eff6ff",
+                  padding: "12px",
+                  borderRadius: "10px",
+                  marginTop: "14px",
+                  maxWidth: "850px",
                 }}
               >
-                <div>
-                  <label>Override Risk Level</label><br />
-                  <select
-                    value={riskOverrideLevel}
-                    onChange={(e) => setRiskOverrideLevel(e.target.value)}
-                    disabled={preMrbReadOnly}
-                    style={{ width: "100%", padding: "8px" }}
-                  >
-                    <option value="">Select</option>
-                    <option value="low">Low</option>
-                    <option value="medium">Medium</option>
-                    <option value="high">High</option>
-                    <option value="critical">Critical</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label>Risk Override Justification</label><br />
-                  <textarea
-                    value={riskOverrideJustification}
-                    onChange={(e) => setRiskOverrideJustification(e.target.value)}
-                    disabled={preMrbReadOnly}
-                    rows={3}
-                    style={{ width: "100%" }}
-                  />
+                <strong>Calculated Overall Risk:</strong>{" "}
+                {formatRiskLabel(
+                  calculateNcmrRiskLevel(severity, occurrenceRating, detectionRating)
+                ) || "Not Calculated"}
+                <div style={{ marginTop: "6px", color: "#475569", fontSize: "12px" }}>
+                  Configuration: {riskConfiguration?.version_code || record?.risk_configuration_version_code || "Not loaded"}
                 </div>
               </div>
+            )}
+
+            {riskAssessmentMethod === "automatic" ? (
+              <div style={{ marginTop: "14px", maxWidth: "850px" }}>
+                <label>Override Calculated Risk?</label><br />
+                <select
+                  value={riskOverrideEnabled ? "yes" : "no"}
+                  onChange={(e) => {
+                    const enabled = e.target.value === "yes";
+                    setRiskOverrideEnabled(enabled);
+                    if (!enabled) {
+                      setRiskOverrideLevel("");
+                      setRiskOverrideJustification("");
+                    }
+                  }}
+                  disabled={preMrbReadOnly}
+                  style={{ padding: "8px", minWidth: "180px" }}
+                >
+                  <option value="no">No</option>
+                  <option value="yes">Yes</option>
+                </select>
+
+                {riskOverrideEnabled ? (
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+                      gap: "12px",
+                      marginTop: "12px",
+                    }}
+                  >
+                    <div>
+                      <label>Override Risk Level</label><br />
+                      <select
+                        value={riskOverrideLevel}
+                        onChange={(e) => setRiskOverrideLevel(e.target.value)}
+                        disabled={preMrbReadOnly}
+                        style={{ width: "100%", padding: "8px" }}
+                      >
+                        <option value="">Select</option>
+                        <option value="low">Low</option>
+                        <option value="medium">Medium</option>
+                        <option value="high">High</option>
+                        <option value="critical">Critical</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label>Risk Override Justification</label><br />
+                      <textarea
+                        value={riskOverrideJustification}
+                        onChange={(e) => setRiskOverrideJustification(e.target.value)}
+                        disabled={preMrbReadOnly}
+                        rows={3}
+                        style={{ width: "100%" }}
+                      />
+                    </div>
+                  </div>
+                ) : null}
+              </div>
             ) : null}
-          </div>
+          </>
         ) : null}
 
         <div style={{ marginTop: "14px", maxWidth: "850px" }}>
@@ -6013,7 +6310,13 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
             maxWidth: "850px",
           }}
         >
-          <strong>Effective Risk Level:</strong> {getEffectiveRiskLevel() || "Not Calculated"}
+          <strong>Final Effective Risk:</strong>{" "}
+          {formatRiskLabel(getEffectiveRiskLevel()) || "Not Calculated"}
+          {governanceConfigurationLoading ? (
+            <span style={{ marginLeft: "8px", color: "#64748b", fontSize: "12px" }}>
+              Loading controlled configuration…
+            </span>
+          ) : null}
         </div>
 
         {getCapaRecommendation().recommended && !linkedCapa ? (
@@ -6122,7 +6425,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
 
       <SectionCard
         title="8. CAPA Governance"
-        subtitle={linkedCapa || record?.linked_capa_id || record?.capa_id ? "Complete: linked CAPA exists." : record?.capa_not_required_justification ? "Complete: CAPA not-required justification documented." : "Evaluate whether CAPA is required based on recurrence, severity, risk, or governance rules."}
+        subtitle={linkedCapa || record?.linked_capa_id || record?.capa_id ? "Complete: linked CAPA exists." : record?.capa_not_required_justification ? "Complete: CAPA not-required justification documented." : "Evaluate CAPA governance using Final Effective Risk, recurrence, and the active controlled governance configuration."}
         defaultOpen={false}
         rightAction={sectionStatusBadge(!!linkedCapa || !!record?.linked_capa_id || !!record?.capa_id || !!record?.capa_not_required_justification, "CAPA")}
       >
@@ -6152,6 +6455,12 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
             <div>
               <strong>CAPA Governance Signal:</strong>{" "}
               {getCapaGovernanceSignal() || "No CAPA governance signal identified."}
+            </div>
+            <div>
+              <strong>Configuration:</strong>{" "}
+              {capaGovernanceConfiguration?.version_code ||
+                record?.capa_governance_version_code ||
+                "Not loaded"}
             </div>
           </div>
         </div>
