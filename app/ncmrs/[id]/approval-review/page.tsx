@@ -502,14 +502,7 @@ export default function NcmrMrbApprovalReviewPage() {
         <div style={ownerGridStyle}>
           <OwnerField label="Issue Description" value={record.issue_description} multiline />
           <OwnerField label="Owner" value={record.owner_email || record.owner} />
-          <OwnerField
-            label="NCMR Module Version"
-            value={
-              record.workflow_version_code === "NCMR-LEGACY"
-                ? "NCMR-1.0"
-                : record.workflow_version_code
-            }
-          />
+          
           <OwnerField label="Status" value={record.status} />
           <OwnerField label="Severity" value={record.severity} />
           <OwnerField
