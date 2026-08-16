@@ -832,6 +832,51 @@ export default function MasterDataPage() {
               marginBottom: "8px",
             }}
           >
+            MODULE RELEASE GOVERNANCE
+          </div>
+
+          <h2 style={{ marginTop: 0 }}>Module Release Management</h2>
+
+          <p style={{ color: "#4b5563" }}>
+            Review controlled QualiSphere module releases, release metadata,
+            open-record migration impact, and closed legacy-record populations.
+            NCMR is the first module onboarded to this enterprise release framework.
+          </p>
+
+          <Link
+            href="/admin/module-releases"
+            style={{
+              display: "inline-block",
+              marginTop: "10px",
+              background: "#b45309",
+              color: "white",
+              padding: "10px 14px",
+              borderRadius: "8px",
+              textDecoration: "none",
+              fontWeight: 700,
+            }}
+          >
+            Open Module Release Management
+          </Link>
+        </div>
+
+        <div
+          style={{
+            border: "1px solid #d1d5db",
+            borderRadius: "12px",
+            padding: "20px",
+            background: "#f8fafc",
+          }}
+        >
+          <div
+            style={{
+              fontSize: "12px",
+              fontWeight: 800,
+              color: "#6b7280",
+              letterSpacing: "0.08em",
+              marginBottom: "8px",
+            }}
+          >
             RISK & CAPA GOVERNANCE
           </div>
 
