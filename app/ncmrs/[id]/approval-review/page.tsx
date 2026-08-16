@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { supabase } from "../../../../lib/supabaseClient";
 import { SectionCard } from "../../../components/QualityWorkflowComponents";
@@ -28,15 +28,6 @@ export default function NcmrMrbApprovalReviewPage() {
     Boolean(normalizedUserEmail) &&
     normalizedUserEmail === normalizedAssigneeEmail;
   const isPending = String(task?.status || "").toLowerCase() === "pending";
-
-  const riskLevel = useMemo(() => {
-    return (
-      record?.risk_level ||
-      record?.risk_rating ||
-      record?.risk_assessment ||
-      "Not documented"
-    );
-  }, [record]);
 
   const load = async () => {
     setLoading(true);
@@ -340,80 +331,56 @@ export default function NcmrMrbApprovalReviewPage() {
     }
   };
 
-  const evaluateCapaGovernanceForReview = () => {
-    const severityValue = String(record?.severity || "").toLowerCase();
-    const isCritical = severityValue.includes("critical");
-    const isMajor = severityValue.includes("major");
-    const isMinor = severityValue.includes("minor");
+  const formatRiskLabel = (value: any) => {
+    const normalized = String(value || "").trim().toLowerCase();
+    if (!normalized) return "Not Assessed";
+    if (normalized === "no_risk") return "No Risk";
+    return normalized.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  };
 
+  const getFinalEffectiveRiskForReview = () => {
+    if (record?.risk_determination === "no_risk" || record?.risk_level === "no_risk") {
+      return "no_risk";
+    }
+
+    if (record?.risk_override_enabled && record?.risk_override_level) {
+      return record.risk_override_level;
+    }
+
+    return record?.risk_level || record?.risk_rating || "";
+  };
+
+  const getRiskBasedCapaSignalForReview = () => {
+    const effectiveRisk = getFinalEffectiveRiskForReview();
+    if (!effectiveRisk) return "Risk Not Assessed";
+    return `${formatRiskLabel(effectiveRisk)} Risk`.replace("No Risk Risk", "No Risk");
+  };
+
+  const getCapaGovernanceReview = () => {
+    const effectiveRisk = getFinalEffectiveRiskForReview();
     const hasRecurrence =
       record?.recurring_issue === true ||
-      String(record?.recurrence_reason || "")
-        .toLowerCase()
-        .includes("recurr");
+      String(record?.recurrence_reason || "").toLowerCase().includes("recurr");
 
-    const signals: string[] = [];
-
-    if (isCritical) {
-      signals.push("Critical severity identified.");
-    } else if (isMajor) {
-      signals.push("Major severity identified.");
-    } else if (isMinor) {
-      signals.push("Minor severity identified.");
-    } else {
-      signals.push("Severity not assessed.");
-    }
-
-    signals.push(
-      hasRecurrence
-        ? "Recurring NCMR detected."
-        : "No recurrence detected."
-    );
-
-    if (isCritical) {
-      return {
-        outcome: "required",
-        label: "CAPA Required",
-        rationale:
-          "CAPA is required because critical severity was identified. If CAPA is not initiated, a documented risk-based justification is required.",
-        signals,
-      };
-    }
-
-    if (isMajor) {
-      return {
-        outcome: "recommended",
-        label: "CAPA Recommended",
-        rationale:
-          "CAPA is recommended because major severity was identified. If CAPA is not initiated, a documented risk-based justification is required.",
-        signals,
-      };
-    }
-
-    if (hasRecurrence) {
-      return {
-        outcome: "recommended",
-        label: "CAPA Recommended",
-        rationale:
-          "CAPA is recommended because NCMR recurrence was detected. If CAPA is not initiated, a documented risk-based justification is required.",
-        signals,
-      };
-    }
+    const storedOutcome = String(record?.capa_evaluation_outcome || "").trim();
 
     return {
-      outcome: "not_required",
-      label: "CAPA Not Required",
+      outcome: storedOutcome || (record?.capa_required ? "required" : record?.capa_recommended ? "recommended" : "not_required"),
+      label: formatCapaEvaluationOutcomeForReview(
+        storedOutcome || (record?.capa_required ? "required" : record?.capa_recommended ? "recommended" : "not_required")
+      ),
       rationale:
-        "CAPA is not required because the NCMR is not recurring and severity is not major or critical. If CAPA is opened, document the business or quality justification for the governance override.",
-      signals,
+        record?.capa_evaluation_rationale ||
+        "CAPA governance decision rationale was not documented.",
+      signal: `Final Effective Risk: ${formatRiskLabel(effectiveRisk)}. ${
+        hasRecurrence ? "Recurring NCMR detected." : "No recurrence detected."
+      }`,
     };
   };
 
   const formatCapaEvaluationOutcomeForReview = (
     outcome: string | null | undefined
   ) => {
-    const calculated = evaluateCapaGovernanceForReview();
-
     switch (outcome) {
       case "required":
         return "CAPA Required";
@@ -426,7 +393,7 @@ export default function NcmrMrbApprovalReviewPage() {
       case "not_opened_with_justification":
         return "CAPA Not Opened - Justification Documented";
       default:
-        return outcome || calculated.label;
+        return outcome ? formatValue(outcome) : "CAPA Not Assessed";
     }
   };
 
@@ -532,22 +499,24 @@ export default function NcmrMrbApprovalReviewPage() {
           Record summary is locked for MRB review.
         </p>
 
-        <OwnerField label="Issue Description" value={record.issue_description} multiline />
-        <OwnerField label="Owner" value={record.owner_email || record.owner} />
-
-        <p><strong>Severity:</strong> {formatValue(record.severity)}</p>
-        <p><strong>CAPA Required:</strong> {record.capa_required ? "Yes" : "No"}</p>
-        <p><strong>CAPA Recommended:</strong> {record.capa_recommended ? "Yes" : "No"}</p>
-        <p><strong>CAPA Decision:</strong> {formatValue(record.capa_decision)}</p>
-        <p>
-          <strong>CAPA Decision Justification:</strong>{" "}
-          {formatValue(
-            record.capa_decision_justification ||
-              record.capa_justification ||
-              record.capa_not_required_justification
-          )}
-        </p>
-        <p><strong>Status:</strong> {formatValue(record.status)}</p>
+        <div style={ownerGridStyle}>
+          <OwnerField label="Issue Description" value={record.issue_description} multiline />
+          <OwnerField label="Owner" value={record.owner_email || record.owner} />
+          <OwnerField
+            label="NCMR Module Version"
+            value={
+              record.workflow_version_code === "NCMR-LEGACY"
+                ? "NCMR-1.0"
+                : record.workflow_version_code
+            }
+          />
+          <OwnerField label="Status" value={record.status} />
+          <OwnerField label="Severity" value={record.severity} />
+          <OwnerField
+            label="Final Effective Risk"
+            value={formatRiskLabel(getFinalEffectiveRiskForReview())}
+          />
+        </div>
       </div>
 
       <SectionCard
@@ -559,6 +528,16 @@ export default function NcmrMrbApprovalReviewPage() {
           This section is the locked version of the initiation information
           submitted by the NCMR owner.
         </p>
+
+        <div style={ownerGridStyle}>
+          <OwnerField label="Issue Description" value={record.issue_description} multiline />
+          <OwnerField label="Source of Detection" value={record.source_of_detection} />
+          <OwnerField label="Department" value={record.department} />
+          <OwnerField label="Date Detected" value={formatDateTime(record.date_detected)} />
+          <OwnerField label="Site / Location" value={record.site_location} />
+          <OwnerField label="Immediate Correction" value={record.immediate_correction} multiline />
+          <OwnerField label="NCMR Owner" value={record.owner_email || record.owner} />
+        </div>
 
         <h3>Affected Materials / Multiple Parts and Lots</h3>
 
@@ -581,16 +560,29 @@ export default function NcmrMrbApprovalReviewPage() {
                     label="Quantity Quarantined"
                     value={item.quarantined_quantity}
                   />
+                  <OwnerField label="Defect Category" value={item.defect_category} />
+                  <OwnerField label="Defect Subcategory" value={item.defect_subcategory} />
                 </div>
               </div>
             ))}
           </div>
         )}
+
+        {(record?.supplier_name || record?.supplier_lot || record?.purchase_order_number) ? (
+          <>
+            <h3>Supplier Information (If Applicable)</h3>
+            <div style={ownerGridStyle}>
+              <OwnerField label="Supplier Name" value={record.supplier_name} />
+              <OwnerField label="Supplier Lot" value={record.supplier_lot} />
+              <OwnerField label="Purchase Order Number" value={record.purchase_order_number} />
+            </div>
+          </>
+        ) : null}
       </SectionCard>
 
       <SectionCard
         title="2. Containment"
-        subtitle="Submitted containment action."
+        subtitle="Submitted containment action and completion evidence."
         defaultOpen={true}
       >
         <OwnerField
@@ -598,6 +590,17 @@ export default function NcmrMrbApprovalReviewPage() {
           value={record.containment_action}
           multiline
         />
+
+        <div style={ownerGridStyle}>
+          <OwnerField
+            label="Containment Completed By"
+            value={record.containment_completed_by}
+          />
+          <OwnerField
+            label="Containment Completed At"
+            value={formatDateTime(record.containment_completed_at)}
+          />
+        </div>
       </SectionCard>
 
       <SectionCard
@@ -624,41 +627,107 @@ export default function NcmrMrbApprovalReviewPage() {
       </SectionCard>
 
       <SectionCard
-        title="4. Correction / Corrective Action Proposal"
-        subtitle="Submitted correction and corrective-action recommendation."
+        title="4. Correction"
+        subtitle="Submitted correction proposal."
         defaultOpen={true}
       >
         <OwnerField
-          label="Correction / Corrective Action Proposal"
+          label="Correction Proposal"
           value={record.correction_action_proposal}
+          multiline
         />
+      </SectionCard>
+
+      <SectionCard
+        title="5. Corrective Action"
+        subtitle="Submitted corrective-action proposal / justification."
+        defaultOpen={true}
+      >
         <OwnerField
-          label="Corrective Action Recommendation"
+          label="Corrective Action Proposal / Justification"
           value={record.corrective_action}
           multiline
         />
       </SectionCard>
 
       <SectionCard
-        title="5. Risk Assessment"
-        subtitle="Submitted severity and risk assessment."
+        title="6. Risk Assessment"
+        subtitle="Submitted Risk Determination and Final Effective Risk."
         defaultOpen={true}
       >
-        <OwnerField label="Severity" value={record.severity} />
         <OwnerField
-          label="Risk Assessment"
+          label="Risk Determination"
           value={
-            record.risk_assessment ||
-            record.risk_level ||
-            record.risk_rating ||
-            riskLevel
+            record?.risk_determination === "no_risk"
+              ? "No Risk"
+              : record?.risk_determination === "overall_residual_risk"
+                ? "Overall/Residual Risk"
+                : record?.risk_level === "no_risk"
+                  ? "No Risk"
+                  : "Overall/Residual Risk"
           }
+        />
+
+        {record?.risk_determination === "no_risk" || record?.risk_level === "no_risk" ? (
+          <OwnerField
+            label="No Risk Justification"
+            value={record?.no_risk_justification}
+            multiline
+          />
+        ) : (
+          <>
+            <div style={ownerGridStyle}>
+              <OwnerField
+                label="Risk Assessment Method"
+                value={record?.risk_assessment_method || "automatic"}
+              />
+              <OwnerField label="Severity" value={record?.severity} />
+              <OwnerField label="Occurrence" value={record?.occurrence_rating} />
+              <OwnerField label="Detection" value={record?.detection_rating} />
+              <OwnerField
+                label="Calculated / Manual Overall Risk"
+                value={formatRiskLabel(record?.risk_level)}
+              />
+              <OwnerField
+                label="Override Calculated Risk?"
+                value={record?.risk_override_enabled ? "Yes" : "No"}
+              />
+            </div>
+
+            {record?.risk_override_enabled ? (
+              <div style={ownerGridStyle}>
+                <OwnerField
+                  label="Override Risk Level"
+                  value={formatRiskLabel(record?.risk_override_level)}
+                />
+                <OwnerField
+                  label="Risk Override Justification"
+                  value={record?.risk_override_justification}
+                  multiline
+                />
+              </div>
+            ) : null}
+          </>
+        )}
+
+        <OwnerField
+          label="Risk Assessment Notes (Optional)"
+          value={record?.risk_assessment}
           multiline
         />
-      </SectionCard>
 
+        <div style={riskResultPanelStyle}>
+          <strong>Final Effective Risk:</strong>{" "}
+          {formatRiskLabel(getFinalEffectiveRiskForReview())}
+        </div>
+
+        <div style={riskSignalPanelStyle}>
+          <strong>CAPA Governance Signal:</strong>{" "}
+          {getRiskBasedCapaSignalForReview()}
+        </div>
+      </SectionCard>
       <SectionCard
-        title="6. Product Disposition"
+        title="7. Product Disposition"
         subtitle="Submitted overall and item-level disposition decisions."
         defaultOpen={true}
       >
@@ -718,47 +787,46 @@ export default function NcmrMrbApprovalReviewPage() {
       </SectionCard>
 
       <SectionCard
-        title="7. CAPA Governance"
+        title="8. CAPA Governance"
         subtitle={
           record?.linked_capa_id || record?.capa_id
             ? "Complete: linked CAPA exists."
             : record?.capa_not_required_justification
-              ? "Complete: CAPA not-required justification documented."
-              : "Evaluate whether CAPA is required based on recurrence, severity, risk, or governance rules."
+              ? "Complete: CAPA no-open justification documented."
+              : "Submitted CAPA governance decision."
         }
         defaultOpen={true}
       >
         {(() => {
-          const evaluation = evaluateCapaGovernanceForReview();
+          const evaluation = getCapaGovernanceReview();
 
           return (
             <>
               <div style={governancePanelStyle}>
                 <h3 style={{ marginTop: 0 }}>Governance Decision Support</h3>
                 <p style={governanceHelpStyle}>
-                  CAPA decisions are supported by the governance signal and
-                  documented quality judgment.
+                  CAPA decisions are supported by the governance signal and documented quality judgment.
                 </p>
 
                 <div style={governanceGridStyle}>
                   <div>
                     <strong>Governance Decision:</strong>{" "}
-                    <GovernanceBadge
-                      value={formatCapaEvaluationOutcomeForReview(
-                        record?.capa_evaluation_outcome
-                      )}
-                    />
+                    <GovernanceBadge value={evaluation.label} />
                   </div>
 
                   <div>
                     <strong>Rationale:</strong>{" "}
-                    {record?.capa_evaluation_rationale || evaluation.rationale}
+                    {evaluation.rationale}
                   </div>
 
                   <div>
                     <strong>CAPA Governance Signal:</strong>{" "}
-                    {evaluation.signals.join(" ") ||
-                      "No CAPA governance signal identified."}
+                    {evaluation.signal}
+                  </div>
+
+                  <div>
+                    <strong>Configuration Control:</strong>{" "}
+                    Controlled customer CAPA governance configuration applied.
                   </div>
                 </div>
               </div>
@@ -766,37 +834,20 @@ export default function NcmrMrbApprovalReviewPage() {
               {record?.linked_capa_id || record?.capa_id ? (
                 <div style={linkedRecordPanelStyle}>
                   <strong>Linked CAPA:</strong>{" "}
-                  <Link
-                    href={`/capa/${record?.linked_capa_id || record?.capa_id}`}
-                  >
+                  <Link href={`/capa/${record?.linked_capa_id || record?.capa_id}`}>
                     Open Linked CAPA
                   </Link>
                 </div>
               ) : (
-                <>
-                  <div style={disabledActionRowStyle}>
-                    <button type="button" disabled>
-                      Save CAPA Evaluation
-                    </button>
-                    <button type="button" disabled>
-                      Create Linked CAPA
-                    </button>
-                  </div>
-
-                  <OwnerField
-                    label="Risk-Based Justification if CAPA is Not Opened"
-                    value={
-                      record?.capa_not_required_justification ||
-                      record?.capa_decision_justification ||
-                      record?.capa_justification
-                    }
-                    multiline
-                  />
-
-                  <button type="button" disabled>
-                    Save No-CAPA Justification
-                  </button>
-                </>
+                <OwnerField
+                  label="Risk-Based Justification if CAPA is Not Opened"
+                  value={
+                    record?.capa_not_required_justification ||
+                    record?.capa_decision_justification ||
+                    record?.capa_justification
+                  }
+                  multiline
+                />
               )}
 
               {record?.capa_not_required_justification ? (
@@ -809,9 +860,8 @@ export default function NcmrMrbApprovalReviewPage() {
           );
         })()}
       </SectionCard>
-
       <SectionCard
-        title="8. Supplier / SCAR Governance"
+        title="9. Supplier / SCAR Governance"
         subtitle={
           record?.linked_scar_id
             ? "Complete: linked SCAR exists for supplier governance."
@@ -897,7 +947,7 @@ export default function NcmrMrbApprovalReviewPage() {
       </SectionCard>
 
       <SectionCard
-        title="9. MRB Approval"
+        title="10. MRB Approval"
         subtitle="Reviewer decision for the submitted MRB package."
         defaultOpen={true}
       >
@@ -1301,6 +1351,26 @@ const decisionNoticeStyle: React.CSSProperties = {
   padding: "10px",
   marginBottom: "14px",
   lineHeight: 1.5,
+};
+
+const riskResultPanelStyle: React.CSSProperties = {
+  border: "1px solid #d1d5db",
+  background: "#f8fafc",
+  borderRadius: "8px",
+  padding: "10px 12px",
+  marginTop: "12px",
+  marginBottom: "12px",
+  maxWidth: "850px",
+};
+
+const riskSignalPanelStyle: React.CSSProperties = {
+  border: "1px solid #bfdbfe",
+  background: "#eff6ff",
+  borderRadius: "8px",
+  padding: "12px",
+  marginTop: "12px",
+  marginBottom: "12px",
+  maxWidth: "850px",
 };
 
 const governancePanelStyle: React.CSSProperties = {
