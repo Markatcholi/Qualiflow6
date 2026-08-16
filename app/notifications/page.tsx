@@ -20,13 +20,10 @@ type NotificationRecord = {
   read_at: string | null;
 };
 
-type NotificationFilter = "unread" | "all" | "critical" | "workflow" | "training";
-
 export default function NotificationsPage() {
   const [notifications, setNotifications] = useState<NotificationRecord[]>([]);
   const [userEmail, setUserEmail] = useState("");
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<NotificationFilter>("unread");
 
   const fetchNotifications = async () => {
     setLoading(true);
@@ -41,33 +38,12 @@ export default function NotificationsPage() {
       return;
     }
 
-    let query = supabase
+    const { data, error } = await supabase
       .from("notifications")
       .select("*")
       .eq("user_email", email)
+      .eq("read_status", false)
       .order("created_at", { ascending: false });
-
-    if (filter === "unread") {
-      query = query.eq("read_status", false);
-    }
-
-    if (filter === "critical") {
-      query = query.eq("severity", "critical");
-    }
-
-    if (filter === "workflow") {
-      query = query.not(
-        "related_module",
-        "in",
-        '("training","system","general")'
-      );
-    }
-
-    if (filter === "training") {
-      query = query.eq("related_module", "training");
-    }
-
-    const { data, error } = await query;
 
     if (error) {
       alert(error.message);
@@ -81,7 +57,7 @@ export default function NotificationsPage() {
 
   useEffect(() => {
     fetchNotifications();
-  }, [filter]);
+  }, []);
 
   const markRead = async (id: string) => {
     const { error } = await supabase
@@ -136,57 +112,10 @@ export default function NotificationsPage() {
           </p>
         </div>
 
-        <div style={buttonRowStyle}>
-          <Link href="/settings/notifications" style={blueButtonStyle}>
-            Preferences
-          </Link>
-          <Link href="/dashboard/workflow" style={blueButtonStyle}>
-            Workflow Dashboard
-          </Link>
-          <Link href="/dashboard" style={darkButtonStyle}>
-            Dashboard
-          </Link>
-        </div>
-      </header>
-
-      <section style={filterBarStyle}>
-        <div style={buttonRowStyle}>
-          <button
-            onClick={() => setFilter("unread")}
-            style={filter === "unread" ? blueButtonStyle : secondaryButtonStyle}
-          >
-            Unread
-          </button>
-          <button
-            onClick={() => setFilter("critical")}
-            style={filter === "critical" ? blueButtonStyle : secondaryButtonStyle}
-          >
-            Critical
-          </button>
-          <button
-            onClick={() => setFilter("workflow")}
-            style={filter === "workflow" ? blueButtonStyle : secondaryButtonStyle}
-          >
-            Workflow
-          </button>
-          <button
-            onClick={() => setFilter("training")}
-            style={filter === "training" ? blueButtonStyle : secondaryButtonStyle}
-          >
-            Training
-          </button>
-          <button
-            onClick={() => setFilter("all")}
-            style={filter === "all" ? blueButtonStyle : secondaryButtonStyle}
-          >
-            All
-          </button>
-        </div>
-
         <button onClick={markAllRead} style={secondaryButtonStyle}>
           Mark All Read
         </button>
-      </section>
+      </header>
 
       <section style={{ display: "grid", gap: "12px" }}>
         {notifications.length === 0 ? (
@@ -403,14 +332,6 @@ const subtleText: React.CSSProperties = {
   color: "#6b7280",
 };
 
-const filterBarStyle: React.CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  gap: "12px",
-  flexWrap: "wrap",
-  marginBottom: "20px",
-};
 
 const cardStyle: React.CSSProperties = {
   background: "white",
@@ -439,15 +360,6 @@ const buttonRowStyle: React.CSSProperties = {
   flexWrap: "wrap",
 };
 
-const darkButtonStyle: React.CSSProperties = {
-  background: "#111827",
-  color: "white",
-  padding: "9px 12px",
-  borderRadius: "8px",
-  textDecoration: "none",
-  border: "none",
-  fontWeight: 700,
-};
 
 const blueButtonStyle: React.CSSProperties = {
   background: "#2563eb",
