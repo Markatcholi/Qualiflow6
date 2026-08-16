@@ -708,11 +708,11 @@ export default function NcmrDetailPage() {
   };
 
   const isPostMrbSectionLocked = () => {
-    return !!record?.is_locked || !isMrbApproved();
+    return !!record?.is_locked || !isMrbApproved() || !isCurrentNcmrOwner();
   };
 
   const isPreMrbSectionReadOnly = () => {
-    return !!record?.is_locked || !!record?.mrb_approved_by ||
+    return !isCurrentNcmrOwner() || !!record?.is_locked || !!record?.mrb_approved_by ||
       (hasPendingMrbApprovalTasks() && !hasRejectedMrbApprovalTask());
   };
 
@@ -4145,6 +4145,12 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
     normalizeApproverEmail(record?.owner || record?.owner_email) ===
     normalizeApproverEmail(userEmail);
 
+  const getDisplayedNcmrModuleVersion = () => {
+    const versionCode = String(record?.workflow_version_code || "").trim();
+    if (!versionCode || versionCode.toUpperCase() === "NCMR-LEGACY") return "NCMR-1.0";
+    return versionCode;
+  };
+
   const cancelNcmr = async () => {
     if (!record || ["closed", "cancelled"].includes(String(record?.status || "").toLowerCase())) {
       alert("This NCMR is already closed or cancelled.");
@@ -5176,7 +5182,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
   const isLocked =
     record?.is_locked === true ||
     (hasPendingMrbApprovalTasks() && !hasRejectedMrbApprovalTask());
-  const preMrbReadOnly = isLocked || !!record?.mrb_approved_by;
+  const preMrbReadOnly = !isCurrentNcmrOwner() || isLocked || !!record?.mrb_approved_by;
   const canEditInitiation = !preMrbReadOnly;
 
   const workflowProgressSteps = [
@@ -5367,7 +5373,8 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
 
   return (
     <main style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
-      <h1>NCMR Controlled Workflow</h1>\n      <div style={{ color: "#64748b", marginTop: "-10px", marginBottom: "14px", fontSize: "13px" }}>Module Version: {record.workflow_version_code || "Legacy / Unstamped"}</div>
+      <h1>NCMR Controlled Workflow</h1>
+      <div style={{ color: "#64748b", marginTop: "-10px", marginBottom: "14px", fontSize: "13px" }}>Module Version: {getDisplayedNcmrModuleVersion()}</div>
 
       {returnRevisionOpen ? (
         <div style={{ position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.45)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px" }}>
@@ -5415,10 +5422,6 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
             <strong>{record.status || "open"}</strong>
           </div>
           <div>
-            <div style={{ color: "#4b5563", fontSize: "13px" }}>NCMR Module Version</div>
-            <strong>{record.workflow_version_code || "Legacy / Unstamped"}</strong>
-          </div>
-          <div>
             <div style={{ color: "#4b5563", fontSize: "13px" }}>Severity</div>
             <strong>{record.severity || "not_assessed"}</strong>
           </div>
@@ -5431,8 +5434,8 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
             <strong>{record.mrb_approved_by ? "Approved" : "Pending"}</strong>
           </div>
           <div>
-            <div style={{ color: "#4b5563", fontSize: "13px" }}>Lock Status</div>
-            <strong>{record.is_locked ? "Locked" : "Editable"}</strong>
+            <div style={{ color: "#4b5563", fontSize: "13px" }}>Access Status</div>
+            <strong>{!isCurrentNcmrOwner() ? "Read Only" : isLocked || record.is_locked ? "Locked" : "Editable"}</strong>
           </div>
         </div>
       </div>
@@ -6335,10 +6338,8 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
               maxWidth: "850px",
             }}
           >
-            <strong>CAPA Governance Signal</strong>
-            <p style={{ marginTop: "8px", marginBottom: 0 }}>
-              {getCapaRecommendation().reason} CAPA decision is managed in the CAPA Governance section before MRB Approval.
-            </p>
+            <strong>CAPA Governance Signal:</strong>{" "}
+            {`${formatRiskLabel(getEffectiveRiskLevel()) || "Not Assessed"} Risk`}
           </div>
         ) : null}
 
