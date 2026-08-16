@@ -99,6 +99,7 @@ type Ncmr = {
   status: string | null;
   capa_required: boolean | null;
   created_at: string | null;
+  affected_items?: any[];
 };
 
 export default function NcmrPage() {
@@ -151,6 +152,7 @@ export default function NcmrPage() {
   const [defectCategoryOptions, setDefectCategoryOptions] = useState<MasterOption[]>([]);
   const [defectSubcategoryOptions, setDefectSubcategoryOptions] = useState<DefectSubcategoryOption[]>([]);
   const [supplierOptions, setSupplierOptions] = useState<SupplierOption[]>([]);
+  const [activeNcmrModuleVersion, setActiveNcmrModuleVersion] = useState("NCMR-1.0");
 
   const getDefectSubcategoriesForCategory = (categoryCode: string) =>
     defectSubcategoryOptions.filter(
@@ -293,6 +295,7 @@ export default function NcmrPage() {
 
       return {
         ...ncmr,
+        affected_items: affectedItemsForRecord,
         product_part_number:
           ncmr.product_part_number ||
           primaryAffectedItem?.product_part_number ||
@@ -963,6 +966,9 @@ export default function NcmrPage() {
   useEffect(() => {
     fetchMasterData();
     fetchData();
+    getActiveNcmrWorkflowVersion()
+      .then((version) => setActiveNcmrModuleVersion(version?.version_code || "NCMR-1.0"))
+      .catch(() => setActiveNcmrModuleVersion("NCMR-1.0"));
   }, []);
 
   const intakeDraftStorageKey = "qualisphere:ncmr-initiation-draft:v2";
@@ -1186,6 +1192,13 @@ export default function NcmrPage() {
       item.purchase_order_number,
       item.department,
       item.owner,
+      ...(item.affected_items || []).flatMap((affectedItem: any) => [
+        affectedItem.product_part_number,
+        affectedItem.part_description,
+        affectedItem.part_revision,
+        affectedItem.lot_number,
+        affectedItem.workorder_number,
+      ]),
     ]
       .filter(Boolean)
       .join(" ")
@@ -1239,9 +1252,9 @@ export default function NcmrPage() {
       >
         <div>
           <h1 style={{ marginBottom: "6px" }}>NCMR Initiation</h1>
-          <p style={{ color: "#4b5563", marginTop: 0 }}>
-            Create a lightweight NCMR intake record. Each new NCMR is bound to the active controlled NCMR module version; detailed investigation, risk assessment, MRB, and closure remain part of that same module release.
-          </p>
+          <div style={{ color: "#64748b", marginTop: 0, fontSize: "13px" }}>
+            Module Version: {activeNcmrModuleVersion}
+          </div>
         </div>
 
         <ActionToolbar>
@@ -2115,9 +2128,20 @@ export default function NcmrPage() {
                     fontSize: "14px",
                   }}
                 >
-                  <div><strong>Part:</strong> {item.product_part_number || "N/A"}</div>
-                  <div><strong>Lot:</strong> {item.lot_number || "N/A"}</div>
-                  <div><strong>Work Order:</strong> {item.workorder_number || "N/A"}</div>
+                  <div style={{ gridColumn: "1 / -1" }}>
+                    <strong>Affected Items:</strong>
+                    {(item.affected_items || []).length > 0 ? (
+                      <div style={{ marginTop: "6px", display: "grid", gap: "4px" }}>
+                        {(item.affected_items || []).map((affectedItem: any, affectedIndex: number) => (
+                          <div key={affectedItem.id || `${item.id}-affected-${affectedIndex}`}>
+                            {affectedIndex + 1}. Part: {affectedItem.product_part_number || "N/A"} • Lot: {affectedItem.lot_number || "N/A"} • Work Order: {affectedItem.workorder_number || "N/A"}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <span> Part: {item.product_part_number || "N/A"} • Lot: {item.lot_number || "N/A"} • Work Order: {item.workorder_number || "N/A"}</span>
+                    )}
+                  </div>
                   <div><strong>Source:</strong> {item.source_of_detection || "N/A"}</div>
                   <div><strong>Department:</strong> {item.department || "N/A"}</div>
                   <div><strong>Detected:</strong> {formatNcmrDate(item.date_detected)}</div>
@@ -2131,7 +2155,7 @@ export default function NcmrPage() {
                   <div><strong>PO:</strong> {item.purchase_order_number || "N/A"}</div>
                   <div><strong>Supplier Lot:</strong> {item.supplier_lot || "N/A"}</div>
                   <div><strong>Owner:</strong> {item.owner || "N/A"}</div>
-                  <div><strong>NCMR Module:</strong> {item.workflow_version_code || "Legacy / Unstamped"}</div>
+                  <div><strong>NCMR Module:</strong> {String(item.workflow_version_code || "").toUpperCase() === "NCMR-LEGACY" || !item.workflow_version_code ? "NCMR-1.0" : item.workflow_version_code}</div>
                 </div>
 
                 {(item.recurrence_reason || item.supplier_capa_reason) ? (
