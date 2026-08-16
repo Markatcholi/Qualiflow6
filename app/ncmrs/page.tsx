@@ -2155,7 +2155,7 @@ export default function NcmrPage() {
                   <div><strong>PO:</strong> {item.purchase_order_number || "N/A"}</div>
                   <div><strong>Supplier Lot:</strong> {item.supplier_lot || "N/A"}</div>
                   <div><strong>Owner:</strong> {item.owner || "N/A"}</div>
-                  <div><strong>NCMR Module:</strong> {String(item.workflow_version_code || "").toUpperCase() === "NCMR-LEGACY" || !item.workflow_version_code ? "NCMR-1.0" : item.workflow_version_code}</div>
+                  
                 </div>
 
                 {(item.recurrence_reason || item.supplier_capa_reason) ? (
