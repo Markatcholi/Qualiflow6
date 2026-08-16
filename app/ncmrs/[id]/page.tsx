@@ -718,13 +718,33 @@ export default function NcmrDetailPage() {
 
   const formatIsoDate = (value: any) => {
     if (!value) return "N/A";
+
+    const rawValue = String(value).trim();
+
+    // Supabase DATE columns return YYYY-MM-DD. Parse date-only values as
+    // calendar dates instead of UTC timestamps so the displayed day never
+    // shifts backward/forward because of the browser timezone.
+    const dateOnlyMatch = rawValue.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (dateOnlyMatch) {
+      const [, year, month, day] = dateOnlyMatch;
+      const monthLabel = new Date(
+        Number(year),
+        Number(month) - 1,
+        Number(day)
+      ).toLocaleString("en-US", { month: "short" });
+
+      return `${day}-${monthLabel}-${year}`;
+    }
+
     try {
-      const date = new Date(value);
-      if (Number.isNaN(date.getTime())) return String(value);
+      const date = new Date(rawValue);
+      if (Number.isNaN(date.getTime())) return rawValue;
       const day = String(date.getDate()).padStart(2, "0");
       const month = date.toLocaleString("en-US", { month: "short" });
       return `${day}-${month}-${date.getFullYear()}`;
-    } catch { return String(value); }
+    } catch {
+      return rawValue;
+    }
   };
 
   const formatIsoDateTime = (value: any) => {
