@@ -673,10 +673,7 @@ function formatBoolean(value: any) {
 function normalizeModuleVersionStatus(value: any) {
   const normalized = String(value || "").trim().toLowerCase();
 
-  if (normalized === "retired" || normalized === "superseded") {
-    return "Superseded";
-  }
-
+  if (normalized === "superseded") return "Superseded";
   if (normalized === "active") return "Active";
   if (normalized === "draft") return "Draft";
 
