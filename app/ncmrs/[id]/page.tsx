@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { supabase } from "../../../lib/supabaseClient";
 import {
   SectionCard,
@@ -12,6 +12,7 @@ import {
 export default function NcmrDetailPage() {
   const params = useParams<{ id: string }>();
   const id = params.id;
+  const router = useRouter();
 
   const [record, setRecord] = useState<any>(null);
   const [linkedCapa, setLinkedCapa] = useState<any>(null);
@@ -499,6 +500,13 @@ export default function NcmrDetailPage() {
       alert("NCMR record not found.");
       setRecord(null);
       setLoading(false);
+      return;
+    }
+
+    // Closed NCMRs never render through the live workflow.
+    // Their immutable closure snapshot is the authoritative NCMR Record.
+    if (String(data.status || "").trim().toLowerCase() === "closed") {
+      router.replace(`/ncmrs/${id}/record`);
       return;
     }
 
@@ -4165,12 +4173,6 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
     normalizeApproverEmail(record?.owner || record?.owner_email) ===
     normalizeApproverEmail(userEmail);
 
-  const getDisplayedNcmrModuleVersion = () => {
-    const versionCode = String(record?.workflow_version_code || "").trim();
-    if (!versionCode || versionCode.toUpperCase() === "NCMR-LEGACY") return "NCMR-1.0";
-    return versionCode;
-  };
-
   const cancelNcmr = async () => {
     if (!record || ["closed", "cancelled"].includes(String(record?.status || "").toLowerCase())) {
       alert("This NCMR is already closed or cancelled.");
@@ -5053,38 +5055,24 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
 
     if (!confirmed) return;
 
-    const now = new Date().toISOString();
     const meaning =
       "NCMR Closure: I certify that I am the logged-in user, I have completed final quality review of this NCMR, including investigation, Severity / Occurrence / Detection risk assessment, effective risk level, CAPA decision, disposition, MRB approval, correction implementation, evidence, and closure readiness.";
 
-    const { error } = await supabase
-      .from("ncmrs")
-      .update({
-        status: "closed",
-        review_status: "completed",
-        closed_at: now,
-        ncmr_closed_by: userEmail,
-        ncmr_signature_meaning: meaning,
-        ncmr_signature_email_entered: closureSignatureEmail,
-        investigation_completed_at: now,
-        is_locked: true,
-        locked_at: now,
-        locked_by: userEmail,
-      })
-      .eq("id", id);
+    // Closure, e-signature audit, record lock, and immutable snapshot are
+    // committed together by the database.
+    const { error } = await supabase.rpc("close_ncmr_with_snapshot", {
+      p_ncmr_id: id,
+      p_signature_meaning: meaning,
+      p_signature_email: closureSignatureEmail,
+    });
 
     if (error) {
       alert(error.message);
       return;
     }
 
-    await addAuditLog(
-      "ncmr_closed_signature",
-      `NCMR closed with e-signature. Meaning: ${meaning}`
-    );
-
     alert("NCMR closed");
-    fetchRecord();
+    router.replace(`/ncmrs/${id}/record`);
   };
 
   useEffect(() => {
@@ -5394,7 +5382,6 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
   return (
     <main style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
       <h1>NCMR Controlled Workflow</h1>
-      <div style={{ color: "#64748b", marginTop: "-10px", marginBottom: "14px", fontSize: "13px" }}>Module Version: {getDisplayedNcmrModuleVersion()}</div>
 
       {returnRevisionOpen ? (
         <div style={{ position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.45)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px" }}>
