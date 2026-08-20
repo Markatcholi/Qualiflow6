@@ -5659,6 +5659,26 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
           />
         </div>
 
+        <div style={{ marginBottom: "16px" }}>
+          <label><strong>QualiSphere Upgrade Test Field</strong></label>
+          <br />
+          <input
+            value="Upgrade structure validation"
+            readOnly
+            style={{
+              padding: "8px",
+              width: "100%",
+              maxWidth: "500px",
+              background: "#f8fafc",
+              border: "1px solid #cbd5e1",
+              borderRadius: "6px",
+            }}
+          />
+          <div style={{ marginTop: "6px", fontSize: "12px", color: "#64748b" }}>
+            Temporary field used only to validate frozen closed-record structure behavior.
+          </div>
+        </div>
+
         <div style={{ marginBottom: "12px" }}>
           <label>Owner</label>
           <br />
