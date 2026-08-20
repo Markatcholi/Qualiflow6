@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "../../../lib/supabaseClient";
+import ClosedNcmrFrozenMode from "./ClosedNcmrFrozenMode";
 import {
   SectionCard,
   StatusBadge,
@@ -503,10 +504,12 @@ export default function NcmrDetailPage() {
       return;
     }
 
-    // Closed NCMRs never render through the live workflow.
-    // Their immutable closure snapshot is the authoritative NCMR Record.
+    // Closed NCMRs remain on this same NCMR route.
+    // The original NCMR remains authoritative; the UI switches to the
+    // frozen structure renderer below instead of the live workflow.
     if (String(data.status || "").trim().toLowerCase() === "closed") {
-      router.replace(`/ncmrs/${id}/record`);
+      setRecord(data);
+      setLoading(false);
       return;
     }
 
@@ -5072,7 +5075,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
     }
 
     alert("NCMR closed");
-    router.replace(`/ncmrs/${id}/record`);
+    window.location.assign(`/ncmrs/${id}`);
   };
 
   useEffect(() => {
@@ -5185,6 +5188,10 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
 
   if (!record) {
     return <main style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>Record not found</main>;
+  }
+
+  if (String(record?.status || "").trim().toLowerCase() === "closed") {
+    return <ClosedNcmrFrozenMode ncmrId={id} />;
   }
 
   const isLocked =
