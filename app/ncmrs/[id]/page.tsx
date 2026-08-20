@@ -6,6 +6,12 @@ import { useParams, useRouter } from "next/navigation";
 import { supabase } from "../../../lib/supabaseClient";
 import ClosedNcmrFrozenMode from "./ClosedNcmrFrozenMode";
 import {
+  NCMR_FROZEN_LITERAL_VALUES,
+  NCMR_RECORD_STRUCTURE,
+  NCMR_UPGRADE_TEST_LABEL,
+  NCMR_UPGRADE_TEST_VALUE,
+} from "./ncmrRecordStructure";
+import {
   SectionCard,
   StatusBadge,
 } from "../../components/QualityWorkflowComponents";
@@ -5063,10 +5069,12 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
 
     // Closure, e-signature audit, record lock, and immutable snapshot are
     // committed together by the database.
-    const { error } = await supabase.rpc("close_ncmr_with_snapshot", {
+    const { error } = await supabase.rpc("close_ncmr_with_controlled_record", {
       p_ncmr_id: id,
       p_signature_meaning: meaning,
       p_signature_email: closureSignatureEmail,
+      p_record_structure: NCMR_RECORD_STRUCTURE,
+      p_frozen_values: NCMR_FROZEN_LITERAL_VALUES,
     });
 
     if (error) {
@@ -5660,10 +5668,10 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
         </div>
 
         <div style={{ marginBottom: "16px" }}>
-          <label><strong>QualiSphere Upgrade Test Field</strong></label>
+          <label><strong>{NCMR_UPGRADE_TEST_LABEL}</strong></label>
           <br />
           <input
-            value="Upgrade structure validation"
+            value={NCMR_UPGRADE_TEST_VALUE}
             readOnly
             style={{
               padding: "8px",
