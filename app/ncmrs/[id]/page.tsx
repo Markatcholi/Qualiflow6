@@ -6,12 +6,6 @@ import { useParams, useRouter } from "next/navigation";
 import { supabase } from "../../../lib/supabaseClient";
 import ClosedNcmrFrozenMode from "./ClosedNcmrFrozenMode";
 import {
-  NCMR_FROZEN_LITERAL_VALUES,
-  NCMR_RECORD_STRUCTURE,
-  NCMR_UPGRADE_TEST_LABEL,
-  NCMR_UPGRADE_TEST_VALUE,
-} from "./ncmrRecordStructure";
-import {
   SectionCard,
   StatusBadge,
 } from "../../components/QualityWorkflowComponents";
@@ -5069,12 +5063,10 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
 
     // Closure, e-signature audit, record lock, and immutable snapshot are
     // committed together by the database.
-    const { error } = await supabase.rpc("close_ncmr_with_controlled_record", {
+    const { error } = await supabase.rpc("close_ncmr_with_snapshot", {
       p_ncmr_id: id,
       p_signature_meaning: meaning,
       p_signature_email: closureSignatureEmail,
-      p_record_structure: NCMR_RECORD_STRUCTURE,
-      p_frozen_values: NCMR_FROZEN_LITERAL_VALUES,
     });
 
     if (error) {
@@ -5483,6 +5475,26 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
         {record.is_locked ? <StatusBadge status="Locked" /> : <StatusBadge status="Editable" />}
       </div>
 
+      <div style={{ marginBottom: "16px" }}>
+        <button
+          onClick={() => window.open(`/ncmrs/${id}/report`, "_blank")}
+          style={{
+            padding: "10px 14px",
+            background: "#2563eb",
+            color: "white",
+            border: "none",
+            borderRadius: "6px",
+            cursor: "pointer",
+            fontWeight: "600",
+          }}
+        >
+          NCMR Report
+        </button>
+      </div>
+
+      <p><strong>Logged-in:</strong> {userEmail || "none"}</p>
+      <p><strong>Role:</strong> {userRole || "none"}</p>
+
       {/* Sticky NCMR Action Bar */}
       <div
         style={{
@@ -5665,26 +5677,6 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
             rows={4}
             style={{ width: "100%", maxWidth: "900px", padding: "8px" }}
           />
-        </div>
-
-        <div style={{ marginBottom: "16px" }}>
-          <label><strong>{NCMR_UPGRADE_TEST_LABEL}</strong></label>
-          <br />
-          <input
-            value={NCMR_UPGRADE_TEST_VALUE}
-            readOnly
-            style={{
-              padding: "8px",
-              width: "100%",
-              maxWidth: "500px",
-              background: "#f8fafc",
-              border: "1px solid #cbd5e1",
-              borderRadius: "6px",
-            }}
-          />
-          <div style={{ marginTop: "6px", fontSize: "12px", color: "#64748b" }}>
-            Temporary field used only to validate frozen closed-record structure behavior.
-          </div>
         </div>
 
         <div style={{ marginBottom: "12px" }}>
