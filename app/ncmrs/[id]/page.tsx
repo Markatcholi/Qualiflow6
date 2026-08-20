@@ -5454,7 +5454,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
         </div>
       </div>
 
-      {/* Phase 3 Executive Workflow Summary */}
+      {/* NCMR Administrative Actions */}
       {!["closed", "cancelled"].includes(String(record?.status || "").toLowerCase()) ? (
         <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "14px" }}>
           {(isCurrentNcmrOwner() || isElevatedNcmrAuthority()) ? (
@@ -5465,91 +5465,6 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
           ) : null}
         </div>
       ) : null}
-
-      <SectionCard
-        title="Executive Workflow Summary"
-        subtitle="High-level NCMR health, aging, SLA, approval, and closure readiness indicators."
-        defaultOpen={true}
-      >
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-            gap: "12px",
-          }}
-        >
-          {metricCard("Record Age", `${recordAgeDays} day(s)`, "Days since NCMR creation")}
-          {metricCard("Workflow Progress", `${workflowPercentComplete}%`, `${completedWorkflowSteps} of ${workflowProgressSteps.length} sections complete`)}
-          {metricCard("Disposition SLA", dispositionSlaStatus, `Target: MRB disposition ≤ ${dispositionTargetDays} days`)}
-          {metricCard("Closure SLA", closureSlaStatus, `Target: closure ≤ ${closureTargetDays} days`)}
-          {metricCard("Approval Tasks", `${approvalTasks.filter((task) => task.status === "approved").length}/${approvalTasks.length}`, "Approved / total MRB approval tasks")}
-          {metricCard("Timeline Events", auditTimeline.length, "Audit log activity count")}
-        </div>
-
-        <div
-          style={{
-            marginTop: "14px",
-            border: "1px solid #cbd5e1",
-            borderRadius: "8px",
-            padding: "12px",
-            background: "white",
-          }}
-        >
-          <strong>Executive Readiness</strong>
-          <div style={{ marginTop: "8px", display: "grid", gap: "6px" }}>
-            <div>{isRiskAssessmentComplete ? "✓" : "○"} Risk assessment complete</div>
-            <div>{isMrbComplete ? "✓" : "○"} MRB approval complete</div>
-            <div>{isDispositionImplementationComplete ? "✓" : "○"} Disposition implementation complete</div>
-            <div>{isImplementationComplete ? "✓" : "○"} Correction / Corrective Action implementation complete</div>
-            <div>{isClosureComplete ? "✓" : "○"} NCMR closure complete</div>
-          </div>
-        </div>
-
-        <div
-          style={{
-            marginTop: "14px",
-            border: "1px solid #cbd5e1",
-            borderRadius: "8px",
-            padding: "12px",
-            background: "white",
-          }}
-        >
-          <strong>Quantity Reconciliation</strong>
-          <div style={{ marginTop: "8px", display: "grid", gap: "8px" }}>
-            {affectedItems.length === 0 ? (
-              <div style={{ color: "#991b1b" }}>No affected material items have been entered.</div>
-            ) : (
-              affectedItems.map((item, index) => {
-                const summary = getAffectedItemReconciliationSummary(item);
-                return (
-                  <div
-                    key={item.id || index}
-                    style={{
-                      border: summary.reconciled ? "1px solid #86efac" : "1px solid #fca5a5",
-                      background: summary.reconciled ? "#f0fdf4" : "#fef2f2",
-                      color: summary.reconciled ? "#166534" : "#991b1b",
-                      borderRadius: "8px",
-                      padding: "10px",
-                    }}
-                  >
-                    <strong>{summary.reconciled ? "✓" : "⚠"} Affected Item {index + 1}</strong>
-                    <div style={{ fontSize: "13px", marginTop: "4px" }}>
-                      Affected: {summary.affectedQty} | Quarantined: {summary.quarantinedQty} | Accepted: {summary.acceptedQty} | Rejected: {summary.rejectedQty} | Remaining: {summary.remainingQty}
-                    </div>
-                    {!summary.reconciled ? (
-                      <ul style={{ margin: "6px 0 0 18px", padding: 0 }}>
-                        {summary.errors.map((error) => (
-                          <li key={error}>{error}</li>
-                        ))}
-                      </ul>
-                    ) : null}
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </div>
-      </SectionCard>
 
       {/* NCMR StatusBadge Row */}
       <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "16px" }}>
