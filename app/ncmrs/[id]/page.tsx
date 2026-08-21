@@ -5475,26 +5475,6 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
         {record.is_locked ? <StatusBadge status="Locked" /> : <StatusBadge status="Editable" />}
       </div>
 
-      <div style={{ marginBottom: "16px" }}>
-        <button
-          onClick={() => window.open(`/ncmrs/${id}/report`, "_blank")}
-          style={{
-            padding: "10px 14px",
-            background: "#2563eb",
-            color: "white",
-            border: "none",
-            borderRadius: "6px",
-            cursor: "pointer",
-            fontWeight: "600",
-          }}
-        >
-          NCMR Report
-        </button>
-      </div>
-
-      <p><strong>Logged-in:</strong> {userEmail || "none"}</p>
-      <p><strong>Role:</strong> {userRole || "none"}</p>
-
       {/* Sticky NCMR Action Bar */}
       <div
         style={{
