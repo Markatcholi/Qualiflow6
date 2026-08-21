@@ -422,14 +422,49 @@ function formatByType(value: any, type?: string) {
 
 function formatDate(value: any) {
   if (!hasValue(value)) return "";
-  const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleDateString();
+
+  const rawValue = String(value).trim();
+
+  // Date-only database values must be treated as calendar dates so browser
+  // timezone conversion cannot shift the day backward or forward.
+  const dateOnlyMatch = rawValue.match(/^(\\d{4})-(\\d{2})-(\\d{2})$/);
+  if (dateOnlyMatch) {
+    const [, year, month, day] = dateOnlyMatch;
+    const monthLabel = new Date(
+      Number(year),
+      Number(month) - 1,
+      Number(day)
+    ).toLocaleString("en-US", { month: "short" });
+
+    return `${day}-${monthLabel}-${year}`;
+  }
+
+  const d = new Date(rawValue);
+  if (Number.isNaN(d.getTime())) return rawValue;
+
+  const day = String(d.getDate()).padStart(2, "0");
+  const month = d.toLocaleString("en-US", { month: "short" });
+  const year = d.getFullYear();
+
+  return `${day}-${month}-${year}`;
 }
 
 function formatDateTime(value: any) {
   if (!hasValue(value)) return "";
-  const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleString();
+
+  const rawValue = String(value).trim();
+  const d = new Date(rawValue);
+  if (Number.isNaN(d.getTime())) return rawValue;
+
+  const datePart = formatDate(rawValue);
+  const timePart = d.toLocaleTimeString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true,
+  });
+
+  return `${datePart} ${timePart}`;
 }
 
 const page: React.CSSProperties = {
