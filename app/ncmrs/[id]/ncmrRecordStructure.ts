@@ -1,6 +1,3 @@
-export const NCMR_UPGRADE_TEST_LABEL = "QualiSphere Upgrade Test Field";
-export const NCMR_UPGRADE_TEST_VALUE = "Upgrade structure validation";
-
 export const NCMR_RECORD_STRUCTURE = {
   module: "NCMR",
   sections: [
@@ -9,11 +6,6 @@ export const NCMR_RECORD_STRUCTURE = {
       title: "1. Initiation",
       elements: [
         { type: "field", source: "record", key: "issue_description", label: "Issue Description" },
-        {
-          type: "frozen_value",
-          key: "upgrade_structure_validation",
-          label: NCMR_UPGRADE_TEST_LABEL,
-        },
         { type: "field", source: "record", key: "source_of_detection", label: "Source of Detection", format: "label" },
         { type: "field", source: "record", key: "department", label: "Department", format: "label" },
         { type: "field", source: "record", key: "date_detected", label: "Date Detected", format: "date" },
@@ -181,6 +173,4 @@ export const NCMR_RECORD_STRUCTURE = {
   ],
 } as const;
 
-export const NCMR_FROZEN_LITERAL_VALUES = {
-  upgrade_structure_validation: NCMR_UPGRADE_TEST_VALUE,
-};
+export const NCMR_FROZEN_LITERAL_VALUES = {};
