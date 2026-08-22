@@ -106,12 +106,13 @@ export const NCMR_RECORD_STRUCTURE = {
     },
     {
       key: "mrb",
-      title: "10. MRB Approval",
+      title: "10. MRB Approval History",
       elements: [
-        { type: "field", source: "record", key: "mrb_approved_by", label: "MRB Approved By" },
-        { type: "field", source: "record", key: "mrb_approved_at", label: "MRB Approved At", format: "datetime" },
-        { type: "field", source: "record", key: "mrb_signature_email_entered", label: "Signature Email Entered" },
-        { type: "field", source: "record", key: "mrb_signature_meaning", label: "Signature Meaning" },
+        {
+          type: "mrb_history",
+          source: "audit_logs",
+          label: "MRB Approval Cycle History",
+        },
       ],
     },
     {
@@ -160,7 +161,6 @@ export const NCMR_RECORD_STRUCTURE = {
         { type: "field", source: "record", key: "status", label: "Closure Status", format: "label" },
         { type: "field", source: "record", key: "ncmr_closed_by", fallback_key: "closed_by", label: "Closed By" },
         { type: "field", source: "record", key: "closed_at", fallback_key: "closure_date", label: "Closed At", format: "datetime" },
-        { type: "field", source: "record", key: "ncmr_signature_meaning", label: "Signature Meaning" },
       ],
     },
     {
