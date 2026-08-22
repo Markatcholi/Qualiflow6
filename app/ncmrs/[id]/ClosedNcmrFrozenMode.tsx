@@ -141,7 +141,7 @@ export default function ClosedNcmrFrozenMode({ ncmrId }: Props) {
       {sections.map((section: any, sectionIndex: number) => (
         <section key={section.key || sectionIndex} style={sectionCard}>
           <h2 style={{ marginTop: 0 }}>
-            {section.key === "mrb" ? "10. MRB Approval History" : section.title || section.key}
+            {section.key === "mrb" ? "10. MRB Approval" : section.title || section.key}
           </h2>
 
           {section.key === "mrb" ? (
@@ -177,7 +177,10 @@ function FrozenElement({
   tasks,
   audit,
 }: any) {
-  const label = element.label || element.key || element.view || "Record Data";
+  const label =
+    element.key === "capa_not_required_justification"
+      ? "Risk-Based Justification if CAPA Is Not Opened"
+      : element.label || element.key || element.view || "Record Data";
 
   if (element.type === "field") {
     // Internal e-signature meaning remains stored for audit/system purposes,
@@ -460,77 +463,40 @@ function MrbApprovalHistory({ rows, record }: { rows: any[]; record: any }) {
         new Date(b?.created_at || 0).getTime()
     );
 
-  let cycle = 1;
-  const history = relevant.map((row: any) => {
-    const action = normalizeAuditActionCode(row?.action);
-    const item = { ...row, cycle };
-    if (action.includes("mrb approval cycle returned")) cycle += 1;
-    return item;
-  });
-
-  const finalApprovalEvent = [...history]
+  const finalApprovalEvent = [...relevant]
     .reverse()
     .find((row: any) =>
       normalizeAuditActionCode(row?.action).includes("mrb approval task approved")
     );
 
+  const finalApprovedBy =
+    finalApprovalEvent?.user_email ||
+    firstUniqueEmail(record?.mrb_approved_by);
+
+  const finalApprovedAt =
+    finalApprovalEvent?.created_at ||
+    record?.mrb_approved_at;
+
   return (
     <div style={wide}>
-      {history.length ? (
-        <>
-          <h3 style={{ marginTop: 0 }}>MRB Approval Cycle History</h3>
-          <div style={{ overflowX: "auto" }}>
-            <table style={table}>
-              <thead>
-                <tr>
-                  <th style={th}>Cycle</th>
-                  <th style={th}>Event</th>
-                  <th style={th}>User</th>
-                  <th style={th}>Date / Time</th>
-                  <th style={th}>Details / Justification</th>
-                </tr>
-              </thead>
-              <tbody>
-                {history.map((row: any, index: number) => (
-                  <tr key={row.id || index}>
-                    <td style={td}>{row.cycle}</td>
-                    <td style={td}>{formatAuditAction(row.action)}</td>
-                    <td style={td}>{display(row.user_email)}</td>
-                    <td style={{ ...td, whiteSpace: "nowrap" }}>
-                      {formatDateTime(row.created_at)}
-                    </td>
-                    <td style={td}>{display(row.details)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </>
-      ) : (
-        <div style={muted}>No MRB approval-cycle history recorded.</div>
-      )}
-
-      <div style={{ ...nested, marginTop: 12 }}>
-        <div style={taskGrid}>
-          <Mini
-            label="Final MRB Status"
-            value={record?.mrb_approved_by ? "Approved" : "Not recorded"}
-          />
-          <Mini
-            label="Final Approved By"
-            value={finalApprovalEvent?.user_email || record?.mrb_approved_by}
-          />
-          <Mini
-            label="Final Approved At"
-            value={formatDateTime(
-              finalApprovalEvent?.created_at || record?.mrb_approved_at
-            )}
-            noWrap
-          />
-        </div>
+      <div style={taskGrid}>
+        <Mini label="Final MRB Status" value={record?.mrb_approved_by ? "Approved" : "Not recorded"} />
+        <Mini label="Final Approved By" value={finalApprovedBy} />
+        <Mini label="Final Approved At" value={formatDateTime(finalApprovedAt)} noWrap />
       </div>
     </div>
   );
+}
+
+function firstUniqueEmail(value: any) {
+  if (!hasValue(value)) return "";
+
+  const candidates = String(value)
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  return candidates.length > 0 ? candidates[0] : String(value);
 }
 
 function normalizeAuditActionCode(value: any) {
