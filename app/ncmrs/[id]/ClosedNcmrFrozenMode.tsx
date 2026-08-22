@@ -161,6 +161,33 @@ export default function ClosedNcmrFrozenMode({ ncmrId }: Props) {
                   />
                 )
               )}
+
+              {section.key === "initiation" &&
+              !sectionHasElement(section, "initiation_attachments") &&
+              Array.isArray(record?.initiation_attachments) &&
+              record.initiation_attachments.length > 0 ? (
+                <div style={wide}>
+                  <h3>Initiation Supporting Attachments</h3>
+                  <AttachmentList attachments={record.initiation_attachments} />
+                </div>
+              ) : null}
+
+              {section.key === "investigation" &&
+              !sectionHasElement(section, "investigation_attachments") &&
+              Array.isArray(record?.investigation_attachments) &&
+              record.investigation_attachments.length > 0 ? (
+                <div style={wide}>
+                  <h3>Investigation Supporting Attachments</h3>
+                  <AttachmentList attachments={record.investigation_attachments} />
+                </div>
+              ) : null}
+
+              {section.key === "investigation" &&
+              !sectionHasType(section, "collaboration_link") ? (
+                <div style={wide}>
+                  <CollaborationHistoryLink record={record} audit={audit} />
+                </div>
+              ) : null}
             </div>
           )}
         </section>
@@ -180,7 +207,9 @@ function FrozenElement({
   const label =
     element.key === "capa_not_required_justification"
       ? "Risk-Based Justification if CAPA Is Not Opened"
-      : element.label || element.key || element.view || "Record Data";
+      : element.key === "scar_justification"
+        ? "Risk-Based Justification if SCAR Is Not Initiated"
+        : element.label || element.key || element.view || "Record Data";
 
   if (element.type === "field") {
     // Internal e-signature meaning remains stored for audit/system purposes,
@@ -191,6 +220,17 @@ function FrozenElement({
     if (!hasValue(value) && element.fallback_key) {
       value = record?.[element.fallback_key];
     }
+    if (element.key === "evidence_url" && hasValue(value)) {
+      return (
+        <div style={{ ...fieldCard, ...(element.wide !== false ? wide : {}) }}>
+          <div style={fieldLabel}>{label}</div>
+          <a href={String(value)} target="_blank" rel="noreferrer">
+            Open Evidence
+          </a>
+        </div>
+      );
+    }
+
     return (
       <Field
         label={label}
@@ -212,6 +252,14 @@ function FrozenElement({
         value={frozenValue}
         wide={element.wide !== false}
       />
+    );
+  }
+
+  if (element.type === "collaboration_link") {
+    return (
+      <div style={wide}>
+        <CollaborationHistoryLink record={record} audit={audit} />
+      </div>
     );
   }
 
@@ -272,6 +320,47 @@ function FrozenElement({
   }
 
   return null;
+}
+
+function sectionHasElement(section: any, key: string) {
+  return (Array.isArray(section?.elements) ? section.elements : []).some(
+    (element: any) => element?.key === key
+  );
+}
+
+function sectionHasType(section: any, type: string) {
+  return (Array.isArray(section?.elements) ? section.elements : []).some(
+    (element: any) => element?.type === type
+  );
+}
+
+function hasCollaborationHistory(audit: any[]) {
+  return (audit || []).some((row: any) =>
+    normalizeAuditActionCode(row?.action).includes("collaboration")
+  );
+}
+
+function CollaborationHistoryLink({ record, audit }: { record: any; audit: any[] }) {
+  if (!record?.id || !hasCollaborationHistory(audit)) return null;
+
+  return (
+    <div style={nested}>
+      <div style={{ fontWeight: 700, marginBottom: 8 }}>
+        Collaboration History
+      </div>
+      <a
+        href={`/ncmrs/${record.id}/collaboration`}
+        target="_blank"
+        rel="noreferrer"
+        style={compactLinkButton}
+      >
+        Open Collaboration History
+      </a>
+      <div style={{ color: "#64748b", fontSize: 12, marginTop: 8 }}>
+        Opens the preserved collaboration thread, comments, participants, and supporting attachments.
+      </div>
+    </div>
+  );
 }
 
 function AttachmentList({ attachments }: { attachments: any[] }) {
@@ -385,14 +474,34 @@ function TaskTable({ tasks, detailed }: { tasks: any[]; detailed: boolean }) {
             <Mini label="Status" value={formatLabel(task.status)} />
             <Mini label="Due Date" value={formatDate(task.due_date)} noWrap />
             <Mini label="Completed By" value={task.completed_by_email || task.completed_by || task.approved_by} />
-            <Mini label="Completed At" value={formatDateTime(task.completed_at || task.approved_at)} noWrap />
+            <Mini label="Completed At" value={formatDateTime(task.completed_at || task.approved_at)} />
             {detailed ? <Mini label="Instructions" value={task.task_instructions || task.comments} /> : null}
             {detailed ? <Mini label="Completion Comment" value={task.completion_comment || task.completion_notes} /> : null}
             {detailed ? <Mini label="Verification Status" value={formatLabel(task.implementation_verification_status)} /> : null}
             {detailed ? <Mini label="Verification Comment" value={task.implementation_verification_comment} /> : null}
             {detailed ? <Mini label="Verified By" value={task.implementation_verified_by} /> : null}
-            {detailed ? <Mini label="Verified At" value={formatDateTime(task.implementation_verified_at)} noWrap /> : null}
+            {detailed ? <Mini label="Verified At" value={formatDateTime(task.implementation_verified_at)} /> : null}
           </div>
+
+          {Array.isArray(task?.assignment_attachments) &&
+          task.assignment_attachments.length > 0 ? (
+            <div style={{ marginTop: 12 }}>
+              <strong>Assignment Attachments</strong>
+              <div style={{ marginTop: 8 }}>
+                <AttachmentList attachments={task.assignment_attachments} />
+              </div>
+            </div>
+          ) : null}
+
+          {Array.isArray(task?.task_attachments) &&
+          task.task_attachments.length > 0 ? (
+            <div style={{ marginTop: 12 }}>
+              <strong>Completion Evidence</strong>
+              <div style={{ marginTop: 8 }}>
+                <AttachmentList attachments={task.task_attachments} />
+              </div>
+            </div>
+          ) : null}
         </div>
       ))}
     </div>
@@ -547,10 +656,10 @@ function formatScarGovernanceSignal(value: any) {
     if (explicit) return explicit[1].toLowerCase() === "yes";
 
     const prefix = compact.match(
-      new RegExp(`([✓✔☑]|\\b(?:x|no)\\b)\\s*${escaped}`, "i")
+      new RegExp(`([✓✔☑✗✘×]|\\b(?:x|no)\\b)\\s*${escaped}`, "i")
     );
     if (prefix) {
-      return !/^(x|no)$/i.test(prefix[1]);
+      return !/^(x|no|✗|✘|×)$/i.test(prefix[1]);
     }
 
     return null;
@@ -752,6 +861,33 @@ const nested: React.CSSProperties = {
   border: "1px solid #e2e8f0",
   borderRadius: 8,
 };
+const fieldCard: React.CSSProperties = {
+  border: "1px solid #dbe3ee",
+  background: "#f8fafc",
+  borderRadius: 8,
+  padding: "12px 14px",
+};
+
+const fieldLabel: React.CSSProperties = {
+  color: "#64748b",
+  fontSize: 12,
+  fontWeight: 800,
+  textTransform: "uppercase",
+  marginBottom: 6,
+};
+
+const compactLinkButton: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  padding: "7px 11px",
+  borderRadius: 6,
+  background: "#2563eb",
+  color: "white",
+  textDecoration: "none",
+  fontWeight: 700,
+  fontSize: 14,
+};
+
 const taskGrid: React.CSSProperties = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))",
