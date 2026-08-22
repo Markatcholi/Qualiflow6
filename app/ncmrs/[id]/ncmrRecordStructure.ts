@@ -12,6 +12,12 @@ export const NCMR_RECORD_STRUCTURE = {
         { type: "field", source: "record", key: "site_location", label: "Site / Location" },
         { type: "field", source: "record", key: "immediate_correction", label: "Immediate Correction" },
         {
+          type: "attachment_list",
+          source: "record",
+          key: "initiation_attachments",
+          label: "Initiation Supporting Attachments",
+        },
+        {
           type: "table",
           source: "affected_items",
           view: "affected_materials",
@@ -91,7 +97,7 @@ export const NCMR_RECORD_STRUCTURE = {
         { type: "frozen_value", key: "capa_governance_decision", label: "Governance Decision" },
         { type: "frozen_value", key: "capa_governance_rationale", label: "Rationale" },
         { type: "frozen_value", key: "capa_governance_signal", label: "CAPA Governance Signal" },
-        { type: "field", source: "record", key: "capa_not_required_justification", label: "Saved No-CAPA Justification" },
+        { type: "field", source: "record", key: "capa_not_required_justification", label: "Risk-Based Justification if CAPA Is Not Opened" },
       ],
     },
     {
