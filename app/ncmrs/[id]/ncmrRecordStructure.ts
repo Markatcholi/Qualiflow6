@@ -46,6 +46,16 @@ export const NCMR_RECORD_STRUCTURE = {
         { type: "field", source: "record", key: "investigation_summary", label: "Investigation Summary" },
         { type: "field", source: "record", key: "root_cause_category", label: "Root Cause Category", format: "label" },
         { type: "field", source: "record", key: "root_cause", label: "Root Cause Summary" },
+        {
+          type: "attachment_list",
+          source: "record",
+          key: "investigation_attachments",
+          label: "Investigation Supporting Attachments",
+        },
+        {
+          type: "collaboration_link",
+          label: "Collaboration History",
+        },
       ],
     },
     {
@@ -107,7 +117,7 @@ export const NCMR_RECORD_STRUCTURE = {
         { type: "frozen_value", key: "scar_governance_decision", label: "Governance Decision" },
         { type: "frozen_value", key: "scar_governance_rationale", label: "Rationale" },
         { type: "frozen_value", key: "scar_governance_signal", label: "SCAR Governance Signal" },
-        { type: "field", source: "record", key: "scar_justification", label: "Saved SCAR Justification" },
+        { type: "field", source: "record", key: "scar_justification", label: "Risk-Based Justification if SCAR Is Not Initiated" },
       ],
     },
     {
