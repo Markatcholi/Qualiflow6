@@ -1180,6 +1180,19 @@ export default function NcmrDetailPage() {
       return;
     }
 
+    try {
+      await persistEvidenceSection({
+        nextEvidenceUrl: evidenceUrl,
+        nextEvidenceNotes: evidenceNotes,
+        silent: true,
+      });
+    } catch (error: any) {
+      return alert(
+        error?.message ||
+          "Unable to save the Evidence section before NCMR closure."
+      );
+    }
+
     const confirmed = window.confirm(
       "Remove this affected material row? This should only be done before MRB approval."
     );
@@ -3174,8 +3187,8 @@ This approval task was created by the MRB approval task issue recovery action. E
       String(record?.scar_reason || "").toLowerCase().includes("recurr");
 
     const triggers = [
-      `${supplierPartRecorded ? "✓" : "✗"} Supplier Part Recorded`,
-      `${supplierRecurrence ? "✓" : "✗"} Supplier Recurrence Detected`,
+      `Supplier Part Recorded: ${supplierPartRecorded ? "Yes" : "No"}`,
+      `Supplier Recurrence Detected: ${supplierRecurrence ? "Yes" : "No"}`,
     ];
 
     if (supplierPartRecorded && supplierRecurrence) {
@@ -3710,6 +3723,36 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
     finally { setUploadingInvestigationAttachment(false); }
   };
 
+  const persistEvidenceSection = async ({
+    nextEvidenceUrl = evidenceUrl,
+    nextEvidenceNotes = evidenceNotes,
+    silent = false,
+  }: {
+    nextEvidenceUrl?: string;
+    nextEvidenceNotes?: string;
+    silent?: boolean;
+  } = {}) => {
+    const { error } = await supabase
+      .from("ncmrs")
+      .update({
+        evidence_url: nextEvidenceUrl || null,
+        evidence_notes: nextEvidenceNotes || null,
+      })
+      .eq("id", id);
+
+    if (error) {
+      if (!silent) alert(error.message);
+      throw new Error(error.message);
+    }
+
+    if (!silent) {
+      await addAuditLog(
+        "evidence_section_saved",
+        "NCMR Evidence section saved."
+      );
+    }
+  };
+
   const uploadEvidence = async () => {
     if (record?.is_locked) {
       alert("This record is locked after electronic signature and cannot be edited.");
@@ -3728,24 +3771,47 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
 
     setUploading(true);
 
-    const fileExt = selectedFile.name.split(".").pop();
-    const filePath = `ncmrs/${id}/${Date.now()}.${fileExt}`;
+    try {
+      const fileExt = selectedFile.name.split(".").pop();
+      const safeName = selectedFile.name
+        .trim()
+        .replace(/[^a-zA-Z0-9._-]+/g, "_")
+        .replace(/_+/g, "_");
+      const filePath = `ncmrs/${id}/evidence/${Date.now()}_${safeName || `evidence.${fileExt || "bin"}`}`;
 
-    const { error: uploadError } = await supabase.storage
-      .from("evidence")
-      .upload(filePath, selectedFile, { upsert: false });
+      const { error: uploadError } = await supabase.storage
+        .from("evidence")
+        .upload(filePath, selectedFile, {
+          upsert: false,
+          contentType: selectedFile.type || undefined,
+        });
 
-    if (uploadError) {
-      alert(uploadError.message);
+      if (uploadError) throw new Error(uploadError.message);
+
+      const { data } = supabase.storage.from("evidence").getPublicUrl(filePath);
+      const nextUrl = data.publicUrl;
+
+      await persistEvidenceSection({
+        nextEvidenceUrl: nextUrl,
+        nextEvidenceNotes: evidenceNotes,
+        silent: true,
+      });
+
+      setEvidenceUrl(nextUrl);
+      setSelectedFile(null);
+
+      await addAuditLog(
+        "evidence_attachment_added",
+        `Evidence attachment added: ${selectedFile.name}.`
+      );
+
+      alert("Evidence uploaded and saved to the NCMR record.");
+      await fetchRecord();
+    } catch (error: any) {
+      alert(error?.message || "Unable to upload evidence.");
+    } finally {
       setUploading(false);
-      return;
     }
-
-    const { data } = supabase.storage.from("evidence").getPublicUrl(filePath);
-
-    setEvidenceUrl(data.publicUrl);
-    setUploading(false);
-    alert("Evidence uploaded. Click Save Workflow to store it.");
   };
 
   const markContainmentComplete = async () => {
@@ -6570,11 +6636,11 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
                   }}
                 >
                   <strong>SCAR Governance Signal</strong>
-                  <ul style={{ marginBottom: 0 }}>
+                  <div style={{ display: "grid", gap: "4px", marginTop: "8px" }}>
                     {scarEvaluation.triggers.map((trigger: string, index: number) => (
-                      <li key={index}>{trigger}</li>
+                      <div key={index}>{trigger}</div>
                     ))}
-                  </ul>
+                  </div>
                 </div>
               </div>
             </div>
@@ -6620,7 +6686,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
             </div>
 
             <div>
-              <label>Risk-Based Justification if SCAR is Not Opened</label>
+              <label>Risk-Based Justification if SCAR Is Not Initiated</label>
               <br />
               <textarea
                 value={scarJustification}
@@ -6638,14 +6704,14 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
               disabled={preMrbReadOnly}
               style={{ marginTop: "10px" }}
             >
-              Save SCAR Justification
+              Save Risk-Based Justification
             </button>
           </>
         )}
 
         {record?.scar_justification ? (
           <div style={{ marginTop: "12px", color: "#374151" }}>
-            <strong>Saved SCAR Justification:</strong> {record.scar_justification}
+            <strong>Risk-Based Justification if SCAR Is Not Initiated:</strong> {record.scar_justification}
           </div>
         ) : null}
       </SectionCard>
@@ -7347,6 +7413,23 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
           <textarea
             value={evidenceNotes}
             onChange={(e) => setEvidenceNotes(e.target.value)}
+            onBlur={async () => {
+              if (isPostMrbSectionLocked()) return;
+              try {
+                await persistEvidenceSection({
+                  nextEvidenceUrl: evidenceUrl,
+                  nextEvidenceNotes: evidenceNotes,
+                  silent: true,
+                });
+                await addAuditLog(
+                  "evidence_notes_saved",
+                  "Evidence Notes saved."
+                );
+                await fetchRecord();
+              } catch (error: any) {
+                alert(error?.message || "Unable to save Evidence Notes.");
+              }
+            }}
             rows={3}
             disabled={isPostMrbSectionLocked()}
             style={{ width: "100%", maxWidth: "700px" }}
