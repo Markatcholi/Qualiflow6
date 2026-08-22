@@ -6502,7 +6502,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
               disabled={preMrbReadOnly}
               style={{ marginTop: "10px" }}
             >
-              Save No-CAPA Justification
+              Save Risk-Based Justification
             </button>
           </>
         )}
