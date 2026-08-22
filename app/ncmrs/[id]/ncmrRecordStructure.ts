@@ -112,12 +112,12 @@ export const NCMR_RECORD_STRUCTURE = {
     },
     {
       key: "mrb",
-      title: "10. MRB Approval History",
+      title: "10. MRB Approval",
       elements: [
         {
-          type: "mrb_history",
+          type: "mrb_final_summary",
           source: "audit_logs",
-          label: "MRB Approval Cycle History",
+          label: "Final MRB Approval",
         },
       ],
     },
