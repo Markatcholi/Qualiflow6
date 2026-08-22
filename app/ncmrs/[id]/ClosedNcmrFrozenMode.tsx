@@ -117,9 +117,6 @@ export default function ClosedNcmrFrozenMode({ ncmrId }: Props) {
         <div>
           <div style={eyebrow}>QUALISPHERE CONTROLLED QUALITY RECORD</div>
           <h1 style={{ margin: "6px 0" }}>{record.ncmr_number || "NCMR"}</h1>
-          <div style={muted}>
-            Closed record · Frozen in place · Original NCMR database record
-          </div>
         </div>
         <div style={actions}>
           <button
@@ -133,50 +130,41 @@ export default function ClosedNcmrFrozenMode({ ncmrId }: Props) {
         </div>
       </header>
 
-      <div style={protectionBox}>
-        <strong>Closed Record Mode.</strong> This is the original NCMR record.
-        Its database content is locked, and its presentation is controlled by
-        the structure frozen for this record at closure. The current live NCMR
-        workflow is not used to determine which sections or fields appear here.
-      </div>
-
       <div style={summaryGrid}>
         <Summary label="NCMR Number" value={record.ncmr_number} />
         <Summary label="Status" value={formatLabel(record.status)} />
         <Summary label="Owner" value={record.owner} />
         <Summary label="Closed By" value={record.ncmr_closed_by || record.closed_by} />
         <Summary label="Closed At" value={formatDateTime(record.closed_at || record.closure_date)} />
-        <Summary label="Structure Frozen At" value={formatDateTime(freeze.frozen_at)} />
       </div>
 
       {sections.map((section: any, sectionIndex: number) => (
         <section key={section.key || sectionIndex} style={sectionCard}>
-          <h2 style={{ marginTop: 0 }}>{section.title || section.key}</h2>
+          <h2 style={{ marginTop: 0 }}>
+            {section.key === "mrb" ? "10. MRB Approval History" : section.title || section.key}
+          </h2>
 
-          <div style={fieldGrid}>
-            {(Array.isArray(section.elements) ? section.elements : []).map(
-              (element: any, elementIndex: number) => (
-                <FrozenElement
-                  key={`${section.key || sectionIndex}-${element.key || element.view || elementIndex}`}
-                  element={element}
-                  record={record}
-                  frozenValues={freeze.frozen_values || {}}
-                  affectedItems={affectedItems}
-                  tasks={tasks}
-                  audit={audit}
-                />
-              )
-            )}
-          </div>
+          {section.key === "mrb" ? (
+            <MrbApprovalHistory rows={audit} record={record} />
+          ) : (
+            <div style={fieldGrid}>
+              {(Array.isArray(section.elements) ? section.elements : []).map(
+                (element: any, elementIndex: number) => (
+                  <FrozenElement
+                    key={`${section.key || sectionIndex}-${element.key || element.view || elementIndex}`}
+                    element={element}
+                    record={record}
+                    frozenValues={freeze.frozen_values || {}}
+                    affectedItems={affectedItems}
+                    tasks={tasks}
+                    audit={audit}
+                  />
+                )
+              )}
+            </div>
+          )}
         </section>
       ))}
-
-      <div style={footerBox}>
-        <strong>Record Integrity:</strong> This closed record renderer performs
-        no CAPA, SCAR, risk, MRB, disposition, or workflow recalculation. Future
-        workflow changes do not add fields to this record unless those fields
-        were part of its frozen structure.
-      </div>
     </main>
   );
 }
@@ -192,6 +180,10 @@ function FrozenElement({
   const label = element.label || element.key || element.view || "Record Data";
 
   if (element.type === "field") {
+    // Internal e-signature meaning remains stored for audit/system purposes,
+    // but is not presented as customer-facing quality-record content.
+    if (element.key === "ncmr_signature_meaning") return null;
+
     let value = record?.[element.key];
     if (!hasValue(value) && element.fallback_key) {
       value = record?.[element.fallback_key];
@@ -206,10 +198,15 @@ function FrozenElement({
   }
 
   if (element.type === "frozen_value") {
+    const frozenValue =
+      element.key === "scar_governance_signal"
+        ? formatScarGovernanceSignal(frozenValues?.[element.key])
+        : frozenValues?.[element.key];
+
     return (
       <Field
         label={label}
-        value={frozenValues?.[element.key]}
+        value={frozenValue}
         wide={element.wide !== false}
       />
     );
@@ -229,10 +226,20 @@ function FrozenElement({
     const filtered = tasks.filter((task: any) =>
       allowed.includes(String(task.task_type || "").toLowerCase())
     );
+    if (!filtered.length) return null;
+
     return (
       <div style={wide}>
         <h3>{label}</h3>
         <TaskTable tasks={filtered} detailed={Boolean(element.detailed)} />
+      </div>
+    );
+  }
+
+  if (element.type === "mrb_history") {
+    return (
+      <div style={wide}>
+        <MrbApprovalHistory rows={audit} record={record} />
       </div>
     );
   }
@@ -296,7 +303,10 @@ function AffectedItemsTable({ items, view }: { items: any[]; view: string }) {
           {items.map((item, index) => (
             <tr key={item.id || index}>
               {columns.map(([key]) => (
-                <td key={key} style={td}>
+                <td
+                  key={key}
+                  style={key.endsWith("_at") ? { ...td, whiteSpace: "nowrap" } : td}
+                >
                   {key.endsWith("_at")
                     ? formatDateTime(item[key])
                     : key.includes("disposition") || key.includes("category")
@@ -313,7 +323,7 @@ function AffectedItemsTable({ items, view }: { items: any[]; view: string }) {
 }
 
 function TaskTable({ tasks, detailed }: { tasks: any[]; detailed: boolean }) {
-  if (!tasks.length) return <div style={muted}>No matching task records.</div>;
+  if (!tasks.length) return null;
 
   return (
     <div style={{ display: "grid", gap: "10px" }}>
@@ -323,15 +333,15 @@ function TaskTable({ tasks, detailed }: { tasks: any[]; detailed: boolean }) {
           <div style={taskGrid}>
             <Mini label="Assigned To" value={task.assigned_to_email || task.approver_email} />
             <Mini label="Status" value={formatLabel(task.status)} />
-            <Mini label="Due Date" value={formatDate(task.due_date)} />
+            <Mini label="Due Date" value={formatDate(task.due_date)} noWrap />
             <Mini label="Completed By" value={task.completed_by_email || task.completed_by || task.approved_by} />
-            <Mini label="Completed At" value={formatDateTime(task.completed_at || task.approved_at)} />
+            <Mini label="Completed At" value={formatDateTime(task.completed_at || task.approved_at)} noWrap />
             {detailed ? <Mini label="Instructions" value={task.task_instructions || task.comments} /> : null}
             {detailed ? <Mini label="Completion Comment" value={task.completion_comment || task.completion_notes} /> : null}
             {detailed ? <Mini label="Verification Status" value={formatLabel(task.implementation_verification_status)} /> : null}
             {detailed ? <Mini label="Verification Comment" value={task.implementation_verification_comment} /> : null}
             {detailed ? <Mini label="Verified By" value={task.implementation_verified_by} /> : null}
-            {detailed ? <Mini label="Verified At" value={formatDateTime(task.implementation_verified_at)} /> : null}
+            {detailed ? <Mini label="Verified At" value={formatDateTime(task.implementation_verified_at)} noWrap /> : null}
           </div>
         </div>
       ))}
@@ -355,8 +365,8 @@ function AuditTable({ rows }: { rows: any[] }) {
         <tbody>
           {rows.map((row, index) => (
             <tr key={row.id || index}>
-              <td style={td}>{formatDateTime(row.created_at)}</td>
-              <td style={td}>{display(formatLabel(row.action))}</td>
+              <td style={{ ...td, whiteSpace: "nowrap" }}>{formatDateTime(row.created_at)}</td>
+              <td style={td}>{display(formatAuditAction(row.action))}</td>
               <td style={td}>{display(row.user_email)}</td>
               <td style={td}>{display(row.details)}</td>
             </tr>
@@ -385,13 +395,161 @@ function Summary({ label, value }: any) {
   );
 }
 
-function Mini({ label, value }: any) {
+function Mini({ label, value, noWrap = false }: any) {
   return (
-    <div>
+    <div style={noWrap ? { whiteSpace: "nowrap" } : undefined}>
       <span style={{ fontWeight: 700 }}>{label}: </span>
       {display(value)}
     </div>
   );
+}
+
+function MrbApprovalHistory({ rows, record }: { rows: any[]; record: any }) {
+  const relevant = (rows || [])
+    .filter((row: any) => isMrbHistoryAction(row?.action))
+    .sort(
+      (a: any, b: any) =>
+        new Date(a?.created_at || 0).getTime() -
+        new Date(b?.created_at || 0).getTime()
+    );
+
+  let cycle = 1;
+  const history = relevant.map((row: any) => {
+    const action = String(row?.action || "").toLowerCase();
+    const item = { ...row, cycle };
+    if (action.includes("mrb approval cycle returned")) cycle += 1;
+    return item;
+  });
+
+  const finalApprovalEvent = [...history]
+    .reverse()
+    .find((row: any) =>
+      String(row?.action || "").toLowerCase().includes("mrb approval task approved")
+    );
+
+  return (
+    <div style={wide}>
+      {history.length ? (
+        <>
+          <h3 style={{ marginTop: 0 }}>MRB Approval Cycle History</h3>
+          <div style={{ overflowX: "auto" }}>
+            <table style={table}>
+              <thead>
+                <tr>
+                  <th style={th}>Cycle</th>
+                  <th style={th}>Event</th>
+                  <th style={th}>User</th>
+                  <th style={th}>Date / Time</th>
+                  <th style={th}>Details / Justification</th>
+                </tr>
+              </thead>
+              <tbody>
+                {history.map((row: any, index: number) => (
+                  <tr key={row.id || index}>
+                    <td style={td}>{row.cycle}</td>
+                    <td style={td}>{formatAuditAction(row.action)}</td>
+                    <td style={td}>{display(row.user_email)}</td>
+                    <td style={{ ...td, whiteSpace: "nowrap" }}>
+                      {formatDateTime(row.created_at)}
+                    </td>
+                    <td style={td}>{display(row.details)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      ) : (
+        <div style={muted}>No MRB approval-cycle history recorded.</div>
+      )}
+
+      <div style={{ ...nested, marginTop: 12 }}>
+        <div style={taskGrid}>
+          <Mini
+            label="Final MRB Status"
+            value={record?.mrb_approved_by ? "Approved" : "Not recorded"}
+          />
+          <Mini
+            label="Final Approved By"
+            value={finalApprovalEvent?.user_email || record?.mrb_approved_by}
+          />
+          <Mini
+            label="Final Approved At"
+            value={formatDateTime(
+              finalApprovalEvent?.created_at || record?.mrb_approved_at
+            )}
+            noWrap
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function isMrbHistoryAction(value: any) {
+  const action = String(value || "").trim().toLowerCase();
+  return (
+    action.includes("mrb submitted for approval") ||
+    action.includes("mrb approval task approved") ||
+    action.includes("mrb approval task rejected") ||
+    action.includes("mrb approval completed") ||
+    action.includes("mrb approval cycle returned")
+  );
+}
+
+function formatAuditAction(value: any) {
+  return formatAcronyms(formatLabel(value));
+}
+
+function formatAcronyms(value: any) {
+  if (!hasValue(value)) return "";
+  return String(value)
+    .replace(/\bCapa\b/g, "CAPA")
+    .replace(/\bScar\b/g, "SCAR")
+    .replace(/\bMrb\b/g, "MRB")
+    .replace(/\bNcmr\b/g, "NCMR")
+    .replace(/\bQms\b/g, "QMS");
+}
+
+function formatScarGovernanceSignal(value: any) {
+  if (!hasValue(value)) return value;
+
+  const raw = String(value);
+  const compact = raw.replace(/\s+/g, " ").trim();
+
+  const extractYesNo = (label: string) => {
+    const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+    const explicit = compact.match(
+      new RegExp(`${escaped}\\s*:\\s*(Yes|No)`, "i")
+    );
+    if (explicit) return explicit[1].toLowerCase() === "yes";
+
+    const prefix = compact.match(
+      new RegExp(`([✓✔☑]|\\b(?:x|no)\\b)\\s*${escaped}`, "i")
+    );
+    if (prefix) {
+      return !/^(x|no)$/i.test(prefix[1]);
+    }
+
+    return null;
+  };
+
+  const supplierPartRecorded = extractYesNo("Supplier Part Recorded");
+  const supplierRecurrence = extractYesNo("Supplier Recurrence Detected");
+
+  if (supplierPartRecorded === null && supplierRecurrence === null) {
+    return raw;
+  }
+
+  return [
+    `Supplier Part Recorded: ${
+      supplierPartRecorded === null ? "Not recorded" : supplierPartRecorded ? "Yes" : "No"
+    }`,
+    `Supplier Recurrence Detected: ${
+      supplierRecurrence === null ? "Not recorded" : supplierRecurrence ? "Yes" : "No"
+    }`,
+  ].join("\n");
 }
 
 function hasValue(value: any) {
@@ -487,30 +645,36 @@ const eyebrow: React.CSSProperties = {
   letterSpacing: ".08em",
 };
 const muted: React.CSSProperties = { color: "#64748b" };
-const actions: React.CSSProperties = { display: "flex", gap: 10, flexWrap: "wrap" };
+const actions: React.CSSProperties = {
+  display: "flex",
+  gap: 8,
+  flexWrap: "wrap",
+  alignItems: "flex-start",
+};
 const buttonLink: React.CSSProperties = {
   textDecoration: "none",
-  padding: "10px 14px",
+  padding: "7px 11px",
   background: "#111827",
   color: "white",
-  borderRadius: 8,
+  borderRadius: 6,
   fontWeight: 700,
+  fontSize: 14,
+  lineHeight: 1.2,
+  display: "inline-flex",
+  alignItems: "center",
 };
 const reportButton: React.CSSProperties = {
   border: 0,
-  padding: "10px 14px",
+  padding: "7px 11px",
   background: "#2563eb",
   color: "white",
-  borderRadius: 8,
+  borderRadius: 6,
   fontWeight: 700,
+  fontSize: 14,
+  lineHeight: 1.2,
   cursor: "pointer",
-};
-const protectionBox: React.CSSProperties = {
-  padding: 14,
-  border: "1px solid #86efac",
-  background: "#f0fdf4",
-  borderRadius: 10,
-  marginBottom: 16,
+  display: "inline-flex",
+  alignItems: "center",
 };
 const errorBox: React.CSSProperties = {
   padding: 14,
@@ -584,8 +748,4 @@ const td: React.CSSProperties = {
   padding: 9,
   borderBottom: "1px solid #e2e8f0",
   verticalAlign: "top",
-};
-const footerBox: React.CSSProperties = {
-  ...protectionBox,
-  marginTop: 18,
 };
