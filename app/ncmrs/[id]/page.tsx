@@ -5707,6 +5707,85 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
       >
         <p>This section is created from the NCMR initiation page.</p>
 
+        <div
+          style={{
+            marginTop: "14px",
+            marginBottom: "18px",
+            border: "1px solid #dbeafe",
+            background: "#f8fafc",
+            borderRadius: "10px",
+            padding: "12px",
+          }}
+        >
+          <strong>Initiation Supporting Attachments</strong>
+
+          {Array.isArray(record?.initiation_attachments) &&
+          record.initiation_attachments.length > 0 ? (
+            <div style={{ display: "grid", gap: "7px", marginTop: "10px" }}>
+              {record.initiation_attachments.map(
+                (attachment: any, index: number) => (
+                  <div
+                    key={
+                      attachment?.storage_path ||
+                      attachment?.url ||
+                      index
+                    }
+                    style={{
+                      border: "1px solid #e2e8f0",
+                      background: "white",
+                      borderRadius: "8px",
+                      padding: "8px 10px",
+                    }}
+                  >
+                    {attachment?.url ? (
+                      <a
+                        href={attachment.url}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        📎{" "}
+                        {attachment?.name ||
+                          `Initiation Attachment ${index + 1}`}
+                      </a>
+                    ) : (
+                      <span>
+                        📎{" "}
+                        {attachment?.name ||
+                          `Initiation Attachment ${index + 1}`}
+                      </span>
+                    )}
+
+                    <div
+                      style={{
+                        color: "#64748b",
+                        fontSize: "12px",
+                        marginTop: "3px",
+                      }}
+                    >
+                      Uploaded by {attachment?.uploaded_by || "N/A"}
+                      {attachment?.uploaded_at
+                        ? ` · ${formatIsoDateTime(
+                            attachment.uploaded_at
+                          )}`
+                        : ""}
+                    </div>
+                  </div>
+                )
+              )}
+            </div>
+          ) : (
+            <div
+              style={{
+                marginTop: "8px",
+                color: "#64748b",
+                fontSize: "13px",
+              }}
+            >
+              No initiation supporting attachment recorded.
+            </div>
+          )}
+        </div>
+
         <h3>Affected Materials / Multiple Parts and Lots</h3>
 
         {canEditInitiation ? (
