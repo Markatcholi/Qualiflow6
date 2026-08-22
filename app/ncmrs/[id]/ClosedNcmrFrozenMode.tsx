@@ -212,6 +212,21 @@ function FrozenElement({
     );
   }
 
+  if (element.type === "attachment_list") {
+    const attachments = Array.isArray(record?.[element.key])
+      ? record[element.key]
+      : [];
+
+    if (!attachments.length) return null;
+
+    return (
+      <div style={wide}>
+        <h3>{label}</h3>
+        <AttachmentList attachments={attachments} />
+      </div>
+    );
+  }
+
   if (element.type === "table" && element.source === "affected_items") {
     return (
       <div style={wide}>
@@ -254,6 +269,38 @@ function FrozenElement({
   }
 
   return null;
+}
+
+function AttachmentList({ attachments }: { attachments: any[] }) {
+  return (
+    <div style={{ display: "grid", gap: 8 }}>
+      {attachments.map((attachment: any, index: number) => (
+        <div
+          key={attachment?.storage_path || attachment?.url || index}
+          style={nested}
+        >
+          {attachment?.url ? (
+            <a
+              href={attachment.url}
+              target="_blank"
+              rel="noreferrer"
+              style={{ fontWeight: 700 }}
+            >
+              {attachment?.name || `Attachment ${index + 1}`}
+            </a>
+          ) : (
+            <strong>{attachment?.name || `Attachment ${index + 1}`}</strong>
+          )}
+          <div style={{ color: "#64748b", fontSize: 12, marginTop: 4 }}>
+            Uploaded by {display(attachment?.uploaded_by)}
+            {attachment?.uploaded_at
+              ? ` · ${formatDateTime(attachment.uploaded_at)}`
+              : ""}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function AffectedItemsTable({ items, view }: { items: any[]; view: string }) {
@@ -415,7 +462,7 @@ function MrbApprovalHistory({ rows, record }: { rows: any[]; record: any }) {
 
   let cycle = 1;
   const history = relevant.map((row: any) => {
-    const action = String(row?.action || "").toLowerCase();
+    const action = normalizeAuditActionCode(row?.action);
     const item = { ...row, cycle };
     if (action.includes("mrb approval cycle returned")) cycle += 1;
     return item;
@@ -424,7 +471,7 @@ function MrbApprovalHistory({ rows, record }: { rows: any[]; record: any }) {
   const finalApprovalEvent = [...history]
     .reverse()
     .find((row: any) =>
-      String(row?.action || "").toLowerCase().includes("mrb approval task approved")
+      normalizeAuditActionCode(row?.action).includes("mrb approval task approved")
     );
 
   return (
@@ -486,8 +533,16 @@ function MrbApprovalHistory({ rows, record }: { rows: any[]; record: any }) {
   );
 }
 
+function normalizeAuditActionCode(value: any) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ");
+}
+
 function isMrbHistoryAction(value: any) {
-  const action = String(value || "").trim().toLowerCase();
+  const action = normalizeAuditActionCode(value);
   return (
     action.includes("mrb submitted for approval") ||
     action.includes("mrb approval task approved") ||
