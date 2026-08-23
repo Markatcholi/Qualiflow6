@@ -27,6 +27,8 @@ type EquipmentRecord = {
   preventive_maintenance_required: boolean;
   qualification_required: boolean;
   post_unplanned_maintenance_assessment: string;
+  lifecycle_phase: string;
+  equipment_status: string;
   lifecycle_status: string;
   use_status: string;
   use_status_reason: string | null;
@@ -218,7 +220,8 @@ export default function EquipmentMasterPage() {
     calibration_required: false,
     preventive_maintenance_required: false,
     qualification_required: false,
-    lifecycle_status: "draft",
+    lifecycle_phase: "acquisition",
+    equipment_status: "pending_installation",
     use_status: "out_of_service",
     use_status_reason: "",
     post_unplanned_maintenance_assessment: "optional",
@@ -306,7 +309,8 @@ export default function EquipmentMasterPage() {
         calibration_required: !!eq.calibration_required,
         preventive_maintenance_required: !!eq.preventive_maintenance_required,
         qualification_required: !!eq.qualification_required,
-        lifecycle_status: eq.lifecycle_status || "draft",
+        lifecycle_phase: eq.lifecycle_phase || "acquisition",
+        equipment_status: eq.equipment_status || "pending_installation",
         use_status: eq.use_status || "out_of_service",
         use_status_reason: eq.use_status_reason || "",
         post_unplanned_maintenance_assessment:
@@ -396,7 +400,14 @@ export default function EquipmentMasterPage() {
       calibration_required: form.calibration_required,
       preventive_maintenance_required: form.preventive_maintenance_required,
       qualification_required: form.qualification_required,
-      lifecycle_status: form.lifecycle_status,
+      lifecycle_phase: form.lifecycle_phase,
+      equipment_status: form.equipment_status,
+      lifecycle_status:
+        form.lifecycle_phase === "retirement" ? "retired" :
+        form.equipment_status === "pending_calibration" ? "initial_calibration" :
+        form.equipment_status === "pending_qualification" ? "qualification" :
+        form.equipment_status === "pending_production_release" ? "pending_production_release" :
+        form.equipment_status === "active" ? "released" : "draft",
       use_status: form.use_status,
       use_status_reason: form.use_status_reason.trim() || null,
       post_unplanned_maintenance_assessment:
@@ -553,7 +564,8 @@ export default function EquipmentMasterPage() {
       ) : null}
 
       <section style={summaryGridStyle}>
-        <Summary label="Lifecycle Status" value={formatEquipmentLifecycle(record.lifecycle_status)} />
+        <Summary label="Lifecycle Phase" value={formatLifecyclePhase(record.lifecycle_phase)} />
+        <Summary label="Equipment Status" value={formatEquipmentStatus(record.equipment_status)} />
         <Summary
           label="Use Status"
           value={formatEquipmentUseStatus(record.use_status)}
@@ -928,71 +940,57 @@ export default function EquipmentMasterPage() {
 
       <section style={{ ...card, marginBottom: 16 }}>
         <SectionHeader
-          title="10. Equipment Status / Release"
-          subtitle="Current equipment status is customer-controlled. Formal Release for Use will remain a separate controlled workflow gate when that workflow is implemented."
+          title="10. Equipment Lifecycle / Status / Release"
+          subtitle="Lifecycle Phase, Equipment Status, and Use Status are separate controls. Formal Release for Use remains a controlled workflow gate."
         />
 
         {editing ? (
           <>
             <div style={formGridStyle}>
-              <EditField label="Lifecycle Status">
-                <select
-                  value={form.lifecycle_status}
-                  onChange={(e) => {
-                    const next = e.target.value;
-                    setForm({
-                      ...form,
-                      lifecycle_status: next,
-                      use_status: next === "retired" ? "retired" : form.use_status,
-                    });
-                  }}
-                  style={input}
-                >
-                  <option value="draft">Draft</option>
-                  <option value="specification_reference">Pending Specification</option>
-                  <option value="initial_calibration">Pending Calibration</option>
-                  <option value="qualification">Pending Qualification</option>
+              <EditField label="Lifecycle Phase">
+                <select value={form.lifecycle_phase} onChange={(e) => {
+                  const next=e.target.value;
+                  setForm({...form,lifecycle_phase:next,equipment_status:next==="retirement"?"retired":form.equipment_status,use_status:next==="retirement"?"retired":form.use_status});
+                }} style={input}>
+                  <option value="planning">Planning</option>
+                  <option value="acquisition">Acquisition</option>
+                  <option value="operation_maintenance">Operation & Maintenance</option>
+                  <option value="retirement">Retirement</option>
+                </select>
+              </EditField>
+
+              <EditField label="Equipment Status">
+                <select value={form.equipment_status} onChange={(e) => {
+                  const next=e.target.value;
+                  setForm({...form,equipment_status:next,lifecycle_phase:next==="active"?"operation_maintenance":next==="retired"?"retirement":form.lifecycle_phase,use_status:next==="retired"?"retired":form.use_status});
+                }} style={input}>
+                  <option value="pending_installation">Pending Installation</option>
+                  <option value="pending_calibration">Pending Calibration</option>
+                  <option value="pending_qualification">Pending Qualification</option>
+                  <option value="pending_maintenance">Pending Maintenance</option>
                   <option value="pending_production_release">Pending Production Release</option>
-                  <option value="released">Release / Active</option>
+                  <option value="active">Active</option>
                   <option value="retired">Retired</option>
                 </select>
               </EditField>
 
               <EditField label="Use Status">
-                <select
-                  value={form.use_status}
-                  onChange={(e) => {
-                    const next = e.target.value;
-                    setForm({
-                      ...form,
-                      use_status: next,
-                      lifecycle_status: next === "retired" ? "retired" : form.lifecycle_status,
-                    });
-                  }}
-                  style={input}
-                >
-                  <option value="available_for_use">Active / Available for Use</option>
+                <select value={form.use_status} onChange={(e) => {
+                  const next=e.target.value;
+                  setForm({...form,use_status:next,lifecycle_phase:next==="retired"?"retirement":form.lifecycle_phase,equipment_status:next==="retired"?"retired":form.equipment_status});
+                }} style={input}>
+                  <option value="available_for_use">Available for Use</option>
                   <option value="restricted">Restricted</option>
                   <option value="out_of_service">Out of Service</option>
                   <option value="retired">Retired</option>
                 </select>
               </EditField>
             </div>
-
             <div style={{ marginTop: 14 }}>
               <EditField label="Status Rationale / Notes">
-                <textarea
-                  rows={3}
-                  value={form.use_status_reason}
-                  onChange={(e) =>
-                    setForm({ ...form, use_status_reason: e.target.value })
-                  }
-                  placeholder="Optional rationale or context for the current equipment status"
-                  style={{ ...input, resize: "vertical" }}
-                />
+                <textarea rows={3} value={form.use_status_reason} onChange={(e)=>setForm({...form,use_status_reason:e.target.value})} style={{...input,resize:"vertical"}} />
               </EditField>
             </div>
-
             <div style={{ ...detailGridStyle, marginTop: 14 }}>
               <Detail label="Released By" value={record.released_by} />
               <Detail label="Released At" value={formatDateTime(record.released_at)} />
@@ -1003,7 +1001,8 @@ export default function EquipmentMasterPage() {
           </>
         ) : (
           <div style={detailGridStyle}>
-            <Detail label="Lifecycle Status" value={formatEquipmentLifecycle(record.lifecycle_status)} />
+            <Detail label="Lifecycle Phase" value={formatLifecyclePhase(record.lifecycle_phase)} />
+            <Detail label="Equipment Status" value={formatEquipmentStatus(record.equipment_status)} />
             <Detail label="Use Status" value={formatEquipmentUseStatus(record.use_status)} />
             <Detail label="Status Rationale / Notes" value={record.use_status_reason} wide />
             <Detail label="Released By" value={record.released_by} />
@@ -1013,12 +1012,7 @@ export default function EquipmentMasterPage() {
             <Detail label="Retirement Reason" value={record.retirement_reason} wide />
           </div>
         )}
-
-        <div style={{ marginTop: 14 }}>
-          <button disabled style={disabledButton}>
-            Release for Use — Controlled Gate Coming Next
-          </button>
-        </div>
+        <div style={{ marginTop: 14 }}><button disabled style={disabledButton}>Release for Use — Controlled Gate Coming Next</button></div>
       </section>
 
       <section style={card}>
@@ -1278,16 +1272,14 @@ function HistoryTable({
   );
 }
 
-function formatEquipmentLifecycle(value?: string | null) {
-  const labels: Record<string, string> = {
-    draft: "Draft",
-    specification_reference: "Pending Specification",
-    initial_calibration: "Pending Calibration",
-    qualification: "Pending Qualification",
-    pending_production_release: "Pending Production Release",
-    released: "Release / Active",
-    retired: "Retired",
-  };
+function formatLifecyclePhase(value?: string | null) {
+  const labels: Record<string,string> = {planning:"Planning",acquisition:"Acquisition",operation_maintenance:"Operation & Maintenance",retirement:"Retirement"};
+  return value ? labels[value] || formatLabel(value) : "Not Recorded";
+}
+
+
+function formatEquipmentStatus(value?: string | null) {
+  const labels: Record<string,string> = {pending_installation:"Pending Installation",pending_calibration:"Pending Calibration",pending_qualification:"Pending Qualification",pending_maintenance:"Pending Maintenance",pending_production_release:"Pending Production Release",active:"Active",retired:"Retired"};
   return value ? labels[value] || formatLabel(value) : "Not Recorded";
 }
 
