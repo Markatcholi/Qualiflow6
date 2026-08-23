@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { supabase } from "../../../../lib/supabaseClient";
 import { SectionCard } from "../../../components/QualityWorkflowComponents";
@@ -17,6 +17,8 @@ export default function NcmrMrbApprovalReviewPage() {
   const [record, setRecord] = useState<any>(null);
   const [task, setTask] = useState<any>(null);
   const [affectedItems, setAffectedItems] = useState<any[]>([]);
+  const [collaborationThread, setCollaborationThread] = useState<any>(null);
+  const [collaborationComments, setCollaborationComments] = useState<any[]>([]);
   const [userEmail, setUserEmail] = useState("");
   const [reviewerComment, setReviewerComment] = useState("");
   const [loading, setLoading] = useState(true);
@@ -28,6 +30,89 @@ export default function NcmrMrbApprovalReviewPage() {
     Boolean(normalizedUserEmail) &&
     normalizedUserEmail === normalizedAssigneeEmail;
   const isPending = String(task?.status || "").toLowerCase() === "pending";
+
+  const preMrbAttachments = useMemo(() => {
+    const attachments: Array<{
+      source: string;
+      name: string;
+      url: string;
+      uploadedBy?: string;
+      uploadedAt?: string;
+    }> = [];
+
+    const addAttachments = (
+      source: string,
+      values: any,
+      fallbackUploadedBy?: string,
+      fallbackUploadedAt?: string
+    ) => {
+      if (!Array.isArray(values)) return;
+
+      values.forEach((attachment: any, index: number) => {
+        const url =
+          attachment?.url ||
+          attachment?.public_url ||
+          attachment?.publicUrl ||
+          attachment?.file_url ||
+          attachment?.download_url ||
+          "";
+
+        if (!url) return;
+
+        attachments.push({
+          source,
+          name:
+            attachment?.name ||
+            attachment?.file_name ||
+            attachment?.filename ||
+            `Attachment ${index + 1}`,
+          url,
+          uploadedBy:
+            attachment?.uploaded_by ||
+            attachment?.created_by ||
+            fallbackUploadedBy ||
+            "",
+          uploadedAt:
+            attachment?.uploaded_at ||
+            attachment?.created_at ||
+            fallbackUploadedAt ||
+            "",
+        });
+      });
+    };
+
+    addAttachments(
+      "Initiation",
+      record?.initiation_attachments,
+      record?.created_by || record?.owner_email || record?.owner,
+      record?.created_at
+    );
+
+    addAttachments(
+      "Investigation / Root Cause",
+      record?.investigation_attachments,
+      record?.investigator,
+      record?.updated_at
+    );
+
+    collaborationComments.forEach((comment: any) => {
+      addAttachments(
+        "Collaboration",
+        comment?.attachments,
+        comment?.created_by,
+        comment?.created_at
+      );
+    });
+
+    const seen = new Set<string>();
+
+    return attachments.filter((attachment) => {
+      const key = `${attachment.source}|${attachment.url}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [record, collaborationComments]);
 
   const load = async () => {
     setLoading(true);
@@ -88,6 +173,40 @@ export default function NcmrMrbApprovalReviewPage() {
       setTask(loadedTask);
       setAffectedItems(affectedResult.data || []);
       setReviewerComment(loadedTask.approver_comment || "");
+
+      const { data: threadData, error: threadError } = await supabase
+        .from("collaboration_threads")
+        .select("*")
+        .eq("module", "ncmr")
+        .eq("record_id", id)
+        .neq("status", "cancelled")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (threadError) {
+        console.warn(
+          "Unable to load pre-MRB collaboration thread:",
+          threadError.message
+        );
+      } else if (threadData) {
+        setCollaborationThread(threadData);
+
+        const { data: commentData, error: commentError } = await supabase
+          .from("collaboration_comments")
+          .select("*")
+          .eq("thread_id", threadData.id)
+          .order("created_at", { ascending: true });
+
+        if (commentError) {
+          console.warn(
+            "Unable to load pre-MRB collaboration attachments:",
+            commentError.message
+          );
+        } else {
+          setCollaborationComments(commentData || []);
+        }
+      }
     } catch (error: any) {
       alert(error?.message || "Unable to load the MRB review package.");
     } finally {
@@ -940,14 +1059,88 @@ export default function NcmrMrbApprovalReviewPage() {
       </SectionCard>
 
       <SectionCard
-        title="10. MRB Approval"
+        title="10. Pre-MRB Supporting Evidence"
+        subtitle="Read-only attachments and collaboration evidence available to the reviewer before the MRB decision."
+        defaultOpen={true}
+      >
+        <p style={readOnlyNoticeStyle}>
+          This package includes supporting files available before MRB review.
+          Reviewers may open the evidence but cannot add, replace, or delete it.
+        </p>
+
+        {preMrbAttachments.length === 0 ? (
+          <div style={emptyEvidenceStyle}>
+            No pre-MRB supporting attachments were recorded.
+          </div>
+        ) : (
+          <div style={attachmentListStyle}>
+            {preMrbAttachments.map((attachment, index) => (
+              <div
+                key={`${attachment.source}-${attachment.url}-${index}`}
+                style={attachmentCardStyle}
+              >
+                <div>
+                  <div style={attachmentSourceStyle}>{attachment.source}</div>
+                  <div style={attachmentNameStyle}>{attachment.name}</div>
+
+                  {attachment.uploadedBy || attachment.uploadedAt ? (
+                    <div style={attachmentMetaStyle}>
+                      {attachment.uploadedBy
+                        ? `Added by ${attachment.uploadedBy}`
+                        : ""}
+                      {attachment.uploadedBy && attachment.uploadedAt
+                        ? " • "
+                        : ""}
+                      {attachment.uploadedAt
+                        ? formatDateTime(attachment.uploadedAt)
+                        : ""}
+                    </div>
+                  ) : null}
+                </div>
+
+                <a
+                  href={attachment.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={openAttachmentStyle}
+                >
+                  Open Attachment
+                </a>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {collaborationThread ? (
+          <div style={collaborationEvidenceStyle}>
+            <div>
+              <strong>Pre-MRB Collaboration History</strong>
+              <div style={{ ...readOnlyNoticeStyle, marginTop: "4px" }}>
+                Open the read-only collaboration thread to review comments,
+                participants, and supporting attachments.
+              </div>
+            </div>
+
+            <Link
+              href={`/ncmrs/${id}/collaboration`}
+              target="_blank"
+              style={secondaryLinkStyle}
+            >
+              Open Collaboration History
+            </Link>
+          </div>
+        ) : null}
+      </SectionCard>
+
+      <SectionCard
+        title="11. MRB Approval"
         subtitle="Reviewer decision for the submitted MRB package."
         defaultOpen={true}
       >
         <div style={decisionNoticeStyle}>
-          Review the locked content above. Implementation, evidence, rework
-          execution, verification, and closure are not part of this approval
-          package.
+          Review the locked content and all pre-MRB supporting evidence above.
+          Downstream implementation, post-MRB evidence, rework execution,
+          verification, and closure are not part of this approval package.
         </div>
 
         <label style={labelStyle}>Reviewer Comment</label>
@@ -1421,6 +1614,76 @@ const disabledActionRowStyle: React.CSSProperties = {
 const savedJustificationStyle: React.CSSProperties = {
   marginTop: "12px",
   color: "#374151",
+};
+
+const attachmentListStyle: React.CSSProperties = {
+  display: "grid",
+  gap: "10px",
+};
+
+const attachmentCardStyle: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: "14px",
+  flexWrap: "wrap",
+  border: "1px solid #dbe3ee",
+  borderRadius: "10px",
+  padding: "12px",
+  background: "#f8fafc",
+};
+
+const attachmentSourceStyle: React.CSSProperties = {
+  color: "#64748b",
+  fontSize: "12px",
+  fontWeight: 900,
+  textTransform: "uppercase",
+  letterSpacing: "0.05em",
+};
+
+const attachmentNameStyle: React.CSSProperties = {
+  marginTop: "4px",
+  fontWeight: 900,
+  wordBreak: "break-word",
+};
+
+const attachmentMetaStyle: React.CSSProperties = {
+  marginTop: "4px",
+  color: "#64748b",
+  fontSize: "12px",
+};
+
+const openAttachmentStyle: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  borderRadius: "8px",
+  background: "#2563eb",
+  color: "#ffffff",
+  padding: "8px 12px",
+  fontWeight: 900,
+  textDecoration: "none",
+  whiteSpace: "nowrap",
+};
+
+const emptyEvidenceStyle: React.CSSProperties = {
+  border: "1px solid #e2e8f0",
+  borderRadius: "10px",
+  padding: "12px",
+  background: "#f8fafc",
+  color: "#64748b",
+};
+
+const collaborationEvidenceStyle: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: "12px",
+  flexWrap: "wrap",
+  marginTop: "14px",
+  border: "1px solid #bfdbfe",
+  borderRadius: "10px",
+  padding: "12px",
+  background: "#eff6ff",
 };
 
 const completedPanelStyle: React.CSSProperties = {
