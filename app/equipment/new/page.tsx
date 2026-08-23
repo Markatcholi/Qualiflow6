@@ -64,15 +64,20 @@ function ToggleCard({ title, description, checked, onChange }: {
   </label>;
 }
 
-function formatEquipmentLifecycle(value:string) {
+function formatLifecyclePhase(value:string) {
   const labels:Record<string,string> = {
-    draft:"Draft",
-    specification_reference:"Pending Specification",
-    initial_calibration:"Pending Calibration",
-    qualification:"Pending Qualification",
-    pending_production_release:"Pending Production Release",
-    released:"Active / Released for Use",
-    retired:"Retired",
+    planning:"Planning", acquisition:"Acquisition",
+    operation_maintenance:"Operation & Maintenance", retirement:"Retirement",
+  };
+  return labels[value] || value;
+}
+
+
+function formatEquipmentStatus(value:string) {
+  const labels:Record<string,string> = {
+    pending_installation:"Pending Installation", pending_calibration:"Pending Calibration",
+    pending_qualification:"Pending Qualification", pending_maintenance:"Pending Maintenance",
+    pending_production_release:"Pending Production Release", active:"Active", retired:"Retired",
   };
   return labels[value] || value;
 }
@@ -114,7 +119,8 @@ export default function RegisterEquipmentPage() {
   const [calibrationRequired,setCalibrationRequired] = useState(false);
   const [preventiveMaintenanceRequired,setPreventiveMaintenanceRequired] = useState(false);
   const [qualificationRequired,setQualificationRequired] = useState(false);
-  const [lifecycleStatus,setLifecycleStatus] = useState("draft");
+  const [lifecyclePhase,setLifecyclePhase] = useState("acquisition");
+  const [equipmentStatus,setEquipmentStatus] = useState("pending_installation");
   const [useStatus,setUseStatus] = useState("out_of_service");
   const [useStatusReason,setUseStatusReason] = useState("");
   const [postAssessment,setPostAssessment] = useState<"required"|"optional"|"disabled">("optional");
@@ -201,7 +207,14 @@ export default function RegisterEquipmentPage() {
         preventive_maintenance_required:preventiveMaintenanceRequired,
         qualification_required:qualificationRequired,
         post_unplanned_maintenance_assessment:postAssessment,
-        lifecycle_status:lifecycleStatus,
+        lifecycle_phase:lifecyclePhase,
+        equipment_status:equipmentStatus,
+        lifecycle_status:
+          lifecyclePhase === "retirement" ? "retired" :
+          equipmentStatus === "pending_calibration" ? "initial_calibration" :
+          equipmentStatus === "pending_qualification" ? "qualification" :
+          equipmentStatus === "pending_production_release" ? "pending_production_release" :
+          equipmentStatus === "active" ? "released" : "draft",
         use_status:useStatus,
         use_status_reason:useStatusReason.trim() || null,
         created_by:currentUserEmail || "unknown",
@@ -248,7 +261,8 @@ export default function RegisterEquipmentPage() {
 
       <div style={{...cardStyle,marginBottom:"16px",background:"#f8fbff"}}>
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:"14px"}}>
-          <div><div style={labelStyle}>Lifecycle Status</div><strong>{formatEquipmentLifecycle(lifecycleStatus)}</strong></div>
+          <div><div style={labelStyle}>Lifecycle Phase</div><strong>{formatLifecyclePhase(lifecyclePhase)}</strong></div>
+          <div><div style={labelStyle}>Equipment Status</div><strong>{formatEquipmentStatus(equipmentStatus)}</strong></div>
           <div><div style={labelStyle}>Use Status</div><strong>{formatEquipmentUseStatus(useStatus)}</strong></div>
           <div><div style={labelStyle}>Registered By</div><strong>{currentUserEmail || "Authenticated user"}</strong></div>
         </div>
@@ -300,39 +314,40 @@ export default function RegisterEquipmentPage() {
       </section>
 
       <section style={{...cardStyle,marginBottom:"16px"}}>
-        {sectionHeader("3. Initial Equipment Status","Record the equipment's current lifecycle and availability. This supports both new equipment and existing equipment being brought into QualiSphere.")}
-        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(260px,1fr))",gap:"16px"}}>
-          <Field label="Lifecycle Status" required hint="Pending Calibration and Pending Qualification use the controlled lifecycle states already supported by the Equipment schema.">
-            <select
-              value={lifecycleStatus}
-              onChange={e=>{
-                const next = e.target.value;
-                setLifecycleStatus(next);
-                if (next === "retired") setUseStatus("retired");
-              }}
-              style={inputStyle}
-            >
-              <option value="draft">Draft</option>
-              <option value="specification_reference">Pending Specification</option>
-              <option value="initial_calibration">Pending Calibration</option>
-              <option value="qualification">Pending Qualification</option>
+        {sectionHeader("3. Equipment Lifecycle & Status","Record the asset lifecycle phase, current equipment status, and current use status. These are separate controls.")}
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(250px,1fr))",gap:"16px"}}>
+          <Field label="Lifecycle Phase" required hint="Overall asset lifecycle: Planning → Acquisition → Operation & Maintenance → Retirement.">
+            <select value={lifecyclePhase} onChange={e=>{
+              const next=e.target.value; setLifecyclePhase(next);
+              if(next==="retirement"){setEquipmentStatus("retired");setUseStatus("retired");}
+            }} style={inputStyle}>
+              <option value="planning">Planning</option>
+              <option value="acquisition">Acquisition</option>
+              <option value="operation_maintenance">Operation & Maintenance</option>
+              <option value="retirement">Retirement</option>
+            </select>
+          </Field>
+          <Field label="Equipment Status" required hint="Current workflow/readiness status within the lifecycle phase.">
+            <select value={equipmentStatus} onChange={e=>{
+              const next=e.target.value; setEquipmentStatus(next);
+              if(next==="active" && lifecyclePhase!=="retirement") setLifecyclePhase("operation_maintenance");
+              if(next==="retired"){setLifecyclePhase("retirement");setUseStatus("retired");}
+            }} style={inputStyle}>
+              <option value="pending_installation">Pending Installation</option>
+              <option value="pending_calibration">Pending Calibration</option>
+              <option value="pending_qualification">Pending Qualification</option>
+              <option value="pending_maintenance">Pending Maintenance</option>
               <option value="pending_production_release">Pending Production Release</option>
-              <option value="released">Release / Active</option>
+              <option value="active">Active</option>
               <option value="retired">Retired</option>
             </select>
           </Field>
-
-          <Field label="Use Status" required hint="Use status reflects whether the equipment is currently available, restricted, out of service, or retired.">
-            <select
-              value={useStatus}
-              onChange={e=>{
-                const next = e.target.value;
-                setUseStatus(next);
-                if (next === "retired") setLifecycleStatus("retired");
-              }}
-              style={inputStyle}
-            >
-              <option value="available_for_use">Active / Available for Use</option>
+          <Field label="Use Status" required hint="Whether the equipment may currently be used.">
+            <select value={useStatus} onChange={e=>{
+              const next=e.target.value; setUseStatus(next);
+              if(next==="retired"){setLifecyclePhase("retirement");setEquipmentStatus("retired");}
+            }} style={inputStyle}>
+              <option value="available_for_use">Available for Use</option>
               <option value="restricted">Restricted</option>
               <option value="out_of_service">Out of Service</option>
               <option value="retired">Retired</option>
@@ -340,14 +355,8 @@ export default function RegisterEquipmentPage() {
           </Field>
         </div>
         <div style={{marginTop:"16px"}}>
-          <Field label="Status Rationale / Notes" hint="Optional. Use when the current status needs context, such as pending qualification, temporary restriction, or onboarding of an existing active asset.">
-            <textarea
-              rows={3}
-              value={useStatusReason}
-              onChange={e=>setUseStatusReason(e.target.value)}
-              placeholder="Optional status rationale or notes"
-              style={{...inputStyle,resize:"vertical"}}
-            />
+          <Field label="Status Rationale / Notes" hint="Optional context for the current status.">
+            <textarea rows={3} value={useStatusReason} onChange={e=>setUseStatusReason(e.target.value)} placeholder="Optional status rationale or notes" style={{...inputStyle,resize:"vertical"}} />
           </Field>
         </div>
       </section>
