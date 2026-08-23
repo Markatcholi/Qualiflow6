@@ -867,9 +867,10 @@ export default function NcmrDetailPage() {
     const finalAcceptedQty = toQuantityNumber(item?.final_quantity_accepted);
     const finalRejectedQty = toQuantityNumber(item?.final_quantity_rejected);
 
-    const allowsDiscrepancy =
-      disposition === "use_as_is" ||
-      disposition === "accept_per_specification";
+    // All configured non-Rework dispositions use the same controlled quantity
+    // discrepancy reconciliation during disposition implementation. Rework remains
+    // on its dedicated rework verification/final-disposition pathway.
+    const allowsDiscrepancy = requiresDispositionImplementation(item);
 
     const discrepancyQtyForReconciliation =
       allowsDiscrepancy && item?.quantity_discrepancy === true
@@ -883,10 +884,6 @@ export default function NcmrDetailPage() {
       errors.push(
         `${label}: final accepted + final rejected${discrepancyQtyForReconciliation > 0 ? " + discrepancy" : ""} quantity (${finalReconciledQty}) must equal initial affected quantity (${affectedQty}).`
       );
-    }
-
-    if (!allowsDiscrepancy && item?.quantity_discrepancy === true) {
-      errors.push(`${label}: quantity discrepancy is only available for Use As Is or Accept Per Specification.`);
     }
 
     if (allowsDiscrepancy && item?.quantity_discrepancy === true) {
@@ -931,15 +928,6 @@ export default function NcmrDetailPage() {
       }
     }
 
-    if (
-      (disposition === "scrap" || disposition === "return_to_supplier") &&
-      (finalAcceptedQty !== mrbAcceptedQty ||
-        finalRejectedQty !== mrbRejectedQty)
-    ) {
-      errors.push(
-        `${label}: ${formatDispositionLabel(disposition)} implementation must retain the MRB-approved accepted/rejected quantities.`
-      );
-    }
 
     return errors;
   };
@@ -4806,9 +4794,10 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
     const affectedQty = toQuantityNumber(item.quantity_affected);
     const mrbAcceptedQty = toQuantityNumber(item.quantity_accepted);
     const mrbRejectedQty = toQuantityNumber(item.quantity_rejected);
-    const allowsDiscrepancy =
-      disposition === "use_as_is" ||
-      disposition === "accept_per_specification";
+    // All configured non-Rework dispositions use the same controlled quantity
+    // discrepancy reconciliation during disposition implementation. Rework remains
+    // on its dedicated rework verification/final-disposition pathway.
+    const allowsDiscrepancy = requiresDispositionImplementation(item);
 
     let finalAcceptedQty = mrbAcceptedQty;
     let finalRejectedQty = mrbRejectedQty;
@@ -4875,10 +4864,6 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
       return;
     }
 
-    if (!allowsDiscrepancy) {
-      finalAcceptedQty = mrbAcceptedQty;
-      finalRejectedQty = mrbRejectedQty;
-    }
 
     const now = new Date().toISOString();
 
@@ -6550,7 +6535,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
             </div>
 
             <div>
-              <label>Risk-Based Justification if CAPA is Not Opened</label>
+              <label>Risk-Based Justification if CAPA Is Not Opened</label>
               <br />
               <textarea
                 value={capaNotRequiredJustification}
@@ -6573,11 +6558,6 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
           </>
         )}
 
-        {record?.capa_not_required_justification ? (
-          <div style={{ marginTop: "12px", color: "#374151" }}>
-            <strong>Saved No-CAPA Justification:</strong> {record.capa_not_required_justification}
-          </div>
-        ) : null}
       </SectionCard>
 
       <SectionCard
@@ -6709,11 +6689,6 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
           </>
         )}
 
-        {record?.scar_justification ? (
-          <div style={{ marginTop: "12px", color: "#374151" }}>
-            <strong>Risk-Based Justification if SCAR Is Not Initiated:</strong> {record.scar_justification}
-          </div>
-        ) : null}
       </SectionCard>
 
       <div id="ncmr-section-mrb-approval" />
@@ -8348,9 +8323,9 @@ function DispositionImplementationCard({
     .toLowerCase()
     .replace(/[\s-]+/g, "_");
 
-  const allowsDiscrepancy =
-    disposition === "use_as_is" ||
-    disposition === "accept_per_specification";
+  // This card is rendered only for configured non-Rework disposition implementation
+  // items, so discrepancy reconciliation is available consistently for every card.
+  const allowsDiscrepancy = true;
 
   const mrbAccepted = Number(item?.quantity_accepted || 0);
   const mrbRejected = Number(item?.quantity_rejected || 0);
