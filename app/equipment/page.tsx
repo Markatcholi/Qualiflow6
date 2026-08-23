@@ -15,7 +15,8 @@ type EquipmentRow = {
   department: string | null;
   site_location: string | null;
   owner_email: string | null;
-  lifecycle_status: string | null;
+  lifecycle_phase: string | null;
+  equipment_status: string | null;
   use_status: string | null;
   calibration_required: boolean | null;
   preventive_maintenance_required: boolean | null;
@@ -42,6 +43,7 @@ export default function EquipmentRegistryPage() {
   const [searchText, setSearchText] = useState("");
   const [useStatusFilter, setUseStatusFilter] = useState("all");
   const [lifecycleFilter, setLifecycleFilter] = useState("all");
+  const [equipmentStatusFilter, setEquipmentStatusFilter] = useState("all");
   const [scheduleFilter, setScheduleFilter] = useState("all");
 
   const load = async () => {
@@ -53,7 +55,7 @@ export default function EquipmentRegistryPage() {
         supabase
           .from("equipment")
           .select(
-            "id,equipment_number,equipment_name,equipment_type,manufacturer,model_number,serial_number,department,site_location,owner_email,lifecycle_status,use_status,calibration_required,preventive_maintenance_required,qualification_required,created_at"
+            "id,equipment_number,equipment_name,equipment_type,manufacturer,model_number,serial_number,department,site_location,owner_email,lifecycle_phase,equipment_status,use_status,calibration_required,preventive_maintenance_required,qualification_required,created_at"
           )
           .order("equipment_number", { ascending: true }),
 
@@ -126,8 +128,8 @@ export default function EquipmentRegistryPage() {
       const useStatusMatch =
         useStatusFilter === "all" || row.use_status === useStatusFilter;
 
-      const lifecycleMatch =
-        lifecycleFilter === "all" || row.lifecycle_status === lifecycleFilter;
+      const lifecycleMatch = lifecycleFilter === "all" || row.lifecycle_phase === lifecycleFilter;
+      const equipmentStatusMatch = equipmentStatusFilter === "all" || row.equipment_status === equipmentStatusFilter;
 
       const scheduleMatch =
         scheduleFilter === "all" ||
@@ -135,7 +137,7 @@ export default function EquipmentRegistryPage() {
           (schedule) => String(schedule.schedule_status || "") === scheduleFilter
         );
 
-      return searchMatch && useStatusMatch && lifecycleMatch && scheduleMatch;
+      return searchMatch && useStatusMatch && lifecycleMatch && equipmentStatusMatch && scheduleMatch;
     });
   }, [
     equipment,
@@ -143,6 +145,7 @@ export default function EquipmentRegistryPage() {
     searchText,
     useStatusFilter,
     lifecycleFilter,
+    equipmentStatusFilter,
     scheduleFilter,
   ]);
 
@@ -265,18 +268,25 @@ export default function EquipmentRegistryPage() {
           </div>
 
           <div>
-            <label style={labelStyle}>Lifecycle</label>
-            <select
-              value={lifecycleFilter}
-              onChange={(event) => setLifecycleFilter(event.target.value)}
-              style={selectStyle}
-            >
-              <option value="all">All Lifecycle Statuses</option>
-              <option value="draft">Draft</option>
-              <option value="specification_reference">Specification Reference</option>
-              <option value="initial_calibration">Initial Calibration</option>
-              <option value="qualification">Qualification</option>
-              <option value="released">Released</option>
+            <label style={labelStyle}>Lifecycle Phase</label>
+            <select value={lifecycleFilter} onChange={(event)=>setLifecycleFilter(event.target.value)} style={selectStyle}>
+              <option value="all">All Lifecycle Phases</option>
+              <option value="planning">Planning</option>
+              <option value="acquisition">Acquisition</option>
+              <option value="operation_maintenance">Operation & Maintenance</option>
+              <option value="retirement">Retirement</option>
+            </select>
+          </div>
+          <div>
+            <label style={labelStyle}>Equipment Status</label>
+            <select value={equipmentStatusFilter} onChange={(event)=>setEquipmentStatusFilter(event.target.value)} style={selectStyle}>
+              <option value="all">All Equipment Statuses</option>
+              <option value="pending_installation">Pending Installation</option>
+              <option value="pending_calibration">Pending Calibration</option>
+              <option value="pending_qualification">Pending Qualification</option>
+              <option value="pending_maintenance">Pending Maintenance</option>
+              <option value="pending_production_release">Pending Production Release</option>
+              <option value="active">Active</option>
               <option value="retired">Retired</option>
             </select>
           </div>
@@ -326,7 +336,8 @@ export default function EquipmentRegistryPage() {
                   <th style={thStyle}>Equipment</th>
                   <th style={thStyle}>Type</th>
                   <th style={thStyle}>Department / Location</th>
-                  <th style={thStyle}>Lifecycle</th>
+                  <th style={thStyle}>Lifecycle Phase</th>
+                  <th style={thStyle}>Equipment Status</th>
                   <th style={thStyle}>Use Status</th>
                   <th style={thStyle}>Calibration</th>
                   <th style={thStyle}>PM</th>
@@ -372,7 +383,11 @@ export default function EquipmentRegistryPage() {
                       </td>
 
                       <td style={tdStyle}>
-                        <StatusPill value={row.lifecycle_status} />
+                        <StatusPill value={row.lifecycle_phase} />
+                      </td>
+
+                      <td style={tdStyle}>
+                        <StatusPill value={row.equipment_status} />
                       </td>
 
                       <td style={tdStyle}>
@@ -660,7 +675,7 @@ const recordCountStyle: React.CSSProperties = {
 
 const filterGridStyle: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "minmax(260px, 2fr) repeat(3, minmax(175px, 1fr))",
+  gridTemplateColumns: "minmax(250px, 2fr) repeat(4, minmax(165px, 1fr))",
   gap: "12px",
 };
 
