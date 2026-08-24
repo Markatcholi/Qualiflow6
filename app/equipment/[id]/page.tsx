@@ -52,6 +52,11 @@ type Schedule = {
   nominal_due_date: string | null;
   scheduled_service_date: string | null;
   hard_due_date: string | null;
+  early_window_days: number;
+  late_window_days: number;
+  equipment_family: string | null;
+  max_events_per_day: number | null;
+  max_events_per_week: number | null;
   provider_type: string | null;
   provider_name: string | null;
   procedure_document_number: string | null;
@@ -204,6 +209,29 @@ export default function EquipmentMasterPage() {
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState("");
 
+  const [showCalibrationConfig, setShowCalibrationConfig] = useState(false);
+  const [savingCalibrationConfig, setSavingCalibrationConfig] = useState(false);
+  const [calibrationConfigMessage, setCalibrationConfigMessage] = useState("");
+  const [calibrationConfig, setCalibrationConfig] = useState({
+    frequency_value: "12",
+    frequency_unit: "months",
+    schedule_mode: "fixed",
+    nominal_due_date: "",
+    scheduled_service_date: "",
+    hard_due_date: "",
+    early_window_days: "0",
+    late_window_days: "0",
+    equipment_family: "",
+    max_events_per_day: "",
+    max_events_per_week: "",
+    provider_type: "",
+    provider_name: "",
+    procedure_document_number: "",
+    procedure_revision: "",
+    overdue_use_action: "notification_only",
+  });
+  const [calibrationReminderDays, setCalibrationReminderDays] = useState<number[]>([30, 14, 7, 3, 1, 0]);
+
   const [form, setForm] = useState({
     equipment_name: "",
     equipment_type: "",
@@ -226,6 +254,42 @@ export default function EquipmentMasterPage() {
     use_status_reason: "",
     post_unplanned_maintenance_assessment: "optional",
   });
+
+  const loadCalibrationConfiguration = async (scheduleRows: Schedule[]) => {
+    const existing = scheduleRows.find((item) => item.activity_type === "calibration" && item.is_active);
+    if (!existing) {
+      setCalibrationReminderDays([30,14,7,3,1,0]);
+      return;
+    }
+
+    setCalibrationConfig({
+      frequency_value: String(existing.frequency_value || 12),
+      frequency_unit: existing.frequency_unit || "months",
+      schedule_mode: existing.schedule_mode || "fixed",
+      nominal_due_date: existing.nominal_due_date || "",
+      scheduled_service_date: existing.scheduled_service_date || "",
+      hard_due_date: existing.hard_due_date || "",
+      early_window_days: String(existing.early_window_days ?? 0),
+      late_window_days: String(existing.late_window_days ?? 0),
+      equipment_family: existing.equipment_family || "",
+      max_events_per_day: existing.max_events_per_day == null ? "" : String(existing.max_events_per_day),
+      max_events_per_week: existing.max_events_per_week == null ? "" : String(existing.max_events_per_week),
+      provider_type: existing.provider_type || "",
+      provider_name: existing.provider_name || "",
+      procedure_document_number: existing.procedure_document_number || "",
+      procedure_revision: existing.procedure_revision || "",
+      overdue_use_action: existing.overdue_use_action || "notification_only",
+    });
+
+    const { data } = await supabase
+      .from("equipment_schedule_notifications")
+      .select("days_before_due,is_enabled")
+      .eq("schedule_configuration_id", existing.id)
+      .eq("is_enabled", true);
+
+    const days = (data || []).map((row:any)=>Number(row.days_before_due)).filter(Number.isFinite).sort((a:number,b:number)=>b-a);
+    setCalibrationReminderDays(days.length ? days : [30,14,7,3,1,0]);
+  };
 
   const load = async () => {
     if (!equipmentId) return;
@@ -317,7 +381,9 @@ export default function EquipmentMasterPage() {
           eq.post_unplanned_maintenance_assessment || "optional",
       });
 
-      setSchedules((schedulesRes.data || []) as Schedule[]);
+      const loadedSchedules = (schedulesRes.data || []) as Schedule[];
+      setSchedules(loadedSchedules);
+      await loadCalibrationConfiguration(loadedSchedules);
       setCalibrations((calibrationRes.data || []) as Calibration[]);
       setMaintenance((maintenanceRes.data || []) as Maintenance[]);
       setQualifications((qualificationRes.data || []) as Qualification[]);
@@ -434,6 +500,69 @@ export default function EquipmentMasterPage() {
     setSaveMessage("Equipment Master updated.");
     setSaving(false);
     await load();
+  };
+
+  const toggleCalibrationReminder = (day:number) => {
+    setCalibrationReminderDays((current) => current.includes(day) ? current.filter((d)=>d!==day) : [...current,day].sort((a,b)=>b-a));
+  };
+
+  const saveCalibrationConfiguration = async () => {
+    if (!record) return;
+    setCalibrationConfigMessage("");
+    if (!record.calibration_required) { setCalibrationConfigMessage("Calibration is currently marked Not Required on the Equipment Master."); return; }
+
+    const frequencyValue = Number(calibrationConfig.frequency_value);
+    if (!Number.isFinite(frequencyValue) || frequencyValue <= 0) { setCalibrationConfigMessage("Calibration Frequency must be greater than zero."); return; }
+    if (!calibrationConfig.nominal_due_date) { setCalibrationConfigMessage("Nominal Due Date is required."); return; }
+    if (calibrationConfig.schedule_mode === "flexible" && !calibrationConfig.hard_due_date) { setCalibrationConfigMessage("Hard Due Date is required for Flexible scheduling."); return; }
+
+    const scheduledDate = calibrationConfig.schedule_mode === "fixed" ? calibrationConfig.nominal_due_date : (calibrationConfig.scheduled_service_date || calibrationConfig.nominal_due_date);
+    const hardDueDate = calibrationConfig.schedule_mode === "fixed" ? (calibrationConfig.hard_due_date || calibrationConfig.nominal_due_date) : calibrationConfig.hard_due_date;
+    if (scheduledDate && hardDueDate && scheduledDate > hardDueDate) { setCalibrationConfigMessage("Scheduled Service Date cannot be later than Hard Due Date."); return; }
+
+    setSavingCalibrationConfig(true);
+    try {
+      const { data:userData } = await supabase.auth.getUser();
+      const email = userData?.user?.email || "unknown";
+      const payload = {
+        tenant_id: record.tenant_id, equipment_id: record.id, activity_type: "calibration", is_active: true,
+        frequency_value: frequencyValue, frequency_unit: calibrationConfig.frequency_unit, schedule_mode: calibrationConfig.schedule_mode,
+        nominal_due_date: calibrationConfig.nominal_due_date, scheduled_service_date: scheduledDate, hard_due_date: hardDueDate,
+        early_window_days: Math.max(0,Number(calibrationConfig.early_window_days)||0),
+        late_window_days: Math.max(0,Number(calibrationConfig.late_window_days)||0),
+        equipment_family: calibrationConfig.equipment_family.trim() || null,
+        max_events_per_day: calibrationConfig.max_events_per_day ? Number(calibrationConfig.max_events_per_day) : null,
+        max_events_per_week: calibrationConfig.max_events_per_week ? Number(calibrationConfig.max_events_per_week) : null,
+        provider_type: calibrationConfig.provider_type || null, provider_name: calibrationConfig.provider_name.trim() || null,
+        procedure_document_number: calibrationConfig.procedure_document_number.trim() || null,
+        procedure_revision: calibrationConfig.procedure_revision.trim() || null, overdue_use_action: calibrationConfig.overdue_use_action,
+        created_by: email,
+      };
+
+      let scheduleId = calibrationSchedule?.id || "";
+      if (scheduleId) {
+        const { error } = await supabase.from("equipment_schedule_configurations").update(payload).eq("id",scheduleId);
+        if (error) throw new Error(error.message);
+      } else {
+        const { data,error } = await supabase.from("equipment_schedule_configurations").insert(payload).select("id").single();
+        if (error) throw new Error(error.message);
+        scheduleId = data.id;
+      }
+
+      const { error:delError } = await supabase.from("equipment_schedule_notifications").delete().eq("schedule_configuration_id",scheduleId);
+      if (delError) throw new Error(delError.message);
+      if (calibrationReminderDays.length) {
+        const rows = calibrationReminderDays.map((day)=>({tenant_id:record.tenant_id,schedule_configuration_id:scheduleId,days_before_due:day,is_enabled:true,recipient_type:"owner",recipient_email:null,notification_type:"both",created_by:email}));
+        const { error } = await supabase.from("equipment_schedule_notifications").insert(rows);
+        if (error) throw new Error(error.message);
+      }
+
+      await addAudit(calibrationSchedule ? "calibration_schedule_updated" : "calibration_schedule_configured", `${calibrationSchedule ? "Updated" : "Configured"} calibration: every ${frequencyValue} ${calibrationConfig.frequency_unit}; ${calibrationConfig.schedule_mode}; nominal ${calibrationConfig.nominal_due_date}; scheduled ${scheduledDate}; hard due ${hardDueDate}; reminders ${calibrationReminderDays.join(", ")}.`);
+      setCalibrationConfigMessage("Calibration configuration saved.");
+      setShowCalibrationConfig(false);
+      await load();
+    } catch (e:any) { setCalibrationConfigMessage(e?.message || "Unable to save calibration configuration."); }
+    finally { setSavingCalibrationConfig(false); }
   };
 
   const lifecycleReadiness = useMemo(() => {
@@ -808,8 +937,49 @@ export default function EquipmentMasterPage() {
         <SectionHeader
           title="4. Calibration Program"
           subtitle="Calibration scheduling and permanent calibration-event history."
-          action={<button disabled style={disabledButton}>Configure Calibration — Next Phase</button>}
+          action={record.calibration_required ? (
+            <button type="button" style={primaryButton} onClick={()=>{setCalibrationConfigMessage("");setShowCalibrationConfig(v=>!v);}}>
+              {showCalibrationConfig ? "Close Calibration Configuration" : calibrationSchedule ? "Edit Calibration Configuration" : "Configure Calibration"}
+            </button>
+          ) : <button disabled style={disabledButton}>Calibration Not Required</button>}
         />
+
+        {showCalibrationConfig && record.calibration_required ? (
+          <div style={{border:"1px solid #bfdbfe",background:"#f8fbff",borderRadius:12,padding:16,marginBottom:20}}>
+            <h3 style={{margin:"0 0 5px"}}>Calibration Configuration</h3>
+            <p style={{margin:"0 0 14px",color:"#64748b",fontSize:13}}>Configure the recurring calibration requirement and scheduling rules. The customer's calibration procedure remains the controlling instruction.</p>
+
+            <div style={formGridStyle}>
+              <EditField label="Frequency"><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}><input type="number" min="1" value={calibrationConfig.frequency_value} onChange={e=>setCalibrationConfig({...calibrationConfig,frequency_value:e.target.value})} style={input}/><select value={calibrationConfig.frequency_unit} onChange={e=>setCalibrationConfig({...calibrationConfig,frequency_unit:e.target.value})} style={input}><option value="days">Days</option><option value="weeks">Weeks</option><option value="months">Months</option><option value="years">Years</option></select></div></EditField>
+              <EditField label="Schedule Type"><select value={calibrationConfig.schedule_mode} onChange={e=>setCalibrationConfig({...calibrationConfig,schedule_mode:e.target.value,scheduled_service_date:e.target.value==="fixed"?calibrationConfig.nominal_due_date:calibrationConfig.scheduled_service_date})} style={input}><option value="fixed">Fixed</option><option value="flexible">Flexible</option></select></EditField>
+              <EditField label="Nominal Due Date"><input type="date" value={calibrationConfig.nominal_due_date} onChange={e=>setCalibrationConfig({...calibrationConfig,nominal_due_date:e.target.value,scheduled_service_date:calibrationConfig.schedule_mode==="fixed"?e.target.value:calibrationConfig.scheduled_service_date})} style={input}/></EditField>
+              <EditField label="Scheduled Service Date"><input type="date" value={calibrationConfig.schedule_mode==="fixed"?calibrationConfig.nominal_due_date:calibrationConfig.scheduled_service_date} disabled={calibrationConfig.schedule_mode==="fixed"} onChange={e=>setCalibrationConfig({...calibrationConfig,scheduled_service_date:e.target.value})} style={calibrationConfig.schedule_mode==="fixed"?disabledInputStyle:input}/></EditField>
+              <EditField label="Hard Due Date"><input type="date" value={calibrationConfig.hard_due_date} onChange={e=>setCalibrationConfig({...calibrationConfig,hard_due_date:e.target.value})} style={input}/></EditField>
+              <EditField label="Overdue Use Action"><select value={calibrationConfig.overdue_use_action} onChange={e=>setCalibrationConfig({...calibrationConfig,overdue_use_action:e.target.value})} style={input}><option value="notification_only">Notification Only</option><option value="restricted">Restricted</option><option value="out_of_service">Out of Service</option></select></EditField>
+
+              {calibrationConfig.schedule_mode==="flexible" ? <>
+                <EditField label="Early Window (Days)"><input type="number" min="0" value={calibrationConfig.early_window_days} onChange={e=>setCalibrationConfig({...calibrationConfig,early_window_days:e.target.value})} style={input}/></EditField>
+                <EditField label="Late Window (Days)"><input type="number" min="0" value={calibrationConfig.late_window_days} onChange={e=>setCalibrationConfig({...calibrationConfig,late_window_days:e.target.value})} style={input}/></EditField>
+                <EditField label="Equipment Family / Scheduling Group"><input value={calibrationConfig.equipment_family} onChange={e=>setCalibrationConfig({...calibrationConfig,equipment_family:e.target.value})} placeholder="e.g., Torque Testers" style={input}/></EditField>
+                <EditField label="Maximum Events Per Day"><input type="number" min="1" value={calibrationConfig.max_events_per_day} onChange={e=>setCalibrationConfig({...calibrationConfig,max_events_per_day:e.target.value})} placeholder="Optional" style={input}/></EditField>
+                <EditField label="Maximum Events Per Week"><input type="number" min="1" value={calibrationConfig.max_events_per_week} onChange={e=>setCalibrationConfig({...calibrationConfig,max_events_per_week:e.target.value})} placeholder="Optional" style={input}/></EditField>
+              </> : null}
+
+              <EditField label="Provider Type"><select value={calibrationConfig.provider_type} onChange={e=>setCalibrationConfig({...calibrationConfig,provider_type:e.target.value})} style={input}><option value="">Not Specified</option><option value="internal">Internal</option><option value="external">External</option></select></EditField>
+              <EditField label="Calibration Provider"><input value={calibrationConfig.provider_name} onChange={e=>setCalibrationConfig({...calibrationConfig,provider_name:e.target.value})} placeholder="Internal group or external provider" style={input}/></EditField>
+              <EditField label="Calibration Procedure Number"><input value={calibrationConfig.procedure_document_number} onChange={e=>setCalibrationConfig({...calibrationConfig,procedure_document_number:e.target.value})} placeholder="Controlled document number" style={input}/></EditField>
+              <EditField label="Procedure Revision"><input value={calibrationConfig.procedure_revision} onChange={e=>setCalibrationConfig({...calibrationConfig,procedure_revision:e.target.value})} placeholder="Revision" style={input}/></EditField>
+            </div>
+
+            {calibrationConfig.schedule_mode==="flexible" ? <div style={{marginTop:14,border:"1px solid #bfdbfe",background:"#eff6ff",borderRadius:10,padding:12,color:"#1e3a8a",fontSize:13,lineHeight:1.5}}><strong>Flexible Scheduling:</strong> QualiSphere stores the allowable window, equipment family, and capacity rules so future fleet-balancing logic can distribute equivalent equipment without exceeding the Hard Due Date.</div> : null}
+
+            <div style={{marginTop:18}}><div style={fieldLabel}>Calibration Notifications</div><div style={{color:"#64748b",fontSize:13,marginBottom:8}}>Progressive reminders to the equipment owner.</div><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{[30,14,7,3,1,0].map(day=>{const selected=calibrationReminderDays.includes(day);return <label key={day} style={{display:"inline-flex",alignItems:"center",gap:6,border:selected?"1px solid #86efac":"1px solid #cbd5e1",background:selected?"#f0fdf4":"#fff",borderRadius:999,padding:"6px 10px",cursor:"pointer",fontSize:13,fontWeight:700}}><input type="checkbox" checked={selected} onChange={()=>toggleCalibrationReminder(day)}/>{day===0?"Due Date":`${day} Days`}</label>})}</div></div>
+
+            {calibrationConfigMessage ? <div style={{marginTop:14,border:calibrationConfigMessage.includes("saved")?"1px solid #86efac":"1px solid #fecaca",background:calibrationConfigMessage.includes("saved")?"#f0fdf4":"#fef2f2",color:calibrationConfigMessage.includes("saved")?"#166534":"#991b1b",borderRadius:10,padding:10}}>{calibrationConfigMessage}</div> : null}
+
+            <div style={{display:"flex",justifyContent:"flex-end",gap:10,flexWrap:"wrap",marginTop:16}}><button type="button" style={secondaryButton} onClick={()=>{setShowCalibrationConfig(false);setCalibrationConfigMessage("");load();}}>Cancel</button><button type="button" style={{...primaryButton,opacity:savingCalibrationConfig?0.6:1}} disabled={savingCalibrationConfig} onClick={saveCalibrationConfiguration}>{savingCalibrationConfig?"Saving...":calibrationSchedule?"Save Calibration Changes":"Save Calibration Configuration"}</button></div>
+          </div>
+        ) : null}
 
         <ScheduleSummary
           required={record.calibration_required}
