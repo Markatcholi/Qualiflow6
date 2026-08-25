@@ -235,6 +235,21 @@ export default function EquipmentMasterPage() {
   });
   const [calibrationReminderDays, setCalibrationReminderDays] = useState<number[]>([30, 14, 7, 3, 1, 0]);
 
+  const [showCalibrationEvent,setShowCalibrationEvent]=useState(false);
+  const [savingCalibrationEvent,setSavingCalibrationEvent]=useState(false);
+  const [calibrationEventMessage,setCalibrationEventMessage]=useState("");
+  const [calibrationFiles,setCalibrationFiles]=useState<File[]>([]);
+  const [calibrationEvent,setCalibrationEvent]=useState({
+    event_source:"manual",
+    performed_date:"",
+    result:"pass",
+    certificate_number:"",
+    provider_type:"",
+    provider_name:"",
+    performed_by:"",
+    comments:""
+  });
+
   const [form, setForm] = useState({
     equipment_name: "",
     equipment_type: "",
@@ -1053,7 +1068,7 @@ export default function EquipmentMasterPage() {
               {calibrationFiles.length? <div style={{display:"grid",gap:8,marginTop:10}}>{calibrationFiles.map((f,i)=><div key={`${f.name}-${i}`} style={{display:"flex",justifyContent:"space-between",alignItems:"center",border:"1px solid #e2e8f0",borderRadius:9,padding:"8px 10px"}}><span><strong>{f.name}</strong> · {Math.max(1,Math.round(f.size/1024))} KB</span><button type="button" style={secondaryButton} onClick={()=>setCalibrationFiles(c=>c.filter((_,x)=>x!==i))}>Remove</button></div>)}</div>:null}
             </div>
             {calibrationEventMessage?<div style={{marginTop:14,border:"1px solid #fecaca",background:"#fef2f2",color:"#991b1b",borderRadius:10,padding:10}}>{calibrationEventMessage}</div>:null}
-            <div style={{display:"flex",justifyContent:"flex-end",gap:10,marginTop:16}}><button type="button" style={secondaryButton} onClick={()=>{setShowCalibrationEvent(false);resetCalibrationEventForm();}}>Cancel</button><button type="button" style={{...primaryButton,opacity:savingCalibrationEvent?.6:1}} disabled={savingCalibrationEvent} onClick={saveCalibrationEvent}>{savingCalibrationEvent?"Saving...":"Save Calibration Record"}</button></div>
+            <div style={{display:"flex",justifyContent:"flex-end",gap:10,marginTop:16}}><button type="button" style={secondaryButton} onClick={()=>{setShowCalibrationEvent(false);resetCalibrationEventForm();}}>Cancel</button><button type="button" style={{...primaryButton,opacity:savingCalibrationEvent?0.6:1}} disabled={savingCalibrationEvent} onClick={saveCalibrationEvent}>{savingCalibrationEvent?"Saving...":"Save Calibration Record"}</button></div>
           </div>
         ):null}
 
