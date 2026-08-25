@@ -72,6 +72,7 @@ type Calibration = {
   performed_date: string | null;
   result: string | null;
   certificate_number: string | null;
+  certificate_attachments: any[];
   provider_name: string | null;
   status: string;
   created_at: string;
@@ -182,6 +183,9 @@ const secondaryButton: React.CSSProperties = {
   color: "#0f172a",
 };
 
+const tdMini: React.CSSProperties={padding:"10px",borderBottom:"1px solid #e2e8f0"};
+const attachmentButton: React.CSSProperties={border:"1px solid #cbd5e1",background:"#fff",borderRadius:7,padding:"5px 8px",fontSize:12,fontWeight:700,cursor:"pointer"};
+
 const disabledButton: React.CSSProperties = {
   ...secondaryButton,
   color: "#94a3b8",
@@ -217,7 +221,6 @@ export default function EquipmentMasterPage() {
     frequency_unit: "months",
     schedule_mode: "fixed",
     nominal_due_date: "",
-    scheduled_service_date: "",
     hard_due_date: "",
     early_window_days: "0",
     late_window_days: "0",
@@ -516,9 +519,7 @@ export default function EquipmentMasterPage() {
     if (!calibrationConfig.nominal_due_date) { setCalibrationConfigMessage("Nominal Due Date is required."); return; }
     if (calibrationConfig.schedule_mode === "flexible" && !calibrationConfig.hard_due_date) { setCalibrationConfigMessage("Hard Due Date is required for Flexible scheduling."); return; }
 
-    const scheduledDate = calibrationConfig.schedule_mode === "fixed" ? calibrationConfig.nominal_due_date : (calibrationConfig.scheduled_service_date || calibrationConfig.nominal_due_date);
     const hardDueDate = calibrationConfig.schedule_mode === "fixed" ? (calibrationConfig.hard_due_date || calibrationConfig.nominal_due_date) : calibrationConfig.hard_due_date;
-    if (scheduledDate && hardDueDate && scheduledDate > hardDueDate) { setCalibrationConfigMessage("Scheduled Service Date cannot be later than Hard Due Date."); return; }
 
     setSavingCalibrationConfig(true);
     try {
@@ -527,7 +528,7 @@ export default function EquipmentMasterPage() {
       const payload = {
         tenant_id: record.tenant_id, equipment_id: record.id, activity_type: "calibration", is_active: true,
         frequency_value: frequencyValue, frequency_unit: calibrationConfig.frequency_unit, schedule_mode: calibrationConfig.schedule_mode,
-        nominal_due_date: calibrationConfig.nominal_due_date, scheduled_service_date: scheduledDate, hard_due_date: hardDueDate,
+        nominal_due_date: calibrationConfig.nominal_due_date, scheduled_service_date: null, hard_due_date: hardDueDate,
         early_window_days: Math.max(0,Number(calibrationConfig.early_window_days)||0),
         late_window_days: Math.max(0,Number(calibrationConfig.late_window_days)||0),
         equipment_family: calibrationConfig.equipment_family.trim() || null,
@@ -557,12 +558,63 @@ export default function EquipmentMasterPage() {
         if (error) throw new Error(error.message);
       }
 
-      await addAudit(calibrationSchedule ? "calibration_schedule_updated" : "calibration_schedule_configured", `${calibrationSchedule ? "Updated" : "Configured"} calibration: every ${frequencyValue} ${calibrationConfig.frequency_unit}; ${calibrationConfig.schedule_mode}; nominal ${calibrationConfig.nominal_due_date}; scheduled ${scheduledDate}; hard due ${hardDueDate}; reminders ${calibrationReminderDays.join(", ")}.`);
+      await addAudit(calibrationSchedule ? "calibration_schedule_updated" : "calibration_schedule_configured", `${calibrationSchedule ? "Updated" : "Configured"} calibration: every ${frequencyValue} ${calibrationConfig.frequency_unit}; ${calibrationConfig.schedule_mode}; nominal ${calibrationConfig.nominal_due_date}; hard due ${hardDueDate}; reminders ${calibrationReminderDays.join(", ")}.`);
       setCalibrationConfigMessage("Calibration configuration saved.");
       setShowCalibrationConfig(false);
       await load();
     } catch (e:any) { setCalibrationConfigMessage(e?.message || "Unable to save calibration configuration."); }
     finally { setSavingCalibrationConfig(false); }
+  };
+
+  const resetCalibrationEventForm=()=>{
+    setCalibrationEvent({event_source:"manual",performed_date:"",result:"pass",certificate_number:"",provider_type:"",provider_name:"",performed_by:"",comments:""});
+    setCalibrationFiles([]); setCalibrationEventMessage("");
+  };
+
+  const openCalibrationAttachment=async(a:any)=>{
+    const path=a?.path||a?.storage_path;
+    if(!path)return;
+    const {data,error}=await supabase.storage.from("controlled-documents").createSignedUrl(path,600);
+    if(error||!data?.signedUrl){alert(error?.message||"Unable to open calibration attachment.");return;}
+    window.open(data.signedUrl,"_blank","noopener,noreferrer");
+  };
+
+  const saveCalibrationEvent=async()=>{
+    if(!record)return;
+    setCalibrationEventMessage("");
+    if(!calibrationEvent.performed_date){setCalibrationEventMessage("Performed Date is required.");return;}
+    setSavingCalibrationEvent(true);
+    try{
+      const {data:userData}=await supabase.auth.getUser();
+      const email=userData?.user?.email||"unknown";
+      const folder=crypto.randomUUID();
+      const attachments:any[]=[];
+      for(const file of calibrationFiles){
+        const safe=file.name.trim().replace(/[^a-zA-Z0-9._-]+/g,"_").replace(/_+/g,"_");
+        const path=`equipment/${record.id}/calibration/${folder}/${Date.now()}-${safe}`;
+        const {error}=await supabase.storage.from("controlled-documents").upload(path,file,{cacheControl:"3600",upsert:false,contentType:file.type||undefined});
+        if(error)throw new Error(error.message);
+        attachments.push({name:file.name,path,size:file.size,type:file.type||null,uploaded_by:email,uploaded_at:new Date().toISOString()});
+      }
+      const payload={
+        tenant_id:record.tenant_id,calibration_number:"",equipment_id:record.id,
+        schedule_configuration_id:calibrationSchedule?.id||null,event_source:calibrationEvent.event_source,
+        nominal_due_date:calibrationSchedule?.nominal_due_date||null,scheduled_date:null,
+        hard_due_date:calibrationSchedule?.hard_due_date||null,
+        procedure_document_number:calibrationSchedule?.procedure_document_number||null,
+        procedure_revision:calibrationSchedule?.procedure_revision||null,
+        performed_date:calibrationEvent.performed_date,provider_type:calibrationEvent.provider_type||null,
+        provider_name:calibrationEvent.provider_name.trim()||null,performed_by:calibrationEvent.performed_by.trim()||email,
+        certificate_number:calibrationEvent.certificate_number.trim()||null,certificate_attachments:attachments,
+        comments:calibrationEvent.comments.trim()||null,result:calibrationEvent.result,
+        review_requirement:"optional",review_status:"not_required",status:"completed",created_by:email
+      };
+      const {data,error}=await supabase.from("equipment_calibration_events").insert(payload).select("calibration_number").single();
+      if(error)throw new Error(error.message);
+      await addAudit("calibration_event_recorded",`Calibration ${data.calibration_number} recorded. Result: ${calibrationEvent.result}. Attachments: ${attachments.length}.`);
+      setShowCalibrationEvent(false); resetCalibrationEventForm(); await load();
+    }catch(e:any){setCalibrationEventMessage(e?.message||"Unable to save calibration record.");}
+    finally{setSavingCalibrationEvent(false);}
   };
 
   const lifecycleReadiness = useMemo(() => {
@@ -951,9 +1003,9 @@ export default function EquipmentMasterPage() {
 
             <div style={formGridStyle}>
               <EditField label="Frequency"><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}><input type="number" min="1" value={calibrationConfig.frequency_value} onChange={e=>setCalibrationConfig({...calibrationConfig,frequency_value:e.target.value})} style={input}/><select value={calibrationConfig.frequency_unit} onChange={e=>setCalibrationConfig({...calibrationConfig,frequency_unit:e.target.value})} style={input}><option value="days">Days</option><option value="weeks">Weeks</option><option value="months">Months</option><option value="years">Years</option></select></div></EditField>
-              <EditField label="Schedule Type"><select value={calibrationConfig.schedule_mode} onChange={e=>setCalibrationConfig({...calibrationConfig,schedule_mode:e.target.value,scheduled_service_date:e.target.value==="fixed"?calibrationConfig.nominal_due_date:calibrationConfig.scheduled_service_date})} style={input}><option value="fixed">Fixed</option><option value="flexible">Flexible</option></select></EditField>
-              <EditField label="Nominal Due Date"><input type="date" value={calibrationConfig.nominal_due_date} onChange={e=>setCalibrationConfig({...calibrationConfig,nominal_due_date:e.target.value,scheduled_service_date:calibrationConfig.schedule_mode==="fixed"?e.target.value:calibrationConfig.scheduled_service_date})} style={input}/></EditField>
-              <EditField label="Scheduled Service Date"><input type="date" value={calibrationConfig.schedule_mode==="fixed"?calibrationConfig.nominal_due_date:calibrationConfig.scheduled_service_date} disabled={calibrationConfig.schedule_mode==="fixed"} onChange={e=>setCalibrationConfig({...calibrationConfig,scheduled_service_date:e.target.value})} style={calibrationConfig.schedule_mode==="fixed"?disabledInputStyle:input}/></EditField>
+              <EditField label="Schedule Type"><select value={calibrationConfig.schedule_mode} onChange={e=>setCalibrationConfig({...calibrationConfig,schedule_mode:e.target.value})} style={input}><option value="fixed">Fixed</option><option value="flexible">Flexible</option></select></EditField>
+              <EditField label="Nominal Due Date"><input type="date" value={calibrationConfig.nominal_due_date} onChange={e=>setCalibrationConfig({...calibrationConfig,nominal_due_date:e.target.value})} style={input}/></EditField>
+              
               <EditField label="Hard Due Date"><input type="date" value={calibrationConfig.hard_due_date} onChange={e=>setCalibrationConfig({...calibrationConfig,hard_due_date:e.target.value})} style={input}/></EditField>
               <EditField label="Overdue Use Action"><select value={calibrationConfig.overdue_use_action} onChange={e=>setCalibrationConfig({...calibrationConfig,overdue_use_action:e.target.value})} style={input}><option value="notification_only">Notification Only</option><option value="restricted">Restricted</option><option value="out_of_service">Out of Service</option></select></EditField>
 
@@ -981,26 +1033,38 @@ export default function EquipmentMasterPage() {
           </div>
         ) : null}
 
+        {showCalibrationEvent&&record.calibration_required?(
+          <div style={{border:"1px solid #cbd5e1",background:"#fff",borderRadius:12,padding:16,marginBottom:20}}>
+            <h3 style={{margin:"0 0 5px"}}>Add Calibration Record</h3>
+            <p style={{margin:"0 0 14px",color:"#64748b",fontSize:13}}>Record a calibration event and attach one or more supporting calibration records.</p>
+            <div style={formGridStyle}>
+              <EditField label="Event Source"><select value={calibrationEvent.event_source} onChange={e=>setCalibrationEvent({...calibrationEvent,event_source:e.target.value})} style={input}><option value="manual">Manual / Historical</option><option value="scheduled">Scheduled</option><option value="post_maintenance">Post Maintenance</option><option value="other">Other</option></select></EditField>
+              <EditField label="Performed Date"><input type="date" value={calibrationEvent.performed_date} onChange={e=>setCalibrationEvent({...calibrationEvent,performed_date:e.target.value})} style={input}/></EditField>
+              <EditField label="Result"><select value={calibrationEvent.result} onChange={e=>setCalibrationEvent({...calibrationEvent,result:e.target.value})} style={input}><option value="pass">Pass</option><option value="oot">OOT</option><option value="oos">OOS</option></select></EditField>
+              <EditField label="Certificate / Record Number"><input value={calibrationEvent.certificate_number} onChange={e=>setCalibrationEvent({...calibrationEvent,certificate_number:e.target.value})} style={input}/></EditField>
+              <EditField label="Provider Type"><select value={calibrationEvent.provider_type} onChange={e=>setCalibrationEvent({...calibrationEvent,provider_type:e.target.value})} style={input}><option value="">Not Specified</option><option value="internal">Internal</option><option value="external">External</option></select></EditField>
+              <EditField label="Calibration Provider"><input value={calibrationEvent.provider_name} onChange={e=>setCalibrationEvent({...calibrationEvent,provider_name:e.target.value})} style={input}/></EditField>
+              <EditField label="Performed By"><input value={calibrationEvent.performed_by} onChange={e=>setCalibrationEvent({...calibrationEvent,performed_by:e.target.value})} style={input}/></EditField>
+            </div>
+            <div style={{marginTop:14}}><EditField label="Comments"><textarea rows={3} value={calibrationEvent.comments} onChange={e=>setCalibrationEvent({...calibrationEvent,comments:e.target.value})} style={{...input,resize:"vertical"}}/></EditField></div>
+            <div style={{marginTop:18}}>
+              <div style={fieldLabel}>Calibration Record Attachments</div>
+              <div style={{color:"#64748b",fontSize:13,marginBottom:8}}>Attach multiple certificates, as-found/as-left data, vendor reports, worksheets, or traceability records.</div>
+              <input type="file" multiple onChange={e=>{const f=Array.from(e.target.files||[]);setCalibrationFiles(c=>[...c,...f]);e.currentTarget.value="";}} style={input}/>
+              {calibrationFiles.length? <div style={{display:"grid",gap:8,marginTop:10}}>{calibrationFiles.map((f,i)=><div key={`${f.name}-${i}`} style={{display:"flex",justifyContent:"space-between",alignItems:"center",border:"1px solid #e2e8f0",borderRadius:9,padding:"8px 10px"}}><span><strong>{f.name}</strong> · {Math.max(1,Math.round(f.size/1024))} KB</span><button type="button" style={secondaryButton} onClick={()=>setCalibrationFiles(c=>c.filter((_,x)=>x!==i))}>Remove</button></div>)}</div>:null}
+            </div>
+            {calibrationEventMessage?<div style={{marginTop:14,border:"1px solid #fecaca",background:"#fef2f2",color:"#991b1b",borderRadius:10,padding:10}}>{calibrationEventMessage}</div>:null}
+            <div style={{display:"flex",justifyContent:"flex-end",gap:10,marginTop:16}}><button type="button" style={secondaryButton} onClick={()=>{setShowCalibrationEvent(false);resetCalibrationEventForm();}}>Cancel</button><button type="button" style={{...primaryButton,opacity:savingCalibrationEvent?.6:1}} disabled={savingCalibrationEvent} onClick={saveCalibrationEvent}>{savingCalibrationEvent?"Saving...":"Save Calibration Record"}</button></div>
+          </div>
+        ):null}
+
         <ScheduleSummary
           required={record.calibration_required}
           schedule={calibrationSchedule}
           emptyText="No calibration schedule configured."
         />
 
-        <HistoryTable
-          title="Calibration History"
-          emptyText="No calibration events recorded."
-          headers={["Event", "Scheduled", "Performed", "Result", "Certificate", "Provider", "Status"]}
-          rows={calibrations.map((row) => [
-            row.calibration_number,
-            formatDate(row.scheduled_date),
-            formatDate(row.performed_date),
-            formatLabel(row.result),
-            row.certificate_number || "Not Recorded",
-            row.provider_name || "Not Recorded",
-            formatLabel(row.status),
-          ])}
-        />
+        <div style={{marginTop:18}}><h3 style={{margin:"0 0 10px"}}>Calibration History</h3>{calibrations.length===0?<div style={emptyBox}>No calibration events recorded.</div>:<div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}><thead><tr>{["Event","Performed","Result","Certificate / Record","Provider","Attachments","Status"].map(h=><th key={h} style={{textAlign:"left",padding:"9px 10px",borderBottom:"1px solid #cbd5e1"}}>{h}</th>)}</tr></thead><tbody>{calibrations.map(row=>{const a=Array.isArray(row.certificate_attachments)?row.certificate_attachments:[];return <tr key={row.id}><td style={tdMini}>{row.calibration_number}</td><td style={tdMini}>{formatDate(row.performed_date)}</td><td style={tdMini}>{formatLabel(row.result)}</td><td style={tdMini}>{row.certificate_number||"Not Recorded"}</td><td style={tdMini}>{row.provider_name||"Not Recorded"}</td><td style={tdMini}>{a.length===0?"None":<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{a.map((x:any,i:number)=><button key={i} type="button" style={attachmentButton} onClick={()=>openCalibrationAttachment(x)}>{x?.name||`Attachment ${i+1}`}</button>)}</div>}</td><td style={tdMini}>{formatLabel(row.status)}</td></tr>})}</tbody></table></div>}</div>
       </section>
 
       <section style={{ ...card, marginBottom: 16 }}>
