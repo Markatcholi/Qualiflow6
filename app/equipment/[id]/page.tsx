@@ -270,7 +270,6 @@ export default function EquipmentMasterPage() {
       frequency_unit: existing.frequency_unit || "months",
       schedule_mode: existing.schedule_mode || "fixed",
       nominal_due_date: existing.nominal_due_date || "",
-      scheduled_service_date: existing.scheduled_service_date || "",
       hard_due_date: existing.hard_due_date || "",
       early_window_days: String(existing.early_window_days ?? 0),
       late_window_days: String(existing.late_window_days ?? 0),
@@ -1431,10 +1430,6 @@ function ScheduleSummary({
       />
       <Detail label="Schedule Mode" value={formatLabel(schedule.schedule_mode)} />
       <Detail label="Nominal Due Date" value={formatDate(schedule.nominal_due_date)} />
-      <Detail
-        label="Scheduled Service Date"
-        value={formatDate(schedule.scheduled_service_date)}
-      />
       <Detail label="Hard Due Date" value={formatDate(schedule.hard_due_date)} />
       <Detail
         label="Provider"
