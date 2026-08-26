@@ -1003,11 +1003,40 @@ export default function EquipmentMasterPage() {
         <SectionHeader
           title="4. Calibration Program"
           subtitle="Calibration scheduling and permanent calibration-event history."
-          action={record.calibration_required ? (
-            <button type="button" style={primaryButton} onClick={()=>{setCalibrationConfigMessage("");setShowCalibrationConfig(v=>!v);}}>
-              {showCalibrationConfig ? "Close Calibration Configuration" : calibrationSchedule ? "Edit Calibration Configuration" : "Configure Calibration"}
-            </button>
-          ) : <button disabled style={disabledButton}>Calibration Not Required</button>}
+          action={
+            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+              {record.calibration_required ? (
+                <>
+                  <button
+                    type="button"
+                    style={secondaryButton}
+                    onClick={()=>{
+                      resetCalibrationEventForm();
+                      setShowCalibrationEvent(v=>!v);
+                    }}
+                  >
+                    {showCalibrationEvent ? "Close Calibration Record" : "Add Calibration Record"}
+                  </button>
+                  <button
+                    type="button"
+                    style={primaryButton}
+                    onClick={()=>{
+                      setCalibrationConfigMessage("");
+                      setShowCalibrationConfig(v=>!v);
+                    }}
+                  >
+                    {showCalibrationConfig
+                      ? "Close Calibration Configuration"
+                      : calibrationSchedule
+                      ? "Edit Calibration Configuration"
+                      : "Configure Calibration"}
+                  </button>
+                </>
+              ) : (
+                <button disabled style={disabledButton}>Calibration Not Required</button>
+              )}
+            </div>
+          }
         />
 
         {showCalibrationConfig && record.calibration_required ? (
