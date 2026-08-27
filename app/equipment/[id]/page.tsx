@@ -67,13 +67,17 @@ type Schedule = {
 type Calibration = {
   id: string;
   calibration_number: string;
+  event_source: string;
   scheduled_date: string | null;
   hard_due_date: string | null;
   performed_date: string | null;
   result: string | null;
   certificate_number: string | null;
   certificate_attachments: any[];
+  provider_type: string | null;
   provider_name: string | null;
+  performed_by: string | null;
+  comments: string | null;
   status: string;
   created_at: string;
 };
@@ -249,6 +253,9 @@ export default function EquipmentMasterPage() {
     performed_by:"",
     comments:""
   });
+  const [editingCalibrationEventId,setEditingCalibrationEventId]=useState<string | null>(null);
+  const [existingCalibrationAttachments,setExistingCalibrationAttachments]=useState<any[]>([]);
+  const [removedCalibrationAttachments,setRemovedCalibrationAttachments]=useState<any[]>([]);
 
   const [form, setForm] = useState({
     equipment_name: "",
@@ -334,7 +341,7 @@ export default function EquipmentMasterPage() {
           .order("activity_type"),
         supabase
           .from("equipment_calibration_events")
-          .select("id,calibration_number,scheduled_date,hard_due_date,performed_date,result,certificate_number,provider_name,status,created_at")
+          .select("id,calibration_number,event_source,scheduled_date,hard_due_date,performed_date,result,certificate_number,certificate_attachments,provider_type,provider_name,performed_by,comments,status,created_at")
           .eq("equipment_id", equipmentId)
           .order("created_at", { ascending: false }),
         supabase
@@ -582,7 +589,39 @@ export default function EquipmentMasterPage() {
 
   const resetCalibrationEventForm=()=>{
     setCalibrationEvent({event_source:"manual",performed_date:"",result:"pass",certificate_number:"",provider_type:"",provider_name:"",performed_by:"",comments:""});
-    setCalibrationFiles([]); setCalibrationEventMessage("");
+    setCalibrationFiles([]);
+    setExistingCalibrationAttachments([]);
+    setRemovedCalibrationAttachments([]);
+    setEditingCalibrationEventId(null);
+    setCalibrationEventMessage("");
+  };
+
+  const editCalibrationEvent=(row:Calibration)=>{
+    setEditingCalibrationEventId(row.id);
+    setCalibrationEvent({
+      event_source:row.event_source||"manual",
+      performed_date:row.performed_date||"",
+      result:row.result||"pass",
+      certificate_number:row.certificate_number||"",
+      provider_type:row.provider_type||"",
+      provider_name:row.provider_name||"",
+      performed_by:row.performed_by||"",
+      comments:row.comments||""
+    });
+    setExistingCalibrationAttachments(Array.isArray(row.certificate_attachments)?row.certificate_attachments:[]);
+    setRemovedCalibrationAttachments([]);
+    setCalibrationFiles([]);
+    setCalibrationEventMessage("");
+    setShowCalibrationEvent(true);
+    setShowCalibrationConfig(false);
+  };
+
+  const removeExistingCalibrationAttachment=(index:number)=>{
+    setExistingCalibrationAttachments(current=>{
+      const target=current[index];
+      if(target)setRemovedCalibrationAttachments(removed=>[...removed,target]);
+      return current.filter((_,i)=>i!==index);
+    });
   };
 
   const openCalibrationAttachment=async(a:any)=>{
@@ -601,34 +640,89 @@ export default function EquipmentMasterPage() {
     try{
       const {data:userData}=await supabase.auth.getUser();
       const email=userData?.user?.email||"unknown";
-      const folder=crypto.randomUUID();
-      const attachments:any[]=[];
+      const folder=editingCalibrationEventId||crypto.randomUUID();
+      const newAttachments:any[]=[];
+
       for(const file of calibrationFiles){
         const safe=file.name.trim().replace(/[^a-zA-Z0-9._-]+/g,"_").replace(/_+/g,"_");
         const path=`equipment/${record.id}/calibration/${folder}/${Date.now()}-${safe}`;
         const {error}=await supabase.storage.from("controlled-documents").upload(path,file,{cacheControl:"3600",upsert:false,contentType:file.type||undefined});
         if(error)throw new Error(error.message);
-        attachments.push({name:file.name,path,size:file.size,type:file.type||null,uploaded_by:email,uploaded_at:new Date().toISOString()});
+        newAttachments.push({name:file.name,path,size:file.size,type:file.type||null,uploaded_by:email,uploaded_at:new Date().toISOString()});
       }
+
+      const attachments=[...existingCalibrationAttachments,...newAttachments];
       const payload={
-        tenant_id:record.tenant_id,calibration_number:"",equipment_id:record.id,
-        schedule_configuration_id:calibrationSchedule?.id||null,event_source:calibrationEvent.event_source,
-        nominal_due_date:calibrationSchedule?.nominal_due_date||null,scheduled_date:null,
-        hard_due_date:calibrationSchedule?.hard_due_date||null,
-        procedure_document_number:calibrationSchedule?.procedure_document_number||null,
-        procedure_revision:calibrationSchedule?.procedure_revision||null,
-        performed_date:calibrationEvent.performed_date,provider_type:calibrationEvent.provider_type||null,
-        provider_name:calibrationEvent.provider_name.trim()||null,performed_by:calibrationEvent.performed_by.trim()||email,
-        certificate_number:calibrationEvent.certificate_number.trim()||null,certificate_attachments:attachments,
-        comments:calibrationEvent.comments.trim()||null,result:calibrationEvent.result,
-        review_requirement:"optional",review_status:"not_required",status:"completed",created_by:email
+        event_source:calibrationEvent.event_source,
+        performed_date:calibrationEvent.performed_date,
+        provider_type:calibrationEvent.provider_type||null,
+        provider_name:calibrationEvent.provider_name.trim()||null,
+        performed_by:calibrationEvent.performed_by.trim()||email,
+        certificate_number:calibrationEvent.certificate_number.trim()||null,
+        certificate_attachments:attachments,
+        comments:calibrationEvent.comments.trim()||null,
+        result:calibrationEvent.result,
+        status:"completed"
       };
-      const {data,error}=await supabase.from("equipment_calibration_events").insert(payload).select("calibration_number").single();
-      if(error)throw new Error(error.message);
-      await addAudit("calibration_event_recorded",`Calibration ${data.calibration_number} recorded. Result: ${calibrationEvent.result}. Attachments: ${attachments.length}.`);
-      setShowCalibrationEvent(false); resetCalibrationEventForm(); await load();
-    }catch(e:any){setCalibrationEventMessage(e?.message||"Unable to save calibration record.");}
-    finally{setSavingCalibrationEvent(false);}
+
+      let calibrationNumber="";
+      if(editingCalibrationEventId){
+        const {data,error}=await supabase.from("equipment_calibration_events")
+          .update(payload)
+          .eq("id",editingCalibrationEventId)
+          .eq("equipment_id",record.id)
+          .select("calibration_number")
+          .single();
+        if(error)throw new Error(error.message);
+        calibrationNumber=data.calibration_number;
+      }else{
+        const createPayload={
+          ...payload,
+          tenant_id:record.tenant_id,
+          calibration_number:"",
+          equipment_id:record.id,
+          schedule_configuration_id:calibrationSchedule?.id||null,
+          nominal_due_date:calibrationSchedule?.nominal_due_date||null,
+          scheduled_date:null,
+          hard_due_date:calibrationSchedule?.hard_due_date||null,
+          procedure_document_number:calibrationSchedule?.procedure_document_number||null,
+          procedure_revision:calibrationSchedule?.procedure_revision||null,
+          review_requirement:"optional",
+          review_status:"not_required",
+          created_by:email
+        };
+        const {data,error}=await supabase.from("equipment_calibration_events")
+          .insert(createPayload)
+          .select("calibration_number")
+          .single();
+        if(error)throw new Error(error.message);
+        calibrationNumber=data.calibration_number;
+      }
+
+      const removedPaths=removedCalibrationAttachments
+        .map((a:any)=>a?.path||a?.storage_path)
+        .filter(Boolean);
+
+      if(removedPaths.length){
+        const {error:removeError}=await supabase.storage
+          .from("controlled-documents")
+          .remove(removedPaths);
+        if(removeError)console.warn("Unable to remove one or more old calibration attachments:",removeError.message);
+      }
+
+      await addAudit(
+        editingCalibrationEventId?"calibration_event_updated":"calibration_event_recorded",
+        `Calibration ${calibrationNumber} ${editingCalibrationEventId?"updated":"recorded"}. Result: ${calibrationEvent.result}. Attachments: ${attachments.length}.`
+      );
+
+      setShowCalibrationEvent(false);
+      resetCalibrationEventForm();
+      await load();
+    }catch(e:any){
+      setCalibrationEventMessage(e?.message||"Unable to save calibration record.");
+    }finally{
+      setSavingCalibrationEvent(false);
+    }
   };
 
   const lifecycleReadiness = useMemo(() => {
@@ -1078,8 +1172,8 @@ export default function EquipmentMasterPage() {
 
         {showCalibrationEvent&&record.calibration_required?(
           <div style={{border:"1px solid #cbd5e1",background:"#fff",borderRadius:12,padding:16,marginBottom:20}}>
-            <h3 style={{margin:"0 0 5px"}}>Add Calibration Record</h3>
-            <p style={{margin:"0 0 14px",color:"#64748b",fontSize:13}}>Record a calibration event and attach one or more supporting calibration records.</p>
+            <h3 style={{margin:"0 0 5px"}}>{editingCalibrationEventId?"Update Calibration Record":"Add Calibration Record"}</h3>
+            <p style={{margin:"0 0 14px",color:"#64748b",fontSize:13}}>{editingCalibrationEventId?"Update the calibration event, comments, and supporting records.":"Record a calibration event and attach one or more supporting calibration records."}</p>
             <div style={formGridStyle}>
               <EditField label="Event Source"><select value={calibrationEvent.event_source} onChange={e=>setCalibrationEvent({...calibrationEvent,event_source:e.target.value})} style={input}><option value="manual">Manual / Historical</option><option value="scheduled">Scheduled</option><option value="post_maintenance">Post Maintenance</option><option value="other">Other</option></select></EditField>
               <EditField label="Performed Date"><input type="date" value={calibrationEvent.performed_date} onChange={e=>setCalibrationEvent({...calibrationEvent,performed_date:e.target.value})} style={input}/></EditField>
@@ -1093,11 +1187,12 @@ export default function EquipmentMasterPage() {
             <div style={{marginTop:18}}>
               <div style={fieldLabel}>Calibration Record Attachments</div>
               <div style={{color:"#64748b",fontSize:13,marginBottom:8}}>Attach multiple certificates, as-found/as-left data, vendor reports, worksheets, or traceability records.</div>
+              {existingCalibrationAttachments.length? <div style={{display:"grid",gap:8,marginBottom:10}}>{existingCalibrationAttachments.map((a:any,i:number)=><div key={`${a?.path||a?.name||"attachment"}-${i}`} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,border:"1px solid #bfdbfe",background:"#eff6ff",borderRadius:9,padding:"8px 10px"}}><button type="button" style={attachmentButton} onClick={()=>openCalibrationAttachment(a)}>{a?.name||`Attachment ${i+1}`}</button><button type="button" style={secondaryButton} onClick={()=>removeExistingCalibrationAttachment(i)}>Remove</button></div>)}</div>:null}
               <input type="file" multiple onChange={e=>{const f=Array.from(e.target.files||[]);setCalibrationFiles(c=>[...c,...f]);e.currentTarget.value="";}} style={input}/>
               {calibrationFiles.length? <div style={{display:"grid",gap:8,marginTop:10}}>{calibrationFiles.map((f,i)=><div key={`${f.name}-${i}`} style={{display:"flex",justifyContent:"space-between",alignItems:"center",border:"1px solid #e2e8f0",borderRadius:9,padding:"8px 10px"}}><span><strong>{f.name}</strong> · {Math.max(1,Math.round(f.size/1024))} KB</span><button type="button" style={secondaryButton} onClick={()=>setCalibrationFiles(c=>c.filter((_,x)=>x!==i))}>Remove</button></div>)}</div>:null}
             </div>
             {calibrationEventMessage?<div style={{marginTop:14,border:"1px solid #fecaca",background:"#fef2f2",color:"#991b1b",borderRadius:10,padding:10}}>{calibrationEventMessage}</div>:null}
-            <div style={{display:"flex",justifyContent:"flex-end",gap:10,marginTop:16}}><button type="button" style={secondaryButton} onClick={()=>{setShowCalibrationEvent(false);resetCalibrationEventForm();}}>Cancel</button><button type="button" style={{...primaryButton,opacity:savingCalibrationEvent?0.6:1}} disabled={savingCalibrationEvent} onClick={saveCalibrationEvent}>{savingCalibrationEvent?"Saving...":"Save Calibration Record"}</button></div>
+            <div style={{display:"flex",justifyContent:"flex-end",gap:10,marginTop:16}}><button type="button" style={secondaryButton} onClick={()=>{setShowCalibrationEvent(false);resetCalibrationEventForm();}}>Cancel</button><button type="button" style={{...primaryButton,opacity:savingCalibrationEvent?0.6:1}} disabled={savingCalibrationEvent} onClick={saveCalibrationEvent}>{savingCalibrationEvent?"Saving...":editingCalibrationEventId?"Update Calibration Record":"Save Calibration Record"}</button></div>
           </div>
         ):null}
 
@@ -1107,7 +1202,28 @@ export default function EquipmentMasterPage() {
           emptyText="No calibration schedule configured."
         />
 
-        <div style={{marginTop:18}}><h3 style={{margin:"0 0 10px"}}>Calibration History</h3>{calibrations.length===0?<div style={emptyPanelStyle}>No calibration events recorded.</div>:<div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}><thead><tr>{["Event","Performed","Result","Certificate / Record","Provider","Attachments","Status"].map(h=><th key={h} style={{textAlign:"left",padding:"9px 10px",borderBottom:"1px solid #cbd5e1"}}>{h}</th>)}</tr></thead><tbody>{calibrations.map(row=>{const a=Array.isArray(row.certificate_attachments)?row.certificate_attachments:[];return <tr key={row.id}><td style={tdMini}>{row.calibration_number}</td><td style={tdMini}>{formatDate(row.performed_date)}</td><td style={tdMini}>{formatLabel(row.result)}</td><td style={tdMini}>{row.certificate_number||"Not Recorded"}</td><td style={tdMini}>{row.provider_name||"Not Recorded"}</td><td style={tdMini}>{a.length===0?"None":<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{a.map((x:any,i:number)=><button key={i} type="button" style={attachmentButton} onClick={()=>openCalibrationAttachment(x)}>{x?.name||`Attachment ${i+1}`}</button>)}</div>}</td><td style={tdMini}>{formatLabel(row.status)}</td></tr>})}</tbody></table></div>}</div>
+        <div style={{marginTop:18}}>
+          <h3 style={{margin:"0 0 10px"}}>Calibration History</h3>
+          {calibrations.length===0?<div style={emptyPanelStyle}>No calibration events recorded.</div>:<div style={{overflowX:"auto"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:13,minWidth:1100}}>
+              <thead><tr>{["Event","Performed","Result","Certificate / Record","Provider","Comments","Attachments","Status","Action"].map(h=><th key={h} style={{textAlign:"left",padding:"9px 10px",borderBottom:"1px solid #cbd5e1"}}>{h}</th>)}</tr></thead>
+              <tbody>{calibrations.map(row=>{
+                const a=Array.isArray(row.certificate_attachments)?row.certificate_attachments:[];
+                return <tr key={row.id}>
+                  <td style={tdMini}><strong>{row.calibration_number}</strong></td>
+                  <td style={tdMini}>{formatDate(row.performed_date)}</td>
+                  <td style={tdMini}>{formatLabel(row.result)}</td>
+                  <td style={tdMini}>{row.certificate_number||"Not Recorded"}</td>
+                  <td style={tdMini}>{row.provider_name||"Not Recorded"}</td>
+                  <td style={{...tdMini,maxWidth:260,whiteSpace:"pre-wrap"}}>{row.comments||"Not Recorded"}</td>
+                  <td style={tdMini}>{a.length===0?"None":<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{a.map((x:any,i:number)=><button key={`${x?.path||x?.name||i}`} type="button" style={attachmentButton} onClick={()=>openCalibrationAttachment(x)}>{x?.name||`Attachment ${i+1}`}</button>)}</div>}</td>
+                  <td style={tdMini}>{formatLabel(row.status)}</td>
+                  <td style={tdMini}><button type="button" style={secondaryButton} onClick={()=>editCalibrationEvent(row)}>Edit</button></td>
+                </tr>
+              })}</tbody>
+            </table>
+          </div>}
+        </div>
       </section>
 
       <section style={{ ...card, marginBottom: 16 }}>
