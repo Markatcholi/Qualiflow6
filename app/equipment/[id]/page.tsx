@@ -90,7 +90,15 @@ type Maintenance = {
   hard_due_date: string | null;
   performed_date: string | null;
   result: string | null;
+  provider_type: string | null;
   provider_name: string | null;
+  performed_by: string | null;
+  procedure_document_number: string | null;
+  procedure_revision: string | null;
+  issue_description: string | null;
+  maintenance_activities: string | null;
+  service_report_attachments: any[];
+  comments: string | null;
   status: string;
   created_at: string;
 };
@@ -257,6 +265,63 @@ export default function EquipmentMasterPage() {
   const [existingCalibrationAttachments,setExistingCalibrationAttachments]=useState<any[]>([]);
   const [removedCalibrationAttachments,setRemovedCalibrationAttachments]=useState<any[]>([]);
 
+  const [showPmConfig,setShowPmConfig]=useState(false);
+  const [savingPmConfig,setSavingPmConfig]=useState(false);
+  const [pmConfigMessage,setPmConfigMessage]=useState("");
+  const [pmConfig,setPmConfig]=useState({
+    frequency_value:"12",
+    frequency_unit:"months",
+    schedule_mode:"fixed",
+    nominal_due_date:"",
+    hard_due_date:"",
+    early_window_days:"0",
+    late_window_days:"0",
+    equipment_family:"",
+    max_events_per_day:"",
+    max_events_per_week:"",
+    provider_type:"",
+    provider_name:"",
+    procedure_document_number:"",
+    procedure_revision:"",
+    overdue_use_action:"notification_only"
+  });
+  const [pmReminderDays,setPmReminderDays]=useState<number[]>([30,14,7,3,1,0]);
+
+  const [showMaintenanceEvent,setShowMaintenanceEvent]=useState(false);
+  const [savingMaintenanceEvent,setSavingMaintenanceEvent]=useState(false);
+  const [maintenanceEventMessage,setMaintenanceEventMessage]=useState("");
+  const [maintenanceFiles,setMaintenanceFiles]=useState<File[]>([]);
+  const [editingMaintenanceEventId,setEditingMaintenanceEventId]=useState<string | null>(null);
+  const [existingMaintenanceAttachments,setExistingMaintenanceAttachments]=useState<any[]>([]);
+  const [removedMaintenanceAttachments,setRemovedMaintenanceAttachments]=useState<any[]>([]);
+  const [maintenanceEvent,setMaintenanceEvent]=useState({
+    maintenance_type:"preventive",
+    performed_date:"",
+    result:"acceptable",
+    provider_type:"",
+    provider_name:"",
+    performed_by:"",
+    issue_description:"",
+    maintenance_activities:"",
+    comments:""
+  });
+
+  const [maintenanceComponents,setMaintenanceComponents]=useState<Array<{
+    component_description:string;
+    part_number:string;
+    serial_or_lot_number:string;
+    quantity:string;
+    notes:string;
+  }>>([]);
+
+  const [postMaintenanceAssessment,setPostMaintenanceAssessment]=useState({
+    calibration_required:false,
+    calibration_rationale:"",
+    requalification_required:false,
+    requalification_rationale:""
+  });
+  const [existingPostMaintenanceAssessmentId,setExistingPostMaintenanceAssessmentId]=useState<string | null>(null);
+
   const [form, setForm] = useState({
     equipment_name: "",
     equipment_type: "",
@@ -315,6 +380,49 @@ export default function EquipmentMasterPage() {
     setCalibrationReminderDays(days.length ? days : [30,14,7,3,1,0]);
   };
 
+
+  const loadPmConfiguration = async (scheduleRows: Schedule[]) => {
+    const existing = scheduleRows.find(
+      (item) => item.activity_type === "preventive_maintenance" && item.is_active
+    );
+
+    if (!existing) {
+      setPmReminderDays([30,14,7,3,1,0]);
+      return;
+    }
+
+    setPmConfig({
+      frequency_value:String(existing.frequency_value||12),
+      frequency_unit:existing.frequency_unit||"months",
+      schedule_mode:existing.schedule_mode||"fixed",
+      nominal_due_date:existing.nominal_due_date||"",
+      hard_due_date:existing.hard_due_date||"",
+      early_window_days:String(existing.early_window_days??0),
+      late_window_days:String(existing.late_window_days??0),
+      equipment_family:existing.equipment_family||"",
+      max_events_per_day:existing.max_events_per_day==null?"":String(existing.max_events_per_day),
+      max_events_per_week:existing.max_events_per_week==null?"":String(existing.max_events_per_week),
+      provider_type:existing.provider_type||"",
+      provider_name:existing.provider_name||"",
+      procedure_document_number:existing.procedure_document_number||"",
+      procedure_revision:existing.procedure_revision||"",
+      overdue_use_action:existing.overdue_use_action||"notification_only"
+    });
+
+    const {data}=await supabase
+      .from("equipment_schedule_notifications")
+      .select("days_before_due,is_enabled")
+      .eq("schedule_configuration_id",existing.id)
+      .eq("is_enabled",true);
+
+    const days=(data||[])
+      .map((row:any)=>Number(row.days_before_due))
+      .filter(Number.isFinite)
+      .sort((a:number,b:number)=>b-a);
+
+    setPmReminderDays(days.length?days:[30,14,7,3,1,0]);
+  };
+
   const load = async () => {
     if (!equipmentId) return;
 
@@ -346,7 +454,7 @@ export default function EquipmentMasterPage() {
           .order("created_at", { ascending: false }),
         supabase
           .from("equipment_maintenance_events")
-          .select("id,maintenance_number,maintenance_type,scheduled_date,hard_due_date,performed_date,result,provider_name,status,created_at")
+          .select("id,maintenance_number,maintenance_type,scheduled_date,hard_due_date,performed_date,result,provider_type,provider_name,performed_by,procedure_document_number,procedure_revision,issue_description,maintenance_activities,service_report_attachments,comments,status,created_at")
           .eq("equipment_id", equipmentId)
           .order("created_at", { ascending: false }),
         supabase
@@ -408,6 +516,7 @@ export default function EquipmentMasterPage() {
       const loadedSchedules = (schedulesRes.data || []) as Schedule[];
       setSchedules(loadedSchedules);
       await loadCalibrationConfiguration(loadedSchedules);
+      await loadPmConfiguration(loadedSchedules);
       setCalibrations((calibrationRes.data || []) as Calibration[]);
       setMaintenance((maintenanceRes.data || []) as Maintenance[]);
       setQualifications((qualificationRes.data || []) as Qualification[]);
@@ -722,6 +831,544 @@ export default function EquipmentMasterPage() {
       setCalibrationEventMessage(e?.message||"Unable to save calibration record.");
     }finally{
       setSavingCalibrationEvent(false);
+    }
+  };
+
+
+  const togglePmReminder=(day:number)=>{
+    setPmReminderDays(current=>
+      current.includes(day)
+        ? current.filter(item=>item!==day)
+        : [...current,day].sort((a,b)=>b-a)
+    );
+  };
+
+  const savePmConfiguration=async()=>{
+    if(!record)return;
+    setPmConfigMessage("");
+
+    if(!record.preventive_maintenance_required){
+      setPmConfigMessage("Preventive Maintenance is currently marked Not Required on the Equipment Master.");
+      return;
+    }
+
+    const frequencyValue=Number(pmConfig.frequency_value);
+    if(!Number.isFinite(frequencyValue)||frequencyValue<=0){
+      setPmConfigMessage("Preventive Maintenance Frequency must be greater than zero.");
+      return;
+    }
+    if(!pmConfig.nominal_due_date){
+      setPmConfigMessage("Nominal Due Date is required.");
+      return;
+    }
+    if(pmConfig.schedule_mode==="flexible"&&!pmConfig.hard_due_date){
+      setPmConfigMessage("Hard Due Date is required for Flexible scheduling.");
+      return;
+    }
+
+    setSavingPmConfig(true);
+    try{
+      const {data:userData}=await supabase.auth.getUser();
+      const email=userData?.user?.email||"unknown";
+
+      const hardDueDate=
+        pmConfig.schedule_mode==="fixed"
+          ? (pmConfig.hard_due_date||pmConfig.nominal_due_date)
+          : pmConfig.hard_due_date;
+
+      const payload={
+        tenant_id:record.tenant_id,
+        equipment_id:record.id,
+        activity_type:"preventive_maintenance",
+        is_active:true,
+        frequency_value:frequencyValue,
+        frequency_unit:pmConfig.frequency_unit,
+        schedule_mode:pmConfig.schedule_mode,
+        nominal_due_date:pmConfig.nominal_due_date,
+        scheduled_service_date:null,
+        hard_due_date:hardDueDate,
+        early_window_days:Math.max(0,Number(pmConfig.early_window_days)||0),
+        late_window_days:Math.max(0,Number(pmConfig.late_window_days)||0),
+        equipment_family:pmConfig.equipment_family.trim()||null,
+        max_events_per_day:pmConfig.max_events_per_day?Number(pmConfig.max_events_per_day):null,
+        max_events_per_week:pmConfig.max_events_per_week?Number(pmConfig.max_events_per_week):null,
+        provider_type:pmConfig.provider_type||null,
+        provider_name:pmConfig.provider_name.trim()||null,
+        procedure_document_number:pmConfig.procedure_document_number.trim()||null,
+        procedure_revision:pmConfig.procedure_revision.trim()||null,
+        overdue_use_action:pmConfig.overdue_use_action,
+        created_by:email
+      };
+
+      let scheduleId=pmSchedule?.id||"";
+      if(scheduleId){
+        const {error}=await supabase
+          .from("equipment_schedule_configurations")
+          .update(payload)
+          .eq("id",scheduleId);
+        if(error)throw new Error(error.message);
+      }else{
+        const {data,error}=await supabase
+          .from("equipment_schedule_configurations")
+          .insert(payload)
+          .select("id")
+          .single();
+        if(error)throw new Error(error.message);
+        scheduleId=data.id;
+      }
+
+      const {error:deleteError}=await supabase
+        .from("equipment_schedule_notifications")
+        .delete()
+        .eq("schedule_configuration_id",scheduleId);
+      if(deleteError)throw new Error(deleteError.message);
+
+      if(pmReminderDays.length){
+        const rows=pmReminderDays.map(day=>({
+          tenant_id:record.tenant_id,
+          schedule_configuration_id:scheduleId,
+          days_before_due:day,
+          is_enabled:true,
+          recipient_type:"owner",
+          recipient_email:null,
+          notification_type:"both",
+          created_by:email
+        }));
+
+        const {error}=await supabase
+          .from("equipment_schedule_notifications")
+          .insert(rows);
+        if(error)throw new Error(error.message);
+      }
+
+      await addAudit(
+        pmSchedule?"preventive_maintenance_schedule_updated":"preventive_maintenance_schedule_configured",
+        `${pmSchedule?"Updated":"Configured"} preventive maintenance schedule: every ${frequencyValue} ${pmConfig.frequency_unit}; ${pmConfig.schedule_mode}; nominal ${pmConfig.nominal_due_date}; hard due ${hardDueDate}; reminders ${pmReminderDays.join(", ")}.`
+      );
+
+      setPmConfigMessage("Preventive Maintenance configuration saved.");
+      setShowPmConfig(false);
+      await load();
+    }catch(e:any){
+      setPmConfigMessage(e?.message||"Unable to save Preventive Maintenance configuration.");
+    }finally{
+      setSavingPmConfig(false);
+    }
+  };
+
+  const resetMaintenanceEventForm=()=>{
+    setMaintenanceEvent({
+      maintenance_type:"preventive",
+      performed_date:"",
+      result:"acceptable",
+      provider_type:"",
+      provider_name:"",
+      performed_by:"",
+      issue_description:"",
+      maintenance_activities:"",
+      comments:""
+    });
+    setMaintenanceFiles([]);
+    setExistingMaintenanceAttachments([]);
+    setRemovedMaintenanceAttachments([]);
+    setEditingMaintenanceEventId(null);
+    setMaintenanceComponents([]);
+    setPostMaintenanceAssessment({
+      calibration_required:false,
+      calibration_rationale:"",
+      requalification_required:false,
+      requalification_rationale:""
+    });
+    setExistingPostMaintenanceAssessmentId(null);
+    setMaintenanceEventMessage("");
+  };
+
+  const addMaintenanceComponent=()=>{
+    setMaintenanceComponents(current=>[
+      ...current,
+      {
+        component_description:"",
+        part_number:"",
+        serial_or_lot_number:"",
+        quantity:"1",
+        notes:""
+      }
+    ]);
+  };
+
+  const updateMaintenanceComponent=(index:number,key:string,value:string)=>{
+    setMaintenanceComponents(current=>
+      current.map((row,i)=>i===index?{...row,[key]:value}:row)
+    );
+  };
+
+  const removeMaintenanceComponent=(index:number)=>{
+    setMaintenanceComponents(current=>current.filter((_,i)=>i!==index));
+  };
+
+  const openMaintenanceAttachment=async(attachment:any)=>{
+    const path=attachment?.path||attachment?.storage_path;
+    if(!path)return;
+
+    const {data,error}=await supabase.storage
+      .from("controlled-documents")
+      .createSignedUrl(path,600);
+
+    if(error||!data?.signedUrl){
+      alert(error?.message||"Unable to open maintenance attachment.");
+      return;
+    }
+    window.open(data.signedUrl,"_blank","noopener,noreferrer");
+  };
+
+  const editMaintenanceEvent=async(row:Maintenance)=>{
+    setEditingMaintenanceEventId(row.id);
+    setMaintenanceEvent({
+      maintenance_type:row.maintenance_type||"preventive",
+      performed_date:row.performed_date||"",
+      result:row.result||"acceptable",
+      provider_type:row.provider_type||"",
+      provider_name:row.provider_name||"",
+      performed_by:row.performed_by||"",
+      issue_description:row.issue_description||"",
+      maintenance_activities:row.maintenance_activities||"",
+      comments:row.comments||""
+    });
+    setExistingMaintenanceAttachments(
+      Array.isArray(row.service_report_attachments)
+        ? row.service_report_attachments
+        : []
+    );
+    setRemovedMaintenanceAttachments([]);
+    setMaintenanceFiles([]);
+    setMaintenanceEventMessage("");
+
+    const [componentsRes,assessmentRes]=await Promise.all([
+      supabase
+        .from("equipment_maintenance_components")
+        .select("component_description,part_number,serial_or_lot_number,quantity,notes")
+        .eq("maintenance_event_id",row.id)
+        .order("created_at",{ascending:true}),
+      supabase
+        .from("equipment_post_maintenance_assessments")
+        .select("id,calibration_required,calibration_rationale,requalification_required,requalification_rationale")
+        .eq("maintenance_event_id",row.id)
+        .maybeSingle()
+    ]);
+
+    setMaintenanceComponents(
+      (componentsRes.data||[]).map((component:any)=>({
+        component_description:component.component_description||"",
+        part_number:component.part_number||"",
+        serial_or_lot_number:component.serial_or_lot_number||"",
+        quantity:component.quantity==null?"":String(component.quantity),
+        notes:component.notes||""
+      }))
+    );
+
+    if(assessmentRes.data){
+      setExistingPostMaintenanceAssessmentId(assessmentRes.data.id);
+      setPostMaintenanceAssessment({
+        calibration_required:!!assessmentRes.data.calibration_required,
+        calibration_rationale:assessmentRes.data.calibration_rationale||"",
+        requalification_required:!!assessmentRes.data.requalification_required,
+        requalification_rationale:assessmentRes.data.requalification_rationale||""
+      });
+    }else{
+      setExistingPostMaintenanceAssessmentId(null);
+      setPostMaintenanceAssessment({
+        calibration_required:false,
+        calibration_rationale:"",
+        requalification_required:false,
+        requalification_rationale:""
+      });
+    }
+
+    setShowMaintenanceEvent(true);
+    setShowPmConfig(false);
+  };
+
+  const removeExistingMaintenanceAttachment=(index:number)=>{
+    setExistingMaintenanceAttachments(current=>{
+      const target=current[index];
+      if(target)setRemovedMaintenanceAttachments(removed=>[...removed,target]);
+      return current.filter((_,i)=>i!==index);
+    });
+  };
+
+  const saveMaintenanceEvent=async()=>{
+    if(!record)return;
+    setMaintenanceEventMessage("");
+
+    if(!maintenanceEvent.performed_date){
+      setMaintenanceEventMessage("Performed Date is required.");
+      return;
+    }
+
+    if(!maintenanceEvent.maintenance_activities.trim()){
+      setMaintenanceEventMessage(
+        maintenanceEvent.maintenance_type==="unplanned"
+          ? "Repair Activities are required."
+          : "Maintenance Activities are required."
+      );
+      return;
+    }
+
+    if(
+      maintenanceEvent.maintenance_type==="unplanned" &&
+      !maintenanceEvent.issue_description.trim()
+    ){
+      setMaintenanceEventMessage("Issue Description is required for Unplanned Maintenance.");
+      return;
+    }
+
+    const assessmentEnabled=
+      maintenanceEvent.maintenance_type==="unplanned" &&
+      record.post_unplanned_maintenance_assessment!=="disabled";
+
+    if(
+      assessmentEnabled &&
+      postMaintenanceAssessment.calibration_required &&
+      !postMaintenanceAssessment.calibration_rationale.trim()
+    ){
+      setMaintenanceEventMessage(
+        "Calibration rationale is required when post-maintenance calibration is required."
+      );
+      return;
+    }
+
+    if(
+      assessmentEnabled &&
+      postMaintenanceAssessment.requalification_required &&
+      !postMaintenanceAssessment.requalification_rationale.trim()
+    ){
+      setMaintenanceEventMessage(
+        "Requalification rationale is required when requalification is required."
+      );
+      return;
+    }
+
+    setSavingMaintenanceEvent(true);
+
+    try{
+      const {data:userData}=await supabase.auth.getUser();
+      const email=userData?.user?.email||"unknown";
+      const folder=editingMaintenanceEventId||crypto.randomUUID();
+      const newAttachments:any[]=[];
+
+      for(const file of maintenanceFiles){
+        const safe=file.name
+          .trim()
+          .replace(/[^a-zA-Z0-9._-]+/g,"_")
+          .replace(/_+/g,"_");
+
+        const path=`equipment/${record.id}/maintenance/${folder}/${Date.now()}-${safe}`;
+
+        const {error}=await supabase.storage
+          .from("controlled-documents")
+          .upload(path,file,{
+            cacheControl:"3600",
+            upsert:false,
+            contentType:file.type||undefined
+          });
+
+        if(error)throw new Error(error.message);
+
+        newAttachments.push({
+          name:file.name,
+          path,
+          size:file.size,
+          type:file.type||null,
+          uploaded_by:email,
+          uploaded_at:new Date().toISOString()
+        });
+      }
+
+      const attachments=[
+        ...existingMaintenanceAttachments,
+        ...newAttachments
+      ];
+
+      const basePayload={
+        maintenance_type:maintenanceEvent.maintenance_type,
+        performed_date:maintenanceEvent.performed_date,
+        performed_by:maintenanceEvent.performed_by.trim()||email,
+        provider_type:maintenanceEvent.provider_type||null,
+        provider_name:maintenanceEvent.provider_name.trim()||null,
+        issue_description:
+          maintenanceEvent.maintenance_type==="unplanned"
+            ? maintenanceEvent.issue_description.trim()
+            : (maintenanceEvent.issue_description.trim()||null),
+        maintenance_activities:maintenanceEvent.maintenance_activities.trim(),
+        result:maintenanceEvent.result,
+        service_report_attachments:attachments,
+        comments:maintenanceEvent.comments.trim()||null,
+        status:
+          maintenanceEvent.maintenance_type==="unplanned" && assessmentEnabled
+            ? "assessment"
+            : "completed"
+      };
+
+      let eventId=editingMaintenanceEventId||"";
+      let maintenanceNumber="";
+
+      if(editingMaintenanceEventId){
+        const {data,error}=await supabase
+          .from("equipment_maintenance_events")
+          .update(basePayload)
+          .eq("id",editingMaintenanceEventId)
+          .eq("equipment_id",record.id)
+          .select("id,maintenance_number")
+          .single();
+
+        if(error)throw new Error(error.message);
+        eventId=data.id;
+        maintenanceNumber=data.maintenance_number;
+
+        const {error:componentDeleteError}=await supabase
+          .from("equipment_maintenance_components")
+          .delete()
+          .eq("maintenance_event_id",eventId);
+        if(componentDeleteError)throw new Error(componentDeleteError.message);
+      }else{
+        const createPayload={
+          ...basePayload,
+          tenant_id:record.tenant_id,
+          maintenance_number:"",
+          equipment_id:record.id,
+          schedule_configuration_id:
+            maintenanceEvent.maintenance_type==="preventive"
+              ? (pmSchedule?.id||null)
+              : null,
+          nominal_due_date:
+            maintenanceEvent.maintenance_type==="preventive"
+              ? (pmSchedule?.nominal_due_date||null)
+              : null,
+          scheduled_date:null,
+          hard_due_date:
+            maintenanceEvent.maintenance_type==="preventive"
+              ? (pmSchedule?.hard_due_date||null)
+              : null,
+          procedure_document_number:
+            maintenanceEvent.maintenance_type==="preventive"
+              ? (pmSchedule?.procedure_document_number||null)
+              : null,
+          procedure_revision:
+            maintenanceEvent.maintenance_type==="preventive"
+              ? (pmSchedule?.procedure_revision||null)
+              : null,
+          review_requirement:"optional",
+          review_status:"not_required",
+          created_by:email
+        };
+
+        const {data,error}=await supabase
+          .from("equipment_maintenance_events")
+          .insert(createPayload)
+          .select("id,maintenance_number")
+          .single();
+
+        if(error)throw new Error(error.message);
+        eventId=data.id;
+        maintenanceNumber=data.maintenance_number;
+      }
+
+      const validComponents=maintenanceComponents.filter(
+        component=>component.component_description.trim()
+      );
+
+      if(validComponents.length){
+        const componentRows=validComponents.map(component=>({
+          tenant_id:record.tenant_id,
+          maintenance_event_id:eventId,
+          component_description:component.component_description.trim(),
+          part_number:component.part_number.trim()||null,
+          serial_or_lot_number:component.serial_or_lot_number.trim()||null,
+          quantity:component.quantity?Number(component.quantity):null,
+          notes:component.notes.trim()||null,
+          created_by:email
+        }));
+
+        const {error}=await supabase
+          .from("equipment_maintenance_components")
+          .insert(componentRows);
+        if(error)throw new Error(error.message);
+      }
+
+      if(assessmentEnabled){
+        const assessmentPayload={
+          tenant_id:record.tenant_id,
+          maintenance_event_id:eventId,
+          equipment_id:record.id,
+          calibration_required:postMaintenanceAssessment.calibration_required,
+          calibration_rationale:
+            postMaintenanceAssessment.calibration_rationale.trim()||null,
+          requalification_required:postMaintenanceAssessment.requalification_required,
+          requalification_rationale:
+            postMaintenanceAssessment.requalification_rationale.trim()||null,
+          completed_by:email,
+          completed_at:new Date().toISOString(),
+          created_by:email
+        };
+
+        if(existingPostMaintenanceAssessmentId){
+          const {error}=await supabase
+            .from("equipment_post_maintenance_assessments")
+            .update(assessmentPayload)
+            .eq("id",existingPostMaintenanceAssessmentId);
+          if(error)throw new Error(error.message);
+        }else{
+          const {error}=await supabase
+            .from("equipment_post_maintenance_assessments")
+            .insert(assessmentPayload);
+          if(error)throw new Error(error.message);
+        }
+
+        const {error:eventStatusError}=await supabase
+          .from("equipment_maintenance_events")
+          .update({status:"completed"})
+          .eq("id",eventId);
+
+        if(eventStatusError)throw new Error(eventStatusError.message);
+      }else if(existingPostMaintenanceAssessmentId){
+        const {error}=await supabase
+          .from("equipment_post_maintenance_assessments")
+          .delete()
+          .eq("id",existingPostMaintenanceAssessmentId);
+        if(error)throw new Error(error.message);
+      }
+
+      const removedPaths=removedMaintenanceAttachments
+        .map((attachment:any)=>attachment?.path||attachment?.storage_path)
+        .filter(Boolean);
+
+      if(removedPaths.length){
+        const {error}=await supabase.storage
+          .from("controlled-documents")
+          .remove(removedPaths);
+
+        if(error){
+          console.warn(
+            "Unable to remove one or more old maintenance attachments:",
+            error.message
+          );
+        }
+      }
+
+      await addAudit(
+        editingMaintenanceEventId
+          ? "maintenance_event_updated"
+          : "maintenance_event_recorded",
+        `Maintenance ${maintenanceNumber} ${editingMaintenanceEventId?"updated":"recorded"}. Type: ${maintenanceEvent.maintenance_type}. Result: ${maintenanceEvent.result}. Attachments: ${attachments.length}. Components: ${validComponents.length}.`
+      );
+
+      setShowMaintenanceEvent(false);
+      resetMaintenanceEventForm();
+      await load();
+    }catch(e:any){
+      setMaintenanceEventMessage(e?.message||"Unable to save maintenance record.");
+    }finally{
+      setSavingMaintenanceEvent(false);
     }
   };
 
@@ -1229,9 +1876,358 @@ export default function EquipmentMasterPage() {
       <section style={{ ...card, marginBottom: 16 }}>
         <SectionHeader
           title="5. Preventive / Unplanned Maintenance"
-          subtitle="Planned preventive maintenance and unplanned repair history share one controlled event architecture."
-          action={<button disabled style={disabledButton}>Create Maintenance Event — Next Phase</button>}
+          subtitle="Preventive Maintenance uses controlled Fixed/Flexible scheduling. Unplanned Maintenance captures the issue, repair, major components replaced, and the optional post-maintenance calibration/requalification assessment."
+          action={
+            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+              <button
+                type="button"
+                style={secondaryButton}
+                onClick={()=>{
+                  resetMaintenanceEventForm();
+                  setShowMaintenanceEvent(current=>!current);
+                }}
+              >
+                {showMaintenanceEvent?"Close Maintenance Record":"Add Maintenance Record"}
+              </button>
+
+              {record.preventive_maintenance_required ? (
+                <button
+                  type="button"
+                  style={primaryButton}
+                  onClick={()=>{
+                    setPmConfigMessage("");
+                    setShowPmConfig(current=>!current);
+                  }}
+                >
+                  {showPmConfig
+                    ? "Close PM Configuration"
+                    : pmSchedule
+                    ? "Edit PM Configuration"
+                    : "Configure Preventive Maintenance"}
+                </button>
+              ) : null}
+            </div>
+          }
         />
+
+        {showPmConfig && record.preventive_maintenance_required ? (
+          <div style={{border:"1px solid #bfdbfe",background:"#f8fbff",borderRadius:12,padding:16,marginBottom:20}}>
+            <h3 style={{margin:"0 0 5px"}}>Preventive Maintenance Configuration</h3>
+            <p style={{margin:"0 0 14px",color:"#64748b",fontSize:13}}>
+              Configure the recurring PM requirement and scheduling rules. The maintenance procedure remains the controlling instruction.
+            </p>
+
+            <div style={formGridStyle}>
+              <EditField label="Frequency">
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                  <input type="number" min="1" value={pmConfig.frequency_value} onChange={e=>setPmConfig({...pmConfig,frequency_value:e.target.value})} style={input}/>
+                  <select value={pmConfig.frequency_unit} onChange={e=>setPmConfig({...pmConfig,frequency_unit:e.target.value})} style={input}>
+                    <option value="days">Days</option>
+                    <option value="weeks">Weeks</option>
+                    <option value="months">Months</option>
+                    <option value="years">Years</option>
+                  </select>
+                </div>
+              </EditField>
+
+              <EditField label="Schedule Type">
+                <select value={pmConfig.schedule_mode} onChange={e=>setPmConfig({...pmConfig,schedule_mode:e.target.value})} style={input}>
+                  <option value="fixed">Fixed</option>
+                  <option value="flexible">Flexible</option>
+                </select>
+              </EditField>
+
+              <EditField label="Nominal Due Date">
+                <input type="date" value={pmConfig.nominal_due_date} onChange={e=>setPmConfig({...pmConfig,nominal_due_date:e.target.value})} style={input}/>
+              </EditField>
+
+              <EditField label="Hard Due Date">
+                <input type="date" value={pmConfig.hard_due_date} onChange={e=>setPmConfig({...pmConfig,hard_due_date:e.target.value})} style={input}/>
+              </EditField>
+
+              <EditField label="Overdue Use Action">
+                <select value={pmConfig.overdue_use_action} onChange={e=>setPmConfig({...pmConfig,overdue_use_action:e.target.value})} style={input}>
+                  <option value="notification_only">Notification Only</option>
+                  <option value="restricted">Restricted</option>
+                  <option value="out_of_service">Out of Service</option>
+                </select>
+              </EditField>
+
+              {pmConfig.schedule_mode==="flexible" ? (
+                <>
+                  <EditField label="Early Window (Days)">
+                    <input type="number" min="0" value={pmConfig.early_window_days} onChange={e=>setPmConfig({...pmConfig,early_window_days:e.target.value})} style={input}/>
+                  </EditField>
+                  <EditField label="Late Window (Days)">
+                    <input type="number" min="0" value={pmConfig.late_window_days} onChange={e=>setPmConfig({...pmConfig,late_window_days:e.target.value})} style={input}/>
+                  </EditField>
+                  <EditField label="Equipment Family / Scheduling Group">
+                    <input value={pmConfig.equipment_family} onChange={e=>setPmConfig({...pmConfig,equipment_family:e.target.value})} placeholder="e.g., Torque Testers" style={input}/>
+                  </EditField>
+                  <EditField label="Maximum Events Per Day">
+                    <input type="number" min="1" value={pmConfig.max_events_per_day} onChange={e=>setPmConfig({...pmConfig,max_events_per_day:e.target.value})} placeholder="Optional" style={input}/>
+                  </EditField>
+                  <EditField label="Maximum Events Per Week">
+                    <input type="number" min="1" value={pmConfig.max_events_per_week} onChange={e=>setPmConfig({...pmConfig,max_events_per_week:e.target.value})} placeholder="Optional" style={input}/>
+                  </EditField>
+                </>
+              ) : null}
+
+              <EditField label="Provider Type">
+                <select value={pmConfig.provider_type} onChange={e=>setPmConfig({...pmConfig,provider_type:e.target.value})} style={input}>
+                  <option value="">Not Specified</option>
+                  <option value="internal">Internal</option>
+                  <option value="external">External</option>
+                </select>
+              </EditField>
+
+              <EditField label="Maintenance Provider">
+                <input value={pmConfig.provider_name} onChange={e=>setPmConfig({...pmConfig,provider_name:e.target.value})} placeholder="Internal group or external provider" style={input}/>
+              </EditField>
+
+              <EditField label="Maintenance Procedure Number">
+                <input value={pmConfig.procedure_document_number} onChange={e=>setPmConfig({...pmConfig,procedure_document_number:e.target.value})} placeholder="Controlled document number" style={input}/>
+              </EditField>
+
+              <EditField label="Procedure Revision">
+                <input value={pmConfig.procedure_revision} onChange={e=>setPmConfig({...pmConfig,procedure_revision:e.target.value})} placeholder="Revision" style={input}/>
+              </EditField>
+            </div>
+
+            {pmConfig.schedule_mode==="flexible" ? (
+              <div style={{marginTop:14,border:"1px solid #bfdbfe",background:"#eff6ff",borderRadius:10,padding:12,color:"#1e3a8a",fontSize:13,lineHeight:1.5}}>
+                <strong>Flexible Scheduling:</strong> QualiSphere stores the allowable window, equipment family, and capacity rules so future fleet-balancing logic can distribute equivalent PM activities without exceeding the Hard Due Date.
+              </div>
+            ) : null}
+
+            <div style={{marginTop:18}}>
+              <div style={fieldLabel}>Preventive Maintenance Notifications</div>
+              <div style={{color:"#64748b",fontSize:13,marginBottom:8}}>Progressive reminders to the equipment owner.</div>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                {[30,14,7,3,1,0].map(day=>{
+                  const selected=pmReminderDays.includes(day);
+                  return (
+                    <label key={day} style={{display:"inline-flex",alignItems:"center",gap:6,border:selected?"1px solid #86efac":"1px solid #cbd5e1",background:selected?"#f0fdf4":"#fff",borderRadius:999,padding:"6px 10px",cursor:"pointer",fontSize:13,fontWeight:700}}>
+                      <input type="checkbox" checked={selected} onChange={()=>togglePmReminder(day)}/>
+                      {day===0?"Due Date":`${day} Days`}
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+
+            {pmConfigMessage ? (
+              <div style={{marginTop:14,border:pmConfigMessage.includes("saved")?"1px solid #86efac":"1px solid #fecaca",background:pmConfigMessage.includes("saved")?"#f0fdf4":"#fef2f2",color:pmConfigMessage.includes("saved")?"#166534":"#991b1b",borderRadius:10,padding:10}}>
+                {pmConfigMessage}
+              </div>
+            ) : null}
+
+            <div style={{display:"flex",justifyContent:"flex-end",gap:10,marginTop:16}}>
+              <button type="button" style={secondaryButton} onClick={()=>{setShowPmConfig(false);setPmConfigMessage("");load();}}>Cancel</button>
+              <button type="button" style={{...primaryButton,opacity:savingPmConfig?0.6:1}} disabled={savingPmConfig} onClick={savePmConfiguration}>
+                {savingPmConfig?"Saving...":pmSchedule?"Save PM Changes":"Save PM Configuration"}
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {showMaintenanceEvent ? (
+          <div style={{border:"1px solid #cbd5e1",background:"#fff",borderRadius:12,padding:16,marginBottom:20}}>
+            <h3 style={{margin:"0 0 5px"}}>
+              {editingMaintenanceEventId?"Update Maintenance Record":"Add Maintenance Record"}
+            </h3>
+            <p style={{margin:"0 0 14px",color:"#64748b",fontSize:13}}>
+              Preventive and unplanned maintenance are retained as permanent equipment history.
+            </p>
+
+            <div style={formGridStyle}>
+              <EditField label="Maintenance Type">
+                <select
+                  value={maintenanceEvent.maintenance_type}
+                  onChange={e=>{
+                    const next=e.target.value;
+                    setMaintenanceEvent({...maintenanceEvent,maintenance_type:next});
+                    if(next==="preventive"){
+                      setPostMaintenanceAssessment({
+                        calibration_required:false,
+                        calibration_rationale:"",
+                        requalification_required:false,
+                        requalification_rationale:""
+                      });
+                    }
+                  }}
+                  style={input}
+                >
+                  <option value="preventive">Preventive Maintenance</option>
+                  <option value="unplanned">Unplanned Maintenance / Repair</option>
+                </select>
+              </EditField>
+
+              <EditField label="Performed Date">
+                <input type="date" value={maintenanceEvent.performed_date} onChange={e=>setMaintenanceEvent({...maintenanceEvent,performed_date:e.target.value})} style={input}/>
+              </EditField>
+
+              <EditField label="Result">
+                <select value={maintenanceEvent.result} onChange={e=>setMaintenanceEvent({...maintenanceEvent,result:e.target.value})} style={input}>
+                  <option value="acceptable">Acceptable</option>
+                  <option value="issue_identified">Issue Identified</option>
+                  <option value="unable_to_complete">Unable to Complete</option>
+                </select>
+              </EditField>
+
+              <EditField label="Provider Type">
+                <select value={maintenanceEvent.provider_type} onChange={e=>setMaintenanceEvent({...maintenanceEvent,provider_type:e.target.value})} style={input}>
+                  <option value="">Not Specified</option>
+                  <option value="internal">Internal</option>
+                  <option value="external">External</option>
+                </select>
+              </EditField>
+
+              <EditField label="Maintenance Provider">
+                <input value={maintenanceEvent.provider_name} onChange={e=>setMaintenanceEvent({...maintenanceEvent,provider_name:e.target.value})} style={input}/>
+              </EditField>
+
+              <EditField label="Performed By">
+                <input value={maintenanceEvent.performed_by} onChange={e=>setMaintenanceEvent({...maintenanceEvent,performed_by:e.target.value})} style={input}/>
+              </EditField>
+            </div>
+
+            {maintenanceEvent.maintenance_type==="unplanned" ? (
+              <div style={{marginTop:14}}>
+                <EditField label="Issue Description">
+                  <textarea rows={3} value={maintenanceEvent.issue_description} onChange={e=>setMaintenanceEvent({...maintenanceEvent,issue_description:e.target.value})} placeholder="Describe the equipment issue that required unplanned maintenance." style={{...input,resize:"vertical"}}/>
+                </EditField>
+              </div>
+            ) : null}
+
+            <div style={{marginTop:14}}>
+              <EditField label={maintenanceEvent.maintenance_type==="unplanned"?"Repair Activities":"Maintenance Activities"}>
+                <textarea rows={4} value={maintenanceEvent.maintenance_activities} onChange={e=>setMaintenanceEvent({...maintenanceEvent,maintenance_activities:e.target.value})} placeholder={maintenanceEvent.maintenance_type==="unplanned"?"Document the repair activities performed.":"Document the preventive maintenance activities performed."} style={{...input,resize:"vertical"}}/>
+              </EditField>
+            </div>
+
+            <div style={{marginTop:18}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+                <div>
+                  <div style={fieldLabel}>Major Components Replaced</div>
+                  <div style={{color:"#64748b",fontSize:13}}>Optional. Add only major components replaced during the maintenance event.</div>
+                </div>
+                <button type="button" style={secondaryButton} onClick={addMaintenanceComponent}>Add Component</button>
+              </div>
+
+              {maintenanceComponents.length ? (
+                <div style={{display:"grid",gap:10,marginTop:10}}>
+                  {maintenanceComponents.map((component,index)=>(
+                    <div key={index} style={{border:"1px solid #e2e8f0",borderRadius:10,padding:12,background:"#f8fafc"}}>
+                      <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr .7fr",gap:8}}>
+                        <input value={component.component_description} onChange={e=>updateMaintenanceComponent(index,"component_description",e.target.value)} placeholder="Component description" style={input}/>
+                        <input value={component.part_number} onChange={e=>updateMaintenanceComponent(index,"part_number",e.target.value)} placeholder="Part number" style={input}/>
+                        <input value={component.serial_or_lot_number} onChange={e=>updateMaintenanceComponent(index,"serial_or_lot_number",e.target.value)} placeholder="Serial / Lot" style={input}/>
+                        <input type="number" min="0" step="any" value={component.quantity} onChange={e=>updateMaintenanceComponent(index,"quantity",e.target.value)} placeholder="Qty" style={input}/>
+                      </div>
+                      <div style={{display:"flex",gap:8,marginTop:8}}>
+                        <input value={component.notes} onChange={e=>updateMaintenanceComponent(index,"notes",e.target.value)} placeholder="Optional notes" style={input}/>
+                        <button type="button" style={secondaryButton} onClick={()=>removeMaintenanceComponent(index)}>Remove</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+
+            <div style={{marginTop:18}}>
+              <div style={fieldLabel}>Maintenance Attachments</div>
+              <div style={{color:"#64748b",fontSize:13,marginBottom:8}}>
+                Attach multiple service reports, repair records, vendor documentation, photographs, or other supporting records.
+              </div>
+
+              {existingMaintenanceAttachments.length ? (
+                <div style={{display:"grid",gap:8,marginBottom:10}}>
+                  {existingMaintenanceAttachments.map((attachment:any,index:number)=>(
+                    <div key={`${attachment?.path||attachment?.name||"attachment"}-${index}`} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,border:"1px solid #bfdbfe",background:"#eff6ff",borderRadius:9,padding:"8px 10px"}}>
+                      <button type="button" style={attachmentButton} onClick={()=>openMaintenanceAttachment(attachment)}>
+                        {attachment?.name||`Attachment ${index+1}`}
+                      </button>
+                      <button type="button" style={secondaryButton} onClick={()=>removeExistingMaintenanceAttachment(index)}>Remove</button>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
+              <input
+                type="file"
+                multiple
+                onChange={e=>{
+                  const files=Array.from(e.target.files||[]);
+                  setMaintenanceFiles(current=>[...current,...files]);
+                  e.currentTarget.value="";
+                }}
+                style={input}
+              />
+
+              {maintenanceFiles.length ? (
+                <div style={{display:"grid",gap:8,marginTop:10}}>
+                  {maintenanceFiles.map((file,index)=>(
+                    <div key={`${file.name}-${index}`} style={{display:"flex",justifyContent:"space-between",alignItems:"center",border:"1px solid #e2e8f0",borderRadius:9,padding:"8px 10px"}}>
+                      <span><strong>{file.name}</strong> · {Math.max(1,Math.round(file.size/1024))} KB</span>
+                      <button type="button" style={secondaryButton} onClick={()=>setMaintenanceFiles(current=>current.filter((_,i)=>i!==index))}>Remove</button>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+
+            <div style={{marginTop:14}}>
+              <EditField label="Comments">
+                <textarea rows={3} value={maintenanceEvent.comments} onChange={e=>setMaintenanceEvent({...maintenanceEvent,comments:e.target.value})} placeholder="Optional maintenance comments." style={{...input,resize:"vertical"}}/>
+              </EditField>
+            </div>
+
+            {maintenanceEvent.maintenance_type==="unplanned" && record.post_unplanned_maintenance_assessment!=="disabled" ? (
+              <div style={{marginTop:18,border:"1px solid #fde68a",background:"#fffbeb",borderRadius:12,padding:14}}>
+                <h4 style={{margin:"0 0 5px"}}>Post-Unplanned-Maintenance Assessment</h4>
+                <p style={{margin:"0 0 12px",color:"#64748b",fontSize:13}}>
+                  Lean assessment to determine whether calibration and/or requalification are required after the repair. Customer QMS remains controlling.
+                </p>
+
+                <div style={formGridStyle}>
+                  <CheckboxField
+                    label="Calibration Required"
+                    checked={postMaintenanceAssessment.calibration_required}
+                    onChange={value=>setPostMaintenanceAssessment({...postMaintenanceAssessment,calibration_required:value})}
+                  />
+                  <CheckboxField
+                    label="Requalification Required"
+                    checked={postMaintenanceAssessment.requalification_required}
+                    onChange={value=>setPostMaintenanceAssessment({...postMaintenanceAssessment,requalification_required:value})}
+                  />
+                </div>
+
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginTop:12}}>
+                  <EditField label="Calibration Rationale">
+                    <textarea rows={3} value={postMaintenanceAssessment.calibration_rationale} onChange={e=>setPostMaintenanceAssessment({...postMaintenanceAssessment,calibration_rationale:e.target.value})} placeholder="Document rationale for the calibration decision." style={{...input,resize:"vertical"}}/>
+                  </EditField>
+                  <EditField label="Requalification Rationale">
+                    <textarea rows={3} value={postMaintenanceAssessment.requalification_rationale} onChange={e=>setPostMaintenanceAssessment({...postMaintenanceAssessment,requalification_rationale:e.target.value})} placeholder="Document rationale for the requalification decision." style={{...input,resize:"vertical"}}/>
+                  </EditField>
+                </div>
+              </div>
+            ) : null}
+
+            {maintenanceEventMessage ? (
+              <div style={{marginTop:14,border:"1px solid #fecaca",background:"#fef2f2",color:"#991b1b",borderRadius:10,padding:10}}>
+                {maintenanceEventMessage}
+              </div>
+            ) : null}
+
+            <div style={{display:"flex",justifyContent:"flex-end",gap:10,marginTop:16}}>
+              <button type="button" style={secondaryButton} onClick={()=>{setShowMaintenanceEvent(false);resetMaintenanceEventForm();}}>Cancel</button>
+              <button type="button" style={{...primaryButton,opacity:savingMaintenanceEvent?0.6:1}} disabled={savingMaintenanceEvent} onClick={saveMaintenanceEvent}>
+                {savingMaintenanceEvent?"Saving...":editingMaintenanceEventId?"Update Maintenance Record":"Save Maintenance Record"}
+              </button>
+            </div>
+          </div>
+        ) : null}
 
         <ScheduleSummary
           required={record.preventive_maintenance_required}
@@ -1239,20 +2235,60 @@ export default function EquipmentMasterPage() {
           emptyText="No preventive-maintenance schedule configured."
         />
 
-        <HistoryTable
-          title="Maintenance History"
-          emptyText="No maintenance events recorded."
-          headers={["Event", "Type", "Scheduled", "Performed", "Result", "Provider", "Status"]}
-          rows={maintenance.map((row) => [
-            row.maintenance_number,
-            formatLabel(row.maintenance_type),
-            formatDate(row.scheduled_date),
-            formatDate(row.performed_date),
-            formatLabel(row.result),
-            row.provider_name || "Not Recorded",
-            formatLabel(row.status),
-          ])}
-        />
+        <div style={{marginTop:18}}>
+          <h3 style={{margin:"0 0 10px"}}>Maintenance History</h3>
+          {maintenance.length===0 ? (
+            <div style={emptyPanelStyle}>No maintenance events recorded.</div>
+          ) : (
+            <div style={{overflowX:"auto"}}>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:13,minWidth:1200}}>
+                <thead>
+                  <tr>
+                    {["Event","Type","Performed","Result","Provider","Issue / Work","Comments","Attachments","Status","Action"].map(header=>(
+                      <th key={header} style={{textAlign:"left",padding:"9px 10px",borderBottom:"1px solid #cbd5e1"}}>{header}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {maintenance.map(row=>{
+                    const attachments=Array.isArray(row.service_report_attachments)?row.service_report_attachments:[];
+                    const issueWork=
+                      row.maintenance_type==="unplanned"
+                        ? [row.issue_description,row.maintenance_activities].filter(Boolean).join(" — ")
+                        : row.maintenance_activities;
+
+                    return (
+                      <tr key={row.id}>
+                        <td style={tdMini}><strong>{row.maintenance_number}</strong></td>
+                        <td style={tdMini}>{formatLabel(row.maintenance_type)}</td>
+                        <td style={tdMini}>{formatDate(row.performed_date)}</td>
+                        <td style={tdMini}>{formatLabel(row.result)}</td>
+                        <td style={tdMini}>{row.provider_name||"Not Recorded"}</td>
+                        <td style={{...tdMini,maxWidth:300,whiteSpace:"pre-wrap"}}>{issueWork||"Not Recorded"}</td>
+                        <td style={{...tdMini,maxWidth:240,whiteSpace:"pre-wrap"}}>{row.comments||"Not Recorded"}</td>
+                        <td style={tdMini}>
+                          {attachments.length===0 ? "None" : (
+                            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                              {attachments.map((attachment:any,index:number)=>(
+                                <button key={`${attachment?.path||attachment?.name||index}`} type="button" style={attachmentButton} onClick={()=>openMaintenanceAttachment(attachment)}>
+                                  {attachment?.name||`Attachment ${index+1}`}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </td>
+                        <td style={tdMini}>{formatLabel(row.status)}</td>
+                        <td style={tdMini}>
+                          <button type="button" style={secondaryButton} onClick={()=>editMaintenanceEvent(row)}>Edit</button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </section>
 
       <section style={{ ...card, marginBottom: 16 }}>
