@@ -2706,7 +2706,7 @@ export default function EquipmentMasterPage() {
                     setQualificationForm(current=>({
                       ...current,
                       qualification_type:qualifications.length?"requalification":"initial",
-                      owner_email:record.equipment_owner||""
+                      owner_email:record.owner_email||""
                     }));
                     setShowQualificationForm(true);
                   }
