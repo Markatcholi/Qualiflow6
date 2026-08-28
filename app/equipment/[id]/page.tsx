@@ -111,11 +111,29 @@ type Qualification = {
   qualification_number: string;
   qualification_type: string;
   reason: string | null;
+  owner_email: string | null;
+  target_completion_date: string | null;
   protocol_number: string | null;
+  protocol_title: string | null;
   protocol_revision: string | null;
+  protocol_released_at: string | null;
+  execution_started_at: string | null;
+  execution_completed_at: string | null;
+  executed_by: string | null;
+  execution_notes: string | null;
+  execution_attachments: any[];
+  report_number: string | null;
+  report_revision: string | null;
+  draft_report_attachments: any[];
   qualification_result: string | null;
+  result_summary: string | null;
+  approval_requirement: string;
   approval_status: string;
+  approved_by: string | null;
+  approved_at: string | null;
+  approval_comment: string | null;
   status: string;
+  released_for_use_by: string | null;
   released_for_use_at: string | null;
   created_at: string;
 };
@@ -328,6 +346,38 @@ export default function EquipmentMasterPage() {
   });
   const [existingPostMaintenanceAssessmentId,setExistingPostMaintenanceAssessmentId]=useState<string | null>(null);
 
+  const [showQualificationForm,setShowQualificationForm]=useState(false);
+  const [savingQualification,setSavingQualification]=useState(false);
+  const [qualificationMessage,setQualificationMessage]=useState("");
+  const [editingQualificationId,setEditingQualificationId]=useState<string | null>(null);
+  const [qualificationExecutionFiles,setQualificationExecutionFiles]=useState<File[]>([]);
+  const [qualificationReportFiles,setQualificationReportFiles]=useState<File[]>([]);
+  const [existingExecutionAttachments,setExistingExecutionAttachments]=useState<any[]>([]);
+  const [existingReportAttachments,setExistingReportAttachments]=useState<any[]>([]);
+  const [removedQualificationAttachments,setRemovedQualificationAttachments]=useState<any[]>([]);
+  const [qualificationForm,setQualificationForm]=useState({
+    qualification_type:"initial",
+    reason:"",
+    owner_email:"",
+    target_completion_date:"",
+    protocol_number:"",
+    protocol_title:"",
+    protocol_revision:"",
+    execution_started_at:"",
+    execution_completed_at:"",
+    executed_by:"",
+    execution_notes:"",
+    report_number:"",
+    report_revision:"",
+    qualification_result:"",
+    result_summary:"",
+    approval_requirement:"required",
+    approval_status:"not_required",
+    approved_by:"",
+    approval_comment:"",
+    status:"initiated"
+  });
+
   const [form, setForm] = useState({
     equipment_name: "",
     equipment_type: "",
@@ -465,7 +515,7 @@ export default function EquipmentMasterPage() {
           .order("created_at", { ascending: false }),
         supabase
           .from("equipment_qualification_events")
-          .select("id,qualification_number,qualification_type,reason,protocol_number,protocol_revision,qualification_result,approval_status,status,released_for_use_at,created_at")
+          .select("id,qualification_number,qualification_type,reason,owner_email,target_completion_date,protocol_number,protocol_title,protocol_revision,protocol_released_at,execution_started_at,execution_completed_at,executed_by,execution_notes,execution_attachments,report_number,report_revision,draft_report_attachments,qualification_result,result_summary,approval_requirement,approval_status,approved_by,approved_at,approval_comment,status,released_for_use_by,released_for_use_at,created_at")
           .eq("equipment_id", equipmentId)
           .order("created_at", { ascending: false }),
         supabase
@@ -1444,6 +1494,273 @@ export default function EquipmentMasterPage() {
     }
   };
 
+
+  const resetQualificationForm=()=>{
+    setQualificationForm({
+      qualification_type:"initial",
+      reason:"",
+      owner_email:"",
+      target_completion_date:"",
+      protocol_number:"",
+      protocol_title:"",
+      protocol_revision:"",
+      execution_started_at:"",
+      execution_completed_at:"",
+      executed_by:"",
+      execution_notes:"",
+      report_number:"",
+      report_revision:"",
+      qualification_result:"",
+      result_summary:"",
+      approval_requirement:"required",
+      approval_status:"not_required",
+      approved_by:"",
+      approval_comment:"",
+      status:"initiated"
+    });
+    setQualificationExecutionFiles([]);
+    setQualificationReportFiles([]);
+    setExistingExecutionAttachments([]);
+    setExistingReportAttachments([]);
+    setRemovedQualificationAttachments([]);
+    setEditingQualificationId(null);
+    setQualificationMessage("");
+  };
+
+  const toDateTimeLocal=(value?:string|null)=>{
+    if(!value)return "";
+    const d=new Date(value);
+    if(Number.isNaN(d.getTime()))return "";
+    const local=new Date(d.getTime()-d.getTimezoneOffset()*60000);
+    return local.toISOString().slice(0,16);
+  };
+
+  const openQualificationAttachment=async(attachment:any)=>{
+    const path=attachment?.path||attachment?.storage_path;
+    if(!path)return;
+    const {data,error}=await supabase.storage
+      .from("controlled-documents")
+      .createSignedUrl(path,600);
+    if(error||!data?.signedUrl){
+      alert(error?.message||"Unable to open qualification attachment.");
+      return;
+    }
+    window.open(data.signedUrl,"_blank","noopener,noreferrer");
+  };
+
+  const removeQualificationAttachment=(kind:"execution"|"report",index:number)=>{
+    if(kind==="execution"){
+      setExistingExecutionAttachments(current=>{
+        const target=current[index];
+        if(target)setRemovedQualificationAttachments(removed=>[...removed,target]);
+        return current.filter((_,i)=>i!==index);
+      });
+    }else{
+      setExistingReportAttachments(current=>{
+        const target=current[index];
+        if(target)setRemovedQualificationAttachments(removed=>[...removed,target]);
+        return current.filter((_,i)=>i!==index);
+      });
+    }
+  };
+
+  const editQualification=(row:Qualification)=>{
+    setEditingQualificationId(row.id);
+    setQualificationForm({
+      qualification_type:row.qualification_type||"initial",
+      reason:row.reason||"",
+      owner_email:row.owner_email||"",
+      target_completion_date:row.target_completion_date||"",
+      protocol_number:row.protocol_number||"",
+      protocol_title:row.protocol_title||"",
+      protocol_revision:row.protocol_revision||"",
+      execution_started_at:toDateTimeLocal(row.execution_started_at),
+      execution_completed_at:toDateTimeLocal(row.execution_completed_at),
+      executed_by:row.executed_by||"",
+      execution_notes:row.execution_notes||"",
+      report_number:row.report_number||"",
+      report_revision:row.report_revision||"",
+      qualification_result:row.qualification_result||"",
+      result_summary:row.result_summary||"",
+      approval_requirement:row.approval_requirement||"required",
+      approval_status:row.approval_status||"not_required",
+      approved_by:row.approved_by||"",
+      approval_comment:row.approval_comment||"",
+      status:row.status||"initiated"
+    });
+    setExistingExecutionAttachments(Array.isArray(row.execution_attachments)?row.execution_attachments:[]);
+    setExistingReportAttachments(Array.isArray(row.draft_report_attachments)?row.draft_report_attachments:[]);
+    setQualificationExecutionFiles([]);
+    setQualificationReportFiles([]);
+    setRemovedQualificationAttachments([]);
+    setQualificationMessage("");
+    setShowQualificationForm(true);
+  };
+
+  const uploadQualificationFiles=async(files:File[],folder:string,email:string)=>{
+    if(!record)return [];
+    const uploaded:any[]=[];
+    for(const file of files){
+      const safe=file.name.trim().replace(/[^a-zA-Z0-9._-]+/g,"_").replace(/_+/g,"_");
+      const path=`equipment/${record.id}/qualification/${folder}/${Date.now()}-${safe}`;
+      const {error}=await supabase.storage
+        .from("controlled-documents")
+        .upload(path,file,{cacheControl:"3600",upsert:false,contentType:file.type||undefined});
+      if(error)throw new Error(error.message);
+      uploaded.push({
+        name:file.name,
+        path,
+        size:file.size,
+        type:file.type||null,
+        uploaded_by:email,
+        uploaded_at:new Date().toISOString()
+      });
+    }
+    return uploaded;
+  };
+
+  const saveQualification=async()=>{
+    if(!record)return;
+    setQualificationMessage("");
+
+    if(!qualificationForm.reason.trim()){
+      setQualificationMessage("Qualification / Requalification Reason is required.");
+      return;
+    }
+    if(!qualificationForm.owner_email.trim()){
+      setQualificationMessage("Qualification Owner is required.");
+      return;
+    }
+
+    const status=qualificationForm.status;
+    const protocolRequired=["protocol_released","execution","draft_report","approval","released"].includes(status);
+    const executionRequired=["draft_report","approval","released"].includes(status);
+    const reportRequired=["approval","released"].includes(status);
+
+    if(protocolRequired&&!qualificationForm.protocol_number.trim()){
+      setQualificationMessage("Protocol Number is required before the protocol can be released.");
+      return;
+    }
+    if(executionRequired&&!qualificationForm.execution_completed_at){
+      setQualificationMessage("Execution Completed At is required before moving to Draft Report.");
+      return;
+    }
+    if(reportRequired&&!qualificationForm.report_number.trim()){
+      setQualificationMessage("Draft Report Number is required before Review / Approval.");
+      return;
+    }
+    if(reportRequired&&!qualificationForm.qualification_result){
+      setQualificationMessage("Qualification Result is required before Review / Approval.");
+      return;
+    }
+    if(status==="released"&&qualificationForm.approval_requirement!=="disabled"&&qualificationForm.approval_status!=="approved"){
+      setQualificationMessage("Review / Approval must be Approved before Release for Use.");
+      return;
+    }
+    if(status==="released"&&qualificationForm.qualification_result!=="acceptable"){
+      setQualificationMessage("Only an Acceptable qualification result may be Released for Use.");
+      return;
+    }
+
+    setSavingQualification(true);
+    try{
+      const {data:userData}=await supabase.auth.getUser();
+      const email=userData?.user?.email||"unknown";
+      const folder=editingQualificationId||crypto.randomUUID();
+
+      const [newExecution,newReports]=await Promise.all([
+        uploadQualificationFiles(qualificationExecutionFiles,`${folder}/execution`,email),
+        uploadQualificationFiles(qualificationReportFiles,`${folder}/report`,email)
+      ]);
+
+      const executionAttachments=[...existingExecutionAttachments,...newExecution];
+      const reportAttachments=[...existingReportAttachments,...newReports];
+
+      const now=new Date().toISOString();
+      const approvalDisabled=qualificationForm.approval_requirement==="disabled";
+      const effectiveApprovalStatus=approvalDisabled
+        ? "not_required"
+        : qualificationForm.approval_status;
+
+      const payload:any={
+        qualification_type:qualificationForm.qualification_type,
+        reason:qualificationForm.reason.trim(),
+        owner_email:qualificationForm.owner_email.trim(),
+        target_completion_date:qualificationForm.target_completion_date||null,
+        protocol_number:qualificationForm.protocol_number.trim()||null,
+        protocol_title:qualificationForm.protocol_title.trim()||null,
+        protocol_revision:qualificationForm.protocol_revision.trim()||null,
+        execution_started_at:qualificationForm.execution_started_at?new Date(qualificationForm.execution_started_at).toISOString():null,
+        execution_completed_at:qualificationForm.execution_completed_at?new Date(qualificationForm.execution_completed_at).toISOString():null,
+        executed_by:qualificationForm.executed_by.trim()||null,
+        execution_notes:qualificationForm.execution_notes.trim()||null,
+        execution_attachments:executionAttachments,
+        report_number:qualificationForm.report_number.trim()||null,
+        report_revision:qualificationForm.report_revision.trim()||null,
+        draft_report_attachments:reportAttachments,
+        qualification_result:qualificationForm.qualification_result||null,
+        result_summary:qualificationForm.result_summary.trim()||null,
+        approval_requirement:qualificationForm.approval_requirement,
+        approval_status:effectiveApprovalStatus,
+        approved_by:effectiveApprovalStatus==="approved"?(qualificationForm.approved_by.trim()||email):null,
+        approved_at:effectiveApprovalStatus==="approved"?now:null,
+        approval_comment:qualificationForm.approval_comment.trim()||null,
+        status,
+        protocol_released_at:protocolRequired?now:null,
+        released_for_use_by:status==="released"?email:null,
+        released_for_use_at:status==="released"?now:null
+      };
+
+      let qualificationNumber="";
+      if(editingQualificationId){
+        const {data,error}=await supabase
+          .from("equipment_qualification_events")
+          .update(payload)
+          .eq("id",editingQualificationId)
+          .eq("equipment_id",record.id)
+          .select("qualification_number")
+          .single();
+        if(error)throw new Error(error.message);
+        qualificationNumber=data.qualification_number;
+      }else{
+        const {data,error}=await supabase
+          .from("equipment_qualification_events")
+          .insert({
+            ...payload,
+            tenant_id:record.tenant_id,
+            qualification_number:"",
+            equipment_id:record.id,
+            created_by:email
+          })
+          .select("qualification_number")
+          .single();
+        if(error)throw new Error(error.message);
+        qualificationNumber=data.qualification_number;
+      }
+
+      const removedPaths=removedQualificationAttachments
+        .map((a:any)=>a?.path||a?.storage_path)
+        .filter(Boolean);
+      if(removedPaths.length){
+        const {error}=await supabase.storage.from("controlled-documents").remove(removedPaths);
+        if(error)console.warn("Unable to remove one or more old qualification attachments:",error.message);
+      }
+
+      await addAudit(
+        editingQualificationId?"qualification_updated":"qualification_initiated",
+        `Qualification ${qualificationNumber} ${editingQualificationId?"updated":"initiated"}. Type: ${qualificationForm.qualification_type}. Status: ${status}.`
+      );
+
+      setShowQualificationForm(false);
+      resetQualificationForm();
+      await load();
+    }catch(e:any){
+      setQualificationMessage(e?.message||"Unable to save qualification record.");
+    }finally{
+      setSavingQualification(false);
+    }
+  };
+
   const lifecycleReadiness = useMemo(() => {
     if (!record) return [];
 
@@ -2375,23 +2692,280 @@ export default function EquipmentMasterPage() {
         <SectionHeader
           title="6. Qualification / Requalification"
           subtitle="Controlled lifecycle: Qualification Initiated → Released Protocol → Execution → Draft Report → Review/Approval → Release for Use."
-          action={<button disabled style={disabledButton}>Initiate Qualification — Next Phase</button>}
+          action={
+            record.qualification_required ? (
+              <button
+                type="button"
+                style={primaryButton}
+                onClick={()=>{
+                  if(showQualificationForm){
+                    setShowQualificationForm(false);
+                    resetQualificationForm();
+                  }else{
+                    resetQualificationForm();
+                    setQualificationForm(current=>({
+                      ...current,
+                      qualification_type:qualifications.length?"requalification":"initial",
+                      owner_email:record.equipment_owner||""
+                    }));
+                    setShowQualificationForm(true);
+                  }
+                }}
+              >
+                {showQualificationForm?"Close Qualification":"Initiate Qualification"}
+              </button>
+            ) : null
+          }
         />
 
-        <HistoryTable
-          title="Qualification History"
-          emptyText="No qualification or requalification events recorded."
-          headers={["Event", "Type", "Reason", "Protocol", "Result", "Approval", "Status"]}
-          rows={qualifications.map((row) => [
-            row.qualification_number,
-            formatLabel(row.qualification_type),
-            row.reason || "Not Recorded",
-            [row.protocol_number, row.protocol_revision].filter(Boolean).join(" / ") || "Not Recorded",
-            formatLabel(row.qualification_result),
-            formatLabel(row.approval_status),
-            formatLabel(row.status),
-          ])}
-        />
+        {!record.qualification_required ? (
+          <div style={emptyPanelStyle}>Qualification is marked Not Required for this equipment.</div>
+        ) : null}
+
+        {showQualificationForm && record.qualification_required ? (
+          <div style={{border:"1px solid #bfdbfe",background:"#f8fbff",borderRadius:12,padding:16,marginBottom:20}}>
+            <h3 style={{margin:"0 0 5px"}}>
+              {editingQualificationId?"Update Qualification / Requalification":"Initiate Qualification / Requalification"}
+            </h3>
+            <p style={{margin:"0 0 14px",color:"#64748b",fontSize:13}}>
+              The customer's approved qualification procedure and protocol remain the controlling instructions. QualiSphere controls the lifecycle record, evidence, review status, and release gate.
+            </p>
+
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:12}}>
+              <EditField label="Qualification Type">
+                <select value={qualificationForm.qualification_type} onChange={e=>setQualificationForm({...qualificationForm,qualification_type:e.target.value})} style={input}>
+                  <option value="initial">Initial Qualification</option>
+                  <option value="requalification">Requalification</option>
+                </select>
+              </EditField>
+              <EditField label="Qualification Owner">
+                <input value={qualificationForm.owner_email} onChange={e=>setQualificationForm({...qualificationForm,owner_email:e.target.value})} style={input}/>
+              </EditField>
+              <EditField label="Target Completion Date">
+                <input type="date" value={qualificationForm.target_completion_date} onChange={e=>setQualificationForm({...qualificationForm,target_completion_date:e.target.value})} style={input}/>
+              </EditField>
+              <EditField label="Current Lifecycle Step">
+                <select value={qualificationForm.status} onChange={e=>setQualificationForm({...qualificationForm,status:e.target.value})} style={input}>
+                  <option value="initiated">Qualification Initiated</option>
+                  <option value="protocol_released">Released Protocol</option>
+                  <option value="execution">Execution</option>
+                  <option value="draft_report">Draft Report</option>
+                  <option value="approval">Review / Approval</option>
+                  <option value="released">Release for Use</option>
+                  <option value="rejected">Rejected</option>
+                  <option value="cancelled">Cancelled</option>
+                </select>
+              </EditField>
+            </div>
+
+            <div style={{marginTop:14}}>
+              <EditField label="Qualification / Requalification Reason">
+                <textarea rows={3} value={qualificationForm.reason} onChange={e=>setQualificationForm({...qualificationForm,reason:e.target.value})} placeholder="Document why qualification or requalification is required." style={{...input,resize:"vertical"}}/>
+              </EditField>
+            </div>
+
+            <div style={{marginTop:20,borderTop:"1px solid #e2e8f0",paddingTop:16}}>
+              <h4 style={{margin:"0 0 10px"}}>1. Released Protocol</h4>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:12}}>
+                <EditField label="Protocol Number">
+                  <input value={qualificationForm.protocol_number} onChange={e=>setQualificationForm({...qualificationForm,protocol_number:e.target.value})} placeholder="Controlled protocol number" style={input}/>
+                </EditField>
+                <EditField label="Protocol Title">
+                  <input value={qualificationForm.protocol_title} onChange={e=>setQualificationForm({...qualificationForm,protocol_title:e.target.value})} style={input}/>
+                </EditField>
+                <EditField label="Protocol Revision">
+                  <input value={qualificationForm.protocol_revision} onChange={e=>setQualificationForm({...qualificationForm,protocol_revision:e.target.value})} style={input}/>
+                </EditField>
+              </div>
+            </div>
+
+            <div style={{marginTop:20,borderTop:"1px solid #e2e8f0",paddingTop:16}}>
+              <h4 style={{margin:"0 0 10px"}}>2. Execution</h4>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:12}}>
+                <EditField label="Execution Started">
+                  <input type="datetime-local" value={qualificationForm.execution_started_at} onChange={e=>setQualificationForm({...qualificationForm,execution_started_at:e.target.value})} style={input}/>
+                </EditField>
+                <EditField label="Execution Completed">
+                  <input type="datetime-local" value={qualificationForm.execution_completed_at} onChange={e=>setQualificationForm({...qualificationForm,execution_completed_at:e.target.value})} style={input}/>
+                </EditField>
+                <EditField label="Executed By">
+                  <input value={qualificationForm.executed_by} onChange={e=>setQualificationForm({...qualificationForm,executed_by:e.target.value})} style={input}/>
+                </EditField>
+              </div>
+              <div style={{marginTop:12}}>
+                <EditField label="Execution Notes">
+                  <textarea rows={3} value={qualificationForm.execution_notes} onChange={e=>setQualificationForm({...qualificationForm,execution_notes:e.target.value})} style={{...input,resize:"vertical"}}/>
+                </EditField>
+              </div>
+
+              <div style={{marginTop:12}}>
+                <div style={fieldLabel}>Execution Evidence / Attachments</div>
+                {existingExecutionAttachments.length ? (
+                  <div style={{display:"grid",gap:8,marginBottom:10}}>
+                    {existingExecutionAttachments.map((a:any,i:number)=>(
+                      <div key={`${a?.path||a?.name||i}`} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,border:"1px solid #bfdbfe",background:"#eff6ff",borderRadius:9,padding:"8px 10px"}}>
+                        <button type="button" style={attachmentButton} onClick={()=>openQualificationAttachment(a)}>{a?.name||`Attachment ${i+1}`}</button>
+                        <button type="button" style={secondaryButton} onClick={()=>removeQualificationAttachment("execution",i)}>Remove</button>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+                <input type="file" multiple onChange={e=>{const files=Array.from(e.target.files||[]);setQualificationExecutionFiles(current=>[...current,...files]);e.currentTarget.value="";}} style={input}/>
+                {qualificationExecutionFiles.length ? (
+                  <div style={{display:"grid",gap:8,marginTop:8}}>
+                    {qualificationExecutionFiles.map((file,i)=>(
+                      <div key={`${file.name}-${i}`} style={{display:"flex",justifyContent:"space-between",alignItems:"center",border:"1px solid #e2e8f0",borderRadius:9,padding:"8px 10px"}}>
+                        <span>{file.name}</span>
+                        <button type="button" style={secondaryButton} onClick={()=>setQualificationExecutionFiles(current=>current.filter((_,x)=>x!==i))}>Remove</button>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
+            <div style={{marginTop:20,borderTop:"1px solid #e2e8f0",paddingTop:16}}>
+              <h4 style={{margin:"0 0 10px"}}>3. Draft Report</h4>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:12}}>
+                <EditField label="Report Number">
+                  <input value={qualificationForm.report_number} onChange={e=>setQualificationForm({...qualificationForm,report_number:e.target.value})} style={input}/>
+                </EditField>
+                <EditField label="Report Revision">
+                  <input value={qualificationForm.report_revision} onChange={e=>setQualificationForm({...qualificationForm,report_revision:e.target.value})} style={input}/>
+                </EditField>
+                <EditField label="Qualification Result">
+                  <select value={qualificationForm.qualification_result} onChange={e=>setQualificationForm({...qualificationForm,qualification_result:e.target.value})} style={input}>
+                    <option value="">Select Result</option>
+                    <option value="acceptable">Acceptable</option>
+                    <option value="not_acceptable">Not Acceptable</option>
+                  </select>
+                </EditField>
+              </div>
+              <div style={{marginTop:12}}>
+                <EditField label="Result Summary">
+                  <textarea rows={3} value={qualificationForm.result_summary} onChange={e=>setQualificationForm({...qualificationForm,result_summary:e.target.value})} style={{...input,resize:"vertical"}}/>
+                </EditField>
+              </div>
+
+              <div style={{marginTop:12}}>
+                <div style={fieldLabel}>Draft Report / Supporting Records</div>
+                {existingReportAttachments.length ? (
+                  <div style={{display:"grid",gap:8,marginBottom:10}}>
+                    {existingReportAttachments.map((a:any,i:number)=>(
+                      <div key={`${a?.path||a?.name||i}`} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,border:"1px solid #bfdbfe",background:"#eff6ff",borderRadius:9,padding:"8px 10px"}}>
+                        <button type="button" style={attachmentButton} onClick={()=>openQualificationAttachment(a)}>{a?.name||`Attachment ${i+1}`}</button>
+                        <button type="button" style={secondaryButton} onClick={()=>removeQualificationAttachment("report",i)}>Remove</button>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+                <input type="file" multiple onChange={e=>{const files=Array.from(e.target.files||[]);setQualificationReportFiles(current=>[...current,...files]);e.currentTarget.value="";}} style={input}/>
+                {qualificationReportFiles.length ? (
+                  <div style={{display:"grid",gap:8,marginTop:8}}>
+                    {qualificationReportFiles.map((file,i)=>(
+                      <div key={`${file.name}-${i}`} style={{display:"flex",justifyContent:"space-between",alignItems:"center",border:"1px solid #e2e8f0",borderRadius:9,padding:"8px 10px"}}>
+                        <span>{file.name}</span>
+                        <button type="button" style={secondaryButton} onClick={()=>setQualificationReportFiles(current=>current.filter((_,x)=>x!==i))}>Remove</button>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
+            <div style={{marginTop:20,borderTop:"1px solid #e2e8f0",paddingTop:16}}>
+              <h4 style={{margin:"0 0 10px"}}>4. Review / Approval</h4>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:12}}>
+                <EditField label="Approval Requirement">
+                  <select value={qualificationForm.approval_requirement} onChange={e=>setQualificationForm({...qualificationForm,approval_requirement:e.target.value})} style={input}>
+                    <option value="required">Required</option>
+                    <option value="optional">Optional</option>
+                    <option value="disabled">Disabled by Customer Configuration</option>
+                  </select>
+                </EditField>
+                {qualificationForm.approval_requirement!=="disabled" ? (
+                  <>
+                    <EditField label="Approval Status">
+                      <select value={qualificationForm.approval_status} onChange={e=>setQualificationForm({...qualificationForm,approval_status:e.target.value})} style={input}>
+                        <option value="not_required">Not Submitted</option>
+                        <option value="pending">Pending</option>
+                        <option value="approved">Approved</option>
+                        <option value="rejected">Rejected</option>
+                      </select>
+                    </EditField>
+                    <EditField label="Approved / Reviewed By">
+                      <input value={qualificationForm.approved_by} onChange={e=>setQualificationForm({...qualificationForm,approved_by:e.target.value})} style={input}/>
+                    </EditField>
+                  </>
+                ) : null}
+              </div>
+              {qualificationForm.approval_requirement!=="disabled" ? (
+                <div style={{marginTop:12}}>
+                  <EditField label="Review / Approval Comment">
+                    <textarea rows={3} value={qualificationForm.approval_comment} onChange={e=>setQualificationForm({...qualificationForm,approval_comment:e.target.value})} style={{...input,resize:"vertical"}}/>
+                  </EditField>
+                </div>
+              ) : null}
+            </div>
+
+            <div style={{marginTop:20,border:"1px solid #bfdbfe",background:"#eff6ff",borderRadius:10,padding:12,color:"#1e3a8a",fontSize:13,lineHeight:1.5}}>
+              <strong>Release Gate:</strong> Release for Use requires an Acceptable qualification result and, when approval is enabled, an Approved review status. Qualification does not bypass the separate Equipment Status / Production Release control.
+            </div>
+
+            {qualificationMessage ? (
+              <div style={{marginTop:14,border:"1px solid #fecaca",background:"#fef2f2",color:"#991b1b",borderRadius:10,padding:10}}>
+                {qualificationMessage}
+              </div>
+            ) : null}
+
+            <div style={{display:"flex",justifyContent:"flex-end",gap:10,marginTop:16}}>
+              <button type="button" style={secondaryButton} onClick={()=>{setShowQualificationForm(false);resetQualificationForm();}}>Cancel</button>
+              <button type="button" style={{...primaryButton,opacity:savingQualification?0.6:1}} disabled={savingQualification} onClick={saveQualification}>
+                {savingQualification?"Saving...":editingQualificationId?"Update Qualification":"Save Qualification"}
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        <div style={{marginTop:18}}>
+          <h3 style={{margin:"0 0 10px"}}>Qualification History</h3>
+          {qualifications.length===0 ? (
+            <div style={emptyPanelStyle}>No qualification or requalification events recorded.</div>
+          ) : (
+            <div style={{overflowX:"auto"}}>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:13,minWidth:1200}}>
+                <thead>
+                  <tr>
+                    {["Event","Type","Reason","Protocol","Result","Approval","Status","Execution Evidence","Report","Released","Action"].map(h=>(
+                      <th key={h} style={{textAlign:"left",padding:"9px 10px",borderBottom:"1px solid #cbd5e1"}}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {qualifications.map(row=>{
+                    const execFiles=Array.isArray(row.execution_attachments)?row.execution_attachments:[];
+                    const reportFiles=Array.isArray(row.draft_report_attachments)?row.draft_report_attachments:[];
+                    return (
+                      <tr key={row.id}>
+                        <td style={tdMini}><strong>{row.qualification_number}</strong></td>
+                        <td style={tdMini}>{formatLabel(row.qualification_type)}</td>
+                        <td style={{...tdMini,maxWidth:240,whiteSpace:"pre-wrap"}}>{row.reason||"Not Recorded"}</td>
+                        <td style={tdMini}>{[row.protocol_number,row.protocol_revision].filter(Boolean).join(" / ")||"Not Recorded"}</td>
+                        <td style={tdMini}>{formatLabel(row.qualification_result)}</td>
+                        <td style={tdMini}>{formatLabel(row.approval_status)}</td>
+                        <td style={tdMini}>{formatLabel(row.status)}</td>
+                        <td style={tdMini}>{execFiles.length?execFiles.map((a:any,i:number)=><button key={`${a?.path||i}`} type="button" style={attachmentButton} onClick={()=>openQualificationAttachment(a)}>{a?.name||`Evidence ${i+1}`}</button>):"None"}</td>
+                        <td style={tdMini}>{reportFiles.length?reportFiles.map((a:any,i:number)=><button key={`${a?.path||i}`} type="button" style={attachmentButton} onClick={()=>openQualificationAttachment(a)}>{a?.name||`Report ${i+1}`}</button>):"None"}</td>
+                        <td style={tdMini}>{row.released_for_use_at?formatDateTime(row.released_for_use_at):"Not Released"}</td>
+                        <td style={tdMini}><button type="button" style={secondaryButton} onClick={()=>editQualification(row)}>Edit</button></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </section>
 
       <section style={{ ...card, marginBottom: 16 }}>
