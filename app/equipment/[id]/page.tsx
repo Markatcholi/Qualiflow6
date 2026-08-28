@@ -78,6 +78,7 @@ type Calibration = {
   provider_name: string | null;
   performed_by: string | null;
   comments: string | null;
+  next_nominal_due_date: string | null;
   status: string;
   created_at: string;
 };
@@ -97,8 +98,10 @@ type Maintenance = {
   procedure_revision: string | null;
   issue_description: string | null;
   maintenance_activities: string | null;
+  product_impact: string | null;
   service_report_attachments: any[];
   comments: string | null;
+  next_nominal_due_date: string | null;
   status: string;
   created_at: string;
 };
@@ -259,7 +262,8 @@ export default function EquipmentMasterPage() {
     provider_type:"",
     provider_name:"",
     performed_by:"",
-    comments:""
+    comments:"",
+    next_due_date:""
   });
   const [editingCalibrationEventId,setEditingCalibrationEventId]=useState<string | null>(null);
   const [existingCalibrationAttachments,setExistingCalibrationAttachments]=useState<any[]>([]);
@@ -303,7 +307,9 @@ export default function EquipmentMasterPage() {
     performed_by:"",
     issue_description:"",
     maintenance_activities:"",
-    comments:""
+    product_impact:"",
+    comments:"",
+    next_due_date:""
   });
 
   const [maintenanceComponents,setMaintenanceComponents]=useState<Array<{
@@ -449,12 +455,12 @@ export default function EquipmentMasterPage() {
           .order("activity_type"),
         supabase
           .from("equipment_calibration_events")
-          .select("id,calibration_number,event_source,scheduled_date,hard_due_date,performed_date,result,certificate_number,certificate_attachments,provider_type,provider_name,performed_by,comments,status,created_at")
+          .select("id,calibration_number,event_source,scheduled_date,hard_due_date,performed_date,result,certificate_number,certificate_attachments,provider_type,provider_name,performed_by,comments,next_nominal_due_date,status,created_at")
           .eq("equipment_id", equipmentId)
           .order("created_at", { ascending: false }),
         supabase
           .from("equipment_maintenance_events")
-          .select("id,maintenance_number,maintenance_type,scheduled_date,hard_due_date,performed_date,result,provider_type,provider_name,performed_by,procedure_document_number,procedure_revision,issue_description,maintenance_activities,service_report_attachments,comments,status,created_at")
+          .select("id,maintenance_number,maintenance_type,scheduled_date,hard_due_date,performed_date,result,provider_type,provider_name,performed_by,procedure_document_number,procedure_revision,issue_description,maintenance_activities,product_impact,service_report_attachments,comments,next_nominal_due_date,status,created_at")
           .eq("equipment_id", equipmentId)
           .order("created_at", { ascending: false }),
         supabase
@@ -697,7 +703,7 @@ export default function EquipmentMasterPage() {
   };
 
   const resetCalibrationEventForm=()=>{
-    setCalibrationEvent({event_source:"manual",performed_date:"",result:"pass",certificate_number:"",provider_type:"",provider_name:"",performed_by:"",comments:""});
+    setCalibrationEvent({event_source:"manual",performed_date:"",result:"pass",certificate_number:"",provider_type:"",provider_name:"",performed_by:"",comments:"",next_due_date:""});
     setCalibrationFiles([]);
     setExistingCalibrationAttachments([]);
     setRemovedCalibrationAttachments([]);
@@ -715,7 +721,8 @@ export default function EquipmentMasterPage() {
       provider_type:row.provider_type||"",
       provider_name:row.provider_name||"",
       performed_by:row.performed_by||"",
-      comments:row.comments||""
+      comments:row.comments||"",
+      next_due_date:row.next_nominal_due_date||""
     });
     setExistingCalibrationAttachments(Array.isArray(row.certificate_attachments)?row.certificate_attachments:[]);
     setRemovedCalibrationAttachments([]);
@@ -739,6 +746,27 @@ export default function EquipmentMasterPage() {
     const {data,error}=await supabase.storage.from("controlled-documents").createSignedUrl(path,600);
     if(error||!data?.signedUrl){alert(error?.message||"Unable to open calibration attachment.");return;}
     window.open(data.signedUrl,"_blank","noopener,noreferrer");
+  };
+
+  const getNextHardDueDate=(currentNominal?:string|null,currentHard?:string|null,nextNominal?:string|null)=>{
+    if(!nextNominal)return null;
+    if(!currentNominal||!currentHard)return nextNominal;
+
+    const nominalDate=new Date(`${currentNominal}T00:00:00`);
+    const hardDate=new Date(`${currentHard}T00:00:00`);
+    const nextDate=new Date(`${nextNominal}T00:00:00`);
+
+    if(
+      Number.isNaN(nominalDate.getTime())||
+      Number.isNaN(hardDate.getTime())||
+      Number.isNaN(nextDate.getTime())
+    ){
+      return nextNominal;
+    }
+
+    const deltaMs=hardDate.getTime()-nominalDate.getTime();
+    const nextHard=new Date(nextDate.getTime()+Math.max(0,deltaMs));
+    return nextHard.toISOString().slice(0,10);
   };
 
   const saveCalibrationEvent=async()=>{
@@ -770,6 +798,7 @@ export default function EquipmentMasterPage() {
         certificate_number:calibrationEvent.certificate_number.trim()||null,
         certificate_attachments:attachments,
         comments:calibrationEvent.comments.trim()||null,
+        next_nominal_due_date:calibrationEvent.next_due_date||null,
         result:calibrationEvent.result,
         status:"completed"
       };
@@ -817,6 +846,23 @@ export default function EquipmentMasterPage() {
           .from("controlled-documents")
           .remove(removedPaths);
         if(removeError)console.warn("Unable to remove one or more old calibration attachments:",removeError.message);
+      }
+
+      if(calibrationEvent.next_due_date&&calibrationSchedule?.id){
+        const nextHardDue=getNextHardDueDate(
+          calibrationSchedule.nominal_due_date,
+          calibrationSchedule.hard_due_date,
+          calibrationEvent.next_due_date
+        );
+        const {error:scheduleAdvanceError}=await supabase
+          .from("equipment_schedule_configurations")
+          .update({
+            nominal_due_date:calibrationEvent.next_due_date,
+            scheduled_service_date:null,
+            hard_due_date:nextHardDue
+          })
+          .eq("id",calibrationSchedule.id);
+        if(scheduleAdvanceError)throw new Error(scheduleAdvanceError.message);
       }
 
       await addAudit(
@@ -966,7 +1012,9 @@ export default function EquipmentMasterPage() {
       performed_by:"",
       issue_description:"",
       maintenance_activities:"",
-      comments:""
+      product_impact:"",
+      comments:"",
+      next_due_date:""
     });
     setMaintenanceFiles([]);
     setExistingMaintenanceAttachments([]);
@@ -1032,7 +1080,9 @@ export default function EquipmentMasterPage() {
       performed_by:row.performed_by||"",
       issue_description:row.issue_description||"",
       maintenance_activities:row.maintenance_activities||"",
-      comments:row.comments||""
+      product_impact:row.product_impact||"",
+      comments:row.comments||"",
+      next_due_date:row.next_nominal_due_date||""
     });
     setExistingMaintenanceAttachments(
       Array.isArray(row.service_report_attachments)
@@ -1200,6 +1250,11 @@ export default function EquipmentMasterPage() {
             ? maintenanceEvent.issue_description.trim()
             : (maintenanceEvent.issue_description.trim()||null),
         maintenance_activities:maintenanceEvent.maintenance_activities.trim(),
+        product_impact:
+          maintenanceEvent.maintenance_type==="unplanned"
+            ? (maintenanceEvent.product_impact.trim()||null)
+            : null,
+        next_nominal_due_date:maintenanceEvent.next_due_date||null,
         result:maintenanceEvent.result,
         service_report_attachments:attachments,
         comments:maintenanceEvent.comments.trim()||null,
@@ -1353,6 +1408,23 @@ export default function EquipmentMasterPage() {
             error.message
           );
         }
+      }
+
+      if(maintenanceEvent.next_due_date&&pmSchedule?.id){
+        const nextHardDue=getNextHardDueDate(
+          pmSchedule.nominal_due_date,
+          pmSchedule.hard_due_date,
+          maintenanceEvent.next_due_date
+        );
+        const {error:scheduleAdvanceError}=await supabase
+          .from("equipment_schedule_configurations")
+          .update({
+            nominal_due_date:maintenanceEvent.next_due_date,
+            scheduled_service_date:null,
+            hard_due_date:nextHardDue
+          })
+          .eq("id",pmSchedule.id);
+        if(scheduleAdvanceError)throw new Error(scheduleAdvanceError.message);
       }
 
       await addAudit(
@@ -1831,6 +1903,12 @@ export default function EquipmentMasterPage() {
               <EditField label="Performed By"><input value={calibrationEvent.performed_by} onChange={e=>setCalibrationEvent({...calibrationEvent,performed_by:e.target.value})} style={input}/></EditField>
             </div>
             <div style={{marginTop:14}}><EditField label="Comments"><textarea rows={3} value={calibrationEvent.comments} onChange={e=>setCalibrationEvent({...calibrationEvent,comments:e.target.value})} style={{...input,resize:"vertical"}}/></EditField></div>
+            <div style={{marginTop:14,maxWidth:360}}>
+              <EditField label="Next Calibration Due Date">
+                <input type="date" value={calibrationEvent.next_due_date} onChange={e=>setCalibrationEvent({...calibrationEvent,next_due_date:e.target.value})} style={input}/>
+              </EditField>
+              <div style={{color:"#64748b",fontSize:12,marginTop:5}}>Optional. When entered, QualiSphere advances the recurring calibration schedule to this date.</div>
+            </div>
             <div style={{marginTop:18}}>
               <div style={fieldLabel}>Calibration Record Attachments</div>
               <div style={{color:"#64748b",fontSize:13,marginBottom:8}}>Attach multiple certificates, as-found/as-left data, vendor reports, worksheets, or traceability records.</div>
@@ -1853,7 +1931,7 @@ export default function EquipmentMasterPage() {
           <h3 style={{margin:"0 0 10px"}}>Calibration History</h3>
           {calibrations.length===0?<div style={emptyPanelStyle}>No calibration events recorded.</div>:<div style={{overflowX:"auto"}}>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:13,minWidth:1100}}>
-              <thead><tr>{["Event","Performed","Result","Certificate / Record","Provider","Comments","Attachments","Status","Action"].map(h=><th key={h} style={{textAlign:"left",padding:"9px 10px",borderBottom:"1px solid #cbd5e1"}}>{h}</th>)}</tr></thead>
+              <thead><tr>{["Event","Performed","Result","Certificate / Record","Provider","Comments","Next Due","Attachments","Status","Action"].map(h=><th key={h} style={{textAlign:"left",padding:"9px 10px",borderBottom:"1px solid #cbd5e1"}}>{h}</th>)}</tr></thead>
               <tbody>{calibrations.map(row=>{
                 const a=Array.isArray(row.certificate_attachments)?row.certificate_attachments:[];
                 return <tr key={row.id}>
@@ -1863,6 +1941,7 @@ export default function EquipmentMasterPage() {
                   <td style={tdMini}>{row.certificate_number||"Not Recorded"}</td>
                   <td style={tdMini}>{row.provider_name||"Not Recorded"}</td>
                   <td style={{...tdMini,maxWidth:260,whiteSpace:"pre-wrap"}}>{row.comments||"Not Recorded"}</td>
+                  <td style={tdMini}>{formatDate(row.next_nominal_due_date)}</td>
                   <td style={tdMini}>{a.length===0?"None":<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{a.map((x:any,i:number)=><button key={`${x?.path||x?.name||i}`} type="button" style={attachmentButton} onClick={()=>openCalibrationAttachment(x)}>{x?.name||`Attachment ${i+1}`}</button>)}</div>}</td>
                   <td style={tdMini}>{formatLabel(row.status)}</td>
                   <td style={tdMini}><button type="button" style={secondaryButton} onClick={()=>editCalibrationEvent(row)}>Edit</button></td>
@@ -1973,15 +2052,7 @@ export default function EquipmentMasterPage() {
                 </>
               ) : null}
 
-              <EditField label="Provider Type">
-                <select value={pmConfig.provider_type} onChange={e=>setPmConfig({...pmConfig,provider_type:e.target.value})} style={input}>
-                  <option value="">Not Specified</option>
-                  <option value="internal">Internal</option>
-                  <option value="external">External</option>
-                </select>
-              </EditField>
-
-              <EditField label="Maintenance Provider">
+<EditField label="Maintenance Provider">
                 <input value={pmConfig.provider_name} onChange={e=>setPmConfig({...pmConfig,provider_name:e.target.value})} placeholder="Internal group or external provider" style={input}/>
               </EditField>
 
@@ -2075,15 +2146,7 @@ export default function EquipmentMasterPage() {
                 </select>
               </EditField>
 
-              <EditField label="Provider Type">
-                <select value={maintenanceEvent.provider_type} onChange={e=>setMaintenanceEvent({...maintenanceEvent,provider_type:e.target.value})} style={input}>
-                  <option value="">Not Specified</option>
-                  <option value="internal">Internal</option>
-                  <option value="external">External</option>
-                </select>
-              </EditField>
-
-              <EditField label="Maintenance Provider">
+<EditField label="Maintenance Provider">
                 <input value={maintenanceEvent.provider_name} onChange={e=>setMaintenanceEvent({...maintenanceEvent,provider_name:e.target.value})} style={input}/>
               </EditField>
 
@@ -2096,6 +2159,14 @@ export default function EquipmentMasterPage() {
               <div style={{marginTop:14}}>
                 <EditField label="Issue Description">
                   <textarea rows={3} value={maintenanceEvent.issue_description} onChange={e=>setMaintenanceEvent({...maintenanceEvent,issue_description:e.target.value})} placeholder="Describe the equipment issue that required unplanned maintenance." style={{...input,resize:"vertical"}}/>
+                </EditField>
+              </div>
+            ) : null}
+
+            {maintenanceEvent.maintenance_type==="unplanned" ? (
+              <div style={{marginTop:14}}>
+                <EditField label="Product Impact (Optional)">
+                  <textarea rows={3} value={maintenanceEvent.product_impact} onChange={e=>setMaintenanceEvent({...maintenanceEvent,product_impact:e.target.value})} placeholder="Document any known or potential product impact, if applicable." style={{...input,resize:"vertical"}}/>
                 </EditField>
               </div>
             ) : null}
@@ -2183,6 +2254,13 @@ export default function EquipmentMasterPage() {
               </EditField>
             </div>
 
+            <div style={{marginTop:14,maxWidth:360}}>
+              <EditField label="Next Preventive Maintenance Due Date">
+                <input type="date" value={maintenanceEvent.next_due_date} onChange={e=>setMaintenanceEvent({...maintenanceEvent,next_due_date:e.target.value})} style={input}/>
+              </EditField>
+              <div style={{color:"#64748b",fontSize:12,marginTop:5}}>Optional. When entered, QualiSphere advances the recurring Preventive Maintenance schedule to this date.</div>
+            </div>
+
             {maintenanceEvent.maintenance_type==="unplanned" && record.post_unplanned_maintenance_assessment!=="disabled" ? (
               <div style={{marginTop:18,border:"1px solid #fde68a",background:"#fffbeb",borderRadius:12,padding:14}}>
                 <h4 style={{margin:"0 0 5px"}}>Post-Unplanned-Maintenance Assessment</h4>
@@ -2244,7 +2322,7 @@ export default function EquipmentMasterPage() {
               <table style={{width:"100%",borderCollapse:"collapse",fontSize:13,minWidth:1200}}>
                 <thead>
                   <tr>
-                    {["Event","Type","Performed","Result","Provider","Issue / Work","Comments","Attachments","Status","Action"].map(header=>(
+                    {["Event","Type","Performed","Result","Provider","Issue / Work","Product Impact","Comments","Next PM Due","Attachments","Status","Action"].map(header=>(
                       <th key={header} style={{textAlign:"left",padding:"9px 10px",borderBottom:"1px solid #cbd5e1"}}>{header}</th>
                     ))}
                   </tr>
@@ -2265,7 +2343,9 @@ export default function EquipmentMasterPage() {
                         <td style={tdMini}>{formatLabel(row.result)}</td>
                         <td style={tdMini}>{row.provider_name||"Not Recorded"}</td>
                         <td style={{...tdMini,maxWidth:300,whiteSpace:"pre-wrap"}}>{issueWork||"Not Recorded"}</td>
+                        <td style={{...tdMini,maxWidth:240,whiteSpace:"pre-wrap"}}>{row.product_impact||"Not Recorded"}</td>
                         <td style={{...tdMini,maxWidth:240,whiteSpace:"pre-wrap"}}>{row.comments||"Not Recorded"}</td>
+                        <td style={tdMini}>{formatDate(row.next_nominal_due_date)}</td>
                         <td style={tdMini}>
                           {attachments.length===0 ? "None" : (
                             <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
