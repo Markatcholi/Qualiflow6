@@ -28,6 +28,7 @@ type EquipmentRecord = {
   qualification_required: boolean;
   post_unplanned_maintenance_assessment: string;
   lifecycle_phase: string;
+  record_status: string;
   equipment_status: string;
   lifecycle_status: string;
   use_status: string;
@@ -161,6 +162,12 @@ type OosLink = {
   linked_at: string;
 };
 
+type EquipmentReleaseRequest = {
+  id: string; equipment_id: string; submitted_by: string; submitted_at: string;
+  approver_email: string; status: string; decision_by: string | null;
+  decision_at: string | null; decision_comment: string | null;
+};
+
 type AuditRow = {
   id: string;
   action: string;
@@ -239,6 +246,14 @@ export default function EquipmentMasterPage() {
   const [changes, setChanges] = useState<ChangeLink[]>([]);
   const [oosLinks, setOosLinks] = useState<OosLink[]>([]);
   const [auditRows, setAuditRows] = useState<AuditRow[]>([]);
+  const [currentUserEmail,setCurrentUserEmail]=useState("");
+  const [governanceRole,setGovernanceRole]=useState<"viewer"|"coordinator"|"quality_approver"|"admin">("viewer");
+  const [releaseRequest,setReleaseRequest]=useState<EquipmentReleaseRequest | null>(null);
+  const [releaseApproverEmail,setReleaseApproverEmail]=useState("");
+  const [releaseComment,setReleaseComment]=useState("");
+  const [releaseMessage,setReleaseMessage]=useState("");
+  const [processingRelease,setProcessingRelease]=useState(false);
+
 
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -486,6 +501,10 @@ export default function EquipmentMasterPage() {
     setLoadError("");
 
     try {
+      const {data:userData}=await supabase.auth.getUser();
+      const userEmail=(userData?.user?.email||"").toLowerCase();
+      setCurrentUserEmail(userEmail);
+
       const [
         equipmentRes,
         schedulesRes,
@@ -545,6 +564,18 @@ export default function EquipmentMasterPage() {
 
       const eq = equipmentRes.data as EquipmentRecord;
       setRecord(eq);
+
+      const [{data:roleRow},{data:releaseRow}]=await Promise.all([
+        supabase.from("equipment_governance_members").select("role")
+          .eq("tenant_id",eq.tenant_id).eq("user_email",userEmail).eq("is_active",true).maybeSingle(),
+        supabase.from("equipment_release_requests")
+          .select("id,equipment_id,submitted_by,submitted_at,approver_email,status,decision_by,decision_at,decision_comment")
+          .eq("equipment_id",eq.id).order("submitted_at",{ascending:false}).limit(1).maybeSingle()
+      ]);
+      const fallbackCoordinator=[eq.owner_email,eq.created_by].filter(Boolean)
+        .map((v:any)=>String(v).toLowerCase()).includes(userEmail);
+      setGovernanceRole((roleRow?.role||(fallbackCoordinator?"coordinator":"viewer")) as any);
+      setReleaseRequest((releaseRow||null) as EquipmentReleaseRequest|null);
       setForm({
         equipment_name: eq.equipment_name || "",
         equipment_type: eq.equipment_type || "",
@@ -620,7 +651,7 @@ export default function EquipmentMasterPage() {
   };
 
   const saveMaster = async () => {
-    if (!record) return;
+    if (!record || !["coordinator","quality_approver","admin"].includes(governanceRole)) return;
 
     if (!form.equipment_name.trim()) {
       setSaveMessage("Equipment Name is required.");
@@ -1821,6 +1852,75 @@ export default function EquipmentMasterPage() {
     );
   }
 
+  const canMaintain=["coordinator","quality_approver","admin"].includes(governanceRole);
+  const canApproveRelease=["quality_approver","admin"].includes(governanceRole);
+  const recordIsReleased=record?.record_status==="released";
+  const pendingRelease=releaseRequest?.status==="pending";
+
+  const submitEquipmentForRelease=async()=>{
+    if(!record||!canMaintain)return;
+    setReleaseMessage("");
+    const approver=releaseApproverEmail.trim().toLowerCase();
+    if(!approver||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(approver)){
+      setReleaseMessage("Enter a valid Equipment Quality Approver email address."); return;
+    }
+    if(record.calibration_required&&!calibrations.some(row=>row.result==="pass")){
+      setReleaseMessage("Release blocked: required calibration does not have a passing calibration record."); return;
+    }
+    if(record.qualification_required&&!qualifications.some(row=>row.status==="released"||row.qualification_result==="acceptable")){
+      setReleaseMessage("Release blocked: required qualification does not have acceptable qualification evidence."); return;
+    }
+    setProcessingRelease(true);
+    try{
+      const {error}=await supabase.from("equipment_release_requests").insert({
+        tenant_id:record.tenant_id,equipment_id:record.id,submitted_by:currentUserEmail,
+        approver_email:approver,status:"pending"
+      });
+      if(error)throw new Error(error.message);
+      const {error:updateError}=await supabase.from("equipment").update({
+        record_status:"pending_release",equipment_status:"pending_production_release",
+        use_status:"out_of_service",use_status_reason:"Equipment Master submitted for controlled release."
+      }).eq("id",record.id);
+      if(updateError)throw new Error(updateError.message);
+      await addAudit("equipment_release_submitted",`Equipment Master submitted for release to ${approver}.`);
+      setReleaseApproverEmail(""); setReleaseMessage("Equipment Master submitted for controlled release."); await load();
+    }catch(e:any){setReleaseMessage(e?.message||"Unable to submit equipment for release.");}
+    finally{setProcessingRelease(false);}
+  };
+
+  const decideEquipmentRelease=async(decision:"approved"|"rejected")=>{
+    if(!record||!releaseRequest||!canApproveRelease)return;
+    if(currentUserEmail!==releaseRequest.approver_email.toLowerCase()&&governanceRole!=="admin"){
+      setReleaseMessage("This release request is assigned to another Equipment Quality Approver."); return;
+    }
+    if(decision==="rejected"&&!releaseComment.trim()){
+      setReleaseMessage("A comment is required when rejecting an Equipment Master release."); return;
+    }
+    setProcessingRelease(true); setReleaseMessage("");
+    try{
+      const now=new Date().toISOString();
+      const {error}=await supabase.from("equipment_release_requests").update({
+        status:decision,decision_by:currentUserEmail,decision_at:now,decision_comment:releaseComment.trim()||null
+      }).eq("id",releaseRequest.id);
+      if(error)throw new Error(error.message);
+      const equipmentUpdate=decision==="approved" ? {
+        record_status:"released",lifecycle_phase:"operation_maintenance",equipment_status:"active",
+        lifecycle_status:"released",use_status:"available_for_use",
+        use_status_reason:"Equipment Master released through controlled Equipment Record Release.",
+        released_by:currentUserEmail,released_at:now
+      } : {
+        record_status:"draft",equipment_status:"pending_production_release",use_status:"out_of_service",
+        use_status_reason:releaseComment.trim()||"Equipment Master release rejected."
+      };
+      const {error:updateError}=await supabase.from("equipment").update(equipmentUpdate).eq("id",record.id);
+      if(updateError)throw new Error(updateError.message);
+      await addAudit(decision==="approved"?"equipment_release_approved":"equipment_release_rejected",
+        `Equipment Master release ${decision} by ${currentUserEmail}${releaseComment.trim()?`: ${releaseComment.trim()}`:""}.`);
+      setReleaseComment(""); setReleaseMessage(decision==="approved"?"Equipment Master released for operational use.":"Equipment Master returned for correction."); await load();
+    }catch(e:any){setReleaseMessage(e?.message||"Unable to process equipment release.");}
+    finally{setProcessingRelease(false);}
+  };
+
   const calibrationSchedule = schedules.find(
     (row) => row.activity_type === "calibration" && row.is_active
   );
@@ -1846,9 +1946,11 @@ export default function EquipmentMasterPage() {
             Equipment Registry
           </Link>
           {!editing ? (
-            <button style={primaryButton} onClick={() => setEditing(true)}>
-              Edit Master Record
-            </button>
+            canMaintain ? (
+              <button style={primaryButton} onClick={() => setEditing(true)}>Edit Master Record</button>
+            ) : (
+              <span style={{...badgeStyle,background:"#f1f5f9",color:"#475569"}}>Read Only</span>
+            )
           ) : (
             <>
               <button
@@ -1889,6 +1991,8 @@ export default function EquipmentMasterPage() {
       ) : null}
 
       <section style={summaryGridStyle}>
+        <Summary label="Record Governance" value={formatLabel(record.record_status||"draft")} tone={record.record_status==="released"?"success":record.record_status==="pending_release"?"warning":undefined} />
+        <Summary label="Access" value={canMaintain?formatLabel(governanceRole):"Read Only"} />
         <Summary label="Lifecycle Phase" value={formatLifecyclePhase(record.lifecycle_phase)} />
         <Summary label="Equipment Status" value={formatEquipmentStatus(record.equipment_status)} />
         <Summary
@@ -3024,7 +3128,7 @@ export default function EquipmentMasterPage() {
       <section style={{ ...card, marginBottom: 16 }}>
         <SectionHeader
           title="10. Equipment Lifecycle / Status / Release"
-          subtitle="Lifecycle Phase, Equipment Status, and Use Status are separate controls. Formal Release for Use remains a controlled workflow gate."
+          subtitle="Equipment Record Release governs operational readiness. Most users receive read-only visibility; controlled roles maintain and release the record."
         />
 
         {editing ? (
@@ -3095,7 +3199,36 @@ export default function EquipmentMasterPage() {
             <Detail label="Retirement Reason" value={record.retirement_reason} wide />
           </div>
         )}
-        <div style={{ marginTop: 14 }}><button disabled style={disabledButton}>Release for Use — Controlled Gate Coming Next</button></div>
+        <div style={{marginTop:18,border:"1px solid #cbd5e1",borderRadius:12,padding:14,background:"#f8fafc"}}>
+          <h3 style={{margin:"0 0 6px"}}>Equipment Record Release Governance</h3>
+          <div style={{color:"#64748b",fontSize:13,lineHeight:1.5,marginBottom:12}}>
+            This gate approves Equipment Master readiness. It does not approve calibration certificates, maintenance records, or qualification protocols/reports.
+          </div>
+          <div style={{...detailGridStyle,marginBottom:12}}>
+            <Detail label="Record Status" value={formatLabel(record.record_status||"draft")} />
+            <Detail label="Your Equipment Role" value={canMaintain?formatLabel(governanceRole):"Viewer / Read Only"} />
+            <Detail label="Released By" value={record.released_by} />
+            <Detail label="Released At" value={formatDateTime(record.released_at)} />
+          </div>
+          {pendingRelease ? <div style={{border:"1px solid #fde68a",background:"#fffbeb",borderRadius:10,padding:12,marginBottom:12}}>
+            <strong>Pending Equipment Record Release</strong>
+            <div style={{marginTop:5,fontSize:13}}>Approver: {releaseRequest?.approver_email} · Submitted by {releaseRequest?.submitted_by} on {formatDateTime(releaseRequest?.submitted_at)}</div>
+          </div> : null}
+          {canMaintain && !recordIsReleased && !pendingRelease ? <div style={{display:"grid",gridTemplateColumns:"minmax(260px,1fr) auto",gap:10,alignItems:"end"}}>
+            <EditField label="Equipment Quality Approver"><input value={releaseApproverEmail} onChange={e=>setReleaseApproverEmail(e.target.value)} placeholder="approver@company.com" style={input}/></EditField>
+            <button type="button" style={{...primaryButton,opacity:processingRelease?0.6:1}} disabled={processingRelease} onClick={submitEquipmentForRelease}>
+              {processingRelease?"Submitting...":"Submit Equipment Record for Release"}
+            </button>
+          </div> : null}
+          {pendingRelease && canApproveRelease ? <div style={{marginTop:12}}>
+            <EditField label="Release Decision Comment"><textarea rows={3} value={releaseComment} onChange={e=>setReleaseComment(e.target.value)} placeholder="Optional for approval; required for rejection." style={{...input,resize:"vertical"}}/></EditField>
+            <div style={{display:"flex",gap:10,justifyContent:"flex-end",marginTop:10}}>
+              <button type="button" style={secondaryButton} disabled={processingRelease} onClick={()=>decideEquipmentRelease("rejected")}>Reject / Return</button>
+              <button type="button" style={primaryButton} disabled={processingRelease} onClick={()=>decideEquipmentRelease("approved")}>Approve & Release Equipment</button>
+            </div>
+          </div> : null}
+          {releaseMessage ? <div style={{marginTop:12,border:"1px solid #bfdbfe",background:"#eff6ff",color:"#1e3a8a",borderRadius:10,padding:10}}>{releaseMessage}</div> : null}
+        </div>
       </section>
 
       <section style={card}>
