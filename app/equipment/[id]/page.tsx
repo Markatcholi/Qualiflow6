@@ -1682,8 +1682,6 @@ export default function EquipmentMasterPage() {
     return uploaded;
   };
 
-  const canMaintain=["coordinator","quality_approver","admin"].includes(governanceRole);
-
   const saveQualification=async()=>{
     if(!record||!canMaintain)return;
     setQualificationMessage("");
@@ -1810,6 +1808,135 @@ export default function EquipmentMasterPage() {
     }finally{
       setSavingQualification(false);
     }
+  };
+
+  const lifecycleReadiness = useMemo(() => {
+    if (!record) return [];
+
+    return [
+      {
+        label: "Specification Reference",
+        required: true,
+        complete: !!record.specification_document_number,
+      },
+      {
+        label: "Calibration",
+        required: record.calibration_required,
+        complete:
+          !record.calibration_required ||
+          calibrations.some((item) => item.status === "completed" && item.result === "pass"),
+      },
+      {
+        label: "Preventive Maintenance",
+        required: record.preventive_maintenance_required,
+        complete:
+          !record.preventive_maintenance_required ||
+          schedules.some(
+            (item) =>
+              item.activity_type === "preventive_maintenance" && item.is_active
+          ),
+      },
+      {
+        label: "Qualification",
+        required: record.qualification_required,
+        complete:
+          !record.qualification_required ||
+          qualifications.some((item) => item.status === "released"),
+      },
+    ];
+  }, [record, calibrations, schedules, qualifications]);
+
+  if (loading) {
+    return (
+      <main style={pageStyle}>
+        <div style={card}>Loading Equipment Master Record...</div>
+      </main>
+    );
+  }
+
+  if (loadError || !record) {
+    return (
+      <main style={pageStyle}>
+        <div style={{ ...card, borderColor: "#fecaca", color: "#991b1b" }}>
+          <strong>Unable to load equipment.</strong>
+          <div style={{ marginTop: 6 }}>{loadError || "Equipment record not found."}</div>
+          <div style={{ marginTop: 14 }}>
+            <Link href="/equipment" style={secondaryButton}>
+              Return to Equipment Registry
+            </Link>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  const canMaintain=["coordinator","quality_approver","admin"].includes(governanceRole);
+  const canApproveRelease=["quality_approver","admin"].includes(governanceRole);
+  const recordIsReleased=record?.record_status==="released";
+  const pendingRelease=releaseRequest?.status==="pending";
+
+  const submitEquipmentForRelease=async()=>{
+    if(!record||!canMaintain)return;
+    setReleaseMessage("");
+    const approver=releaseApproverEmail.trim().toLowerCase();
+    if(!approver||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(approver)){
+      setReleaseMessage("Enter a valid Equipment Quality Approver email address."); return;
+    }
+    if(record.calibration_required&&!calibrations.some(row=>row.result==="pass")){
+      setReleaseMessage("Release blocked: required calibration does not have a passing calibration record."); return;
+    }
+    if(record.qualification_required&&!qualifications.some(row=>row.status==="released"&&row.qualification_result==="acceptable")){
+      setReleaseMessage("Release blocked: required qualification is not documented as Qualified with an Acceptable result."); return;
+    }
+    setProcessingRelease(true);
+    try{
+      const {error}=await supabase.from("equipment_release_requests").insert({
+        tenant_id:record.tenant_id,equipment_id:record.id,submitted_by:currentUserEmail,
+        approver_email:approver,status:"pending"
+      });
+      if(error)throw new Error(error.message);
+      const {error:updateError}=await supabase.from("equipment").update({
+        record_status:"pending_release",equipment_status:"pending_production_release",
+        use_status:"out_of_service",use_status_reason:"Equipment Master submitted for controlled release."
+      }).eq("id",record.id);
+      if(updateError)throw new Error(updateError.message);
+      await addAudit("equipment_release_submitted",`Equipment Master submitted for release to ${approver}.`);
+      setReleaseApproverEmail(""); setReleaseMessage("Equipment Master submitted for controlled release."); await load();
+    }catch(e:any){setReleaseMessage(e?.message||"Unable to submit equipment for release.");}
+    finally{setProcessingRelease(false);}
+  };
+
+  const decideEquipmentRelease=async(decision:"approved"|"rejected")=>{
+    if(!record||!releaseRequest||!canApproveRelease)return;
+    if(currentUserEmail!==releaseRequest.approver_email.toLowerCase()&&governanceRole!=="admin"){
+      setReleaseMessage("This release request is assigned to another Equipment Quality Approver."); return;
+    }
+    if(decision==="rejected"&&!releaseComment.trim()){
+      setReleaseMessage("A comment is required when rejecting an Equipment Master release."); return;
+    }
+    setProcessingRelease(true); setReleaseMessage("");
+    try{
+      const now=new Date().toISOString();
+      const {error}=await supabase.from("equipment_release_requests").update({
+        status:decision,decision_by:currentUserEmail,decision_at:now,decision_comment:releaseComment.trim()||null
+      }).eq("id",releaseRequest.id);
+      if(error)throw new Error(error.message);
+      const equipmentUpdate=decision==="approved" ? {
+        record_status:"released",lifecycle_phase:"operation_maintenance",equipment_status:"active",
+        lifecycle_status:"released",use_status:"available_for_use",
+        use_status_reason:"Equipment Master released through controlled Equipment Record Release.",
+        released_by:currentUserEmail,released_at:now
+      } : {
+        record_status:"draft",equipment_status:"pending_production_release",use_status:"out_of_service",
+        use_status_reason:releaseComment.trim()||"Equipment Master release rejected."
+      };
+      const {error:updateError}=await supabase.from("equipment").update(equipmentUpdate).eq("id",record.id);
+      if(updateError)throw new Error(updateError.message);
+      await addAudit(decision==="approved"?"equipment_release_approved":"equipment_release_rejected",
+        `Equipment Master release ${decision} by ${currentUserEmail}${releaseComment.trim()?`: ${releaseComment.trim()}`:""}.`);
+      setReleaseComment(""); setReleaseMessage(decision==="approved"?"Equipment Master released for operational use.":"Equipment Master returned for correction."); await load();
+    }catch(e:any){setReleaseMessage(e?.message||"Unable to process equipment release.");}
+    finally{setProcessingRelease(false);}
   };
 
   const calibrationSchedule = schedules.find(
