@@ -1682,6 +1682,8 @@ export default function EquipmentMasterPage() {
     return uploaded;
   };
 
+  const canMaintain=["coordinator","quality_approver","admin"].includes(governanceRole);
+
   const saveQualification=async()=>{
     if(!record||!canMaintain)return;
     setQualificationMessage("");
