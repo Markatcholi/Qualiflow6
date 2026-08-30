@@ -201,6 +201,9 @@ export default function EquipmentRegistryPage() {
           <Link href="/" style={secondaryButtonStyle}>
             Home
           </Link>
+          <Link href="/equipment/import" style={secondaryButtonStyle}>
+            Import Equipment Excel
+          </Link>
           <Link href="/equipment/new" style={primaryButtonStyle}>
             Register Equipment
           </Link>
