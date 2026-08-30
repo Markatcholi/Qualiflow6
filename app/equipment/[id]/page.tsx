@@ -119,6 +119,7 @@ type Qualification = {
   next_requalification_date: string | null;
   protocol_document_url: string | null;
   report_document_url: string | null;
+  qualification_element_documents: any;
   reason: string | null;
   owner_email: string | null;
   target_completion_date: string | null;
@@ -388,6 +389,7 @@ export default function EquipmentMasterPage() {
     next_requalification_date:"",
     protocol_document_url:"",
     report_document_url:"",
+    qualification_element_documents:{},
     reason:"",
     owner_email:"",
     target_completion_date:"",
@@ -1553,6 +1555,7 @@ export default function EquipmentMasterPage() {
       next_requalification_date:"",
       protocol_document_url:"",
       report_document_url:"",
+      qualification_element_documents:{},
       reason:"",
       owner_email:"",
       target_completion_date:"",
@@ -1631,6 +1634,7 @@ export default function EquipmentMasterPage() {
       next_requalification_date:row.next_requalification_date||"",
       protocol_document_url:row.protocol_document_url||"",
       report_document_url:row.report_document_url||"",
+      qualification_element_documents:row.qualification_element_documents||{},
       reason:row.reason||"",
       owner_email:row.owner_email||"",
       target_completion_date:row.target_completion_date||"",
@@ -1682,6 +1686,22 @@ export default function EquipmentMasterPage() {
     return uploaded;
   };
 
+  const qualificationElementMeta=[
+    {key:"iq",flag:"iq_applicable",label:"IQ",name:"Installation Qualification"},
+    {key:"oq",flag:"oq_applicable",label:"OQ",name:"Operational Qualification"},
+    {key:"pq",flag:"pq_applicable",label:"PQ",name:"Performance Qualification"}
+  ] as const;
+
+  const qualificationElementDoc=(key:string)=>{
+    const docs=qualificationForm.qualification_element_documents||{};
+    return docs[key]||{protocol_number:"",protocol_revision:"",protocol_document_url:"",report_number:"",report_revision:"",report_document_url:"",result:""};
+  };
+
+  const setQualificationElementDoc=(key:string,field:string,value:string)=>{
+    const docs=qualificationForm.qualification_element_documents||{};
+    setQualificationForm({...qualificationForm,qualification_element_documents:{...docs,[key]:{...qualificationElementDoc(key),[field]:value}}});
+  };
+
   const saveQualification=async()=>{
     if(!record||!canMaintain)return;
     setQualificationMessage("");
@@ -1695,26 +1715,28 @@ export default function EquipmentMasterPage() {
       return;
     }
 
+    const selectedElements=qualificationElementMeta.filter(element=>(qualificationForm as any)[element.flag]);
+    const selectedDocs=qualificationForm.qualification_element_documents||{};
+
+    if(qualificationForm.status==="released"){
+      for(const element of selectedElements){
+        const doc=selectedDocs[element.key]||{};
+        if(!String(doc.protocol_number||"").trim()){setQualificationMessage(`${element.label} Protocol Number is required before the overall qualification can be marked Qualified.`);return;}
+        if(!String(doc.report_number||"").trim()){setQualificationMessage(`${element.label} Report Number is required before the overall qualification can be marked Qualified.`);return;}
+        if(doc.result!=="acceptable"){setQualificationMessage(`${element.label} must have an Acceptable result before the overall qualification can be marked Qualified.`);return;}
+      }
+    }
+
     const status=qualificationForm.status;
     const isHistorical=qualificationForm.qualification_basis==="existing_qualified";
     const protocolRequired=!isHistorical && ["protocol_released","execution","draft_report","released"].includes(status);
     const executionRequired=!isHistorical && ["draft_report","released"].includes(status);
-    const reportRequired=["released"].includes(status);
-
-    if(protocolRequired&&!qualificationForm.protocol_number.trim()){
-      setQualificationMessage("Released Protocol Number is required before execution.");
+    if(protocolRequired&&!selectedElements.some(element=>String((selectedDocs[element.key]||{}).protocol_number||"").trim())){
+      setQualificationMessage("At least one selected qualification activity must have a released protocol before execution.");
       return;
     }
     if(executionRequired&&!qualificationForm.execution_completed_at){
       setQualificationMessage("Execution Completed is required before the qualification report stage.");
-      return;
-    }
-    if(reportRequired&&!qualificationForm.report_number.trim()){
-      setQualificationMessage("Released Qualification Report / Document Number is required before qualification can be marked Qualified.");
-      return;
-    }
-    if(status==="released"&&qualificationForm.qualification_result!=="acceptable"){
-      setQualificationMessage("Qualification must have an Acceptable result before it can be marked Qualified.");
       return;
     }
     if(status==="released"&&!qualificationForm.qualification_date){
@@ -1745,8 +1767,9 @@ export default function EquipmentMasterPage() {
         pq_applicable:qualificationForm.pq_applicable,
         qualification_date:qualificationForm.qualification_date||null,
         next_requalification_date:qualificationForm.next_requalification_date||null,
-        protocol_document_url:qualificationForm.protocol_document_url.trim()||null,
-        report_document_url:qualificationForm.report_document_url.trim()||null,
+        protocol_document_url:null,
+        report_document_url:null,
+        qualification_element_documents:selectedDocs,
         reason:qualificationForm.reason.trim(),
         owner_email:qualificationForm.owner_email.trim()||record.owner_email||email,
         target_completion_date:qualificationForm.target_completion_date||null,
@@ -1761,7 +1784,7 @@ export default function EquipmentMasterPage() {
         report_number:qualificationForm.report_number.trim()||null,
         report_revision:qualificationForm.report_revision.trim()||null,
         draft_report_attachments:reportAttachments,
-        qualification_result:qualificationForm.qualification_result||null,
+        qualification_result:selectedElements.length&&selectedElements.every(element=>(selectedDocs[element.key]||{}).result==="acceptable")?"acceptable":null,
         result_summary:qualificationForm.result_summary.trim()||null,
         approval_requirement:"disabled",
         approval_status:"not_required",
@@ -1841,7 +1864,7 @@ export default function EquipmentMasterPage() {
         required: record.qualification_required,
         complete:
           !record.qualification_required ||
-          qualifications.some((item) => item.status === "released"),
+          qualifications.some((item) => item.status === "released" && item.qualification_result === "acceptable"),
       },
     ];
   }, [record, calibrations, schedules, qualifications]);
@@ -1882,11 +1905,10 @@ export default function EquipmentMasterPage() {
     if(!approver||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(approver)){
       setReleaseMessage("Enter a valid Equipment Quality Approver email address."); return;
     }
-    if(record.calibration_required&&!calibrations.some(row=>row.result==="pass")){
-      setReleaseMessage("Release blocked: required calibration does not have a passing calibration record."); return;
-    }
-    if(record.qualification_required&&!qualifications.some(row=>row.status==="released"&&row.qualification_result==="acceptable")){
-      setReleaseMessage("Release blocked: required qualification is not documented as Qualified with an Acceptable result."); return;
+    const pendingReadiness=lifecycleReadiness.filter(item=>item.required&&!item.complete);
+    if(pendingReadiness.length){
+      setReleaseMessage(`Release blocked: complete the following required readiness items first: ${pendingReadiness.map(item=>item.label).join(", ")}.`);
+      return;
     }
     setProcessingRelease(true);
     try{
@@ -1897,7 +1919,7 @@ export default function EquipmentMasterPage() {
       if(error)throw new Error(error.message);
       const {error:updateError}=await supabase.from("equipment").update({
         record_status:"pending_release",equipment_status:"pending_production_release",
-        use_status:"out_of_service",use_status_reason:"Equipment Master submitted for controlled release."
+        use_status:"restricted",use_status_reason:"Equipment is not authorized for operational use while Equipment Record Release is pending."
       }).eq("id",record.id);
       if(updateError)throw new Error(updateError.message);
       await addAudit("equipment_release_submitted",`Equipment Master submitted for release to ${approver}.`);
@@ -1927,7 +1949,7 @@ export default function EquipmentMasterPage() {
         use_status_reason:"Equipment Master released through controlled Equipment Record Release.",
         released_by:currentUserEmail,released_at:now
       } : {
-        record_status:"draft",equipment_status:"pending_production_release",use_status:"out_of_service",
+        record_status:"draft",equipment_status:"pending_production_release",use_status:"restricted",
         use_status_reason:releaseComment.trim()||"Equipment Master release rejected."
       };
       const {error:updateError}=await supabase.from("equipment").update(equipmentUpdate).eq("id",record.id);
@@ -2072,8 +2094,7 @@ export default function EquipmentMasterPage() {
           ))}
         </div>
         <div style={{ marginTop: 14, color: "#64748b", fontSize: 13 }}>
-          Final Release for Use will be implemented as its own controlled gate.
-          This page does not automatically release equipment.
+          Required items marked Pending must be completed before Equipment Record Release can be submitted.
         </div>
       </section>
 
@@ -2903,41 +2924,38 @@ export default function EquipmentMasterPage() {
             </div>
 
             <div style={{marginTop:20,borderTop:"1px solid #e2e8f0",paddingTop:16}}>
-              <h4 style={{margin:"0 0 10px"}}>Qualification Documentation</h4>
-              <div style={{fontSize:13,color:"#64748b",marginBottom:12}}>
-                Document numbers and revisions provide traceability. Document Control links are optional and customer-selected.
+              <h4 style={{margin:"0 0 6px"}}>Qualification Documentation</h4>
+              <div style={{fontSize:13,color:"#64748b",marginBottom:14,lineHeight:1.5}}>
+                Each applicable qualification activity is independently traceable to its released protocol and released report. Document Control links are optional and customer-selected.
               </div>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:12}}>
-                <EditField label="Released Protocol Number">
-                  <input value={qualificationForm.protocol_number} onChange={e=>setQualificationForm({...qualificationForm,protocol_number:e.target.value})} style={input}/>
-                </EditField>
-                <EditField label="Protocol Revision">
-                  <input value={qualificationForm.protocol_revision} onChange={e=>setQualificationForm({...qualificationForm,protocol_revision:e.target.value})} style={input}/>
-                </EditField>
-                <EditField label="Protocol Document Control Link — Optional">
-                  <input value={qualificationForm.protocol_document_url} onChange={e=>setQualificationForm({...qualificationForm,protocol_document_url:e.target.value})} placeholder="/documents/... or approved URL" style={input}/>
-                </EditField>
-                <EditField label="Released Qualification Report / Document Number">
-                  <input value={qualificationForm.report_number} onChange={e=>setQualificationForm({...qualificationForm,report_number:e.target.value})} style={input}/>
-                </EditField>
-                <EditField label="Report Revision">
-                  <input value={qualificationForm.report_revision} onChange={e=>setQualificationForm({...qualificationForm,report_revision:e.target.value})} style={input}/>
-                </EditField>
-                <EditField label="Report Document Control Link — Optional">
-                  <input value={qualificationForm.report_document_url} onChange={e=>setQualificationForm({...qualificationForm,report_document_url:e.target.value})} placeholder="/documents/... or approved URL" style={input}/>
-                </EditField>
-                <EditField label="Qualification Result">
-                  <select value={qualificationForm.qualification_result} onChange={e=>setQualificationForm({...qualificationForm,qualification_result:e.target.value})} style={input}>
-                    <option value="">Select Result</option>
-                    <option value="acceptable">Acceptable</option>
-                    <option value="not_acceptable">Not Acceptable</option>
-                  </select>
-                </EditField>
-              </div>
+
+              {qualificationElementMeta.filter(element=>(qualificationForm as any)[element.flag]).map(element=>{
+                const doc=qualificationElementDoc(element.key);
+                return <div key={element.key} style={{border:"1px solid #dbe3ee",borderRadius:10,padding:14,marginBottom:12,background:"#fff"}}>
+                  <div style={{display:"flex",alignItems:"baseline",gap:8,marginBottom:12}}>
+                    <strong style={{fontSize:15}}>{element.label}</strong>
+                    <span style={{fontSize:13,color:"#64748b"}}>{element.name}</span>
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(185px,1fr))",gap:10}}>
+                    <EditField label={`${element.label} Protocol Number`}><input value={doc.protocol_number||""} onChange={e=>setQualificationElementDoc(element.key,"protocol_number",e.target.value)} style={input}/></EditField>
+                    <EditField label="Protocol Revision"><input value={doc.protocol_revision||""} onChange={e=>setQualificationElementDoc(element.key,"protocol_revision",e.target.value)} style={input}/></EditField>
+                    <EditField label="Protocol Link — Optional"><input value={doc.protocol_document_url||""} onChange={e=>setQualificationElementDoc(element.key,"protocol_document_url",e.target.value)} placeholder="/documents/... or approved URL" style={input}/></EditField>
+                    <EditField label={`${element.label} Report Number`}><input value={doc.report_number||""} onChange={e=>setQualificationElementDoc(element.key,"report_number",e.target.value)} style={input}/></EditField>
+                    <EditField label="Report Revision"><input value={doc.report_revision||""} onChange={e=>setQualificationElementDoc(element.key,"report_revision",e.target.value)} style={input}/></EditField>
+                    <EditField label="Report Link — Optional"><input value={doc.report_document_url||""} onChange={e=>setQualificationElementDoc(element.key,"report_document_url",e.target.value)} placeholder="/documents/... or approved URL" style={input}/></EditField>
+                    <EditField label={`${element.label} Result`}>
+                      <select value={doc.result||""} onChange={e=>setQualificationElementDoc(element.key,"result",e.target.value)} style={input}>
+                        <option value="">Select Result</option><option value="acceptable">Acceptable</option><option value="not_acceptable">Not Acceptable</option>
+                      </select>
+                    </EditField>
+                  </div>
+                </div>;
+              })}
+
+              {!qualificationElementMeta.some(element=>(qualificationForm as any)[element.flag]) ? <div style={emptyPanelStyle}>Select IQ, OQ, and/or PQ above to document the applicable qualification activities.</div> : null}
+
               <div style={{marginTop:12}}>
-                <EditField label="Result Summary / Qualification Notes">
-                  <textarea rows={3} value={qualificationForm.result_summary} onChange={e=>setQualificationForm({...qualificationForm,result_summary:e.target.value})} style={{...input,resize:"vertical"}}/>
-                </EditField>
+                <EditField label="Overall Qualification Summary / Notes"><textarea rows={3} value={qualificationForm.result_summary} onChange={e=>setQualificationForm({...qualificationForm,result_summary:e.target.value})} style={{...input,resize:"vertical"}}/></EditField>
               </div>
             </div>
 
@@ -2982,9 +3000,9 @@ export default function EquipmentMasterPage() {
                   <td style={tdMini}>{[row.iq_applicable?"IQ":null,row.oq_applicable?"OQ":null,row.pq_applicable?"PQ":null].filter(Boolean).join(", ")||"Not Recorded"}</td>
                   <td style={tdMini}>{row.status==="released"?"Qualified":formatLabel(row.status)}</td>
                   <td style={tdMini}>{formatDate(row.qualification_date)}</td>
-                  <td style={tdMini}>{[row.protocol_number,row.protocol_revision].filter(Boolean).join(" / ")||"Not Recorded"}{row.protocol_document_url?<div><a href={row.protocol_document_url} target="_blank" rel="noreferrer">Open Link</a></div>:null}</td>
-                  <td style={tdMini}>{[row.report_number,row.report_revision].filter(Boolean).join(" / ")||"Not Recorded"}{row.report_document_url?<div><a href={row.report_document_url} target="_blank" rel="noreferrer">Open Link</a></div>:null}</td>
-                  <td style={tdMini}>{formatLabel(row.qualification_result)}</td>
+                  <td style={tdMini}>{["iq","oq","pq"].filter(key=>(row as any)[`${key}_applicable`]).map(key=><div key={key}><strong>{key.toUpperCase()}:</strong> {row.qualification_element_documents?.[key]?.protocol_number||"Not Recorded"}</div>)}</td>
+                  <td style={tdMini}>{["iq","oq","pq"].filter(key=>(row as any)[`${key}_applicable`]).map(key=><div key={key}><strong>{key.toUpperCase()}:</strong> {row.qualification_element_documents?.[key]?.report_number||"Not Recorded"}</div>)}</td>
+                  <td style={tdMini}>{["iq","oq","pq"].filter(key=>(row as any)[`${key}_applicable`]).map(key=><div key={key}><strong>{key.toUpperCase()}:</strong> {formatLabel(row.qualification_element_documents?.[key]?.result)}</div>)}</td>
                   <td style={tdMini}>{formatDate(row.next_requalification_date)}</td>
                   <td style={tdMini}>{canMaintain?<button type="button" style={secondaryButton} onClick={()=>editQualification(row)}>Edit</button>:"Read Only"}</td>
                 </tr>)}</tbody>
@@ -3025,7 +3043,7 @@ export default function EquipmentMasterPage() {
                   <option value="pending_qualification">Pending Qualification</option>
                   <option value="pending_maintenance">Pending Maintenance</option>
                   <option value="pending_production_release">Pending Production Release</option>
-                  <option value="active">Active</option>
+                  <option value="active" disabled={!recordIsReleased}>Active — available only after Equipment Record Release</option>
                   <option value="retired">Retired</option>
                 </select>
               </EditField>
@@ -3035,7 +3053,7 @@ export default function EquipmentMasterPage() {
                   const next=e.target.value;
                   setForm({...form,use_status:next,lifecycle_phase:next==="retired"?"retirement":form.lifecycle_phase,equipment_status:next==="retired"?"retired":form.equipment_status});
                 }} style={input}>
-                  <option value="available_for_use">Available for Use</option>
+                  <option value="available_for_use" disabled={!recordIsReleased}>Available for Use — available only after Equipment Record Release</option>
                   <option value="restricted">Restricted</option>
                   <option value="out_of_service">Out of Service</option>
                   <option value="retired">Retired</option>
@@ -3048,8 +3066,6 @@ export default function EquipmentMasterPage() {
               </EditField>
             </div>
             <div style={{ ...detailGridStyle, marginTop: 14 }}>
-              <Detail label="Released By" value={record.released_by} />
-              <Detail label="Released At" value={formatDateTime(record.released_at)} />
               <Detail label="Retired By" value={record.retired_by} />
               <Detail label="Retired At" value={formatDateTime(record.retired_at)} />
               <Detail label="Retirement Reason" value={record.retirement_reason} wide />
@@ -3058,16 +3074,20 @@ export default function EquipmentMasterPage() {
         ) : (
           <div style={detailGridStyle}>
             <Detail label="Lifecycle Phase" value={formatLifecyclePhase(record.lifecycle_phase)} />
-            <Detail label="Equipment Status" value={formatEquipmentStatus(record.equipment_status)} />
-            <Detail label="Use Status" value={formatEquipmentUseStatus(record.use_status)} />
+            <Detail label="Equipment Status" value={record.record_status!=="released"&&record.equipment_status==="active" ? "Pending Production Release" : formatEquipmentStatus(record.equipment_status)} />
+            <Detail label="Use Status" value={record.record_status!=="released"&&record.use_status==="available_for_use" ? "Restricted — Record Not Released" : formatEquipmentUseStatus(record.use_status)} />
             <Detail label="Status Rationale / Notes" value={record.use_status_reason} wide />
-            <Detail label="Released By" value={record.released_by} />
-            <Detail label="Released At" value={formatDateTime(record.released_at)} />
             <Detail label="Retired By" value={record.retired_by} />
             <Detail label="Retired At" value={formatDateTime(record.retired_at)} />
             <Detail label="Retirement Reason" value={record.retirement_reason} wide />
           </div>
         )}
+        {record.record_status!=="released"&&(record.equipment_status==="active"||record.use_status==="available_for_use") ? (
+          <div style={{marginTop:16,border:"1px solid #f59e0b",background:"#fffbeb",color:"#92400e",borderRadius:10,padding:12,lineHeight:1.5}}>
+            <strong>Governance override:</strong> this Equipment Record is not released. Active / Available-for-Use values do not authorize operational use until Equipment Record Release is approved.
+          </div>
+        ) : null}
+
         <div style={{marginTop:18,border:"1px solid #cbd5e1",borderRadius:12,padding:14,background:"#f8fafc"}}>
           <h3 style={{margin:"0 0 6px"}}>Equipment Record Release Governance</h3>
           <div style={{color:"#64748b",fontSize:13,lineHeight:1.5,marginBottom:12}}>
@@ -3075,17 +3095,33 @@ export default function EquipmentMasterPage() {
           </div>
           <div style={{...detailGridStyle,marginBottom:12}}>
             <Detail label="Record Status" value={formatLabel(record.record_status||"draft")} />
+            <Detail label="Operational Authorization" value={recordIsReleased?"Authorized for Use":"Not Released / Use Restricted"} />
             <Detail label="Your Equipment Role" value={canMaintain?formatLabel(governanceRole):"Viewer / Read Only"} />
             <Detail label="Released By" value={record.released_by} />
             <Detail label="Released At" value={formatDateTime(record.released_at)} />
+          </div>
+
+          <div style={{border:"1px solid #e2e8f0",background:"#fff",borderRadius:10,padding:12,marginBottom:12}}>
+            <div style={{fontWeight:800,marginBottom:8}}>Release Readiness</div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:8}}>
+              {lifecycleReadiness.map(item=>(
+                <div key={`release-${item.label}`} style={{border:item.required&&!item.complete?"1px solid #fecaca":"1px solid #bbf7d0",background:item.required&&!item.complete?"#fef2f2":"#f0fdf4",borderRadius:8,padding:9}}>
+                  <div style={{fontWeight:700,fontSize:13}}>{item.label}</div>
+                  <div style={{fontSize:12,marginTop:4}}>{!item.required?"Not Required":item.complete?"Ready":"Required / Pending"}</div>
+                </div>
+              ))}
+            </div>
           </div>
           {pendingRelease ? <div style={{border:"1px solid #fde68a",background:"#fffbeb",borderRadius:10,padding:12,marginBottom:12}}>
             <strong>Pending Equipment Record Release</strong>
             <div style={{marginTop:5,fontSize:13}}>Approver: {releaseRequest?.approver_email} · Submitted by {releaseRequest?.submitted_by} on {formatDateTime(releaseRequest?.submitted_at)}</div>
           </div> : null}
           {canMaintain && !recordIsReleased && !pendingRelease ? <div style={{display:"grid",gridTemplateColumns:"minmax(260px,1fr) auto",gap:10,alignItems:"end"}}>
-            <EditField label="Equipment Quality Approver"><input value={releaseApproverEmail} onChange={e=>setReleaseApproverEmail(e.target.value)} placeholder="approver@company.com" style={input}/></EditField>
-            <button type="button" style={{...primaryButton,opacity:processingRelease?0.6:1}} disabled={processingRelease} onClick={submitEquipmentForRelease}>
+            <div>
+              <EditField label="Equipment Quality Approver Email"><input value={releaseApproverEmail} onChange={e=>setReleaseApproverEmail(e.target.value)} placeholder="approver@company.com" style={input}/></EditField>
+              <div style={{fontSize:12,color:"#64748b",marginTop:5}}>Assigned approver must hold an active Equipment Quality Approver or Admin role.</div>
+            </div>
+            <button type="button" style={{...primaryButton,opacity:processingRelease||lifecycleReadiness.some(item=>item.required&&!item.complete)?0.5:1}} disabled={processingRelease||lifecycleReadiness.some(item=>item.required&&!item.complete)} onClick={submitEquipmentForRelease}>
               {processingRelease?"Submitting...":"Submit Equipment Record for Release"}
             </button>
           </div> : null}
