@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/client";
+import { supabase } from "../../../lib/supabaseClient";
 import * as XLSX from "xlsx";
 
 const REQUIRED_HEADERS = ["Equipment Name","Number Source","Current Equipment State"];
@@ -33,7 +33,6 @@ function isoDate(v:any){
 function slug(v:string){ return v.toLowerCase().replace(/&/g,"and").replace(/[^a-z0-9]+/g,"_").replace(/^_|_$/g,""); }
 
 export default function EquipmentBulkImportPage(){
-  const supabase=useMemo(()=>createClient(),[]);
   const [tenantId,setTenantId]=useState("");
   const [email,setEmail]=useState("");
   const [role,setRole]=useState("");
