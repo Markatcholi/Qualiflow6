@@ -111,6 +111,14 @@ type Qualification = {
   id: string;
   qualification_number: string;
   qualification_type: string;
+  qualification_basis: string | null;
+  iq_applicable: boolean;
+  oq_applicable: boolean;
+  pq_applicable: boolean;
+  qualification_date: string | null;
+  next_requalification_date: string | null;
+  protocol_document_url: string | null;
+  report_document_url: string | null;
   reason: string | null;
   owner_email: string | null;
   target_completion_date: string | null;
@@ -372,6 +380,14 @@ export default function EquipmentMasterPage() {
   const [removedQualificationAttachments,setRemovedQualificationAttachments]=useState<any[]>([]);
   const [qualificationForm,setQualificationForm]=useState({
     qualification_type:"initial",
+    qualification_basis:"new_activity",
+    iq_applicable:false,
+    oq_applicable:false,
+    pq_applicable:false,
+    qualification_date:"",
+    next_requalification_date:"",
+    protocol_document_url:"",
+    report_document_url:"",
     reason:"",
     owner_email:"",
     target_completion_date:"",
@@ -1529,6 +1545,14 @@ export default function EquipmentMasterPage() {
   const resetQualificationForm=()=>{
     setQualificationForm({
       qualification_type:"initial",
+      qualification_basis:"new_activity",
+      iq_applicable:false,
+      oq_applicable:false,
+      pq_applicable:false,
+      qualification_date:"",
+      next_requalification_date:"",
+      protocol_document_url:"",
+      report_document_url:"",
       reason:"",
       owner_email:"",
       target_completion_date:"",
@@ -1599,6 +1623,14 @@ export default function EquipmentMasterPage() {
     setEditingQualificationId(row.id);
     setQualificationForm({
       qualification_type:row.qualification_type||"initial",
+      qualification_basis:row.qualification_basis||"new_activity",
+      iq_applicable:!!row.iq_applicable,
+      oq_applicable:!!row.oq_applicable,
+      pq_applicable:!!row.pq_applicable,
+      qualification_date:row.qualification_date||"",
+      next_requalification_date:row.next_requalification_date||"",
+      protocol_document_url:row.protocol_document_url||"",
+      report_document_url:row.report_document_url||"",
       reason:row.reason||"",
       owner_email:row.owner_email||"",
       target_completion_date:row.target_completion_date||"",
@@ -1651,45 +1683,42 @@ export default function EquipmentMasterPage() {
   };
 
   const saveQualification=async()=>{
-    if(!record)return;
+    if(!record||!canMaintain)return;
     setQualificationMessage("");
 
     if(!qualificationForm.reason.trim()){
-      setQualificationMessage("Qualification / Requalification Reason is required.");
+      setQualificationMessage("Qualification / Requalification Reason or migration rationale is required.");
       return;
     }
-    if(!qualificationForm.owner_email.trim()){
-      setQualificationMessage("Qualification Owner is required.");
+    if(!qualificationForm.iq_applicable&&!qualificationForm.oq_applicable&&!qualificationForm.pq_applicable){
+      setQualificationMessage("Select at least one applicable qualification element: IQ, OQ, or PQ.");
       return;
     }
 
     const status=qualificationForm.status;
-    const protocolRequired=["protocol_released","execution","draft_report","approval","released"].includes(status);
-    const executionRequired=["draft_report","approval","released"].includes(status);
-    const reportRequired=["approval","released"].includes(status);
+    const isHistorical=qualificationForm.qualification_basis==="existing_qualified";
+    const protocolRequired=!isHistorical && ["protocol_released","execution","draft_report","released"].includes(status);
+    const executionRequired=!isHistorical && ["draft_report","released"].includes(status);
+    const reportRequired=["released"].includes(status);
 
     if(protocolRequired&&!qualificationForm.protocol_number.trim()){
-      setQualificationMessage("Protocol Number is required before the protocol can be released.");
+      setQualificationMessage("Released Protocol Number is required before execution.");
       return;
     }
     if(executionRequired&&!qualificationForm.execution_completed_at){
-      setQualificationMessage("Execution Completed At is required before moving to Draft Report.");
+      setQualificationMessage("Execution Completed is required before the qualification report stage.");
       return;
     }
     if(reportRequired&&!qualificationForm.report_number.trim()){
-      setQualificationMessage("Draft Report Number is required before Review / Approval.");
-      return;
-    }
-    if(reportRequired&&!qualificationForm.qualification_result){
-      setQualificationMessage("Qualification Result is required before Review / Approval.");
-      return;
-    }
-    if(status==="released"&&qualificationForm.approval_requirement!=="disabled"&&qualificationForm.approval_status!=="approved"){
-      setQualificationMessage("Review / Approval must be Approved before Release for Use.");
+      setQualificationMessage("Released Qualification Report / Document Number is required before qualification can be marked Qualified.");
       return;
     }
     if(status==="released"&&qualificationForm.qualification_result!=="acceptable"){
-      setQualificationMessage("Only an Acceptable qualification result may be Released for Use.");
+      setQualificationMessage("Qualification must have an Acceptable result before it can be marked Qualified.");
+      return;
+    }
+    if(status==="released"&&!qualificationForm.qualification_date){
+      setQualificationMessage("Qualification Date is required when Qualification Status is Qualified.");
       return;
     }
 
@@ -1706,17 +1735,20 @@ export default function EquipmentMasterPage() {
 
       const executionAttachments=[...existingExecutionAttachments,...newExecution];
       const reportAttachments=[...existingReportAttachments,...newReports];
-
       const now=new Date().toISOString();
-      const approvalDisabled=qualificationForm.approval_requirement==="disabled";
-      const effectiveApprovalStatus=approvalDisabled
-        ? "not_required"
-        : qualificationForm.approval_status;
 
       const payload:any={
         qualification_type:qualificationForm.qualification_type,
+        qualification_basis:qualificationForm.qualification_basis,
+        iq_applicable:qualificationForm.iq_applicable,
+        oq_applicable:qualificationForm.oq_applicable,
+        pq_applicable:qualificationForm.pq_applicable,
+        qualification_date:qualificationForm.qualification_date||null,
+        next_requalification_date:qualificationForm.next_requalification_date||null,
+        protocol_document_url:qualificationForm.protocol_document_url.trim()||null,
+        report_document_url:qualificationForm.report_document_url.trim()||null,
         reason:qualificationForm.reason.trim(),
-        owner_email:qualificationForm.owner_email.trim(),
+        owner_email:qualificationForm.owner_email.trim()||record.owner_email||email,
         target_completion_date:qualificationForm.target_completion_date||null,
         protocol_number:qualificationForm.protocol_number.trim()||null,
         protocol_title:qualificationForm.protocol_title.trim()||null,
@@ -1731,57 +1763,43 @@ export default function EquipmentMasterPage() {
         draft_report_attachments:reportAttachments,
         qualification_result:qualificationForm.qualification_result||null,
         result_summary:qualificationForm.result_summary.trim()||null,
-        approval_requirement:qualificationForm.approval_requirement,
-        approval_status:effectiveApprovalStatus,
-        approved_by:effectiveApprovalStatus==="approved"?(qualificationForm.approved_by.trim()||email):null,
-        approved_at:effectiveApprovalStatus==="approved"?now:null,
-        approval_comment:qualificationForm.approval_comment.trim()||null,
+        approval_requirement:"disabled",
+        approval_status:"not_required",
+        approved_by:null,
+        approved_at:null,
+        approval_comment:null,
         status,
-        protocol_released_at:protocolRequired?now:null,
-        released_for_use_by:status==="released"?email:null,
-        released_for_use_at:status==="released"?now:null
+        protocol_released_at:["protocol_released","execution","draft_report","released"].includes(status)
+          ? (editingQualificationId ? qualifications.find(q=>q.id===editingQualificationId)?.protocol_released_at||now : now)
+          : null,
+        released_for_use_by:null,
+        released_for_use_at:null
       };
 
       let qualificationNumber="";
       if(editingQualificationId){
-        const {data,error}=await supabase
-          .from("equipment_qualification_events")
-          .update(payload)
-          .eq("id",editingQualificationId)
-          .eq("equipment_id",record.id)
-          .select("qualification_number")
-          .single();
+        const {data,error}=await supabase.from("equipment_qualification_events")
+          .update(payload).eq("id",editingQualificationId).eq("equipment_id",record.id)
+          .select("qualification_number").single();
         if(error)throw new Error(error.message);
         qualificationNumber=data.qualification_number;
       }else{
-        const {data,error}=await supabase
-          .from("equipment_qualification_events")
-          .insert({
-            ...payload,
-            tenant_id:record.tenant_id,
-            qualification_number:"",
-            equipment_id:record.id,
-            created_by:email
-          })
-          .select("qualification_number")
-          .single();
+        const {data,error}=await supabase.from("equipment_qualification_events").insert({
+          ...payload,tenant_id:record.tenant_id,qualification_number:"",equipment_id:record.id,created_by:email
+        }).select("qualification_number").single();
         if(error)throw new Error(error.message);
         qualificationNumber=data.qualification_number;
       }
 
-      const removedPaths=removedQualificationAttachments
-        .map((a:any)=>a?.path||a?.storage_path)
-        .filter(Boolean);
-      if(removedPaths.length){
-        const {error}=await supabase.storage.from("controlled-documents").remove(removedPaths);
-        if(error)console.warn("Unable to remove one or more old qualification attachments:",error.message);
-      }
+      const removedPaths=removedQualificationAttachments.map(a=>a?.path).filter(Boolean);
+      if(removedPaths.length) await supabase.storage.from("controlled-documents").remove(removedPaths);
 
       await addAudit(
-        editingQualificationId?"qualification_updated":"qualification_initiated",
-        `Qualification ${qualificationNumber} ${editingQualificationId?"updated":"initiated"}. Type: ${qualificationForm.qualification_type}. Status: ${status}.`
+        editingQualificationId?"qualification_updated":"qualification_recorded",
+        `Qualification ${qualificationNumber} ${editingQualificationId?"updated":"recorded"}. Type: ${qualificationForm.qualification_type}. Basis: ${qualificationForm.qualification_basis}. Elements: ${[
+          qualificationForm.iq_applicable?"IQ":null,qualificationForm.oq_applicable?"OQ":null,qualificationForm.pq_applicable?"PQ":null
+        ].filter(Boolean).join(", ")}. Status: ${status}.`
       );
-
       setShowQualificationForm(false);
       resetQualificationForm();
       await load();
@@ -1790,135 +1808,6 @@ export default function EquipmentMasterPage() {
     }finally{
       setSavingQualification(false);
     }
-  };
-
-  const lifecycleReadiness = useMemo(() => {
-    if (!record) return [];
-
-    return [
-      {
-        label: "Specification Reference",
-        required: true,
-        complete: !!record.specification_document_number,
-      },
-      {
-        label: "Calibration",
-        required: record.calibration_required,
-        complete:
-          !record.calibration_required ||
-          calibrations.some((item) => item.status === "completed" && item.result === "pass"),
-      },
-      {
-        label: "Preventive Maintenance",
-        required: record.preventive_maintenance_required,
-        complete:
-          !record.preventive_maintenance_required ||
-          schedules.some(
-            (item) =>
-              item.activity_type === "preventive_maintenance" && item.is_active
-          ),
-      },
-      {
-        label: "Qualification",
-        required: record.qualification_required,
-        complete:
-          !record.qualification_required ||
-          qualifications.some((item) => item.status === "released"),
-      },
-    ];
-  }, [record, calibrations, schedules, qualifications]);
-
-  if (loading) {
-    return (
-      <main style={pageStyle}>
-        <div style={card}>Loading Equipment Master Record...</div>
-      </main>
-    );
-  }
-
-  if (loadError || !record) {
-    return (
-      <main style={pageStyle}>
-        <div style={{ ...card, borderColor: "#fecaca", color: "#991b1b" }}>
-          <strong>Unable to load equipment.</strong>
-          <div style={{ marginTop: 6 }}>{loadError || "Equipment record not found."}</div>
-          <div style={{ marginTop: 14 }}>
-            <Link href="/equipment" style={secondaryButton}>
-              Return to Equipment Registry
-            </Link>
-          </div>
-        </div>
-      </main>
-    );
-  }
-
-  const canMaintain=["coordinator","quality_approver","admin"].includes(governanceRole);
-  const canApproveRelease=["quality_approver","admin"].includes(governanceRole);
-  const recordIsReleased=record?.record_status==="released";
-  const pendingRelease=releaseRequest?.status==="pending";
-
-  const submitEquipmentForRelease=async()=>{
-    if(!record||!canMaintain)return;
-    setReleaseMessage("");
-    const approver=releaseApproverEmail.trim().toLowerCase();
-    if(!approver||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(approver)){
-      setReleaseMessage("Enter a valid Equipment Quality Approver email address."); return;
-    }
-    if(record.calibration_required&&!calibrations.some(row=>row.result==="pass")){
-      setReleaseMessage("Release blocked: required calibration does not have a passing calibration record."); return;
-    }
-    if(record.qualification_required&&!qualifications.some(row=>row.status==="released"||row.qualification_result==="acceptable")){
-      setReleaseMessage("Release blocked: required qualification does not have acceptable qualification evidence."); return;
-    }
-    setProcessingRelease(true);
-    try{
-      const {error}=await supabase.from("equipment_release_requests").insert({
-        tenant_id:record.tenant_id,equipment_id:record.id,submitted_by:currentUserEmail,
-        approver_email:approver,status:"pending"
-      });
-      if(error)throw new Error(error.message);
-      const {error:updateError}=await supabase.from("equipment").update({
-        record_status:"pending_release",equipment_status:"pending_production_release",
-        use_status:"out_of_service",use_status_reason:"Equipment Master submitted for controlled release."
-      }).eq("id",record.id);
-      if(updateError)throw new Error(updateError.message);
-      await addAudit("equipment_release_submitted",`Equipment Master submitted for release to ${approver}.`);
-      setReleaseApproverEmail(""); setReleaseMessage("Equipment Master submitted for controlled release."); await load();
-    }catch(e:any){setReleaseMessage(e?.message||"Unable to submit equipment for release.");}
-    finally{setProcessingRelease(false);}
-  };
-
-  const decideEquipmentRelease=async(decision:"approved"|"rejected")=>{
-    if(!record||!releaseRequest||!canApproveRelease)return;
-    if(currentUserEmail!==releaseRequest.approver_email.toLowerCase()&&governanceRole!=="admin"){
-      setReleaseMessage("This release request is assigned to another Equipment Quality Approver."); return;
-    }
-    if(decision==="rejected"&&!releaseComment.trim()){
-      setReleaseMessage("A comment is required when rejecting an Equipment Master release."); return;
-    }
-    setProcessingRelease(true); setReleaseMessage("");
-    try{
-      const now=new Date().toISOString();
-      const {error}=await supabase.from("equipment_release_requests").update({
-        status:decision,decision_by:currentUserEmail,decision_at:now,decision_comment:releaseComment.trim()||null
-      }).eq("id",releaseRequest.id);
-      if(error)throw new Error(error.message);
-      const equipmentUpdate=decision==="approved" ? {
-        record_status:"released",lifecycle_phase:"operation_maintenance",equipment_status:"active",
-        lifecycle_status:"released",use_status:"available_for_use",
-        use_status_reason:"Equipment Master released through controlled Equipment Record Release.",
-        released_by:currentUserEmail,released_at:now
-      } : {
-        record_status:"draft",equipment_status:"pending_production_release",use_status:"out_of_service",
-        use_status_reason:releaseComment.trim()||"Equipment Master release rejected."
-      };
-      const {error:updateError}=await supabase.from("equipment").update(equipmentUpdate).eq("id",record.id);
-      if(updateError)throw new Error(updateError.message);
-      await addAudit(decision==="approved"?"equipment_release_approved":"equipment_release_rejected",
-        `Equipment Master release ${decision} by ${currentUserEmail}${releaseComment.trim()?`: ${releaseComment.trim()}`:""}.`);
-      setReleaseComment(""); setReleaseMessage(decision==="approved"?"Equipment Master released for operational use.":"Equipment Master returned for correction."); await load();
-    }catch(e:any){setReleaseMessage(e?.message||"Unable to process equipment release.");}
-    finally{setProcessingRelease(false);}
   };
 
   const calibrationSchedule = schedules.find(
@@ -2795,147 +2684,118 @@ export default function EquipmentMasterPage() {
       <section style={{ ...card, marginBottom: 16 }}>
         <SectionHeader
           title="6. Qualification / Requalification"
-          subtitle="Controlled lifecycle: Qualification Initiated → Released Protocol → Execution → Draft Report → Review/Approval → Release for Use."
+          subtitle="Equipment Management tracks qualification applicability, activity status, and released-document evidence. Document Control governs protocol and report approval/release."
           action={
-            record.qualification_required ? (
-              <button
-                type="button"
-                style={primaryButton}
-                onClick={()=>{
-                  if(showQualificationForm){
-                    setShowQualificationForm(false);
-                    resetQualificationForm();
-                  }else{
-                    resetQualificationForm();
-                    setQualificationForm(current=>({
-                      ...current,
-                      qualification_type:qualifications.length?"requalification":"initial",
-                      owner_email:record.owner_email||""
-                    }));
-                    setShowQualificationForm(true);
-                  }
-                }}
-              >
-                {showQualificationForm?"Close Qualification":"Initiate Qualification"}
-              </button>
+            record.qualification_required && canMaintain ? (
+              <button type="button" style={primaryButton} onClick={()=>{
+                if(showQualificationForm){setShowQualificationForm(false);resetQualificationForm();}
+                else{
+                  resetQualificationForm();
+                  setQualificationForm(current=>({
+                    ...current,
+                    qualification_type:qualifications.length?"requalification":"initial",
+                    owner_email:record.owner_email||""
+                  }));
+                  setShowQualificationForm(true);
+                }
+              }}>{showQualificationForm?"Close Qualification":"Add Qualification Record"}</button>
             ) : null
           }
         />
 
-        {!record.qualification_required ? (
-          <div style={emptyPanelStyle}>Qualification is marked Not Required for this equipment.</div>
-        ) : null}
+        {!record.qualification_required ? <div style={emptyPanelStyle}>Qualification is marked Not Required for this equipment.</div> : null}
 
         {showQualificationForm && record.qualification_required ? (
           <div style={{border:"1px solid #bfdbfe",background:"#f8fbff",borderRadius:12,padding:16,marginBottom:20}}>
-            <h3 style={{margin:"0 0 5px"}}>
-              {editingQualificationId?"Update Qualification / Requalification":"Initiate Qualification / Requalification"}
-            </h3>
-            <p style={{margin:"0 0 14px",color:"#64748b",fontSize:13}}>
-              The customer's approved qualification procedure and protocol remain the controlling instructions. QualiSphere controls the lifecycle record, evidence, review status, and release gate.
+            <h3 style={{margin:"0 0 5px"}}>{editingQualificationId?"Update Qualification Record":"Qualification / Requalification Record"}</h3>
+            <p style={{margin:"0 0 14px",color:"#64748b",fontSize:13,lineHeight:1.5}}>
+              Use Existing Qualified Equipment when bringing historically qualified equipment into QualiSphere. QualiSphere records the status and evidence; it does not recreate or duplicate Document Control approval.
             </p>
 
             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:12}}>
+              <EditField label="Qualification Basis">
+                <select value={qualificationForm.qualification_basis} onChange={e=>setQualificationForm({...qualificationForm,qualification_basis:e.target.value,status:e.target.value==="existing_qualified"?"released":qualificationForm.status})} style={input}>
+                  <option value="new_activity">New / Current Qualification Activity</option>
+                  <option value="existing_qualified">Existing Qualified Equipment</option>
+                </select>
+              </EditField>
               <EditField label="Qualification Type">
                 <select value={qualificationForm.qualification_type} onChange={e=>setQualificationForm({...qualificationForm,qualification_type:e.target.value})} style={input}>
                   <option value="initial">Initial Qualification</option>
                   <option value="requalification">Requalification</option>
                 </select>
               </EditField>
-              <EditField label="Qualification Owner">
-                <input value={qualificationForm.owner_email} onChange={e=>setQualificationForm({...qualificationForm,owner_email:e.target.value})} style={input}/>
-              </EditField>
-              <EditField label="Target Completion Date">
-                <input type="date" value={qualificationForm.target_completion_date} onChange={e=>setQualificationForm({...qualificationForm,target_completion_date:e.target.value})} style={input}/>
-              </EditField>
-              <EditField label="Current Lifecycle Step">
+              <EditField label="Qualification Status">
                 <select value={qualificationForm.status} onChange={e=>setQualificationForm({...qualificationForm,status:e.target.value})} style={input}>
                   <option value="initiated">Qualification Initiated</option>
-                  <option value="protocol_released">Released Protocol</option>
-                  <option value="execution">Execution</option>
-                  <option value="draft_report">Draft Report</option>
-                  <option value="approval">Review / Approval</option>
-                  <option value="released">Release for Use</option>
-                  <option value="rejected">Rejected</option>
+                  <option value="protocol_released">Protocol Released</option>
+                  <option value="execution">Execution In Progress</option>
+                  <option value="draft_report">Qualification Report In Progress</option>
+                  <option value="released">Qualified</option>
+                  <option value="rejected">Not Acceptable / Returned</option>
                   <option value="cancelled">Cancelled</option>
                 </select>
               </EditField>
+              <EditField label="Qualification Owner">
+                <input value={qualificationForm.owner_email} onChange={e=>setQualificationForm({...qualificationForm,owner_email:e.target.value})} style={input}/>
+              </EditField>
             </div>
 
-            <div style={{marginTop:14}}>
-              <EditField label="Qualification / Requalification Reason">
-                <textarea rows={3} value={qualificationForm.reason} onChange={e=>setQualificationForm({...qualificationForm,reason:e.target.value})} placeholder="Document why qualification or requalification is required." style={{...input,resize:"vertical"}}/>
+            <div style={{marginTop:16}}>
+              <div style={fieldLabel}>Applicable Qualification Elements</div>
+              <div style={{display:"flex",gap:18,flexWrap:"wrap",padding:"10px 0"}}>
+                {[
+                  ["iq_applicable","IQ — Installation Qualification"],
+                  ["oq_applicable","OQ — Operational Qualification"],
+                  ["pq_applicable","PQ — Performance Qualification"]
+                ].map(([key,label])=><label key={key} style={{display:"flex",alignItems:"center",gap:7,fontSize:14}}>
+                  <input type="checkbox" checked={(qualificationForm as any)[key]} onChange={e=>setQualificationForm({...qualificationForm,[key]:e.target.checked})}/>
+                  {label}
+                </label>)}
+              </div>
+            </div>
+
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:12,marginTop:8}}>
+              <EditField label="Qualification Date">
+                <input type="date" value={qualificationForm.qualification_date} onChange={e=>setQualificationForm({...qualificationForm,qualification_date:e.target.value})} style={input}/>
+              </EditField>
+              <EditField label="Next Requalification Date — Optional">
+                <input type="date" value={qualificationForm.next_requalification_date} onChange={e=>setQualificationForm({...qualificationForm,next_requalification_date:e.target.value})} style={input}/>
+              </EditField>
+              {qualificationForm.qualification_basis==="new_activity" ? <EditField label="Target Completion Date">
+                <input type="date" value={qualificationForm.target_completion_date} onChange={e=>setQualificationForm({...qualificationForm,target_completion_date:e.target.value})} style={input}/>
+              </EditField> : null}
+            </div>
+
+            <div style={{marginTop:12}}>
+              <EditField label="Qualification / Requalification Reason or Migration Rationale">
+                <textarea rows={3} value={qualificationForm.reason} onChange={e=>setQualificationForm({...qualificationForm,reason:e.target.value})} style={{...input,resize:"vertical"}}/>
               </EditField>
             </div>
 
             <div style={{marginTop:20,borderTop:"1px solid #e2e8f0",paddingTop:16}}>
-              <h4 style={{margin:"0 0 10px"}}>1. Released Protocol</h4>
+              <h4 style={{margin:"0 0 10px"}}>Qualification Documentation</h4>
+              <div style={{fontSize:13,color:"#64748b",marginBottom:12}}>
+                Document numbers and revisions provide traceability. Document Control links are optional and customer-selected.
+              </div>
               <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:12}}>
-                <EditField label="Protocol Number">
-                  <input value={qualificationForm.protocol_number} onChange={e=>setQualificationForm({...qualificationForm,protocol_number:e.target.value})} placeholder="Controlled protocol number" style={input}/>
-                </EditField>
-                <EditField label="Protocol Title">
-                  <input value={qualificationForm.protocol_title} onChange={e=>setQualificationForm({...qualificationForm,protocol_title:e.target.value})} style={input}/>
+                <EditField label="Released Protocol Number">
+                  <input value={qualificationForm.protocol_number} onChange={e=>setQualificationForm({...qualificationForm,protocol_number:e.target.value})} style={input}/>
                 </EditField>
                 <EditField label="Protocol Revision">
                   <input value={qualificationForm.protocol_revision} onChange={e=>setQualificationForm({...qualificationForm,protocol_revision:e.target.value})} style={input}/>
                 </EditField>
-              </div>
-            </div>
-
-            <div style={{marginTop:20,borderTop:"1px solid #e2e8f0",paddingTop:16}}>
-              <h4 style={{margin:"0 0 10px"}}>2. Execution</h4>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:12}}>
-                <EditField label="Execution Started">
-                  <input type="datetime-local" value={qualificationForm.execution_started_at} onChange={e=>setQualificationForm({...qualificationForm,execution_started_at:e.target.value})} style={input}/>
+                <EditField label="Protocol Document Control Link — Optional">
+                  <input value={qualificationForm.protocol_document_url} onChange={e=>setQualificationForm({...qualificationForm,protocol_document_url:e.target.value})} placeholder="/documents/... or approved URL" style={input}/>
                 </EditField>
-                <EditField label="Execution Completed">
-                  <input type="datetime-local" value={qualificationForm.execution_completed_at} onChange={e=>setQualificationForm({...qualificationForm,execution_completed_at:e.target.value})} style={input}/>
-                </EditField>
-                <EditField label="Executed By">
-                  <input value={qualificationForm.executed_by} onChange={e=>setQualificationForm({...qualificationForm,executed_by:e.target.value})} style={input}/>
-                </EditField>
-              </div>
-              <div style={{marginTop:12}}>
-                <EditField label="Execution Notes">
-                  <textarea rows={3} value={qualificationForm.execution_notes} onChange={e=>setQualificationForm({...qualificationForm,execution_notes:e.target.value})} style={{...input,resize:"vertical"}}/>
-                </EditField>
-              </div>
-
-              <div style={{marginTop:12}}>
-                <div style={fieldLabel}>Execution Evidence / Attachments</div>
-                {existingExecutionAttachments.length ? (
-                  <div style={{display:"grid",gap:8,marginBottom:10}}>
-                    {existingExecutionAttachments.map((a:any,i:number)=>(
-                      <div key={`${a?.path||a?.name||i}`} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,border:"1px solid #bfdbfe",background:"#eff6ff",borderRadius:9,padding:"8px 10px"}}>
-                        <button type="button" style={attachmentButton} onClick={()=>openQualificationAttachment(a)}>{a?.name||`Attachment ${i+1}`}</button>
-                        <button type="button" style={secondaryButton} onClick={()=>removeQualificationAttachment("execution",i)}>Remove</button>
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-                <input type="file" multiple onChange={e=>{const files=Array.from(e.target.files||[]);setQualificationExecutionFiles(current=>[...current,...files]);e.currentTarget.value="";}} style={input}/>
-                {qualificationExecutionFiles.length ? (
-                  <div style={{display:"grid",gap:8,marginTop:8}}>
-                    {qualificationExecutionFiles.map((file,i)=>(
-                      <div key={`${file.name}-${i}`} style={{display:"flex",justifyContent:"space-between",alignItems:"center",border:"1px solid #e2e8f0",borderRadius:9,padding:"8px 10px"}}>
-                        <span>{file.name}</span>
-                        <button type="button" style={secondaryButton} onClick={()=>setQualificationExecutionFiles(current=>current.filter((_,x)=>x!==i))}>Remove</button>
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-            </div>
-
-            <div style={{marginTop:20,borderTop:"1px solid #e2e8f0",paddingTop:16}}>
-              <h4 style={{margin:"0 0 10px"}}>3. Draft Report</h4>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:12}}>
-                <EditField label="Report Number">
+                <EditField label="Released Qualification Report / Document Number">
                   <input value={qualificationForm.report_number} onChange={e=>setQualificationForm({...qualificationForm,report_number:e.target.value})} style={input}/>
                 </EditField>
                 <EditField label="Report Revision">
                   <input value={qualificationForm.report_revision} onChange={e=>setQualificationForm({...qualificationForm,report_revision:e.target.value})} style={input}/>
+                </EditField>
+                <EditField label="Report Document Control Link — Optional">
+                  <input value={qualificationForm.report_document_url} onChange={e=>setQualificationForm({...qualificationForm,report_document_url:e.target.value})} placeholder="/documents/... or approved URL" style={input}/>
                 </EditField>
                 <EditField label="Qualification Result">
                   <select value={qualificationForm.qualification_result} onChange={e=>setQualificationForm({...qualificationForm,qualification_result:e.target.value})} style={input}>
@@ -2946,82 +2806,31 @@ export default function EquipmentMasterPage() {
                 </EditField>
               </div>
               <div style={{marginTop:12}}>
-                <EditField label="Result Summary">
+                <EditField label="Result Summary / Qualification Notes">
                   <textarea rows={3} value={qualificationForm.result_summary} onChange={e=>setQualificationForm({...qualificationForm,result_summary:e.target.value})} style={{...input,resize:"vertical"}}/>
                 </EditField>
               </div>
-
-              <div style={{marginTop:12}}>
-                <div style={fieldLabel}>Draft Report / Supporting Records</div>
-                {existingReportAttachments.length ? (
-                  <div style={{display:"grid",gap:8,marginBottom:10}}>
-                    {existingReportAttachments.map((a:any,i:number)=>(
-                      <div key={`${a?.path||a?.name||i}`} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,border:"1px solid #bfdbfe",background:"#eff6ff",borderRadius:9,padding:"8px 10px"}}>
-                        <button type="button" style={attachmentButton} onClick={()=>openQualificationAttachment(a)}>{a?.name||`Attachment ${i+1}`}</button>
-                        <button type="button" style={secondaryButton} onClick={()=>removeQualificationAttachment("report",i)}>Remove</button>
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-                <input type="file" multiple onChange={e=>{const files=Array.from(e.target.files||[]);setQualificationReportFiles(current=>[...current,...files]);e.currentTarget.value="";}} style={input}/>
-                {qualificationReportFiles.length ? (
-                  <div style={{display:"grid",gap:8,marginTop:8}}>
-                    {qualificationReportFiles.map((file,i)=>(
-                      <div key={`${file.name}-${i}`} style={{display:"flex",justifyContent:"space-between",alignItems:"center",border:"1px solid #e2e8f0",borderRadius:9,padding:"8px 10px"}}>
-                        <span>{file.name}</span>
-                        <button type="button" style={secondaryButton} onClick={()=>setQualificationReportFiles(current=>current.filter((_,x)=>x!==i))}>Remove</button>
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
             </div>
 
-            <div style={{marginTop:20,borderTop:"1px solid #e2e8f0",paddingTop:16}}>
-              <h4 style={{margin:"0 0 10px"}}>4. Review / Approval</h4>
+            {qualificationForm.qualification_basis==="new_activity" ? <div style={{marginTop:20,borderTop:"1px solid #e2e8f0",paddingTop:16}}>
+              <h4 style={{margin:"0 0 10px"}}>Execution Evidence — Optional</h4>
               <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:12}}>
-                <EditField label="Approval Requirement">
-                  <select value={qualificationForm.approval_requirement} onChange={e=>setQualificationForm({...qualificationForm,approval_requirement:e.target.value})} style={input}>
-                    <option value="required">Required</option>
-                    <option value="optional">Optional</option>
-                    <option value="disabled">Disabled by Customer Configuration</option>
-                  </select>
-                </EditField>
-                {qualificationForm.approval_requirement!=="disabled" ? (
-                  <>
-                    <EditField label="Approval Status">
-                      <select value={qualificationForm.approval_status} onChange={e=>setQualificationForm({...qualificationForm,approval_status:e.target.value})} style={input}>
-                        <option value="not_required">Not Submitted</option>
-                        <option value="pending">Pending</option>
-                        <option value="approved">Approved</option>
-                        <option value="rejected">Rejected</option>
-                      </select>
-                    </EditField>
-                    <EditField label="Approved / Reviewed By">
-                      <input value={qualificationForm.approved_by} onChange={e=>setQualificationForm({...qualificationForm,approved_by:e.target.value})} style={input}/>
-                    </EditField>
-                  </>
-                ) : null}
+                <EditField label="Execution Started"><input type="datetime-local" value={qualificationForm.execution_started_at} onChange={e=>setQualificationForm({...qualificationForm,execution_started_at:e.target.value})} style={input}/></EditField>
+                <EditField label="Execution Completed"><input type="datetime-local" value={qualificationForm.execution_completed_at} onChange={e=>setQualificationForm({...qualificationForm,execution_completed_at:e.target.value})} style={input}/></EditField>
+                <EditField label="Executed By"><input value={qualificationForm.executed_by} onChange={e=>setQualificationForm({...qualificationForm,executed_by:e.target.value})} style={input}/></EditField>
               </div>
-              {qualificationForm.approval_requirement!=="disabled" ? (
-                <div style={{marginTop:12}}>
-                  <EditField label="Review / Approval Comment">
-                    <textarea rows={3} value={qualificationForm.approval_comment} onChange={e=>setQualificationForm({...qualificationForm,approval_comment:e.target.value})} style={{...input,resize:"vertical"}}/>
-                  </EditField>
-                </div>
-              ) : null}
+              <div style={{marginTop:12}}><EditField label="Execution Notes"><textarea rows={3} value={qualificationForm.execution_notes} onChange={e=>setQualificationForm({...qualificationForm,execution_notes:e.target.value})} style={{...input,resize:"vertical"}}/></EditField></div>
+              <div style={{marginTop:12}}>
+                <div style={fieldLabel}>Supporting Evidence</div>
+                <input type="file" multiple onChange={e=>{const files=Array.from(e.target.files||[]);setQualificationExecutionFiles(current=>[...current,...files]);e.currentTarget.value="";}} style={input}/>
+              </div>
+            </div> : null}
+
+            <div style={{marginTop:16,border:"1px solid #dbeafe",background:"#eff6ff",borderRadius:10,padding:12,color:"#1e3a8a",fontSize:13,lineHeight:1.5}}>
+              <strong>Governance:</strong> Qualification status and evidence support Equipment Record Release. Related Controlled Documents, Change Control, and OOS/OOT links are optional and never required merely because the relationship section is empty.
             </div>
 
-            <div style={{marginTop:20,border:"1px solid #bfdbfe",background:"#eff6ff",borderRadius:10,padding:12,color:"#1e3a8a",fontSize:13,lineHeight:1.5}}>
-              <strong>Release Gate:</strong> Release for Use requires an Acceptable qualification result and, when approval is enabled, an Approved review status. Qualification does not bypass the separate Equipment Status / Production Release control.
-            </div>
-
-            {qualificationMessage ? (
-              <div style={{marginTop:14,border:"1px solid #fecaca",background:"#fef2f2",color:"#991b1b",borderRadius:10,padding:10}}>
-                {qualificationMessage}
-              </div>
-            ) : null}
-
+            {qualificationMessage ? <div style={{marginTop:14,border:"1px solid #fecaca",background:"#fef2f2",color:"#991b1b",borderRadius:10,padding:10}}>{qualificationMessage}</div> : null}
             <div style={{display:"flex",justifyContent:"flex-end",gap:10,marginTop:16}}>
               <button type="button" style={secondaryButton} onClick={()=>{setShowQualificationForm(false);resetQualificationForm();}}>Cancel</button>
               <button type="button" style={{...primaryButton,opacity:savingQualification?0.6:1}} disabled={savingQualification} onClick={saveQualification}>
@@ -3033,39 +2842,23 @@ export default function EquipmentMasterPage() {
 
         <div style={{marginTop:18}}>
           <h3 style={{margin:"0 0 10px"}}>Qualification History</h3>
-          {qualifications.length===0 ? (
-            <div style={emptyPanelStyle}>No qualification or requalification events recorded.</div>
-          ) : (
+          {qualifications.length===0 ? <div style={emptyPanelStyle}>No qualification or requalification events recorded.</div> : (
             <div style={{overflowX:"auto"}}>
-              <table style={{width:"100%",borderCollapse:"collapse",fontSize:13,minWidth:1200}}>
-                <thead>
-                  <tr>
-                    {["Event","Type","Reason","Protocol","Result","Approval","Status","Execution Evidence","Report","Released","Action"].map(h=>(
-                      <th key={h} style={{textAlign:"left",padding:"9px 10px",borderBottom:"1px solid #cbd5e1"}}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {qualifications.map(row=>{
-                    const execFiles=Array.isArray(row.execution_attachments)?row.execution_attachments:[];
-                    const reportFiles=Array.isArray(row.draft_report_attachments)?row.draft_report_attachments:[];
-                    return (
-                      <tr key={row.id}>
-                        <td style={tdMini}><strong>{row.qualification_number}</strong></td>
-                        <td style={tdMini}>{formatLabel(row.qualification_type)}</td>
-                        <td style={{...tdMini,maxWidth:240,whiteSpace:"pre-wrap"}}>{row.reason||"Not Recorded"}</td>
-                        <td style={tdMini}>{[row.protocol_number,row.protocol_revision].filter(Boolean).join(" / ")||"Not Recorded"}</td>
-                        <td style={tdMini}>{formatLabel(row.qualification_result)}</td>
-                        <td style={tdMini}>{formatLabel(row.approval_status)}</td>
-                        <td style={tdMini}>{formatLabel(row.status)}</td>
-                        <td style={tdMini}>{execFiles.length?execFiles.map((a:any,i:number)=><button key={`${a?.path||i}`} type="button" style={attachmentButton} onClick={()=>openQualificationAttachment(a)}>{a?.name||`Evidence ${i+1}`}</button>):"None"}</td>
-                        <td style={tdMini}>{reportFiles.length?reportFiles.map((a:any,i:number)=><button key={`${a?.path||i}`} type="button" style={attachmentButton} onClick={()=>openQualificationAttachment(a)}>{a?.name||`Report ${i+1}`}</button>):"None"}</td>
-                        <td style={tdMini}>{row.released_for_use_at?formatDateTime(row.released_for_use_at):"Not Released"}</td>
-                        <td style={tdMini}><button type="button" style={secondaryButton} onClick={()=>editQualification(row)}>Edit</button></td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:13,minWidth:1250}}>
+                <thead><tr>{["Event","Basis","Type","Elements","Status","Qualification Date","Protocol","Report","Result","Next Requalification","Action"].map(h=><th key={h} style={{textAlign:"left",padding:"9px 10px",borderBottom:"1px solid #cbd5e1"}}>{h}</th>)}</tr></thead>
+                <tbody>{qualifications.map(row=><tr key={row.id}>
+                  <td style={tdMini}><strong>{row.qualification_number}</strong></td>
+                  <td style={tdMini}>{row.qualification_basis==="existing_qualified"?"Existing Qualified Equipment":"New / Current Activity"}</td>
+                  <td style={tdMini}>{formatLabel(row.qualification_type)}</td>
+                  <td style={tdMini}>{[row.iq_applicable?"IQ":null,row.oq_applicable?"OQ":null,row.pq_applicable?"PQ":null].filter(Boolean).join(", ")||"Not Recorded"}</td>
+                  <td style={tdMini}>{row.status==="released"?"Qualified":formatLabel(row.status)}</td>
+                  <td style={tdMini}>{formatDate(row.qualification_date)}</td>
+                  <td style={tdMini}>{[row.protocol_number,row.protocol_revision].filter(Boolean).join(" / ")||"Not Recorded"}{row.protocol_document_url?<div><a href={row.protocol_document_url} target="_blank" rel="noreferrer">Open Link</a></div>:null}</td>
+                  <td style={tdMini}>{[row.report_number,row.report_revision].filter(Boolean).join(" / ")||"Not Recorded"}{row.report_document_url?<div><a href={row.report_document_url} target="_blank" rel="noreferrer">Open Link</a></div>:null}</td>
+                  <td style={tdMini}>{formatLabel(row.qualification_result)}</td>
+                  <td style={tdMini}>{formatDate(row.next_requalification_date)}</td>
+                  <td style={tdMini}>{canMaintain?<button type="button" style={secondaryButton} onClick={()=>editQualification(row)}>Edit</button>:"Read Only"}</td>
+                </tr>)}</tbody>
               </table>
             </div>
           )}
@@ -3074,60 +2867,7 @@ export default function EquipmentMasterPage() {
 
       <section style={{ ...card, marginBottom: 16 }}>
         <SectionHeader
-          title="7. Related Controlled Documents"
-          subtitle="Direct links between Equipment and Document Control."
-          action={<button disabled style={disabledButton}>Link Document — Next Phase</button>}
-        />
-        <HistoryTable
-          emptyText="No controlled documents linked."
-          headers={["Relationship", "Document ID", "Active", "Linked At"]}
-          rows={documents.map((row) => [
-            formatLabel(row.relationship_type),
-            row.document_id,
-            row.is_active ? "Yes" : "No",
-            formatDateTime(row.linked_at),
-          ])}
-        />
-      </section>
-
-      <section style={{ ...card, marginBottom: 16 }}>
-        <SectionHeader
-          title="8. Change Control"
-          subtitle="Equipment may reference applicable Change Control records without QualiSphere dictating when a change is required."
-          action={<button disabled style={disabledButton}>Link Change Control — Next Phase</button>}
-        />
-        <HistoryTable
-          emptyText="No Change Control records linked."
-          headers={["Change Control ID", "Relationship Note", "Linked At"]}
-          rows={changes.map((row) => [
-            row.change_control_id,
-            row.relationship_note || "Not Recorded",
-            formatDateTime(row.linked_at),
-          ])}
-        />
-      </section>
-
-      <section style={{ ...card, marginBottom: 16 }}>
-        <SectionHeader
-          title="9. OOS / OOT"
-          subtitle="Equipment-related quality exceptions link directly to the existing OOS/OOT module."
-          action={<button disabled style={disabledButton}>Link OOS/OOT — Next Phase</button>}
-        />
-        <HistoryTable
-          emptyText="No OOS/OOT records linked."
-          headers={["OOS/OOT ID", "Source", "Source Record", "Linked At"]}
-          rows={oosLinks.map((row) => [
-            row.oos_oot_id,
-            formatLabel(row.source_type),
-            row.source_record_id || "Not Recorded",
-            formatDateTime(row.linked_at),
-          ])}
-        />
-      </section>
-
-      <section style={{ ...card, marginBottom: 16 }}>
-        <SectionHeader
-          title="10. Equipment Lifecycle / Status / Release"
+          title="7. Equipment Lifecycle / Status / Release"
           subtitle="Equipment Record Release governs operational readiness. Most users receive read-only visibility; controlled roles maintain and release the record."
         />
 
@@ -3229,6 +2969,59 @@ export default function EquipmentMasterPage() {
           </div> : null}
           {releaseMessage ? <div style={{marginTop:12,border:"1px solid #bfdbfe",background:"#eff6ff",color:"#1e3a8a",borderRadius:10,padding:10}}>{releaseMessage}</div> : null}
         </div>
+      </section>
+
+      <section style={{ ...card, marginBottom: 16 }}>
+        <SectionHeader
+          title="8. Related Controlled Documents — Optional"
+          subtitle="Optional customer-selected traceability links to Document Control. Absence of a link does not block Equipment Record Release."
+          action={<button disabled style={disabledButton}>Link Document — Next Phase</button>}
+        />
+        <HistoryTable
+          emptyText="No controlled documents linked."
+          headers={["Relationship", "Document ID", "Active", "Linked At"]}
+          rows={documents.map((row) => [
+            formatLabel(row.relationship_type),
+            row.document_id,
+            row.is_active ? "Yes" : "No",
+            formatDateTime(row.linked_at),
+          ])}
+        />
+      </section>
+
+      <section style={{ ...card, marginBottom: 16 }}>
+        <SectionHeader
+          title="9. Change Control — Optional"
+          subtitle="Equipment may reference applicable Change Control records without QualiSphere dictating when a change is required."
+          action={<button disabled style={disabledButton}>Link Change Control — Next Phase</button>}
+        />
+        <HistoryTable
+          emptyText="No Change Control records linked."
+          headers={["Change Control ID", "Relationship Note", "Linked At"]}
+          rows={changes.map((row) => [
+            row.change_control_id,
+            row.relationship_note || "Not Recorded",
+            formatDateTime(row.linked_at),
+          ])}
+        />
+      </section>
+
+      <section style={{ ...card, marginBottom: 16 }}>
+        <SectionHeader
+          title="10. OOS / OOT — Optional"
+          subtitle="Optional link to the existing OOS/OOT module when an applicable equipment-related exception exists."
+          action={<button disabled style={disabledButton}>Link OOS/OOT — Next Phase</button>}
+        />
+        <HistoryTable
+          emptyText="No OOS/OOT records linked."
+          headers={["OOS/OOT ID", "Source", "Source Record", "Linked At"]}
+          rows={oosLinks.map((row) => [
+            row.oos_oot_id,
+            formatLabel(row.source_type),
+            row.source_record_id || "Not Recorded",
+            formatDateTime(row.linked_at),
+          ])}
+        />
       </section>
 
       <section style={card}>
