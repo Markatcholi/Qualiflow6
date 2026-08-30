@@ -1949,7 +1949,7 @@ export default function EquipmentMasterPage() {
             canMaintain ? (
               <button style={primaryButton} onClick={() => setEditing(true)}>Edit Master Record</button>
             ) : (
-              <span style={{...badgeStyle,background:"#f1f5f9",color:"#475569"}}>Read Only</span>
+              <span style={{display:"inline-flex",alignItems:"center",padding:"8px 12px",borderRadius:999,border:"1px solid #cbd5e1",background:"#f1f5f9",color:"#475569",fontSize:13,fontWeight:700}}>Read Only</span>
             )
           ) : (
             <>
