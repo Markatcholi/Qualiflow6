@@ -1902,21 +1902,16 @@ export default function EquipmentMasterPage() {
 
     setSavingDocumentLink(true);
     try{
-      const now=new Date().toISOString();
-      const {error}=await supabase
-        .from("equipment_document_links")
-        .upsert({
-          tenant_id:record.tenant_id,
-          equipment_id:record.id,
-          document_id:selected.id,
-          relationship_type:documentRelationshipType,
-          is_active:true,
-          linked_by:currentUserEmail||record.owner_email||"unknown",
-          linked_at:now
-        },{
-          onConflict:"equipment_id,document_id,relationship_type"
-        });
+      const {data:linkedRow,error}=await supabase.rpc(
+        "link_equipment_controlled_document",
+        {
+          p_equipment_id:record.id,
+          p_document_id:selected.id,
+          p_relationship_type:documentRelationshipType
+        }
+      );
       if(error)throw new Error(error.message);
+      if(!linkedRow)throw new Error("The link operation completed without returning a relationship record.");
 
       await addAudit(
         "controlled_document_linked",
@@ -1925,11 +1920,12 @@ export default function EquipmentMasterPage() {
 
       setSelectedDocumentId("");
       setDocumentSearch("");
-      setDocumentLinkMessage(`Linked ${selected.document_number} Rev ${selected.revision}.`);
+      setDocumentLinkMessage(`SUCCESS: ${selected.document_number} Rev ${selected.revision} is now linked to this equipment.`);
       setShowDocumentLinkForm(false);
       await load();
     }catch(e:any){
-      setDocumentLinkMessage(e?.message||"Unable to link controlled document.");
+      console.error("Equipment controlled document link failed:",e);
+      setDocumentLinkMessage(`LINK FAILED: ${e?.message||"Unable to link controlled document."}`);
     }finally{
       setSavingDocumentLink(false);
     }
@@ -3499,7 +3495,13 @@ export default function EquipmentMasterPage() {
         ) : null}
 
         {documentLinkMessage ? (
-          <div style={{marginBottom:14,border:"1px solid #bfdbfe",background:"#eff6ff",color:"#1e3a8a",borderRadius:10,padding:10}}>
+          <div style={{
+            marginBottom:14,
+            border:documentLinkMessage.startsWith("LINK FAILED")?"1px solid #fecaca":documentLinkMessage.startsWith("SUCCESS")?"1px solid #bbf7d0":"1px solid #bfdbfe",
+            background:documentLinkMessage.startsWith("LINK FAILED")?"#fef2f2":documentLinkMessage.startsWith("SUCCESS")?"#f0fdf4":"#eff6ff",
+            color:documentLinkMessage.startsWith("LINK FAILED")?"#991b1b":documentLinkMessage.startsWith("SUCCESS")?"#166534":"#1e3a8a",
+            borderRadius:10,padding:10,fontWeight:700
+          }}>
             {documentLinkMessage}
           </div>
         ) : null}
