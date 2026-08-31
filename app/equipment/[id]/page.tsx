@@ -117,6 +117,7 @@ type Qualification = {
   pq_applicable: boolean;
   qualification_date: string | null;
   next_requalification_date: string | null;
+  next_requalification_requirement: string | null;
   protocol_document_url: string | null;
   report_document_url: string | null;
   qualification_element_documents: any;
@@ -387,6 +388,7 @@ export default function EquipmentMasterPage() {
     pq_applicable:false,
     qualification_date:"",
     next_requalification_date:"",
+    next_requalification_requirement:"na",
     protocol_document_url:"",
     report_document_url:"",
     qualification_element_documents:{},
@@ -1553,6 +1555,7 @@ export default function EquipmentMasterPage() {
       pq_applicable:false,
       qualification_date:"",
       next_requalification_date:"",
+      next_requalification_requirement:"na",
       protocol_document_url:"",
       report_document_url:"",
       qualification_element_documents:{},
@@ -1632,6 +1635,7 @@ export default function EquipmentMasterPage() {
       pq_applicable:!!row.pq_applicable,
       qualification_date:row.qualification_date||"",
       next_requalification_date:row.next_requalification_date||"",
+      next_requalification_requirement:row.next_requalification_requirement||(row.next_requalification_date?"date":"na"),
       protocol_document_url:row.protocol_document_url||"",
       report_document_url:row.report_document_url||"",
       qualification_element_documents:row.qualification_element_documents||{},
@@ -1727,6 +1731,11 @@ export default function EquipmentMasterPage() {
       }
     }
 
+    if(qualificationForm.next_requalification_requirement==="date"&&!qualificationForm.next_requalification_date){
+      setQualificationMessage("Select the Next Requalification Date or choose N/A.");
+      return;
+    }
+
     const status=qualificationForm.status;
     const isHistorical=qualificationForm.qualification_basis==="existing_qualified";
     const protocolRequired=!isHistorical && ["protocol_released","execution","draft_report","released"].includes(status);
@@ -1739,11 +1748,6 @@ export default function EquipmentMasterPage() {
       setQualificationMessage("Execution Completed is required before the qualification report stage.");
       return;
     }
-    if(status==="released"&&!qualificationForm.qualification_date){
-      setQualificationMessage("Qualification Date is required when Qualification Status is Qualified.");
-      return;
-    }
-
     setSavingQualification(true);
     try{
       const {data:userData}=await supabase.auth.getUser();
@@ -1765,8 +1769,10 @@ export default function EquipmentMasterPage() {
         iq_applicable:qualificationForm.iq_applicable,
         oq_applicable:qualificationForm.oq_applicable,
         pq_applicable:qualificationForm.pq_applicable,
-        qualification_date:qualificationForm.qualification_date||null,
-        next_requalification_date:qualificationForm.next_requalification_date||null,
+        next_requalification_requirement:qualificationForm.next_requalification_requirement||"na",
+        next_requalification_date:qualificationForm.next_requalification_requirement==="date"
+          ? (qualificationForm.next_requalification_date||null)
+          : null,
         protocol_document_url:null,
         report_document_url:null,
         qualification_element_documents:selectedDocs,
@@ -2865,7 +2871,7 @@ export default function EquipmentMasterPage() {
             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:12}}>
               <EditField label="Qualification Basis">
                 <select value={qualificationForm.qualification_basis} onChange={e=>setQualificationForm({...qualificationForm,qualification_basis:e.target.value,status:e.target.value==="existing_qualified"?"released":qualificationForm.status})} style={input}>
-                  <option value="new_activity">New / Current Qualification Activity</option>
+                  <option value="new_activity">New Equipment</option>
                   <option value="existing_qualified">Existing Qualified Equipment</option>
                 </select>
               </EditField>
@@ -2903,18 +2909,6 @@ export default function EquipmentMasterPage() {
                   {label}
                 </label>)}
               </div>
-            </div>
-
-            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:12,marginTop:8}}>
-              <EditField label="Qualification Date">
-                <input type="date" value={qualificationForm.qualification_date} onChange={e=>setQualificationForm({...qualificationForm,qualification_date:e.target.value})} style={input}/>
-              </EditField>
-              <EditField label="Next Requalification Date — Optional">
-                <input type="date" value={qualificationForm.next_requalification_date} onChange={e=>setQualificationForm({...qualificationForm,next_requalification_date:e.target.value})} style={input}/>
-              </EditField>
-              {qualificationForm.qualification_basis==="new_activity" ? <EditField label="Target Completion Date">
-                <input type="date" value={qualificationForm.target_completion_date} onChange={e=>setQualificationForm({...qualificationForm,target_completion_date:e.target.value})} style={input}/>
-              </EditField> : null}
             </div>
 
             <div style={{marginTop:12}}>
@@ -2966,12 +2960,44 @@ export default function EquipmentMasterPage() {
                 <EditField label="Execution Completed"><input type="datetime-local" value={qualificationForm.execution_completed_at} onChange={e=>setQualificationForm({...qualificationForm,execution_completed_at:e.target.value})} style={input}/></EditField>
                 <EditField label="Executed By"><input value={qualificationForm.executed_by} onChange={e=>setQualificationForm({...qualificationForm,executed_by:e.target.value})} style={input}/></EditField>
               </div>
-              <div style={{marginTop:12}}><EditField label="Execution Notes"><textarea rows={3} value={qualificationForm.execution_notes} onChange={e=>setQualificationForm({...qualificationForm,execution_notes:e.target.value})} style={{...input,resize:"vertical"}}/></EditField></div>
               <div style={{marginTop:12}}>
                 <div style={fieldLabel}>Supporting Evidence</div>
                 <input type="file" multiple onChange={e=>{const files=Array.from(e.target.files||[]);setQualificationExecutionFiles(current=>[...current,...files]);e.currentTarget.value="";}} style={input}/>
               </div>
             </div> : null}
+
+            <div style={{marginTop:20,borderTop:"1px solid #e2e8f0",paddingTop:16}}>
+              <h4 style={{margin:"0 0 6px"}}>Future Requalification Requirement</h4>
+              <div style={{fontSize:13,color:"#64748b",marginBottom:12,lineHeight:1.5}}>
+                This sets the requirement for the next qualification activity. It is not part of the execution evidence for the current qualification.
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"minmax(220px,320px) minmax(220px,320px)",gap:12}}>
+                <EditField label="Next Requalification">
+                  <select
+                    value={qualificationForm.next_requalification_requirement}
+                    onChange={e=>setQualificationForm({
+                      ...qualificationForm,
+                      next_requalification_requirement:e.target.value,
+                      next_requalification_date:e.target.value==="na"?"":qualificationForm.next_requalification_date
+                    })}
+                    style={input}
+                  >
+                    <option value="na">N/A</option>
+                    <option value="date">Date Required</option>
+                  </select>
+                </EditField>
+                {qualificationForm.next_requalification_requirement==="date" ? (
+                  <EditField label="Next Requalification Date">
+                    <input
+                      type="date"
+                      value={qualificationForm.next_requalification_date}
+                      onChange={e=>setQualificationForm({...qualificationForm,next_requalification_date:e.target.value})}
+                      style={input}
+                    />
+                  </EditField>
+                ) : null}
+              </div>
+            </div>
 
             <div style={{marginTop:16,border:"1px solid #dbeafe",background:"#eff6ff",borderRadius:10,padding:12,color:"#1e3a8a",fontSize:13,lineHeight:1.5}}>
               <strong>Governance:</strong> Qualification status and evidence support Equipment Record Release. Related Controlled Documents, Change Control, and OOS/OOT links are optional and never required merely because the relationship section is empty.
@@ -2995,7 +3021,7 @@ export default function EquipmentMasterPage() {
                 <thead><tr>{["Event","Basis","Type","Elements","Status","Qualification Date","Protocol","Report","Result","Next Requalification","Action"].map(h=><th key={h} style={{textAlign:"left",padding:"9px 10px",borderBottom:"1px solid #cbd5e1"}}>{h}</th>)}</tr></thead>
                 <tbody>{qualifications.map(row=><tr key={row.id}>
                   <td style={tdMini}><strong>{row.qualification_number}</strong></td>
-                  <td style={tdMini}>{row.qualification_basis==="existing_qualified"?"Existing Qualified Equipment":"New / Current Activity"}</td>
+                  <td style={tdMini}>{row.qualification_basis==="existing_qualified"?"Existing Qualified Equipment":"New Equipment"}</td>
                   <td style={tdMini}>{formatLabel(row.qualification_type)}</td>
                   <td style={tdMini}>{[row.iq_applicable?"IQ":null,row.oq_applicable?"OQ":null,row.pq_applicable?"PQ":null].filter(Boolean).join(", ")||"Not Recorded"}</td>
                   <td style={tdMini}>{row.status==="released"?"Qualified":formatLabel(row.status)}</td>
