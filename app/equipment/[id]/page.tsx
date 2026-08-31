@@ -1636,6 +1636,14 @@ export default function EquipmentMasterPage() {
     window.open(data.signedUrl,"_blank","noopener,noreferrer");
   };
 
+  const removePendingQualificationFile=(kind:"execution"|"report",index:number)=>{
+    if(kind==="execution"){
+      setQualificationExecutionFiles(current=>current.filter((_,i)=>i!==index));
+    }else{
+      setQualificationReportFiles(current=>current.filter((_,i)=>i!==index));
+    }
+  };
+
   const removeQualificationAttachment=(kind:"execution"|"report",index:number)=>{
     if(kind==="execution"){
       setExistingExecutionAttachments(current=>{
@@ -3076,7 +3084,60 @@ export default function EquipmentMasterPage() {
               </div>
               <div style={{marginTop:12}}>
                 <div style={fieldLabel}>Supporting Evidence</div>
-                <input type="file" multiple onChange={e=>{const files=Array.from(e.target.files||[]);setQualificationExecutionFiles(current=>[...current,...files]);e.currentTarget.value="";}} style={input}/>
+                <div style={{fontSize:12,color:"#64748b",marginBottom:8,lineHeight:1.5}}>
+                  Attach execution records, completed qualification worksheets, photographs, test output, or other supporting evidence. Selected files are uploaded when the Qualification record is saved.
+                </div>
+                <input
+                  type="file"
+                  multiple
+                  onChange={e=>{
+                    const files=Array.from(e.target.files||[]);
+                    setQualificationExecutionFiles(current=>[...current,...files]);
+                    e.currentTarget.value="";
+                  }}
+                  style={input}
+                />
+
+                {qualificationExecutionFiles.length>0 ? (
+                  <div style={{marginTop:10,border:"1px solid #bfdbfe",background:"#eff6ff",borderRadius:10,padding:10}}>
+                    <div style={{fontWeight:800,fontSize:13,marginBottom:7}}>Selected for Upload ({qualificationExecutionFiles.length})</div>
+                    <div style={{display:"grid",gap:7}}>
+                      {qualificationExecutionFiles.map((file,index)=>(
+                        <div key={`${file.name}-${index}`} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,border:"1px solid #dbeafe",background:"#fff",borderRadius:8,padding:"8px 10px"}}>
+                          <div style={{minWidth:0}}>
+                            <div style={{fontSize:13,fontWeight:700,wordBreak:"break-word"}}>{file.name}</div>
+                            <div style={{fontSize:11,color:"#64748b"}}>{Math.max(1,Math.round(file.size/1024))} KB · Pending upload</div>
+                          </div>
+                          <button type="button" style={secondaryButton} onClick={()=>removePendingQualificationFile("execution",index)}>Remove</button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                {existingExecutionAttachments.length>0 ? (
+                  <div style={{marginTop:10,border:"1px solid #d1fae5",background:"#f0fdf4",borderRadius:10,padding:10}}>
+                    <div style={{fontWeight:800,fontSize:13,marginBottom:7}}>Saved Supporting Evidence ({existingExecutionAttachments.length})</div>
+                    <div style={{display:"grid",gap:7}}>
+                      {existingExecutionAttachments.map((attachment:any,index:number)=>(
+                        <div key={`${attachment?.path||attachment?.name||"attachment"}-${index}`} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,border:"1px solid #bbf7d0",background:"#fff",borderRadius:8,padding:"8px 10px"}}>
+                          <div style={{minWidth:0}}>
+                            <div style={{fontSize:13,fontWeight:700,wordBreak:"break-word"}}>{attachment?.name||"Supporting Evidence"}</div>
+                            <div style={{fontSize:11,color:"#64748b"}}>
+                              Saved{attachment?.uploaded_by?` · ${attachment.uploaded_by}`:""}{attachment?.uploaded_at?` · ${formatDateTime(attachment.uploaded_at)}`:""}
+                            </div>
+                          </div>
+                          <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                            <button type="button" style={secondaryButton} onClick={()=>openQualificationAttachment(attachment)}>Open</button>
+                            {canMaintain ? <button type="button" style={secondaryButton} onClick={()=>removeQualificationAttachment("execution",index)}>Remove</button> : null}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : editingQualificationId ? (
+                  <div style={{marginTop:8,fontSize:12,color:"#64748b"}}>No saved supporting evidence is attached to this qualification event.</div>
+                ) : null}
               </div>
             </div> : null}
 
@@ -3131,8 +3192,8 @@ export default function EquipmentMasterPage() {
           <h3 style={{margin:"0 0 10px"}}>Qualification History</h3>
           {qualifications.length===0 ? <div style={emptyPanelStyle}>No qualification or requalification events recorded.</div> : (
             <div style={{overflowX:"auto"}}>
-              <table style={{width:"100%",borderCollapse:"collapse",fontSize:13,minWidth:1250}}>
-                <thead><tr>{["Event","Basis","Type","Elements","Status","Qualification Date","Protocol","Report","Result","Next Requalification","Action"].map(h=><th key={h} style={{textAlign:"left",padding:"9px 10px",borderBottom:"1px solid #cbd5e1"}}>{h}</th>)}</tr></thead>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:13,minWidth:1450}}>
+                <thead><tr>{["Event","Basis","Type","Elements","Status","Qualification Date","Protocol","Report","Result","Supporting Evidence","Next Requalification","Action"].map(h=><th key={h} style={{textAlign:"left",padding:"9px 10px",borderBottom:"1px solid #cbd5e1"}}>{h}</th>)}</tr></thead>
                 <tbody>{qualifications.map(row=><tr key={row.id}>
                   <td style={tdMini}><strong>{row.qualification_number}</strong></td>
                   <td style={tdMini}>{row.qualification_basis==="existing_qualified"?"Existing Qualified Equipment":"New Equipment"}</td>
@@ -3143,7 +3204,23 @@ export default function EquipmentMasterPage() {
                   <td style={tdMini}>{["iq","oq","pq"].filter(key=>(row as any)[`${key}_applicable`]).map(key=><div key={key}><strong>{key.toUpperCase()}:</strong> {row.qualification_element_documents?.[key]?.protocol_number||"Not Recorded"}</div>)}</td>
                   <td style={tdMini}>{["iq","oq","pq"].filter(key=>(row as any)[`${key}_applicable`]).map(key=><div key={key}><strong>{key.toUpperCase()}:</strong> {row.qualification_element_documents?.[key]?.report_number||"Not Recorded"}</div>)}</td>
                   <td style={tdMini}>{["iq","oq","pq"].filter(key=>(row as any)[`${key}_applicable`]).map(key=><div key={key}><strong>{key.toUpperCase()}:</strong> {formatLabel(row.qualification_element_documents?.[key]?.result)}</div>)}</td>
-                  <td style={tdMini}>{formatDate(row.next_requalification_date)}</td>
+                  <td style={tdMini}>
+                    {Array.isArray(row.execution_attachments)&&row.execution_attachments.length>0 ? (
+                      <div style={{display:"grid",gap:6}}>
+                        {row.execution_attachments.map((attachment:any,index:number)=>(
+                          <button
+                            key={`${attachment?.path||attachment?.name||"evidence"}-${index}`}
+                            type="button"
+                            style={{...secondaryButton,textAlign:"left",whiteSpace:"normal"}}
+                            onClick={()=>openQualificationAttachment(attachment)}
+                          >
+                            Open: {attachment?.name||`Evidence ${index+1}`}
+                          </button>
+                        ))}
+                      </div>
+                    ) : "None"}
+                  </td>
+                  <td style={tdMini}>{row.next_requalification_requirement==="na"?"N/A":formatDate(row.next_requalification_date)}</td>
                   <td style={tdMini}>{canMaintain?<button type="button" style={secondaryButton} onClick={()=>editQualification(row)}>Edit</button>:"Read Only"}</td>
                 </tr>)}</tbody>
               </table>
