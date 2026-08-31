@@ -1874,7 +1874,9 @@ export default function EquipmentMasterPage() {
     }
   };
 
-  const activeControlledDocuments=controlledDocuments.filter(doc=>doc.status==="effective");
+  const activeControlledDocuments=controlledDocuments.filter(doc=>
+    ["effective","released","release"].includes(String(doc.status||"").toLowerCase())
+  );
   const filteredControlledDocuments=activeControlledDocuments.filter(doc=>{
     const q=documentSearch.trim().toLowerCase();
     if(!q)return true;
@@ -1893,8 +1895,8 @@ export default function EquipmentMasterPage() {
       return;
     }
     const selected=controlledDocumentById(selectedDocumentId);
-    if(!selected||selected.status!=="effective"){
-      setDocumentLinkMessage("Only effective controlled documents can be newly linked to Equipment.");
+    if(!selected||!["effective","released","release"].includes(String(selected.status||"").toLowerCase())){
+      setDocumentLinkMessage("Only released/effective controlled documents can be newly linked to Equipment.");
       return;
     }
 
@@ -3381,7 +3383,7 @@ export default function EquipmentMasterPage() {
           <div style={{border:"1px solid #bfdbfe",background:"#f8fbff",borderRadius:12,padding:16,marginBottom:16}}>
             <h3 style={{margin:"0 0 5px"}}>Link Existing Controlled Document</h3>
             <div style={{fontSize:13,color:"#64748b",lineHeight:1.5,marginBottom:14}}>
-              Only documents with Document Control status <strong>Effective</strong> are available for new Equipment links.
+              Released/Effective documents from Document Control are available for Equipment linking. Select one document below, then click <strong>Link Document</strong>.
             </div>
 
             <div style={{display:"grid",gridTemplateColumns:"minmax(220px,1fr) minmax(220px,1fr)",gap:12}}>
@@ -3407,24 +3409,75 @@ export default function EquipmentMasterPage() {
               </EditField>
             </div>
 
-            <div style={{marginTop:12}}>
-              <EditField label="Controlled Document">
-                <select value={selectedDocumentId} onChange={e=>setSelectedDocumentId(e.target.value)} style={input}>
-                  <option value="">Select effective controlled document</option>
-                  {filteredControlledDocuments.map(doc=>(
-                    <option key={doc.id} value={doc.id}>
-                      {doc.document_number} · Rev {doc.revision} · {doc.title} · {formatLabel(doc.document_type)}
-                    </option>
-                  ))}
-                </select>
-              </EditField>
-            </div>
+            <div style={{marginTop:14}}>
+              <div style={fieldLabel}>Released Controlled Documents</div>
 
-            {filteredControlledDocuments.length===0 ? (
-              <div style={{marginTop:10,border:"1px solid #fde68a",background:"#fffbeb",borderRadius:8,padding:10,fontSize:13}}>
-                No effective controlled documents match this search.
-              </div>
-            ) : null}
+              {filteredControlledDocuments.length===0 ? (
+                <div style={{marginTop:8,border:"1px solid #fde68a",background:"#fffbeb",borderRadius:8,padding:10,fontSize:13}}>
+                  No released/effective controlled documents match this search.
+                </div>
+              ) : (
+                <div style={{display:"grid",gap:8,marginTop:8,maxHeight:300,overflowY:"auto"}}>
+                  {filteredControlledDocuments.map(doc=>{
+                    const selected=selectedDocumentId===doc.id;
+                    return (
+                      <button
+                        key={doc.id}
+                        type="button"
+                        onClick={()=>setSelectedDocumentId(doc.id)}
+                        style={{
+                          textAlign:"left",
+                          width:"100%",
+                          border:selected?"2px solid #2563eb":"1px solid #cbd5e1",
+                          background:selected?"#eff6ff":"#fff",
+                          borderRadius:10,
+                          padding:"11px 12px",
+                          cursor:"pointer"
+                        }}
+                      >
+                        <div style={{display:"flex",justifyContent:"space-between",gap:16,alignItems:"center",flexWrap:"wrap"}}>
+                          <div style={{minWidth:0}}>
+                            <div style={{fontWeight:800,fontSize:14}}>
+                              {doc.document_number} <span style={{fontWeight:600,color:"#64748b"}}>Rev {doc.revision}</span>
+                            </div>
+                            <div style={{fontSize:13,marginTop:3,wordBreak:"break-word"}}>{doc.title}</div>
+                            <div style={{fontSize:12,color:"#64748b",marginTop:3}}>
+                              {formatLabel(doc.document_type)} · Effective {formatDate(doc.effective_date)}
+                            </div>
+                          </div>
+                          <div style={{display:"flex",alignItems:"center",gap:8}}>
+                            <span style={{
+                              display:"inline-flex",
+                              alignItems:"center",
+                              borderRadius:999,
+                              padding:"4px 9px",
+                              fontSize:11,
+                              fontWeight:800,
+                              background:"#dcfce7",
+                              color:"#166534"
+                            }}>
+                              {String(doc.status||"").toLowerCase()==="effective"?"Effective":"Released"}
+                            </span>
+                            <span style={{
+                              display:"inline-flex",
+                              alignItems:"center",
+                              borderRadius:999,
+                              padding:"4px 9px",
+                              fontSize:11,
+                              fontWeight:800,
+                              background:selected?"#dbeafe":"#f1f5f9",
+                              color:selected?"#1d4ed8":"#475569"
+                            }}>
+                              {selected?"Selected":"Select"}
+                            </span>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
 
             <div style={{display:"flex",justifyContent:"flex-end",gap:10,marginTop:14}}>
               <button type="button" style={secondaryButton} onClick={()=>{
@@ -3435,8 +3488,8 @@ export default function EquipmentMasterPage() {
               }}>Cancel</button>
               <button
                 type="button"
-                style={{...primaryButton,opacity:savingDocumentLink?0.6:1}}
-                disabled={savingDocumentLink}
+                style={{...primaryButton,opacity:(savingDocumentLink||!selectedDocumentId)?0.55:1}}
+                disabled={savingDocumentLink||!selectedDocumentId}
                 onClick={linkControlledDocument}
               >
                 {savingDocumentLink?"Linking...":"Link Document"}
