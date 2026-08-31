@@ -154,7 +154,20 @@ type DocumentLink = {
   document_id: string;
   relationship_type: string;
   is_active: boolean;
+  linked_by: string | null;
   linked_at: string;
+};
+
+type ControlledDocumentReference = {
+  id: string;
+  document_number: string;
+  title: string;
+  document_type: string | null;
+  revision: string;
+  status: string;
+  effective_date: string | null;
+  controlled_copy_file_url: string | null;
+  file_url: string | null;
 };
 
 type ChangeLink = {
@@ -253,6 +266,13 @@ export default function EquipmentMasterPage() {
   const [maintenance, setMaintenance] = useState<Maintenance[]>([]);
   const [qualifications, setQualifications] = useState<Qualification[]>([]);
   const [documents, setDocuments] = useState<DocumentLink[]>([]);
+  const [controlledDocuments, setControlledDocuments] = useState<ControlledDocumentReference[]>([]);
+  const [showDocumentLinkForm, setShowDocumentLinkForm] = useState(false);
+  const [documentSearch, setDocumentSearch] = useState("");
+  const [selectedDocumentId, setSelectedDocumentId] = useState("");
+  const [documentRelationshipType, setDocumentRelationshipType] = useState("operating_procedure");
+  const [documentLinkMessage, setDocumentLinkMessage] = useState("");
+  const [savingDocumentLink, setSavingDocumentLink] = useState(false);
   const [changes, setChanges] = useState<ChangeLink[]>([]);
   const [oosLinks, setOosLinks] = useState<OosLink[]>([]);
   const [auditRows, setAuditRows] = useState<AuditRow[]>([]);
@@ -532,6 +552,7 @@ export default function EquipmentMasterPage() {
         maintenanceRes,
         qualificationRes,
         documentsRes,
+        controlledDocumentsRes,
         changesRes,
         oosRes,
         auditRes,
@@ -554,14 +575,19 @@ export default function EquipmentMasterPage() {
           .order("created_at", { ascending: false }),
         supabase
           .from("equipment_qualification_events")
-          .select("id,qualification_number,qualification_type,reason,owner_email,target_completion_date,protocol_number,protocol_title,protocol_revision,protocol_released_at,execution_started_at,execution_completed_at,executed_by,execution_notes,execution_attachments,report_number,report_revision,draft_report_attachments,qualification_result,result_summary,approval_requirement,approval_status,approved_by,approved_at,approval_comment,status,released_for_use_by,released_for_use_at,created_at")
+          .select("id,qualification_number,qualification_type,qualification_basis,iq_applicable,oq_applicable,pq_applicable,qualification_date,next_requalification_date,next_requalification_requirement,protocol_document_url,report_document_url,qualification_element_documents,reason,owner_email,target_completion_date,protocol_number,protocol_title,protocol_revision,protocol_released_at,execution_started_at,execution_completed_at,executed_by,execution_notes,execution_attachments,report_number,report_revision,draft_report_attachments,qualification_result,result_summary,approval_requirement,approval_status,approved_by,approved_at,approval_comment,status,released_for_use_by,released_for_use_at,created_at")
           .eq("equipment_id", equipmentId)
           .order("created_at", { ascending: false }),
         supabase
           .from("equipment_document_links")
-          .select("id,document_id,relationship_type,is_active,linked_at")
+          .select("id,document_id,relationship_type,is_active,linked_by,linked_at")
           .eq("equipment_id", equipmentId)
           .order("linked_at", { ascending: false }),
+        supabase
+          .from("controlled_documents")
+          .select("id,document_number,title,document_type,revision,status,effective_date,controlled_copy_file_url,file_url")
+          .order("document_number", { ascending: true })
+          .order("revision", { ascending: false }),
         supabase
           .from("equipment_change_control_links")
           .select("id,change_control_id,relationship_note,linked_at")
@@ -628,6 +654,7 @@ export default function EquipmentMasterPage() {
       setMaintenance((maintenanceRes.data || []) as Maintenance[]);
       setQualifications((qualificationRes.data || []) as Qualification[]);
       setDocuments((documentsRes.data || []) as DocumentLink[]);
+      setControlledDocuments((controlledDocumentsRes.data || []) as ControlledDocumentReference[]);
       setChanges((changesRes.data || []) as ChangeLink[]);
       setOosLinks((oosRes.data || []) as OosLink[]);
       setAuditRows((auditRes.data || []) as AuditRow[]);
@@ -1836,6 +1863,93 @@ export default function EquipmentMasterPage() {
       setQualificationMessage(e?.message||"Unable to save qualification record.");
     }finally{
       setSavingQualification(false);
+    }
+  };
+
+  const activeControlledDocuments=controlledDocuments.filter(doc=>doc.status==="effective");
+  const filteredControlledDocuments=activeControlledDocuments.filter(doc=>{
+    const q=documentSearch.trim().toLowerCase();
+    if(!q)return true;
+    return [doc.document_number,doc.title,doc.document_type,doc.revision]
+      .filter(Boolean).some(value=>String(value).toLowerCase().includes(q));
+  });
+
+  const controlledDocumentById=(documentId:string)=>
+    controlledDocuments.find(doc=>doc.id===documentId)||null;
+
+  const linkControlledDocument=async()=>{
+    if(!record||!canMaintain)return;
+    setDocumentLinkMessage("");
+    if(!selectedDocumentId){
+      setDocumentLinkMessage("Select an effective controlled document to link.");
+      return;
+    }
+    const selected=controlledDocumentById(selectedDocumentId);
+    if(!selected||selected.status!=="effective"){
+      setDocumentLinkMessage("Only effective controlled documents can be newly linked to Equipment.");
+      return;
+    }
+
+    setSavingDocumentLink(true);
+    try{
+      const now=new Date().toISOString();
+      const {error}=await supabase
+        .from("equipment_document_links")
+        .upsert({
+          tenant_id:record.tenant_id,
+          equipment_id:record.id,
+          document_id:selected.id,
+          relationship_type:documentRelationshipType,
+          is_active:true,
+          linked_by:currentUserEmail||record.owner_email||"unknown",
+          linked_at:now
+        },{
+          onConflict:"equipment_id,document_id,relationship_type"
+        });
+      if(error)throw new Error(error.message);
+
+      await addAudit(
+        "controlled_document_linked",
+        `Controlled document ${selected.document_number} Rev ${selected.revision} linked as ${formatLabel(documentRelationshipType)}.`
+      );
+
+      setSelectedDocumentId("");
+      setDocumentSearch("");
+      setDocumentLinkMessage(`Linked ${selected.document_number} Rev ${selected.revision}.`);
+      setShowDocumentLinkForm(false);
+      await load();
+    }catch(e:any){
+      setDocumentLinkMessage(e?.message||"Unable to link controlled document.");
+    }finally{
+      setSavingDocumentLink(false);
+    }
+  };
+
+  const deactivateControlledDocumentLink=async(link:DocumentLink)=>{
+    if(!record||!canMaintain)return;
+    const selected=controlledDocumentById(link.document_id);
+    if(!window.confirm(`Remove the Equipment relationship to ${selected?.document_number||"this controlled document"}? The historical link record will be retained as inactive.`))return;
+
+    setSavingDocumentLink(true);
+    setDocumentLinkMessage("");
+    try{
+      const {error}=await supabase
+        .from("equipment_document_links")
+        .update({is_active:false})
+        .eq("id",link.id)
+        .eq("equipment_id",record.id);
+      if(error)throw new Error(error.message);
+
+      await addAudit(
+        "controlled_document_unlinked",
+        `Controlled document ${selected?.document_number||link.document_id}${selected?.revision?` Rev ${selected.revision}`:""} relationship deactivated.`
+      );
+      setDocumentLinkMessage("Controlled document relationship removed. Historical traceability was retained.");
+      await load();
+    }catch(e:any){
+      setDocumentLinkMessage(e?.message||"Unable to remove controlled document relationship.");
+    }finally{
+      setSavingDocumentLink(false);
     }
   };
 
@@ -3165,19 +3279,157 @@ export default function EquipmentMasterPage() {
       <section style={{ ...card, marginBottom: 16 }}>
         <SectionHeader
           title="8. Related Controlled Documents — Optional"
-          subtitle="Optional customer-selected traceability links to Document Control. Absence of a link does not block Equipment Record Release."
-          action={<button disabled style={disabledButton}>Link Document — Next Phase</button>}
+          subtitle="Link effective controlled documents that support this equipment. Document Control remains the system of record; these relationships do not block Equipment Record Release."
+          action={
+            canMaintain ? (
+              <button
+                type="button"
+                style={showDocumentLinkForm?secondaryButton:primaryButton}
+                onClick={()=>{
+                  setShowDocumentLinkForm(!showDocumentLinkForm);
+                  setDocumentLinkMessage("");
+                  if(showDocumentLinkForm){
+                    setSelectedDocumentId("");
+                    setDocumentSearch("");
+                  }
+                }}
+              >
+                {showDocumentLinkForm?"Close":"Link Controlled Document"}
+              </button>
+            ) : null
+          }
         />
-        <HistoryTable
-          emptyText="No controlled documents linked."
-          headers={["Relationship", "Document ID", "Active", "Linked At"]}
-          rows={documents.map((row) => [
-            formatLabel(row.relationship_type),
-            row.document_id,
-            row.is_active ? "Yes" : "No",
-            formatDateTime(row.linked_at),
-          ])}
-        />
+
+        {showDocumentLinkForm && canMaintain ? (
+          <div style={{border:"1px solid #bfdbfe",background:"#f8fbff",borderRadius:12,padding:16,marginBottom:16}}>
+            <h3 style={{margin:"0 0 5px"}}>Link Existing Controlled Document</h3>
+            <div style={{fontSize:13,color:"#64748b",lineHeight:1.5,marginBottom:14}}>
+              Only documents with Document Control status <strong>Effective</strong> are available for new Equipment links.
+            </div>
+
+            <div style={{display:"grid",gridTemplateColumns:"minmax(220px,1fr) minmax(220px,1fr)",gap:12}}>
+              <EditField label="Search Released Documents">
+                <input
+                  value={documentSearch}
+                  onChange={e=>setDocumentSearch(e.target.value)}
+                  placeholder="Search document number, title, type, or revision"
+                  style={input}
+                />
+              </EditField>
+
+              <EditField label="Relationship">
+                <select value={documentRelationshipType} onChange={e=>setDocumentRelationshipType(e.target.value)} style={input}>
+                  <option value="specification">Specification</option>
+                  <option value="operating_procedure">Operating Procedure / SOP</option>
+                  <option value="calibration_procedure">Calibration Procedure</option>
+                  <option value="preventive_maintenance_procedure">Preventive Maintenance Procedure</option>
+                  <option value="qualification_protocol">Qualification Document</option>
+                  <option value="work_instruction">Work Instruction</option>
+                  <option value="other">Other</option>
+                </select>
+              </EditField>
+            </div>
+
+            <div style={{marginTop:12}}>
+              <EditField label="Controlled Document">
+                <select value={selectedDocumentId} onChange={e=>setSelectedDocumentId(e.target.value)} style={input}>
+                  <option value="">Select effective controlled document</option>
+                  {filteredControlledDocuments.map(doc=>(
+                    <option key={doc.id} value={doc.id}>
+                      {doc.document_number} · Rev {doc.revision} · {doc.title} · {formatLabel(doc.document_type)}
+                    </option>
+                  ))}
+                </select>
+              </EditField>
+            </div>
+
+            {filteredControlledDocuments.length===0 ? (
+              <div style={{marginTop:10,border:"1px solid #fde68a",background:"#fffbeb",borderRadius:8,padding:10,fontSize:13}}>
+                No effective controlled documents match this search.
+              </div>
+            ) : null}
+
+            <div style={{display:"flex",justifyContent:"flex-end",gap:10,marginTop:14}}>
+              <button type="button" style={secondaryButton} onClick={()=>{
+                setShowDocumentLinkForm(false);
+                setSelectedDocumentId("");
+                setDocumentSearch("");
+                setDocumentLinkMessage("");
+              }}>Cancel</button>
+              <button
+                type="button"
+                style={{...primaryButton,opacity:savingDocumentLink?0.6:1}}
+                disabled={savingDocumentLink}
+                onClick={linkControlledDocument}
+              >
+                {savingDocumentLink?"Linking...":"Link Document"}
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {documentLinkMessage ? (
+          <div style={{marginBottom:14,border:"1px solid #bfdbfe",background:"#eff6ff",color:"#1e3a8a",borderRadius:10,padding:10}}>
+            {documentLinkMessage}
+          </div>
+        ) : null}
+
+        {documents.filter(row=>row.is_active).length===0 ? (
+          <div style={emptyPanelStyle}>No controlled documents linked.</div>
+        ) : (
+          <div style={{overflowX:"auto"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:13,minWidth:1050}}>
+              <thead>
+                <tr>
+                  {["Relationship","Document Number","Title","Revision","Type","Status","Effective Date","Linked By","Actions"].map(header=>(
+                    <th key={header} style={{textAlign:"left",padding:"9px 10px",borderBottom:"1px solid #cbd5e1"}}>{header}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {documents.filter(row=>row.is_active).map(link=>{
+                  const doc=controlledDocumentById(link.document_id);
+                  return (
+                    <tr key={link.id}>
+                      <td style={tdMini}>{formatLabel(link.relationship_type)}</td>
+                      <td style={tdMini}><strong>{doc?.document_number||"Document unavailable"}</strong></td>
+                      <td style={tdMini}>{doc?.title||"Metadata unavailable"}</td>
+                      <td style={tdMini}>{doc?.revision||"—"}</td>
+                      <td style={tdMini}>{formatLabel(doc?.document_type)}</td>
+                      <td style={tdMini}>{formatLabel(doc?.status)}</td>
+                      <td style={tdMini}>{formatDate(doc?.effective_date)}</td>
+                      <td style={tdMini}>{link.linked_by||"Not Recorded"}</td>
+                      <td style={tdMini}>
+                        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                          {doc ? <Link href={`/documents/${doc.id}`} style={secondaryButton}>Open Document</Link> : null}
+                          {doc?.controlled_copy_file_url ? (
+                            <a href={doc.controlled_copy_file_url} target="_blank" rel="noreferrer" style={secondaryButton}>Controlled Copy</a>
+                          ) : null}
+                          {canMaintain ? (
+                            <button
+                              type="button"
+                              style={secondaryButton}
+                              disabled={savingDocumentLink}
+                              onClick={()=>deactivateControlledDocumentLink(link)}
+                            >
+                              Remove Link
+                            </button>
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {documents.some(row=>!row.is_active) ? (
+          <div style={{marginTop:10,color:"#64748b",fontSize:12}}>
+            Removed relationships are retained in the database and audit history for traceability.
+          </div>
+        ) : null}
       </section>
 
       <section style={{ ...card, marginBottom: 16 }}>
