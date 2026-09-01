@@ -578,11 +578,9 @@ export default function EquipmentMasterPage() {
           .select("id,qualification_number,qualification_type,qualification_basis,iq_applicable,oq_applicable,pq_applicable,qualification_date,next_requalification_date,next_requalification_requirement,protocol_document_url,report_document_url,qualification_element_documents,reason,owner_email,target_completion_date,protocol_number,protocol_title,protocol_revision,protocol_released_at,execution_started_at,execution_completed_at,executed_by,execution_notes,execution_attachments,report_number,report_revision,draft_report_attachments,qualification_result,result_summary,approval_requirement,approval_status,approved_by,approved_at,approval_comment,status,released_for_use_by,released_for_use_at,created_at")
           .eq("equipment_id", equipmentId)
           .order("created_at", { ascending: false }),
-        supabase
-          .from("equipment_document_links")
-          .select("id,document_id,relationship_type,is_active,linked_by,linked_at")
-          .eq("equipment_id", equipmentId)
-          .order("linked_at", { ascending: false }),
+        supabase.rpc("get_equipment_controlled_document_links", {
+          p_equipment_id: equipmentId
+        }),
         supabase
           .from("controlled_documents")
           .select("id,document_number,title,document_type,revision,status,effective_date,controlled_copy_file_url,file_url")
@@ -1920,9 +1918,13 @@ export default function EquipmentMasterPage() {
 
       setSelectedDocumentId("");
       setDocumentSearch("");
-      setDocumentLinkMessage(`SUCCESS: ${selected.document_number} Rev ${selected.revision} is now linked to this equipment. You can link another document below.`);
+      setDocumentLinkMessage(`SUCCESS: ${selected.document_number} Rev ${selected.revision} is now linked to this equipment. Select another document below to continue linking.`);
       setShowDocumentLinkForm(true);
       await load();
+      window.setTimeout(()=>{
+        const searchInput=document.getElementById("equipment-controlled-document-search") as HTMLInputElement|null;
+        searchInput?.focus();
+      },50);
     }catch(e:any){
       console.error("Equipment controlled document link failed:",e);
       setDocumentLinkMessage(`LINK FAILED: ${e?.message||"Unable to link controlled document."}`);
@@ -2033,7 +2035,7 @@ export default function EquipmentMasterPage() {
     }
     const pendingReadiness=lifecycleReadiness.filter(item=>item.required&&!item.complete);
     if(pendingReadiness.length){
-      setReleaseMessage(`Release blocked: complete the following required readiness items first: ${pendingReadiness.map(item=>item.label).join(", ")}.`);
+      setReleaseMessage(`RELEASE BLOCKED: Complete the following required readiness item(s) before submission: ${pendingReadiness.map(item=>item.label).join(", ")}.`);
       return;
     }
     setProcessingRelease(true);
@@ -3331,12 +3333,23 @@ export default function EquipmentMasterPage() {
             <strong>Pending Equipment Record Release</strong>
             <div style={{marginTop:5,fontSize:13}}>Approver: {releaseRequest?.approver_email} · Submitted by {releaseRequest?.submitted_by} on {formatDateTime(releaseRequest?.submitted_at)}</div>
           </div> : null}
+          {canMaintain && !recordIsReleased && !pendingRelease && lifecycleReadiness.some(item=>item.required&&!item.complete) ? (
+            <div style={{marginBottom:12,border:"1px solid #fecaca",background:"#fef2f2",color:"#991b1b",borderRadius:10,padding:12,fontSize:13,lineHeight:1.5}}>
+              <strong>Release not yet ready:</strong> {lifecycleReadiness.filter(item=>item.required&&!item.complete).map(item=>item.label).join(", ")} must be completed before Equipment Record Release can be submitted. You may still click <strong>Submit Equipment Record for Release</strong> to review the blocking requirement.
+            </div>
+          ) : null}
+
           {canMaintain && !recordIsReleased && !pendingRelease ? <div style={{display:"grid",gridTemplateColumns:"minmax(260px,1fr) auto",gap:10,alignItems:"end"}}>
             <div>
               <EditField label="Equipment Quality Approver Email"><input value={releaseApproverEmail} onChange={e=>setReleaseApproverEmail(e.target.value)} placeholder="approver@company.com" style={input}/></EditField>
               <div style={{fontSize:12,color:"#64748b",marginTop:5}}>Assigned approver must hold an active Equipment Quality Approver or Admin role.</div>
             </div>
-            <button type="button" style={{...primaryButton,opacity:processingRelease||lifecycleReadiness.some(item=>item.required&&!item.complete)?0.5:1}} disabled={processingRelease||lifecycleReadiness.some(item=>item.required&&!item.complete)} onClick={submitEquipmentForRelease}>
+            <button
+              type="button"
+              style={{...primaryButton,opacity:processingRelease?0.6:1}}
+              disabled={processingRelease}
+              onClick={submitEquipmentForRelease}
+            >
               {processingRelease?"Submitting...":"Submit Equipment Record for Release"}
             </button>
           </div> : null}
@@ -3347,7 +3360,17 @@ export default function EquipmentMasterPage() {
               <button type="button" style={primaryButton} disabled={processingRelease} onClick={()=>decideEquipmentRelease("approved")}>Approve & Release Equipment</button>
             </div>
           </div> : null}
-          {releaseMessage ? <div style={{marginTop:12,border:"1px solid #bfdbfe",background:"#eff6ff",color:"#1e3a8a",borderRadius:10,padding:10}}>{releaseMessage}</div> : null}
+          {releaseMessage ? (
+            <div style={{
+              marginTop:12,
+              border:releaseMessage.startsWith("RELEASE BLOCKED")?"1px solid #fecaca":"1px solid #bfdbfe",
+              background:releaseMessage.startsWith("RELEASE BLOCKED")?"#fef2f2":"#eff6ff",
+              color:releaseMessage.startsWith("RELEASE BLOCKED")?"#991b1b":"#1e3a8a",
+              borderRadius:10,
+              padding:10,
+              fontWeight:releaseMessage.startsWith("RELEASE BLOCKED")?700:400
+            }}>{releaseMessage}</div>
+          ) : null}
         </div>
       </section>
 
@@ -3385,6 +3408,7 @@ export default function EquipmentMasterPage() {
             <div style={{display:"grid",gridTemplateColumns:"minmax(220px,1fr) minmax(220px,1fr)",gap:12}}>
               <EditField label="Search Released Documents">
                 <input
+                  id="equipment-controlled-document-search"
                   value={documentSearch}
                   onChange={e=>setDocumentSearch(e.target.value)}
                   placeholder="Search document number, title, type, or revision"
@@ -3475,21 +3499,28 @@ export default function EquipmentMasterPage() {
               )}
             </div>
 
-            <div style={{display:"flex",justifyContent:"flex-end",gap:10,marginTop:14}}>
-              <button type="button" style={secondaryButton} onClick={()=>{
-                setShowDocumentLinkForm(false);
-                setSelectedDocumentId("");
-                setDocumentSearch("");
-                setDocumentLinkMessage("");
-              }}>Cancel</button>
-              <button
-                type="button"
-                style={{...primaryButton,opacity:(savingDocumentLink||!selectedDocumentId)?0.55:1}}
-                disabled={savingDocumentLink||!selectedDocumentId}
-                onClick={linkControlledDocument}
-              >
-                {savingDocumentLink?"Linking...":"Link Document"}
-              </button>
+            <div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"center",marginTop:14,flexWrap:"wrap"}}>
+              <div style={{fontSize:12,color:"#64748b"}}>
+                {selectedDocumentId
+                  ? "Document selected — Link Document is ready."
+                  : "Select a document above to enable Link Document."}
+              </div>
+              <div style={{display:"flex",gap:10}}>
+                <button type="button" style={secondaryButton} onClick={()=>{
+                  setShowDocumentLinkForm(false);
+                  setSelectedDocumentId("");
+                  setDocumentSearch("");
+                  setDocumentLinkMessage("");
+                }}>Cancel</button>
+                <button
+                  type="button"
+                  style={{...primaryButton,opacity:(savingDocumentLink||!selectedDocumentId)?0.55:1}}
+                  disabled={savingDocumentLink||!selectedDocumentId}
+                  onClick={linkControlledDocument}
+                >
+                  {savingDocumentLink?"Linking...":"Link Document"}
+                </button>
+              </div>
             </div>
           </div>
         ) : null}
