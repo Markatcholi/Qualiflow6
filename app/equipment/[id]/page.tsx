@@ -2040,20 +2040,19 @@ export default function EquipmentMasterPage() {
     }
     setProcessingRelease(true);
     try{
-      const {error}=await supabase.from("equipment_release_requests").insert({
-        tenant_id:record.tenant_id,equipment_id:record.id,submitted_by:currentUserEmail,
-        approver_email:approver,status:"pending"
+      const {data,error}=await supabase.rpc("submit_equipment_record_for_release",{
+        p_equipment_id:record.id,
+        p_approver_email:approver
       });
       if(error)throw new Error(error.message);
-      const {error:updateError}=await supabase.from("equipment").update({
-        record_status:"pending_release",equipment_status:"pending_production_release",
-        use_status:"restricted",use_status_reason:"Equipment is not authorized for operational use while Equipment Record Release is pending."
-      }).eq("id",record.id);
-      if(updateError)throw new Error(updateError.message);
+      if(!data)throw new Error("Release submission completed without returning a release request.");
       await addAudit("equipment_release_submitted",`Equipment Master submitted for release to ${approver}.`);
-      setReleaseApproverEmail(""); setReleaseMessage("Equipment Master submitted for controlled release."); await load();
-    }catch(e:any){setReleaseMessage(e?.message||"Unable to submit equipment for release.");}
-    finally{setProcessingRelease(false);}
+      setReleaseApproverEmail("");
+      setReleaseMessage(`Equipment Master submitted for controlled release to ${approver}.`);
+      await load();
+    }catch(e:any){
+      setReleaseMessage(e?.message||"Unable to submit equipment for release.");
+    }finally{setProcessingRelease(false);}
   };
 
   const decideEquipmentRelease=async(decision:"approved"|"rejected")=>{
@@ -3341,8 +3340,8 @@ export default function EquipmentMasterPage() {
 
           {canMaintain && !recordIsReleased && !pendingRelease ? <div style={{display:"grid",gridTemplateColumns:"minmax(260px,1fr) auto",gap:10,alignItems:"end"}}>
             <div>
-              <EditField label="Equipment Quality Approver Email"><input value={releaseApproverEmail} onChange={e=>setReleaseApproverEmail(e.target.value)} placeholder="approver@company.com" style={input}/></EditField>
-              <div style={{fontSize:12,color:"#64748b",marginTop:5}}>Assigned approver must hold an active Equipment Quality Approver or Admin role.</div>
+              <EditField label="Quality Approver Email"><input value={releaseApproverEmail} onChange={e=>setReleaseApproverEmail(e.target.value)} placeholder="approver@company.com" style={input}/></EditField>
+              <div style={{fontSize:12,color:"#64748b",marginTop:5}}>Assigned approver must be an authorized Quality Approver or Admin.</div>
             </div>
             <button
               type="button"
