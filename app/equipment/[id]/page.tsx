@@ -613,7 +613,7 @@ export default function EquipmentMasterPage() {
 
       const [{data:roleRow},{data:releaseRow}]=await Promise.all([
         supabase.from("equipment_governance_members").select("role")
-          .eq("tenant_id",eq.tenant_id).eq("user_email",userEmail).eq("is_active",true).maybeSingle(),
+          .eq("tenant_id",eq.tenant_id).ilike("user_email",userEmail).eq("is_active",true).maybeSingle(),
         supabase.from("equipment_release_requests")
           .select("id,equipment_id,submitted_by,submitted_at,approver_email,status,decision_by,decision_at,decision_comment")
           .eq("equipment_id",eq.id).order("submitted_at",{ascending:false}).limit(1).maybeSingle()
@@ -1920,8 +1920,8 @@ export default function EquipmentMasterPage() {
 
       setSelectedDocumentId("");
       setDocumentSearch("");
-      setDocumentLinkMessage(`SUCCESS: ${selected.document_number} Rev ${selected.revision} is now linked to this equipment.`);
-      setShowDocumentLinkForm(false);
+      setDocumentLinkMessage(`SUCCESS: ${selected.document_number} Rev ${selected.revision} is now linked to this equipment. You can link another document below.`);
+      setShowDocumentLinkForm(true);
       await load();
     }catch(e:any){
       console.error("Equipment controlled document link failed:",e);
@@ -3354,7 +3354,7 @@ export default function EquipmentMasterPage() {
       <section style={{ ...card, marginBottom: 16 }}>
         <SectionHeader
           title="8. Related Controlled Documents — Optional"
-          subtitle="Link effective controlled documents that support this equipment. Document Control remains the system of record; these relationships do not block Equipment Record Release."
+          subtitle="Link one or more released controlled documents that support this equipment. Document Control remains the system of record; these relationships do not block Equipment Record Release."
           action={
             canMaintain ? (
               <button
@@ -3379,7 +3379,7 @@ export default function EquipmentMasterPage() {
           <div style={{border:"1px solid #bfdbfe",background:"#f8fbff",borderRadius:12,padding:16,marginBottom:16}}>
             <h3 style={{margin:"0 0 5px"}}>Link Existing Controlled Document</h3>
             <div style={{fontSize:13,color:"#64748b",lineHeight:1.5,marginBottom:14}}>
-              Released/Effective documents from Document Control are available for Equipment linking. Select one document below, then click <strong>Link Document</strong>.
+              Released/Effective documents from Document Control are available for Equipment linking. Select a document, click <strong>Link Document</strong>, then repeat for any additional documents needed.
             </div>
 
             <div style={{display:"grid",gridTemplateColumns:"minmax(220px,1fr) minmax(220px,1fr)",gap:12}}>
@@ -3497,14 +3497,29 @@ export default function EquipmentMasterPage() {
         {documentLinkMessage ? (
           <div style={{
             marginBottom:14,
-            border:documentLinkMessage.startsWith("LINK FAILED")?"1px solid #fecaca":documentLinkMessage.startsWith("SUCCESS")?"1px solid #bbf7d0":"1px solid #bfdbfe",
-            background:documentLinkMessage.startsWith("LINK FAILED")?"#fef2f2":documentLinkMessage.startsWith("SUCCESS")?"#f0fdf4":"#eff6ff",
-            color:documentLinkMessage.startsWith("LINK FAILED")?"#991b1b":documentLinkMessage.startsWith("SUCCESS")?"#166534":"#1e3a8a",
+            border:(documentLinkMessage.startsWith("LINK FAILED")||documentLinkMessage.startsWith("LINK READBACK FAILED"))?"1px solid #fecaca":documentLinkMessage.startsWith("SUCCESS")?"1px solid #bbf7d0":"1px solid #bfdbfe",
+            background:(documentLinkMessage.startsWith("LINK FAILED")||documentLinkMessage.startsWith("LINK READBACK FAILED"))?"#fef2f2":documentLinkMessage.startsWith("SUCCESS")?"#f0fdf4":"#eff6ff",
+            color:(documentLinkMessage.startsWith("LINK FAILED")||documentLinkMessage.startsWith("LINK READBACK FAILED"))?"#991b1b":documentLinkMessage.startsWith("SUCCESS")?"#166534":"#1e3a8a",
             borderRadius:10,padding:10,fontWeight:700
           }}>
             {documentLinkMessage}
           </div>
         ) : null}
+
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,marginBottom:10}}>
+          <div style={{fontSize:13,color:"#64748b"}}>
+            Active linked documents: <strong style={{color:"#0f172a"}}>{documents.filter(row=>row.is_active).length}</strong>
+          </div>
+          {canMaintain && !showDocumentLinkForm ? (
+            <button
+              type="button"
+              style={secondaryButton}
+              onClick={()=>{setShowDocumentLinkForm(true);setDocumentLinkMessage("");}}
+            >
+              + Link Another Document
+            </button>
+          ) : null}
+        </div>
 
         {documents.filter(row=>row.is_active).length===0 ? (
           <div style={emptyPanelStyle}>No controlled documents linked.</div>
