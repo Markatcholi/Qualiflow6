@@ -191,6 +191,11 @@ type EquipmentReleaseRequest = {
   decision_at: string | null; decision_comment: string | null;
 };
 
+type EquipmentReleaseApprover = {
+  user_email: string;
+  access_label: string;
+};
+
 type AuditRow = {
   id: string;
   action: string;
@@ -278,7 +283,8 @@ export default function EquipmentMasterPage() {
   const [auditRows, setAuditRows] = useState<AuditRow[]>([]);
   const [currentUserEmail,setCurrentUserEmail]=useState("");
   const [governanceRole,setGovernanceRole]=useState<"viewer"|"coordinator"|"quality_approver"|"admin">("viewer");
-  const [enterpriseApprovalAuthority,setEnterpriseApprovalAuthority]=useState<"none"|"quality_approver"|"admin">("none");
+  const [enterpriseApprovalAuthority,setEnterpriseApprovalAuthority]=useState<"none"|"quality_approver"|"equipment_approver"|"admin">("none");
+  const [equipmentReleaseApprovers,setEquipmentReleaseApprovers]=useState<EquipmentReleaseApprover[]>([]);
   const [releaseRequest,setReleaseRequest]=useState<EquipmentReleaseRequest | null>(null);
   const [releaseApproverEmail,setReleaseApproverEmail]=useState("");
   const [releaseComment,setReleaseComment]=useState("");
@@ -610,25 +616,31 @@ export default function EquipmentMasterPage() {
       const eq = equipmentRes.data as EquipmentRecord;
       setRecord(eq);
 
-      const [{data:equipmentRoleRow},{data:enterpriseAuthority,error:enterpriseAuthorityError},{data:releaseRow}]=await Promise.all([
+      const [{data:equipmentRoleRow},{data:enterpriseAuthority,error:enterpriseAuthorityError},{data:releaseRow},{data:releaseApprovers,error:releaseApproversError}]=await Promise.all([
         supabase.from("equipment_governance_members").select("role")
           .eq("tenant_id",eq.tenant_id).ilike("user_email",userEmail).eq("is_active",true).eq("role","coordinator").maybeSingle(),
         supabase.rpc("get_qualisphere_enterprise_authority",{p_user_email:userEmail}),
         supabase.from("equipment_release_requests")
           .select("id,equipment_id,submitted_by,submitted_at,approver_email,status,decision_by,decision_at,decision_comment")
-          .eq("equipment_id",eq.id).order("submitted_at",{ascending:false}).limit(1).maybeSingle()
+          .eq("equipment_id",eq.id).order("submitted_at",{ascending:false}).limit(1).maybeSingle(),
+        supabase.rpc("list_equipment_release_approvers")
       ]);
       if(enterpriseAuthorityError)throw new Error(enterpriseAuthorityError.message);
+      if(releaseApproversError)throw new Error(releaseApproversError.message);
       const fallbackCoordinator=[eq.owner_email,eq.created_by].filter(Boolean)
         .map((v:any)=>String(v).toLowerCase()).includes(userEmail);
-      setGovernanceRole((equipmentRoleRow?.role||(fallbackCoordinator?"coordinator":"viewer")) as any);
+      const centralCoordinator=!!enterpriseAuthority?.is_equipment_coordinator;
+      setGovernanceRole((equipmentRoleRow?.role||(fallbackCoordinator||centralCoordinator?"coordinator":"viewer")) as any);
       setEnterpriseApprovalAuthority(
         enterpriseAuthority?.is_admin
           ? "admin"
-          : enterpriseAuthority?.is_quality_approver
-            ? "quality_approver"
-            : "none"
+          : enterpriseAuthority?.is_equipment_approver
+            ? "equipment_approver"
+            : enterpriseAuthority?.is_quality_approver
+              ? "quality_approver"
+              : "none"
       );
+      setEquipmentReleaseApprovers((releaseApprovers||[]) as EquipmentReleaseApprover[]);
       setReleaseRequest((releaseRow||null) as EquipmentReleaseRequest|null);
       setForm({
         equipment_name: eq.equipment_name || "",
@@ -2032,7 +2044,7 @@ export default function EquipmentMasterPage() {
   }
 
   const canMaintain=governanceRole==="coordinator";
-  const canApproveRelease=enterpriseApprovalAuthority==="quality_approver"||enterpriseApprovalAuthority==="admin";
+  const canApproveRelease=enterpriseApprovalAuthority==="equipment_approver"||enterpriseApprovalAuthority==="quality_approver"||enterpriseApprovalAuthority==="admin";
   const recordIsReleased=record?.record_status==="released";
   const pendingRelease=releaseRequest?.status==="pending";
 
@@ -2041,7 +2053,7 @@ export default function EquipmentMasterPage() {
     setReleaseMessage("");
     const approver=releaseApproverEmail.trim().toLowerCase();
     if(!approver||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(approver)){
-      setReleaseMessage("Enter a valid Quality Approver email address."); return;
+      setReleaseMessage("Select an authorized Equipment Approver."); return;
     }
     const pendingReadiness=lifecycleReadiness.filter(item=>item.required&&!item.complete);
     if(pendingReadiness.length){
@@ -2068,7 +2080,7 @@ export default function EquipmentMasterPage() {
   const decideEquipmentRelease=async(decision:"approved"|"rejected")=>{
     if(!record||!releaseRequest||!canApproveRelease)return;
     if(currentUserEmail!==releaseRequest.approver_email.toLowerCase()&&enterpriseApprovalAuthority!=="admin"){
-      setReleaseMessage("This release request is assigned to another Quality Approver."); return;
+      setReleaseMessage("This release request is assigned to another Equipment Approver."); return;
     }
     if(decision==="rejected"&&!releaseComment.trim()){
       setReleaseMessage("A comment is required when rejecting an Equipment Master release."); return;
@@ -3314,7 +3326,7 @@ export default function EquipmentMasterPage() {
             <Detail label="Record Status" value={formatLabel(record.record_status||"draft")} />
             <Detail label="Operational Authorization" value={recordIsReleased?"Authorized for Use":"Not Released / Use Restricted"} />
             <Detail label="Your Equipment Role" value={canMaintain?"Coordinator / Owner":"Viewer / Read Only"} />
-            <Detail label="Release Approval Authority" value={enterpriseApprovalAuthority==="admin"?"Admin":enterpriseApprovalAuthority==="quality_approver"?"Quality Approver":"None"} />
+            <Detail label="Release Approval Authority" value={enterpriseApprovalAuthority==="admin"?"Admin":enterpriseApprovalAuthority==="equipment_approver"?"Equipment Approver":enterpriseApprovalAuthority==="quality_approver"?"Quality Approver (Legacy)":"None"} />
             <Detail label="Released By" value={record.released_by} />
             <Detail label="Released At" value={formatDateTime(record.released_at)} />
           </div>
@@ -3342,8 +3354,17 @@ export default function EquipmentMasterPage() {
 
           {canMaintain && !recordIsReleased && !pendingRelease ? <div style={{display:"grid",gridTemplateColumns:"minmax(260px,1fr) auto",gap:10,alignItems:"end"}}>
             <div>
-              <EditField label="Quality Approver Email"><input value={releaseApproverEmail} onChange={e=>setReleaseApproverEmail(e.target.value)} placeholder="approver@company.com" style={input}/></EditField>
-              <div style={{fontSize:12,color:"#64748b",marginTop:5}}>Assigned approver must be an authorized Quality Approver or Admin.</div>
+              <EditField label="Equipment Approver">
+                <select value={releaseApproverEmail} onChange={e=>setReleaseApproverEmail(e.target.value)} style={input}>
+                  <option value="">Select authorized Equipment Approver...</option>
+                  {equipmentReleaseApprovers.map((approver)=>(
+                    <option key={approver.user_email} value={approver.user_email}>
+                      {approver.user_email} — {approver.access_label}
+                    </option>
+                  ))}
+                </select>
+              </EditField>
+              <div style={{fontSize:12,color:"#64748b",marginTop:5}}>List comes from active Module Access assignments in User Administration. Legacy Quality Approver access remains supported during transition.</div>
             </div>
             <button
               type="button"
