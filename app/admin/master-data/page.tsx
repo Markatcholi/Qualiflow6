@@ -102,6 +102,10 @@ export default function MasterDataPage() {
   const [newUserDepartment, setNewUserDepartment] = useState("");
   const [newUserStatus, setNewUserStatus] = useState("active");
   const [savingRoleAssignment, setSavingRoleAssignment] = useState(false);
+  const [newAccessRoleLabel, setNewAccessRoleLabel] = useState("");
+  const [newAccessRoleCategory, setNewAccessRoleCategory] = useState("General");
+  const [newAccessRoleDescription, setNewAccessRoleDescription] = useState("");
+  const [savingAccessRole, setSavingAccessRole] = useState(false);
 
   const [partNumbers, setPartNumbers] = useState<ProductPartItem[]>([]);
   const [dispositions, setDispositions] = useState<SimpleItem[]>([]);
@@ -685,6 +689,64 @@ export default function MasterDataPage() {
     await fetchUserAdministration();
   };
 
+  const toRoleCode = (value: string) =>
+    value
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "");
+
+  const addModuleAccessRole = async () => {
+    if (!isRoleAdministrator) {
+      alert("Only an Administrator or VP Quality may add module access roles.");
+      return;
+    }
+
+    const label = newAccessRoleLabel.trim();
+    const category = newAccessRoleCategory.trim() || "General";
+    const code = toRoleCode(label);
+
+    if (!label || !code) {
+      alert("Module access role name is required.");
+      return;
+    }
+
+    if (securityRoles.some((role) => role.code === code)) {
+      alert("A module access role with this name already exists.");
+      return;
+    }
+
+    setSavingAccessRole(true);
+    const { error } = await supabase.from("security_roles").insert({
+      code,
+      label,
+      category,
+      description: newAccessRoleDescription.trim() || null,
+      is_assignable: true,
+    });
+    setSavingAccessRole(false);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    setNewAccessRoleLabel("");
+    setNewAccessRoleCategory("General");
+    setNewAccessRoleDescription("");
+    await fetchUserAdministration();
+  };
+
+  const toggleModuleAccessRole = async (role: SecurityRoleDefinition) => {
+    if (!isRoleAdministrator) return;
+    const { error } = await supabase
+      .from("security_roles")
+      .update({ is_assignable: role.is_assignable === false })
+      .eq("code", role.code);
+    if (error) return alert(error.message);
+    await fetchUserAdministration();
+  };
+
   const removeSecurityRole = async (assignmentId: string) => {
     if (!isRoleAdministrator) {
       alert("Only an Administrator or VP Quality may remove security roles.");
@@ -1064,6 +1126,31 @@ export default function MasterDataPage() {
             <button onClick={assignSecurityRole} disabled={savingRoleAssignment}>
               {savingRoleAssignment ? "Assigning..." : "Assign Access"}
             </button>
+
+            <details style={{ marginTop: "18px", padding: "14px", border: "1px solid #e5e7eb", borderRadius: "8px", background: "#fafafa" }}>
+              <summary style={{ cursor: "pointer", fontWeight: 700 }}>Manage Module Access Roles</summary>
+              <p style={{ color: "#4b5563" }}>
+                QualiSphere provides starter roles. Add customer-specific module access roles here without changing job titles or departments.
+              </p>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "center" }}>
+                <input value={newAccessRoleLabel} onChange={(e) => setNewAccessRoleLabel(e.target.value)} placeholder="Role name, e.g. Equipment Approver" style={inputStyle} />
+                <input value={newAccessRoleCategory} onChange={(e) => setNewAccessRoleCategory(e.target.value)} placeholder="Module / category" style={inputStyle} />
+                <input value={newAccessRoleDescription} onChange={(e) => setNewAccessRoleDescription(e.target.value)} placeholder="Description (optional)" style={{ ...inputStyle, minWidth: "280px" }} />
+                <button onClick={addModuleAccessRole} disabled={savingAccessRole}>
+                  {savingAccessRole ? "Adding..." : "Add Module Access Role"}
+                </button>
+              </div>
+              <div style={{ marginTop: "12px", display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                {securityRoles.map((role) => (
+                  <span key={role.code} style={{ border: "1px solid #d1d5db", borderRadius: "999px", padding: "6px 10px", background: role.is_assignable === false ? "#f3f4f6" : "white" }}>
+                    <strong>{role.label}</strong> <span style={{ color: "#6b7280" }}>({role.category})</span>{" "}
+                    <button onClick={() => toggleModuleAccessRole(role)} style={{ marginLeft: "6px" }}>
+                      {role.is_assignable === false ? "Activate" : "Deactivate"}
+                    </button>
+                  </span>
+                ))}
+              </div>
+            </details>
           </>
         )}
 
@@ -1076,6 +1163,7 @@ export default function MasterDataPage() {
                 <th style={{ textAlign: "left", padding: "10px", borderBottom: "1px solid #d1d5db" }}>Department</th>
                 <th style={{ textAlign: "left", padding: "10px", borderBottom: "1px solid #d1d5db" }}>Status</th>
                 <th style={{ textAlign: "left", padding: "10px", borderBottom: "1px solid #d1d5db" }}>Module Access</th>
+                <th style={{ textAlign: "left", padding: "10px", borderBottom: "1px solid #d1d5db" }}>Action</th>
               </tr>
             </thead>
             <tbody>
@@ -1182,6 +1270,23 @@ export default function MasterDataPage() {
                           </span>
                         ))}
                       </div>
+                    )}
+                  </td>
+                  <td style={{ padding: "10px", borderBottom: "1px solid #e5e7eb", whiteSpace: "nowrap" }}>
+                    {isRoleAdministrator ? (
+                      <button
+                        onClick={() => {
+                          setNewUserEmail(user.user_email);
+                          setNewUserJobTitle(user.job_title);
+                          setNewUserDepartment(user.department);
+                          setNewUserStatus(user.account_status || "active");
+                          document.getElementById("user-administration")?.scrollIntoView({ behavior: "smooth" });
+                        }}
+                      >
+                        Edit
+                      </button>
+                    ) : (
+                      <span style={{ color: "#6b7280" }}>—</span>
                     )}
                   </td>
                 </tr>
