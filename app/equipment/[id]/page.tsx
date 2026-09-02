@@ -187,7 +187,9 @@ type OosLink = {
 
 type EquipmentReleaseRequest = {
   id: string; equipment_id: string; submitted_by: string; submitted_at: string;
-  approver_email: string; status: string; decision_by: string | null;
+  approver_email: string; approver_department: string | null;
+  approver_job_title: string | null; approve_by_date: string | null;
+  status: string; decision_by: string | null;
   decision_at: string | null; decision_comment: string | null;
 };
 
@@ -285,8 +287,13 @@ export default function EquipmentMasterPage() {
   const [governanceRole,setGovernanceRole]=useState<"viewer"|"coordinator"|"quality_approver"|"admin">("viewer");
   const [enterpriseApprovalAuthority,setEnterpriseApprovalAuthority]=useState<"none"|"quality_approver"|"equipment_approver"|"admin">("none");
   const [equipmentReleaseApprovers,setEquipmentReleaseApprovers]=useState<EquipmentReleaseApprover[]>([]);
+  const [releaseDepartments,setReleaseDepartments]=useState<string[]>([]);
+  const [releaseJobTitles,setReleaseJobTitles]=useState<string[]>([]);
   const [releaseRequest,setReleaseRequest]=useState<EquipmentReleaseRequest | null>(null);
+  const [releaseDepartment,setReleaseDepartment]=useState("");
+  const [releaseJobTitle,setReleaseJobTitle]=useState("");
   const [releaseApproverEmail,setReleaseApproverEmail]=useState("");
+  const [releaseApproveByDate,setReleaseApproveByDate]=useState("");
   const [releaseComment,setReleaseComment]=useState("");
   const [releaseMessage,setReleaseMessage]=useState("");
   const [processingRelease,setProcessingRelease]=useState(false);
@@ -616,17 +623,28 @@ export default function EquipmentMasterPage() {
       const eq = equipmentRes.data as EquipmentRecord;
       setRecord(eq);
 
-      const [{data:equipmentRoleRow},{data:enterpriseAuthority,error:enterpriseAuthorityError},{data:releaseRow},{data:releaseApprovers,error:releaseApproversError}]=await Promise.all([
+      const [
+        {data:equipmentRoleRow},
+        {data:enterpriseAuthority,error:enterpriseAuthorityError},
+        {data:releaseRow},
+        {data:releaseApprovers,error:releaseApproversError},
+        {data:departmentRows,error:departmentRowsError},
+        {data:userProfileRows,error:userProfileRowsError}
+      ]=await Promise.all([
         supabase.from("equipment_governance_members").select("role")
           .eq("tenant_id",eq.tenant_id).ilike("user_email",userEmail).eq("is_active",true).eq("role","coordinator").maybeSingle(),
         supabase.rpc("get_qualisphere_enterprise_authority",{p_user_email:userEmail}),
         supabase.from("equipment_release_requests")
-          .select("id,equipment_id,submitted_by,submitted_at,approver_email,status,decision_by,decision_at,decision_comment")
+          .select("id,equipment_id,submitted_by,submitted_at,approver_email,approver_department,approver_job_title,approve_by_date,status,decision_by,decision_at,decision_comment")
           .eq("equipment_id",eq.id).order("submitted_at",{ascending:false}).limit(1).maybeSingle(),
-        supabase.rpc("list_equipment_release_approvers")
+        supabase.rpc("list_equipment_release_approvers"),
+        supabase.from("md_departments").select("name").order("name",{ascending:true}),
+        supabase.from("user_roles").select("job_title,account_status").eq("account_status","active")
       ]);
       if(enterpriseAuthorityError)throw new Error(enterpriseAuthorityError.message);
       if(releaseApproversError)throw new Error(releaseApproversError.message);
+      if(departmentRowsError)console.warn(departmentRowsError.message);
+      if(userProfileRowsError)console.warn(userProfileRowsError.message);
       const fallbackCoordinator=[eq.owner_email,eq.created_by].filter(Boolean)
         .map((v:any)=>String(v).toLowerCase()).includes(userEmail);
       const centralCoordinator=!!enterpriseAuthority?.is_equipment_coordinator;
@@ -641,6 +659,8 @@ export default function EquipmentMasterPage() {
               : "none"
       );
       setEquipmentReleaseApprovers((releaseApprovers||[]) as EquipmentReleaseApprover[]);
+      setReleaseDepartments(Array.from(new Set((departmentRows||[]).map((row:any)=>String(row.name||"").trim()).filter(Boolean))).sort());
+      setReleaseJobTitles(Array.from(new Set((userProfileRows||[]).map((row:any)=>String(row.job_title||"").trim()).filter(Boolean))).sort());
       setReleaseRequest((releaseRow||null) as EquipmentReleaseRequest|null);
       setForm({
         equipment_name: eq.equipment_name || "",
@@ -2052,9 +2072,14 @@ export default function EquipmentMasterPage() {
     if(!record||!canMaintain)return;
     setReleaseMessage("");
     const approver=releaseApproverEmail.trim().toLowerCase();
+    const department=releaseDepartment.trim();
+    const jobTitle=releaseJobTitle.trim();
+    if(!department){setReleaseMessage("Select or enter the approving Department."); return;}
+    if(!jobTitle){setReleaseMessage("Select or enter the approving Job Title."); return;}
     if(!approver||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(approver)){
       setReleaseMessage("Select an authorized Equipment Approver."); return;
     }
+    if(!releaseApproveByDate){setReleaseMessage("Approve By Date is required."); return;}
     const pendingReadiness=lifecycleReadiness.filter(item=>item.required&&!item.complete);
     if(pendingReadiness.length){
       setReleaseMessage(`RELEASE BLOCKED: Complete the following required readiness item(s) before submission: ${pendingReadiness.map(item=>item.label).join(", ")}.`);
@@ -2064,12 +2089,18 @@ export default function EquipmentMasterPage() {
     try{
       const {data,error}=await supabase.rpc("submit_equipment_record_for_release",{
         p_equipment_id:record.id,
-        p_approver_email:approver
+        p_approver_email:approver,
+        p_approver_department:department,
+        p_approver_job_title:jobTitle,
+        p_approve_by_date:releaseApproveByDate
       });
       if(error)throw new Error(error.message);
       if(!data)throw new Error("Release submission completed without returning a release request.");
       await addAudit("equipment_release_submitted",`Equipment Master submitted for release to ${approver}.`);
+      setReleaseDepartment("");
+      setReleaseJobTitle("");
       setReleaseApproverEmail("");
+      setReleaseApproveByDate("");
       setReleaseMessage(`Equipment Master submitted for controlled release to ${approver}.`);
       await load();
     }catch(e:any){
@@ -3344,7 +3375,9 @@ export default function EquipmentMasterPage() {
           </div>
           {pendingRelease ? <div style={{border:"1px solid #fde68a",background:"#fffbeb",borderRadius:10,padding:12,marginBottom:12}}>
             <strong>Pending Equipment Record Release</strong>
-            <div style={{marginTop:5,fontSize:13}}>Approver: {releaseRequest?.approver_email} · Submitted by {releaseRequest?.submitted_by} on {formatDateTime(releaseRequest?.submitted_at)}</div>
+            <div style={{marginTop:5,fontSize:13,lineHeight:1.6}}>
+              Department: {releaseRequest?.approver_department||"—"} · Job Title: {releaseRequest?.approver_job_title||"—"} · Approver: {releaseRequest?.approver_email||"—"} · Approve By: {formatDate(releaseRequest?.approve_by_date)}
+            </div>
           </div> : null}
           {canMaintain && !recordIsReleased && !pendingRelease && lifecycleReadiness.some(item=>item.required&&!item.complete) ? (
             <div style={{marginBottom:12,border:"1px solid #fecaca",background:"#fef2f2",color:"#991b1b",borderRadius:10,padding:12,fontSize:13,lineHeight:1.5}}>
@@ -3352,29 +3385,62 @@ export default function EquipmentMasterPage() {
             </div>
           ) : null}
 
-          {canMaintain && !recordIsReleased && !pendingRelease ? <div style={{display:"grid",gridTemplateColumns:"minmax(260px,1fr) auto",gap:10,alignItems:"end"}}>
+          {canMaintain && !recordIsReleased && !pendingRelease ? (
             <div>
-              <EditField label="Equipment Approver">
-                <select value={releaseApproverEmail} onChange={e=>setReleaseApproverEmail(e.target.value)} style={input}>
-                  <option value="">Select authorized Equipment Approver...</option>
-                  {equipmentReleaseApprovers.map((approver)=>(
-                    <option key={approver.user_email} value={approver.user_email}>
-                      {approver.user_email} — {approver.access_label}
-                    </option>
-                  ))}
-                </select>
-              </EditField>
-              <div style={{fontSize:12,color:"#64748b",marginTop:5}}>List comes from active Module Access assignments in User Administration. Legacy Quality Approver access remains supported during transition.</div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:10,alignItems:"end"}}>
+                <EditField label="Department">
+                  <input
+                    list="equipment-release-departments"
+                    value={releaseDepartment}
+                    onChange={e=>setReleaseDepartment(e.target.value)}
+                    placeholder="Select or enter department"
+                    style={input}
+                  />
+                  <datalist id="equipment-release-departments">
+                    {releaseDepartments.map(item=><option key={item} value={item}/>)}
+                  </datalist>
+                </EditField>
+                <EditField label="Job Title">
+                  <input
+                    list="equipment-release-job-titles"
+                    value={releaseJobTitle}
+                    onChange={e=>setReleaseJobTitle(e.target.value)}
+                    placeholder="Select or enter job title"
+                    style={input}
+                  />
+                  <datalist id="equipment-release-job-titles">
+                    {releaseJobTitles.map(item=><option key={item} value={item}/>)}
+                  </datalist>
+                </EditField>
+                <EditField label="Equipment Approver">
+                  <select value={releaseApproverEmail} onChange={e=>setReleaseApproverEmail(e.target.value)} style={input}>
+                    <option value="">Select authorized Equipment Approver...</option>
+                    {equipmentReleaseApprovers.map((approver)=>(
+                      <option key={approver.user_email} value={approver.user_email}>
+                        {approver.user_email}
+                      </option>
+                    ))}
+                  </select>
+                </EditField>
+                <EditField label="Approve By Date">
+                  <input type="date" value={releaseApproveByDate} onChange={e=>setReleaseApproveByDate(e.target.value)} style={input}/>
+                </EditField>
+              </div>
+              <div style={{fontSize:12,color:"#64748b",marginTop:6}}>
+                Approver list comes from active Equipment approval Module Access assignments in User Administration.
+              </div>
+              <div style={{display:"flex",justifyContent:"flex-end",marginTop:10}}>
+                <button
+                  type="button"
+                  style={{...primaryButton,opacity:processingRelease?0.6:1}}
+                  disabled={processingRelease}
+                  onClick={submitEquipmentForRelease}
+                >
+                  {processingRelease?"Submitting...":"Submit Equipment Record for Release"}
+                </button>
+              </div>
             </div>
-            <button
-              type="button"
-              style={{...primaryButton,opacity:processingRelease?0.6:1}}
-              disabled={processingRelease}
-              onClick={submitEquipmentForRelease}
-            >
-              {processingRelease?"Submitting...":"Submit Equipment Record for Release"}
-            </button>
-          </div> : null}
+          ) : null}
           {pendingRelease && canApproveRelease ? <div style={{marginTop:12}}>
             <EditField label="Release Decision Comment"><textarea rows={3} value={releaseComment} onChange={e=>setReleaseComment(e.target.value)} placeholder="Optional for approval; required for rejection." style={{...input,resize:"vertical"}}/></EditField>
             <div style={{display:"flex",gap:10,justifyContent:"flex-end",marginTop:10}}>
