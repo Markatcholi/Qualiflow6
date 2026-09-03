@@ -417,13 +417,9 @@ export default function NcmrDetailPage() {
   };
 
   const fetchApprovalTasks = async () => {
-    const { data, error } = await supabase
-      .from("approval_tasks")
-      .select("*")
-      .eq("entity_type", "ncmr")
-      .eq("entity_id", id)
-      .eq("task_type", "mrb_approval")
-      .order("created_at", { ascending: true });
+    const { data, error } = await supabase.rpc("ncmr_get_mrb_approval_tasks", {
+      p_ncmr_id: id,
+    });
 
     if (error) {
       alert(error.message);
@@ -662,35 +658,34 @@ export default function NcmrDetailPage() {
       throw new Error(ownerValidation.message);
     }
 
-    const { error: cancelError } = await supabase
-      .from("approval_tasks")
-      .update({
-        status: "cancelled",
-        comments: `Cancelled because NCMR ownership was reassigned to ${nextEmail}.`,
-      })
-      .eq("entity_type", "ncmr")
-      .eq("entity_id", id)
-      .eq("task_type", "ncmr_owner")
-      .eq("status", "pending");
+    const { error: cancelError } = await supabase.rpc(
+      "ncmr_cancel_pending_tasks_governed",
+      {
+        p_ncmr_id: id,
+        p_reason: `Cancelled because NCMR ownership was reassigned to ${nextEmail}.`,
+        p_task_types: ["ncmr_owner"],
+        p_exclude_task_id: null,
+      }
+    );
 
     if (cancelError) throw new Error(cancelError.message);
 
-    const { data: ownerTask, error: taskError } = await supabase
-      .from("approval_tasks")
-      .insert({
-        entity_type: "ncmr",
-        entity_id: id,
-        task_type: "ncmr_owner",
-        required_function: "NCMR Owner",
-        task_title: `NCMR owner assignment: ${record?.ncmr_number || "NCMR"}`,
-        task_instructions: "Coordinate the NCMR workflow and ensure required activities are completed on time.",
-        assigned_to_email: nextEmail,
-        assigned_by_email: userEmail || null,
-        status: "pending",
-        comments: "NCMR ownership assignment.",
-      })
-      .select("id")
-      .single();
+    const { data: ownerTask, error: taskError } = await supabase.rpc(
+      "ncmr_create_governed_task",
+      {
+        p_ncmr_id: id,
+        p_task: {
+          task_type: "ncmr_owner",
+          required_function: "NCMR Owner",
+          task_title: `NCMR owner assignment: ${record?.ncmr_number || "NCMR"}`,
+          task_instructions:
+            "Coordinate the NCMR workflow and ensure required activities are completed on time.",
+          assigned_to_email: nextEmail,
+          comments: "NCMR ownership assignment.",
+          required: true,
+        },
+      }
+    );
 
     if (taskError) throw new Error(taskError.message);
 
@@ -699,7 +694,12 @@ export default function NcmrDetailPage() {
       notificationType: "ncmr_assignment",
       title: `NCMR assigned: ${record?.ncmr_number || "NCMR"}`,
       message: `You have been assigned as the owner of ${record?.ncmr_number || "this NCMR"}. Open My Workspace to review and coordinate the required activities.`,
-      severityLevel: getEffectiveRiskLevel() === "critical" ? "critical" : getEffectiveRiskLevel() === "high" ? "high" : "info",
+      severityLevel:
+        getEffectiveRiskLevel() === "critical"
+          ? "critical"
+          : getEffectiveRiskLevel() === "high"
+            ? "high"
+            : "info",
       assignedRole: "NCMR Owner",
     });
 
@@ -2240,14 +2240,14 @@ export default function NcmrDetailPage() {
 
     setSubmittingMrbApproval(true);
 
-    const { data: existingPendingTasks, error: pendingTaskCheckError } =
-      await supabase
-        .from("approval_tasks")
-        .select("id, assigned_to_email, required_function, status, created_at")
-        .eq("entity_type", "ncmr")
-        .eq("entity_id", id)
-        .eq("task_type", "mrb_approval")
-        .eq("status", "pending");
+    const { data: currentMrbTasks, error: pendingTaskCheckError } =
+      await supabase.rpc("ncmr_get_mrb_approval_tasks", {
+        p_ncmr_id: id,
+      });
+
+    const existingPendingTasks = (currentMrbTasks || []).filter(
+      (task: any) => String(task?.status || "").toLowerCase() === "pending"
+    );
 
     if (pendingTaskCheckError) {
       alert(
@@ -2453,10 +2453,20 @@ Open this task from My Workspace to review the submitted read-only MRB package a
 This approval becomes part of the official electronic quality record. MRB approval is complete when all required reviewers approve.`,
     }));
 
-    const { data: insertedTasks, error } = await supabase
-      .from("approval_tasks")
-      .insert(taskRows)
-      .select();
+    const { data: insertedTasks, error } = await supabase.rpc(
+      "ncmr_create_mrb_approval_package",
+      {
+        p_ncmr_id: id,
+        p_tasks: taskRows.map((task: any) => ({
+          assigned_to_email: task.assigned_to_email,
+          required_function: task.required_function,
+          task_title: task.task_title,
+          comments: task.comments,
+          due_date: task.due_date,
+          required: task.required,
+        })),
+      }
+    );
 
     if (error) {
       alert(error.message);
@@ -2795,14 +2805,15 @@ This approval becomes part of the official electronic quality record. MRB approv
         .map((task: any) => task.id)
         .filter(Boolean);
 
-      const { error: obsoleteTaskError } = await supabase
-        .from("approval_tasks")
-        .update({
-          status: "cancelled",
-          comments:
+      const { error: obsoleteTaskError } = await supabase.rpc(
+        "ncmr_cancel_task_ids_governed",
+        {
+          p_ncmr_id: id,
+          p_task_ids: obsoleteTaskIds,
+          p_reason:
             "Cancelled by MRB approval task issue recovery. The approver is invalid, unregistered, duplicated, or no longer part of the configured MRB approver list. Approval history was preserved.",
-        })
-        .in("id", obsoleteTaskIds);
+        }
+      );
 
       if (obsoleteTaskError) {
         alert(obsoleteTaskError.message);
@@ -2829,10 +2840,20 @@ Severity: ${severity || "N/A"}
 This approval task was created by the MRB approval task issue recovery action. Existing approval history was not modified.`,
       }));
 
-      const { data: insertedTasks, error } = await supabase
-        .from("approval_tasks")
-        .insert(taskRows)
-        .select();
+      const { data: insertedTasks, error } = await supabase.rpc(
+        "ncmr_create_mrb_approval_package",
+        {
+          p_ncmr_id: id,
+          p_tasks: taskRows.map((task: any) => ({
+            assigned_to_email: task.assigned_to_email,
+            required_function: task.required_function,
+            task_title: `MRB Approval: ${record?.ncmr_number || "NCMR"}`,
+            comments: task.comments,
+            due_date: null,
+            required: true,
+          })),
+        }
+      );
 
       if (error) {
         alert(error.message);
@@ -2912,22 +2933,20 @@ This approval task was created by the MRB approval task issue recovery action. E
 
     if (!confirmed) return;
 
-    if (pendingTasks.length > 0) {
-      const pendingTaskIds = pendingTasks.map((task: any) => task.id).filter(Boolean);
-
-      const { error: cancelError } = await supabase
-        .from("approval_tasks")
-        .update({
-          status: "cancelled",
-          comments:
-            "Cancelled by authorized MRB approval workflow reset. Approval history was preserved.",
-        })
-        .in("id", pendingTaskIds);
-
-      if (cancelError) {
-        alert(cancelError.message);
-        return;
+    const { error: cancelError } = await supabase.rpc(
+      "ncmr_cancel_pending_tasks_governed",
+      {
+        p_ncmr_id: id,
+        p_reason:
+          "Cancelled by authorized MRB approval workflow reset. Approval history was preserved.",
+        p_task_types: ["mrb_approval", "ncmr_mrb_approval", "ncmr_mrb_review"],
+        p_exclude_task_id: null,
       }
+    );
+
+    if (cancelError) {
+      alert(cancelError.message);
+      return;
     }
 
     await addAuditLog(
@@ -4246,10 +4265,15 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
     }
     if (!window.confirm("Cancel this NCMR? Pending tasks will be cancelled. Completed work and approval history will be preserved.")) return;
 
-    const { error: taskError } = await supabase
-      .from("approval_tasks")
-      .update({ status: "cancelled", comments: `Parent NCMR cancelled. Justification: ${justification.trim()}` })
-      .eq("entity_type", "ncmr").eq("entity_id", id).eq("status", "pending");
+    const { error: taskError } = await supabase.rpc(
+      "ncmr_cancel_pending_tasks_governed",
+      {
+        p_ncmr_id: id,
+        p_reason: `Parent NCMR cancelled. Justification: ${justification.trim()}`,
+        p_task_types: null,
+        p_exclude_task_id: null,
+      }
+    );
     if (taskError) return alert(taskError.message);
 
     const { error } = await supabase.from("ncmrs").update({
@@ -4293,22 +4317,16 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
 
     setReturnRevisionSubmitting(true);
     try {
-      const activeTasks = getActiveMrbApprovalTasks();
-      const pendingTaskIds = activeTasks
-        .filter((task: any) => String(task?.status || "").toLowerCase() === "pending")
-        .map((task: any) => task.id)
-        .filter(Boolean);
-
-      if (pendingTaskIds.length > 0) {
-        const { error: taskError } = await supabase
-          .from("approval_tasks")
-          .update({
-            status: "cancelled",
-            comments: `Approved MRB returned for revision. Destination: ${returnRevisionDestination}. Justification: ${justification}`,
-          })
-          .in("id", pendingTaskIds);
-        if (taskError) throw new Error(taskError.message);
-      }
+      const { error: taskError } = await supabase.rpc(
+        "ncmr_cancel_pending_tasks_governed",
+        {
+          p_ncmr_id: id,
+          p_reason: `Approved MRB returned for revision. Destination: ${returnRevisionDestination}. Justification: ${justification}`,
+          p_task_types: ["mrb_approval", "ncmr_mrb_approval", "ncmr_mrb_review"],
+          p_exclude_task_id: null,
+        }
+      );
+      if (taskError) throw new Error(taskError.message);
 
       const { error } = await supabase.from("ncmrs").update({
         mrb_approved_by: null,
@@ -4327,9 +4345,6 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
         .eq("disposition_implementation_status", "completed");
       if (supersedeDispositionImplementationError) throw new Error(supersedeDispositionImplementationError.message);
 
-      // This audit event is the hard approval-cycle boundary used by
-      // getActiveMrbApprovalTasks(). Prior approved tasks remain historical
-      // and can never auto-approve the newly returned workflow.
       await addAuditLog(
         "mrb_approval_cycle_returned",
         `Approved MRB returned by ${userEmail}. Destination: ${returnRevisionDestination}. Justification: ${justification}. Prior approval history preserved. A new MRB approval cycle is required.`
@@ -4502,22 +4517,22 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
 
     setSubmittingImplementationTask(true);
 
-    const { data: insertedTasks, error } = await supabase
-      .from("approval_tasks")
-      .insert({
-        entity_type: "ncmr",
-        entity_id: id,
-        task_type: taskType,
-        required_function: requiredFunction,
-        task_title: `${implementationLabel} implementation for ${record?.ncmr_number || "NCMR"}`,
-        task_instructions: normalizedInstructions,
-        assigned_to_email: normalizedAssignee,
-        assigned_by_email: userEmail,
-        status: "pending",
-        due_date: normalizedDueDate,
-        comments: normalizedInstructions,
-      })
-      .select();
+    const { data: task, error } = await supabase.rpc(
+      "ncmr_create_governed_task",
+      {
+        p_ncmr_id: id,
+        p_task: {
+          task_type: taskType,
+          required_function: requiredFunction,
+          task_title: `${implementationLabel} implementation for ${record?.ncmr_number || "NCMR"}`,
+          task_instructions: normalizedInstructions,
+          assigned_to_email: normalizedAssignee,
+          due_date: normalizedDueDate,
+          comments: normalizedInstructions,
+          required: true,
+        },
+      }
+    );
 
     if (error) {
       setSubmittingImplementationTask(false);
@@ -4525,12 +4540,11 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
       return;
     }
 
-    if (insertedTasks && insertedTasks.length > 0) {
-      const task = insertedTasks[0];
+    if (task?.id) {
       const workPackageUrl = `/ncmrs/${id}/implementation?taskId=${task.id}`;
 
       await supabase.from("notification_queue").insert({
-        recipient_email: correctionTaskAssignee.trim().toLowerCase(),
+        recipient_email: normalizedAssignee,
         subject: `${implementationLabel} implementation task assigned: ${record?.ncmr_number || "NCMR"}`,
         body: `You have been assigned a ${implementationLabel.toLowerCase()} implementation task for ${record?.ncmr_number || "this NCMR"}. Please log in to QualiSphere and open My Workspace.`,
         entity_type: "ncmr",
@@ -4603,33 +4617,38 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
 
       if (editingReturnedTask) {
         const priorAssignee = normalizeApproverEmail(editingReturnedTask.assigned_to_email);
-        const { data: updatedTask, error: updateError } = await supabase.from("approval_tasks").update({
-          task_instructions: reworkTaskInstructions.trim(),
-          assigned_to_email: normalizedAssignee,
-          assigned_by_email: userEmail,
-          due_date: reworkTaskDueDate || null,
-          comments: reworkTaskInstructions.trim(),
-          assignment_attachments: assignmentAttachments,
-          status: "pending",
-          returned_reason: null,
-          returned_by: null,
-          returned_at: null,
-          implementation_verification_status: "pending",
-          implementation_verification_comment: null,
-          implementation_verified_by: null,
-          implementation_verified_at: null,
-        }).eq("id", editingReturnedTask.id).eq("entity_type", "ncmr").eq("entity_id", id).eq("task_type", "rework_task").eq("status", "returned").select("*").maybeSingle();
+        const { data: updatedTask, error: updateError } = await supabase.rpc(
+          "ncmr_resubmit_returned_rework_task",
+          {
+            p_task_id: editingReturnedTask.id,
+            p_assigned_to_email: normalizedAssignee,
+            p_due_date: reworkTaskDueDate || null,
+            p_task_instructions: reworkTaskInstructions.trim(),
+            p_assignment_attachments: assignmentAttachments,
+          }
+        );
         if (updateError) throw new Error(updateError.message);
         if (!updatedTask) throw new Error("The returned Rework task could not be revised and resubmitted. Reload the page and try again.");
         task = updatedTask;
         await addAuditLog("rework_task_revised_resubmitted", `Returned Rework task revised and resubmitted by ${userEmail}. Prior assignee: ${priorAssignee || "N/A"}. New assignee: ${normalizedAssignee}.`);
       } else {
-        const { data: insertedTask, error: insertError } = await supabase.from("approval_tasks").insert({
-          entity_type: "ncmr", entity_id: id, task_type: "rework_task", required_function: "Rework Owner",
-          task_title: `Rework task for ${record?.ncmr_number || "NCMR"}`, task_instructions: reworkTaskInstructions.trim(),
-          assigned_to_email: normalizedAssignee, assigned_by_email: userEmail, status: "pending", due_date: reworkTaskDueDate || null,
-          comments: reworkTaskInstructions.trim(), assignment_attachments: assignmentAttachments,
-        }).select("*").single();
+        const { data: insertedTask, error: insertError } = await supabase.rpc(
+          "ncmr_create_governed_task",
+          {
+            p_ncmr_id: id,
+            p_task: {
+              task_type: "rework_task",
+              required_function: "Rework Owner",
+              task_title: `Rework task for ${record?.ncmr_number || "NCMR"}`,
+              task_instructions: reworkTaskInstructions.trim(),
+              assigned_to_email: normalizedAssignee,
+              due_date: reworkTaskDueDate || null,
+              comments: reworkTaskInstructions.trim(),
+              assignment_attachments: assignmentAttachments,
+              required: true,
+            },
+          }
+        );
         if (insertError) throw new Error(insertError.message);
         task = insertedTask;
         await addAuditLog("rework_task_submitted", `Rework task submitted to ${normalizedAssignee}.`);
@@ -4948,23 +4967,13 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
       return;
     }
 
-    const now = new Date().toISOString();
-
-    const { data: verifiedTask, error } = await supabase
-      .from("approval_tasks")
-      .update({
-        implementation_verification_status: "verified",
-        implementation_verification_comment: verificationComment.trim(),
-        implementation_verified_by: currentUser,
-        implementation_verified_at: now,
-      })
-      .eq("id", taskId)
-      .eq("entity_type", "ncmr")
-      .eq("entity_id", id)
-      .in("task_type", ["correction_task", "corrective_action_task"])
-      .eq("status", "completed")
-      .select("id")
-      .maybeSingle();
+    const { data: verifiedTask, error } = await supabase.rpc(
+      "ncmr_verify_completed_task",
+      {
+        p_task_id: taskId,
+        p_verification_comment: verificationComment.trim(),
+      }
+    );
 
     if (error) {
       alert(error.message);
@@ -5012,13 +5021,13 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
     });
     if (outcomeErrors.length > 0) return alert(`Rework verification cannot be recorded until the Rework Owner's final outcome is complete:\n\n${outcomeErrors.join("\n")}`);
 
-    const now = new Date().toISOString();
-    const { data: verifiedTask, error } = await supabase.from("approval_tasks").update({
-      implementation_verification_status: "verified",
-      implementation_verification_comment: verificationComment.trim(),
-      implementation_verified_by: currentUser,
-      implementation_verified_at: now,
-    }).eq("id", taskId).eq("entity_type", "ncmr").eq("entity_id", id).eq("task_type", "rework_task").eq("status", "completed").select("id").maybeSingle();
+    const { data: verifiedTask, error } = await supabase.rpc(
+      "ncmr_verify_completed_task",
+      {
+        p_task_id: taskId,
+        p_verification_comment: verificationComment.trim(),
+      }
+    );
 
     if (error) return alert(error.message);
     if (!verifiedTask?.id) return alert("The Rework task could not be verified. Reload the page and confirm that the task is completed.");
