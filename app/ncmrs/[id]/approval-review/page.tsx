@@ -263,24 +263,6 @@ export default function NcmrMrbApprovalReviewPage() {
 
 
   const closeRejectedMrbApprovalCycle = async () => {
-    const cancellationComment = `Cancelled because ${userEmail || "an MRB reviewer"} rejected the MRB approval package.`;
-
-    const { error: cancelTaskError } = await supabase
-      .from("approval_tasks")
-      .update({
-        status: "cancelled",
-        comments: cancellationComment,
-      })
-      .eq("entity_type", "ncmr")
-      .eq("entity_id", id)
-      .eq("task_type", "mrb_approval")
-      .eq("status", "pending")
-      .neq("id", task?.id || "");
-
-    if (cancelTaskError) {
-      throw new Error(cancelTaskError.message);
-    }
-
     const { error: reviewerConfigurationError } = await supabase
       .from("ncmr_mrb_reviewers")
       .update({
@@ -295,24 +277,28 @@ export default function NcmrMrbApprovalReviewPage() {
 
     await addAuditLog(
       "mrb_approval_cycle_returned",
-      `MRB approval cycle returned to the owner after rejection by ${userEmail}. Remaining pending reviewer tasks were cancelled. Rejection rationale: ${reviewerComment.trim()}.`
+      `MRB approval cycle returned to the owner after rejection by ${userEmail}. Remaining pending reviewer tasks were cancelled by the governed MRB decision RPC. Rejection rationale: ${reviewerComment.trim()}.`
     );
   };
 
   const completeMrbIfReady = async () => {
-    const { data: currentTasks, error } = await supabase
-      .from("approval_tasks")
-      .select("*")
-      .eq("entity_type", "ncmr")
-      .eq("entity_id", id)
-      .eq("task_type", "mrb_approval")
-      .not("status", "in", '("cancelled","obsolete")');
+    const { data: currentTasks, error } = await supabase.rpc(
+      "ncmr_get_mrb_approval_tasks",
+      {
+        p_ncmr_id: id,
+      }
+    );
 
     if (error) throw new Error(error.message);
 
-    const requiredTasks = (currentTasks || []).filter(
-      (item: any) => item.required !== false
-    );
+    const requiredTasks = (currentTasks || [])
+      .filter((item: any) => item.required !== false)
+      .filter(
+        (item: any) =>
+          !["cancelled", "obsolete"].includes(
+            String(item.status || "").toLowerCase()
+          )
+      );
 
     if (requiredTasks.length === 0) return;
 
@@ -390,24 +376,16 @@ export default function NcmrMrbApprovalReviewPage() {
     setSubmitting(true);
 
     try {
-      const now = new Date().toISOString();
-      const signatureMeaning = `MRB Approval: I ${verb} the submitted MRB review package.`;
-
-      const { error: taskError } = await supabase
-        .from("approval_tasks")
-        .update({
-          status: decision,
-          approver_comment: reviewerComment.trim() || null,
-          signature_meaning: signatureMeaning,
-          signed_by: userEmail,
-          signed_at: now,
-        })
-        .eq("id", task.id)
-        .eq("assigned_to_email", normalizedUserEmail)
-        .eq("status", "pending");
+      const { data: decisionResult, error: taskError } = await supabase.rpc(
+        "ncmr_decide_mrb_approval_task",
+        {
+          p_task_id: task.id,
+          p_decision: decision,
+          p_comment: reviewerComment.trim() || null,
+        }
+      );
 
       if (taskError) throw new Error(taskError.message);
-
 
       await addAuditLog(
         `mrb_approval_task_${decision}`,
@@ -438,7 +416,7 @@ export default function NcmrMrbApprovalReviewPage() {
           `${userEmail} rejected the MRB package. Rationale: ${reviewerComment.trim()}. The approval cycle has been returned for revision and resubmission.`,
           "high"
         );
-      } else {
+      } else if (decisionResult?.all_required_approved) {
         await completeMrbIfReady();
       }
 
