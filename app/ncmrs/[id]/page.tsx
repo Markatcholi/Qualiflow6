@@ -6758,6 +6758,88 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
                 All required reviewers approved the submitted MRB package.
                 Implementation is unlocked.
               </p>
+
+              <div
+                style={{
+                  marginTop: "14px",
+                  border: "1px solid #bbf7d0",
+                  borderRadius: "8px",
+                  overflow: "hidden",
+                  background: "white",
+                  color: "#111827",
+                }}
+              >
+                <div
+                  style={{
+                    padding: "10px 12px",
+                    background: "#dcfce7",
+                    borderBottom: "1px solid #bbf7d0",
+                    fontWeight: 800,
+                    color: "#166534",
+                  }}
+                >
+                  Reviewer Approval Status
+                </div>
+
+                <div style={{ overflowX: "auto" }}>
+                  <table
+                    style={{
+                      width: "100%",
+                      borderCollapse: "collapse",
+                      minWidth: "720px",
+                      fontSize: "13px",
+                    }}
+                  >
+                    <thead>
+                      <tr style={{ background: "#f8fafc", textAlign: "left" }}>
+                        <th style={{ padding: "9px 10px", borderBottom: "1px solid #e5e7eb" }}>
+                          Function
+                        </th>
+                        <th style={{ padding: "9px 10px", borderBottom: "1px solid #e5e7eb" }}>
+                          Reviewer
+                        </th>
+                        <th style={{ padding: "9px 10px", borderBottom: "1px solid #e5e7eb" }}>
+                          Status
+                        </th>
+                        <th style={{ padding: "9px 10px", borderBottom: "1px solid #e5e7eb" }}>
+                          Decision Date
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {getActiveMrbApprovalTasks().map((task: any) => (
+                        <tr key={task.id}>
+                          <td style={{ padding: "9px 10px", borderBottom: "1px solid #f1f5f9" }}>
+                            {task.required_function || "MRB Reviewer"}
+                          </td>
+                          <td style={{ padding: "9px 10px", borderBottom: "1px solid #f1f5f9" }}>
+                            {task.assigned_to_email || "N/A"}
+                          </td>
+                          <td style={{ padding: "9px 10px", borderBottom: "1px solid #f1f5f9" }}>
+                            <span
+                              style={{
+                                display: "inline-block",
+                                borderRadius: "999px",
+                                padding: "3px 8px",
+                                fontWeight: 800,
+                                background: "#dcfce7",
+                                color: "#166534",
+                              }}
+                            >
+                              {String(task.status || "approved").trim().toLowerCase() === "approved"
+                                ? "Approved"
+                                : task.status || "Approved"}
+                            </span>
+                          </td>
+                          <td style={{ padding: "9px 10px", borderBottom: "1px solid #f1f5f9" }}>
+                            {task.signed_at ? formatIsoDateTime(task.signed_at) : "—"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
           ) : hasActiveMrbApprovalWorkflow() ? (
             <div
@@ -6774,6 +6856,110 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
                 The MRB package has been submitted. Required reviewers will
                 complete their decisions from My Workspace.
               </p>
+
+              <div
+                style={{
+                  marginTop: "14px",
+                  border: "1px solid #bfdbfe",
+                  borderRadius: "8px",
+                  overflow: "hidden",
+                  background: "white",
+                  color: "#111827",
+                }}
+              >
+                <div
+                  style={{
+                    padding: "10px 12px",
+                    background: "#dbeafe",
+                    borderBottom: "1px solid #bfdbfe",
+                    fontWeight: 800,
+                    color: "#1e3a8a",
+                  }}
+                >
+                  Reviewer Approval Status
+                </div>
+
+                <div style={{ overflowX: "auto" }}>
+                  <table
+                    style={{
+                      width: "100%",
+                      borderCollapse: "collapse",
+                      minWidth: "720px",
+                      fontSize: "13px",
+                    }}
+                  >
+                    <thead>
+                      <tr style={{ background: "#f8fafc", textAlign: "left" }}>
+                        <th style={{ padding: "9px 10px", borderBottom: "1px solid #e5e7eb" }}>
+                          Function
+                        </th>
+                        <th style={{ padding: "9px 10px", borderBottom: "1px solid #e5e7eb" }}>
+                          Reviewer
+                        </th>
+                        <th style={{ padding: "9px 10px", borderBottom: "1px solid #e5e7eb" }}>
+                          Status
+                        </th>
+                        <th style={{ padding: "9px 10px", borderBottom: "1px solid #e5e7eb" }}>
+                          Decision Date
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {getActiveMrbApprovalTasks().map((task: any) => {
+                        const normalizedStatus = String(task.status || "pending")
+                          .trim()
+                          .toLowerCase();
+                        const statusLabel =
+                          normalizedStatus === "approved"
+                            ? "Approved"
+                            : normalizedStatus === "rejected"
+                              ? "Rejected"
+                              : normalizedStatus === "cancelled"
+                                ? "Cancelled"
+                                : "Pending";
+
+                        return (
+                          <tr key={task.id}>
+                            <td style={{ padding: "9px 10px", borderBottom: "1px solid #f1f5f9" }}>
+                              {task.required_function || "MRB Reviewer"}
+                            </td>
+                            <td style={{ padding: "9px 10px", borderBottom: "1px solid #f1f5f9" }}>
+                              {task.assigned_to_email || "N/A"}
+                            </td>
+                            <td style={{ padding: "9px 10px", borderBottom: "1px solid #f1f5f9" }}>
+                              <span
+                                style={{
+                                  display: "inline-block",
+                                  borderRadius: "999px",
+                                  padding: "3px 8px",
+                                  fontWeight: 800,
+                                  background:
+                                    normalizedStatus === "approved"
+                                      ? "#dcfce7"
+                                      : normalizedStatus === "rejected"
+                                        ? "#fee2e2"
+                                        : "#fef3c7",
+                                  color:
+                                    normalizedStatus === "approved"
+                                      ? "#166534"
+                                      : normalizedStatus === "rejected"
+                                        ? "#991b1b"
+                                        : "#92400e",
+                                }}
+                              >
+                                {statusLabel}
+                              </span>
+                            </td>
+                            <td style={{ padding: "9px 10px", borderBottom: "1px solid #f1f5f9" }}>
+                              {task.signed_at ? formatIsoDateTime(task.signed_at) : "—"}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
           ) : (
             <>
