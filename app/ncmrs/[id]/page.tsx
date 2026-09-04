@@ -2625,24 +2625,48 @@ This approval becomes part of the official electronic quality record. MRB approv
       });
   };
 
+  const isMrbSubmissionPending = () => {
+    const persistedStatus = String(record?.review_status || "")
+      .trim()
+      .toLowerCase();
+    const localStatus = String(reviewStatus || "")
+      .trim()
+      .toLowerCase();
+
+    return (
+      persistedStatus === "pending_approval" ||
+      localStatus === "pending_approval"
+    );
+  };
+
   const hasActiveMrbApprovalWorkflow = () => {
-    return getActiveMrbApprovalTasks().some(
-      (task: any) => String(task.status || "").toLowerCase() === "pending"
+    // review_status is the authoritative workflow state immediately after
+    // submission. Task-state detection remains as a secondary safeguard.
+    // This prevents the submission controls from remaining visible while the
+    // newly-created task list is still refreshing.
+    return (
+      isMrbSubmissionPending() ||
+      getActiveMrbApprovalTasks().some(
+        (task: any) => String(task.status || "").toLowerCase() === "pending"
+      )
     );
   };
 
   const hasPendingMrbApprovalTasks = () => {
-    return getActiveMrbApprovalTasks().some(
-      (task: any) => String(task.status || "").toLowerCase() === "pending"
+    return (
+      isMrbSubmissionPending() ||
+      getActiveMrbApprovalTasks().some(
+        (task: any) => String(task.status || "").toLowerCase() === "pending"
+      )
     );
   };
 
   const isMrbApprovalConfigurationLocked = () => {
     if (record?.is_locked || record?.mrb_approved_by) return true;
 
-    // Only a currently pending MRB package locks configuration.
-    // Rejected, cancelled, obsolete, and historical tasks remain part of the
-    // audit trail but must not prevent owner revision and resubmission.
+    // Submission itself locks the reviewer configuration immediately.
+    // Rejected/reset/returned workflows explicitly move review_status away
+    // from pending_approval, allowing the owner to revise and resubmit.
     return hasPendingMrbApprovalTasks();
   };
 
