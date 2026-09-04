@@ -2604,24 +2604,73 @@ This approval becomes part of the official electronic quality record. MRB approv
       : null;
   };
 
+  const getCurrentMrbApprovalCycleId = () => {
+    const persistedCycleId = String(
+      record?.current_mrb_approval_cycle_id || ""
+    ).trim();
+
+    if (persistedCycleId) return persistedCycleId;
+
+    const cycleCandidates = approvalTasks
+      .filter((task: any) =>
+        ["mrb_approval", "ncmr_mrb_approval", "ncmr_mrb_review"].includes(
+          String(task?.task_type || "")
+        )
+      )
+      .filter(
+        (task: any) =>
+          String(task?.approval_cycle_state || "active").toLowerCase() !==
+          "superseded"
+      )
+      .filter((task: any) => task?.approval_cycle_id)
+      .sort((a: any, b: any) =>
+        String(b?.created_at || "").localeCompare(String(a?.created_at || ""))
+      );
+
+    return String(cycleCandidates[0]?.approval_cycle_id || "").trim();
+  };
+
   const getActiveMrbApprovalTasks = () => {
+    const currentCycleId = getCurrentMrbApprovalCycleId();
+
+    if (currentCycleId) {
+      return approvalTasks
+        .filter((task: any) =>
+          ["mrb_approval", "ncmr_mrb_approval", "ncmr_mrb_review"].includes(
+            String(task?.task_type || "")
+          )
+        )
+        .filter(
+          (task: any) =>
+            String(task?.approval_cycle_id || "") === currentCycleId
+        )
+        .filter(
+          (task: any) =>
+            String(task?.approval_cycle_state || "active").toLowerCase() !==
+            "superseded"
+        );
+    }
+
     const latestBoundaryAt = getLatestMrbApprovalBoundaryAt();
 
     return approvalTasks
-      .filter((approvalTask: any) => approvalTask.task_type === "mrb_approval")
-      .filter(
-        (approvalTask: any) =>
-          approvalTask.status !== "cancelled" &&
-          approvalTask.status !== "obsolete"
+      .filter((task: any) =>
+        ["mrb_approval", "ncmr_mrb_approval", "ncmr_mrb_review"].includes(
+          String(task?.task_type || "")
+        )
       )
-      .filter((approvalTask: any) => {
+      .filter(
+        (task: any) =>
+          task.status !== "cancelled" &&
+          task.status !== "obsolete" &&
+          String(task?.approval_cycle_state || "active").toLowerCase() !==
+            "superseded"
+      )
+      .filter((task: any) => {
         if (!latestBoundaryAt) return true;
-        if (!approvalTask.created_at) return false;
-
-        return (
-          new Date(approvalTask.created_at).getTime() >
-          new Date(latestBoundaryAt).getTime()
-        );
+        if (!task.created_at) return false;
+        return new Date(task.created_at).getTime() >
+          new Date(latestBoundaryAt).getTime();
       });
   };
 
@@ -3026,6 +3075,16 @@ This approval task was created by the MRB approval task issue recovery action. E
     }
 
     if (hasRejectedMrbApprovalTask()) {
+      return false;
+    }
+
+    const pendingRequiredTaskExists = activeApprovalTasks.some(
+      (task: any) =>
+        task?.required !== false &&
+        String(task?.status || "").toLowerCase() === "pending"
+    );
+
+    if (pendingRequiredTaskExists) {
       return false;
     }
 
@@ -4342,12 +4401,10 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
     setReturnRevisionSubmitting(true);
     try {
       const { error: taskError } = await supabase.rpc(
-        "ncmr_cancel_pending_tasks_governed",
+        "ncmr_supersede_current_mrb_approval_cycle",
         {
           p_ncmr_id: id,
           p_reason: `Approved MRB returned for revision. Destination: ${returnRevisionDestination}. Justification: ${justification}`,
-          p_task_types: ["mrb_approval", "ncmr_mrb_approval", "ncmr_mrb_review"],
-          p_exclude_task_id: null,
         }
       );
       if (taskError) throw new Error(taskError.message);
@@ -4357,6 +4414,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
         mrb_approved_at: null,
         mrb_signature_email_entered: null,
         mrb_signature_meaning: null,
+        current_mrb_approval_cycle_id: null,
         review_status: "draft",
         is_locked: false,
       }).eq("id", id);
