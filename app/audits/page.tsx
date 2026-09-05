@@ -82,16 +82,16 @@ export default function AuditsPage() {
     action: string,
     details: string
   ) => {
-    const { data: userData } = await supabase.auth.getUser();
-    const email = userData?.user?.email || "unknown";
-
-    await supabase.from("audit_logs").insert({
-      entity_type: entityType,
-      entity_id: entityId,
-      action,
-      details,
-      user_email: email,
+    const { error } = await supabase.rpc("qualisphere_add_audit_log", {
+      p_entity_type: entityType,
+      p_entity_id: entityId,
+      p_action: action,
+      p_details: details,
     });
+
+    if (error) {
+      console.warn("Audit Management audit log failed:", error.message);
+    }
   };
 
   const createAudit = async () => {
