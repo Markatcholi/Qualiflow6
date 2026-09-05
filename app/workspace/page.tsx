@@ -263,12 +263,11 @@ export default function HomePage() {
         if (error) throw new Error(error.message);
 
         await Promise.all([
-          supabase.from("audit_logs").insert({
-            entity_type: "capa",
-            entity_id: reassignTask.id,
-            action: "workflow_owner_reassigned",
-            details: `CAPA ownership reassigned from ${currentOwner} to ${newAssignee}.`,
-            user_email: email,
+          supabase.rpc("qualisphere_add_audit_log", {
+            p_entity_type: "capa",
+            p_entity_id: reassignTask.id,
+            p_action: "workflow_owner_reassigned",
+            p_details: `CAPA ownership reassigned from ${currentOwner} to ${newAssignee}.`,
           }),
           createWorkspaceNotification(
             newAssignee,
@@ -314,12 +313,11 @@ export default function HomePage() {
       }
 
       await Promise.all([
-        supabase.from("audit_logs").insert({
-          entity_type: reassignTask.entity_type,
-          entity_id: reassignTask.entity_id,
-          action: "task_reassigned",
-          details: `Task reassigned from ${currentAssignee} to ${newAssignee}.`,
-          user_email: email,
+        supabase.rpc("qualisphere_add_audit_log", {
+          p_entity_type: reassignTask.entity_type,
+          p_entity_id: reassignTask.entity_id,
+          p_action: "task_reassigned",
+          p_details: `Task reassigned from ${currentAssignee} to ${newAssignee}.`,
         }),
         createWorkspaceNotification(
           newAssignee,
