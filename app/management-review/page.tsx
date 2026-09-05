@@ -1213,13 +1213,16 @@ export default function ManagementReviewPage() {
         })
         .eq("id", approver.management_review_id);
 
-      await supabase.from("audit_logs").insert({
-        entity_type: "management_review",
-        entity_id: approver.management_review_id,
-        action: "management_review_fully_approved_locked",
-        details: "All required approvers signed. Management review record locked.",
-        user_email: userEmail,
+      const { error: auditError } = await supabase.rpc("qualisphere_add_audit_log", {
+        p_entity_type: "management_review",
+        p_entity_id: approver.management_review_id,
+        p_action: "management_review_fully_approved_locked",
+        p_details: "All required approvers signed. Management review record locked.",
       });
+
+      if (auditError) {
+        console.warn("Management Review audit log failed:", auditError.message);
+      }
 
       alert("Approval saved. All approvers have signed, and the management review record is now locked.");
     } else {
@@ -1234,13 +1237,16 @@ export default function ManagementReviewPage() {
       alert("Approval saved.");
     }
 
-    await supabase.from("audit_logs").insert({
-      entity_type: "management_review_approver",
-      entity_id: approver.id,
-      action: "management_review_approver_signed",
-      details: `Approver ${approver.approver_name} signed management review approval.`,
-      user_email: userEmail,
+    const { error: approverAuditError } = await supabase.rpc("qualisphere_add_audit_log", {
+      p_entity_type: "management_review_approver",
+      p_entity_id: approver.id,
+      p_action: "management_review_approver_signed",
+      p_details: `Approver ${approver.approver_name} signed management review approval.`,
     });
+
+    if (approverAuditError) {
+      console.warn("Management Review approver audit log failed:", approverAuditError.message);
+    }
 
     fetchManagementReviews();
   };
@@ -1304,13 +1310,16 @@ export default function ManagementReviewPage() {
       return;
     }
 
-    await supabase.from("audit_logs").insert({
-      entity_type: "management_review",
-      entity_id: selectedReviewId,
-      action: "management_review_action_created",
-      details: `Management review action created: ${actionTitle}`,
-      user_email: userEmail,
+    const { error: actionCreatedAuditError } = await supabase.rpc("qualisphere_add_audit_log", {
+      p_entity_type: "management_review",
+      p_entity_id: selectedReviewId,
+      p_action: "management_review_action_created",
+      p_details: `Management review action created: ${actionTitle}`,
     });
+
+    if (actionCreatedAuditError) {
+      console.warn("Management Review action audit log failed:", actionCreatedAuditError.message);
+    }
 
     alert("Management review action created.");
     setActionTitle("");
@@ -1347,13 +1356,16 @@ export default function ManagementReviewPage() {
       return;
     }
 
-    await supabase.from("audit_logs").insert({
-      entity_type: "management_review_action",
-      entity_id: action.id,
-      action: "management_review_action_status_updated",
-      details: `Action status updated to ${status}.`,
-      user_email: userEmail,
+    const { error: actionStatusAuditError } = await supabase.rpc("qualisphere_add_audit_log", {
+      p_entity_type: "management_review_action",
+      p_entity_id: action.id,
+      p_action: "management_review_action_status_updated",
+      p_details: `Action status updated to ${status}.`,
     });
+
+    if (actionStatusAuditError) {
+      console.warn("Management Review action status audit log failed:", actionStatusAuditError.message);
+    }
 
     alert("Action updated.");
     fetchManagementReviewActions();
@@ -1727,13 +1739,16 @@ export default function ManagementReviewPage() {
       return;
     }
 
-    await supabase.from("audit_logs").insert({
-      entity_type: "management_review",
-      entity_id: reviewNumber,
-      action: "management_review_created",
-      details: `Management review record created: ${reviewTitle}`,
-      user_email: userEmail,
+    const { error: reviewCreatedAuditError } = await supabase.rpc("qualisphere_add_audit_log", {
+      p_entity_type: "management_review",
+      p_entity_id: reviewData.id,
+      p_action: "management_review_created",
+      p_details: `Management review record created: ${reviewTitle}`,
     });
+
+    if (reviewCreatedAuditError) {
+      console.warn("Management Review creation audit log failed:", reviewCreatedAuditError.message);
+    }
 
     alert(`Auto-generated Management Review report created: ${reviewNumber}`);
     setSelectedReviewId(reviewData?.id || "");
