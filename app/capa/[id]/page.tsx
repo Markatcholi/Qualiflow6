@@ -87,6 +87,14 @@ type CapaApprovalTask = {
   created_at: string | null;
 };
 
+type CapaAuditEntry = {
+  id: string;
+  action: string | null;
+  details: string | null;
+  user_email: string | null;
+  created_at: string | null;
+};
+
 export default function EnterpriseCapaWorkflowPage() {
   const params = useParams<{ id: string }>();
   const id = params.id;
@@ -96,6 +104,8 @@ export default function EnterpriseCapaWorkflowPage() {
   const [tasksLoaded, setTasksLoaded] = useState(false);
   const [gateApprovers, setGateApprovers] = useState<CapaGateApprover[]>([]);
   const [approvalTasks, setApprovalTasks] = useState<CapaApprovalTask[]>([]);
+  const [auditHistory, setAuditHistory] = useState<CapaAuditEntry[]>([]);
+  const [auditHistoryLoading, setAuditHistoryLoading] = useState(false);
   const [approvalMatrixTemplates, setApprovalMatrixTemplates] = useState<any[]>(
     [],
   );
@@ -584,6 +594,29 @@ export default function EnterpriseCapaWorkflowPage() {
     setApprovalTasks((data as CapaApprovalTask[]) || []);
   };
 
+  const fetchAuditHistory = async () => {
+    if (!id) return;
+
+    setAuditHistoryLoading(true);
+
+    const { data, error } = await supabase
+      .from("audit_logs")
+      .select("id,action,details,user_email,created_at")
+      .eq("entity_type", "capa")
+      .eq("entity_id", id)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.warn("Unable to load CAPA activity history:", error.message);
+      setAuditHistory([]);
+      setAuditHistoryLoading(false);
+      return;
+    }
+
+    setAuditHistory((data as CapaAuditEntry[]) || []);
+    setAuditHistoryLoading(false);
+  };
+
   useEffect(() => {
     try {
       const savedProgress = window.localStorage.getItem(
@@ -614,6 +647,7 @@ export default function EnterpriseCapaWorkflowPage() {
       fetchApprovalMatrixTemplates();
       fetchGateApprovers();
       fetchApprovalTasks();
+      fetchAuditHistory();
     }
   }, [id]);
 
@@ -656,13 +690,19 @@ export default function EnterpriseCapaWorkflowPage() {
   ]);
 
   const addAuditLog = async (action: string, details: string) => {
-    await supabase.from("audit_logs").insert({
-      entity_type: "capa",
-      entity_id: id,
-      action,
-      details,
-      user_email: userEmail || "unknown",
+    const { error } = await supabase.rpc("qualisphere_add_audit_log", {
+      p_entity_type: "capa",
+      p_entity_id: id,
+      p_action: action,
+      p_details: details,
     });
+
+    if (error) {
+      console.warn("CAPA audit log failed:", error.message);
+      return;
+    }
+
+    await fetchAuditHistory();
   };
 
   const approvalGateLabels: Record<ApprovalGateKey, string> = {
@@ -5954,6 +5994,63 @@ This approval becomes part of the official electronic quality record.`,
               </button>
             </WorkflowCard>
           ) : null}
+
+          <section style={workflowCardStyle}>
+            <h2 style={{ marginTop: 0 }}>Activity History</h2>
+            <p style={{ marginTop: 0, color: "#64748b" }}>
+              Read-only chronological history of governed CAPA workflow activity.
+            </p>
+
+            {auditHistoryLoading ? (
+              <div style={evidenceBoxStyle}>Loading activity history...</div>
+            ) : auditHistory.length === 0 ? (
+              <div style={evidenceBoxStyle}>
+                No CAPA activity history has been recorded yet.
+              </div>
+            ) : (
+              <div style={{ display: "grid", gap: 10 }}>
+                {auditHistory.map((entry) => (
+                  <div key={entry.id} style={evidenceBoxStyle}>
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: 16,
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <strong>
+                        {String(entry.action || "CAPA activity")
+                          .replace(/_/g, " ")
+                          .replace(/\b\w/g, (character) =>
+                            character.toUpperCase(),
+                          )}
+                      </strong>
+                      <span style={{ color: "#64748b", fontSize: 13 }}>
+                        {entry.created_at
+                          ? new Date(entry.created_at).toLocaleString()
+                          : "Date not available"}
+                      </span>
+                    </div>
+
+                    <div style={{ marginTop: 6 }}>
+                      {entry.details || "No additional details recorded."}
+                    </div>
+
+                    <div
+                      style={{
+                        marginTop: 8,
+                        color: "#64748b",
+                        fontSize: 13,
+                      }}
+                    >
+                      Performed by: {entry.user_email || "System"}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
 
           <section style={workflowCardStyle}>
             <h2 style={{ marginTop: 0 }}>
