@@ -131,21 +131,19 @@ export default function AuditDetailPage() {
 
     if (findingUpdateError) return alert(findingUpdateError.message);
 
-    await supabase.from("audit_logs").insert([
-      {
-        entity_type: "audit_finding",
-        entity_id: finding.id,
-        action: "scar_created_from_audit_finding",
-        details: `SCAR created from audit finding: ${scarTitle}.`,
-        user_email: userEmail,
-      },
-      {
-        entity_type: "scar",
-        entity_id: scarData.id,
-        action: "scar_created_from_audit_finding",
-        details: `SCAR created from audit finding ${finding.finding_title || finding.id}.`,
-        user_email: userEmail,
-      },
+    await Promise.all([
+      supabase.rpc("qualisphere_add_audit_log", {
+        p_entity_type: "audit_finding",
+        p_entity_id: finding.id,
+        p_action: "scar_created_from_audit_finding",
+        p_details: `SCAR created from audit finding: ${scarTitle}.`,
+      }),
+      supabase.rpc("qualisphere_add_audit_log", {
+        p_entity_type: "scar",
+        p_entity_id: scarData.id,
+        p_action: "scar_created_from_audit_finding",
+        p_details: `SCAR created from audit finding ${finding.finding_title || finding.id}.`,
+      }),
     ]);
 
     alert("Linked SCAR created.");
@@ -208,21 +206,19 @@ export default function AuditDetailPage() {
 
     if (findingUpdateError) return alert(findingUpdateError.message);
 
-    await supabase.from("audit_logs").insert([
-      {
-        entity_type: "audit_finding",
-        entity_id: finding.id,
-        action: "capa_created_from_audit_finding",
-        details: `CAPA created from audit finding: ${capaTitle}.`,
-        user_email: userEmail,
-      },
-      {
-        entity_type: "capa",
-        entity_id: capaData.id,
-        action: "capa_created_from_audit_finding",
-        details: `CAPA created from audit finding ${finding.finding_title || finding.id}.`,
-        user_email: userEmail,
-      },
+    await Promise.all([
+      supabase.rpc("qualisphere_add_audit_log", {
+        p_entity_type: "audit_finding",
+        p_entity_id: finding.id,
+        p_action: "capa_created_from_audit_finding",
+        p_details: `CAPA created from audit finding: ${capaTitle}.`,
+      }),
+      supabase.rpc("qualisphere_add_audit_log", {
+        p_entity_type: "capa",
+        p_entity_id: capaData.id,
+        p_action: "capa_created_from_audit_finding",
+        p_details: `CAPA created from audit finding ${finding.finding_title || finding.id}.`,
+      }),
     ]);
 
     alert("Linked CAPA created.");
@@ -253,12 +249,11 @@ export default function AuditDetailPage() {
 
     if (error) return alert(error.message);
 
-    await supabase.from("audit_logs").insert({
-      entity_type: "audit_finding",
-      entity_id: finding.id,
-      action: "audit_finding_escalation_justification_saved",
-      details: `Escalation justification saved: ${justification}`,
-      user_email: userEmail,
+    await supabase.rpc("qualisphere_add_audit_log", {
+      p_entity_type: "audit_finding",
+      p_entity_id: finding.id,
+      p_action: "audit_finding_escalation_justification_saved",
+      p_details: `Escalation justification saved: ${justification}`,
     });
 
     alert("Escalation justification saved.");
