@@ -1171,72 +1171,17 @@ export default function MasterDataPage() {
                 <tr key={user.user_email}>
                   <td style={{ padding: "10px", borderBottom: "1px solid #e5e7eb" }}>{user.user_email}</td>
                   <td style={{ padding: "10px", borderBottom: "1px solid #e5e7eb" }}>
-                    {isRoleAdministrator ? (
-                      <input
-                        value={user.job_title}
-                        placeholder="Job title"
-                        onChange={(event) =>
-                          setUserDirectory((current) =>
-                            current.map((item) =>
-                              item.user_email === user.user_email
-                                ? { ...item, job_title: event.target.value }
-                                : item
-                            )
-                          )
-                        }
-                        onBlur={(event) =>
-                          updateUserProfile(user.user_email, {
-                            job_title: event.target.value.trim() || null,
-                          })
-                        }
-                        style={{ ...inputStyle, marginBottom: 0, width: "190px" }}
-                      />
-                    ) : (
-                      user.job_title || "Not specified"
-                    )}
+                    {user.job_title || "Not specified"}
                   </td>
                   <td style={{ padding: "10px", borderBottom: "1px solid #e5e7eb" }}>
-                    {isRoleAdministrator ? (
-                      <input
-                        value={user.department}
-                        placeholder="Department"
-                        onChange={(event) =>
-                          setUserDirectory((current) =>
-                            current.map((item) =>
-                              item.user_email === user.user_email
-                                ? { ...item, department: event.target.value }
-                                : item
-                            )
-                          )
-                        }
-                        onBlur={(event) =>
-                          updateUserProfile(user.user_email, {
-                            department: event.target.value.trim() || null,
-                          })
-                        }
-                        style={{ ...inputStyle, marginBottom: 0, width: "160px" }}
-                      />
-                    ) : (
-                      user.department || "Not specified"
-                    )}
+                    {user.department || "Not specified"}
                   </td>
                   <td style={{ padding: "10px", borderBottom: "1px solid #e5e7eb" }}>
-                    {isRoleAdministrator ? (
-                      <select
-                        value={user.account_status}
-                        onChange={(event) =>
-                          updateUserProfile(user.user_email, {
-                            account_status: event.target.value,
-                          })
-                        }
-                        style={{ ...selectStyle, marginBottom: 0, minWidth: "120px" }}
-                      >
-                        <option value="active">Active</option>
-                        <option value="inactive">Inactive</option>
-                      </select>
-                    ) : (
-                      user.account_status
-                    )}
+                    {user.account_status === "active"
+                      ? "Active"
+                      : user.account_status === "inactive"
+                        ? "Inactive"
+                        : user.account_status || "Not specified"}
                   </td>
                   <td style={{ padding: "10px", borderBottom: "1px solid #e5e7eb" }}>
                     {assignmentsForUser(user.user_email).length === 0 ? (
