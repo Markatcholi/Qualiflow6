@@ -2238,6 +2238,31 @@ export default function NcmrDetailPage() {
       return;
     }
 
+    const submittingOnBehalfOfOwner = !isCurrentNcmrOwner();
+    let administrativeSubmissionJustification = "";
+
+    if (submittingOnBehalfOfOwner) {
+      if (!isElevatedNcmrAuthority()) {
+        alert(
+          "Only the current NCMR owner, NCMR Administrator, QMS Administrator, or VP Quality can submit this MRB package for approval."
+        );
+        return;
+      }
+
+      const enteredJustification = window.prompt(
+        `Administrative MRB Submission\n\nYou are submitting this MRB package on behalf of the NCMR owner (${record?.owner || record?.owner_email || "unassigned"}).\n\nEnter the governance justification for submitting on behalf of the owner:`
+      );
+
+      if (!enteredJustification || !enteredJustification.trim()) {
+        alert(
+          "A governance justification is required when an Administrator or VP Quality submits an MRB package on behalf of the NCMR owner."
+        );
+        return;
+      }
+
+      administrativeSubmissionJustification = enteredJustification.trim();
+    }
+
     setSubmittingMrbApproval(true);
 
     const { data: currentMrbTasks, error: pendingTaskCheckError } =
@@ -2245,9 +2270,22 @@ export default function NcmrDetailPage() {
         p_ncmr_id: id,
       });
 
-    const existingPendingTasks = (currentMrbTasks || []).filter(
-      (task: any) => String(task?.status || "").toLowerCase() === "pending"
-    );
+    // Duplicate-submission protection must only consider the CURRENT ACTIVE
+    // approval cycle. Legacy NULL-cycle tasks and superseded cycles are audit
+    // history and must never block a new MRB routing.
+    const currentCycleId = String(
+      record?.current_mrb_approval_cycle_id || ""
+    ).trim();
+
+    const existingPendingTasks = currentCycleId
+      ? (currentMrbTasks || []).filter(
+          (task: any) =>
+            String(task?.status || "").toLowerCase() === "pending" &&
+            String(task?.approval_cycle_id || "") === currentCycleId &&
+            String(task?.approval_cycle_state || "active").toLowerCase() ===
+              "active"
+        )
+      : [];
 
     if (pendingTaskCheckError) {
       alert(
@@ -2490,6 +2528,10 @@ This approval becomes part of the official electronic quality record. MRB approv
       setRecord((currentRecord: any) => ({
         ...(currentRecord || {}),
         review_status: "pending_approval",
+        current_mrb_approval_cycle_id:
+          insertedTasks?.[0]?.approval_cycle_id ||
+          currentRecord?.current_mrb_approval_cycle_id ||
+          null,
       }));
       setReviewStatus("pending_approval");
 
@@ -2546,8 +2588,12 @@ This approval becomes part of the official electronic quality record. MRB approv
     }
 
     await addAuditLog(
-      "mrb_submitted_for_approval",
-      `MRB submitted for approval to ${taskRows.length} required reviewer(s).`
+      submittingOnBehalfOfOwner
+        ? "mrb_submitted_for_approval_on_behalf"
+        : "mrb_submitted_for_approval",
+      submittingOnBehalfOfOwner
+        ? `MRB submitted for approval by ${userEmail} on behalf of NCMR owner ${record?.owner || record?.owner_email || "unassigned"} to ${taskRows.length} required reviewer(s). Governance justification: ${administrativeSubmissionJustification}`
+        : `MRB submitted for approval by NCMR owner ${userEmail} to ${taskRows.length} required reviewer(s).`
     );
 
     alert(
@@ -7260,33 +7306,69 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
               )}
 
               <div style={{ marginTop: "14px" }}>
-                <button
-                  type="button"
-                  onClick={submitForMrbApproval}
-                  disabled={
-                    mrbApprovers.length === 0 || submittingMrbApproval
-                  }
-                  style={{
-                    background: "#2563eb",
-                    color: "white",
-                    border: "none",
-                    borderRadius: "8px",
-                    padding: "10px 14px",
-                    fontWeight: 800,
-                    cursor:
-                      mrbApprovers.length === 0 || submittingMrbApproval
-                        ? "not-allowed"
-                        : "pointer",
-                    opacity:
-                      mrbApprovers.length === 0 || submittingMrbApproval
-                        ? 0.55
-                        : 1,
-                  }}
-                >
-                  {submittingMrbApproval
-                    ? "Submitting..."
-                    : "Submit for MRB Approval"}
-                </button>
+                {isCurrentNcmrOwner() || isElevatedNcmrAuthority() ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={submitForMrbApproval}
+                      disabled={
+                        mrbApprovers.length === 0 || submittingMrbApproval
+                      }
+                      style={{
+                        background: "#2563eb",
+                        color: "white",
+                        border: "none",
+                        borderRadius: "8px",
+                        padding: "10px 14px",
+                        fontWeight: 800,
+                        cursor:
+                          mrbApprovers.length === 0 || submittingMrbApproval
+                            ? "not-allowed"
+                            : "pointer",
+                        opacity:
+                          mrbApprovers.length === 0 || submittingMrbApproval
+                            ? 0.55
+                            : 1,
+                      }}
+                    >
+                      {submittingMrbApproval
+                        ? "Submitting..."
+                        : isCurrentNcmrOwner()
+                          ? "Submit for MRB Approval"
+                          : "Submit on Behalf of NCMR Owner"}
+                    </button>
+
+                    {!isCurrentNcmrOwner() && isElevatedNcmrAuthority() ? (
+                      <div
+                        style={{
+                          marginTop: "8px",
+                          fontSize: "12px",
+                          color: "#6b7280",
+                          maxWidth: "760px",
+                        }}
+                      >
+                        Administrative submission is permitted for governance
+                        continuity. A justification is required and the action
+                        is recorded in the NCMR audit trail; ownership of the
+                        NCMR does not change.
+                      </div>
+                    ) : null}
+                  </>
+                ) : (
+                  <div
+                    style={{
+                      padding: "10px 12px",
+                      border: "1px solid #d1d5db",
+                      borderRadius: "8px",
+                      background: "#f9fafb",
+                      color: "#4b5563",
+                      fontSize: "13px",
+                    }}
+                  >
+                    MRB routing may be submitted by the current NCMR owner or
+                    an authorized NCMR/QMS governance administrator.
+                  </div>
+                )}
               </div>
             </>
           )}
