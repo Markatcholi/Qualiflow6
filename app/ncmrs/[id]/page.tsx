@@ -573,13 +573,16 @@ export default function NcmrDetailPage() {
   };
 
   const addAuditLog = async (action: string, details: string) => {
-    await supabase.from("audit_logs").insert({
-      entity_type: "ncmr",
-      entity_id: id,
-      action,
-      details,
-      user_email: userEmail || "unknown",
+    const { error } = await supabase.rpc("qualisphere_add_audit_log", {
+      p_entity_type: "ncmr",
+      p_entity_id: id,
+      p_action: action,
+      p_details: details,
     });
+
+    if (error) {
+      console.warn("Unable to create governed NCMR audit log:", error.message);
+    }
 
     fetchAuditTimeline();
   };
@@ -3454,13 +3457,16 @@ This approval task was created by the MRB approval task issue recovery action. E
       `SCAR created and linked from NCMR. SCAR title: ${scarTitle}.`
     );
 
-    await supabase.from("audit_logs").insert({
-      entity_type: "scar",
-      entity_id: scarData.id,
-      action: "scar_created_from_ncmr",
-      details: `SCAR created from NCMR ${record?.ncmr_number || id}.`,
-      user_email: userEmail || "unknown",
+    const { error: scarAuditError } = await supabase.rpc("qualisphere_add_audit_log", {
+      p_entity_type: "scar",
+      p_entity_id: scarData.id,
+      p_action: "scar_created_from_ncmr",
+      p_details: `SCAR created from NCMR ${record?.ncmr_number || id}.`,
     });
+
+    if (scarAuditError) {
+      console.warn("Unable to create governed SCAR audit log:", scarAuditError.message);
+    }
 
     alert("Linked SCAR created.");
     fetchRecord();
@@ -3778,15 +3784,18 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
         : `CAPA created and linked from NCMR. CAPA title: ${capaTitle}.`
     );
 
-    await supabase.from("audit_logs").insert({
-      entity_type: "capa",
-      entity_id: capaData.id,
-      action: "capa_created_from_ncmr",
-      details: governanceOverrideJustification
+    const { error: capaAuditError } = await supabase.rpc("qualisphere_add_audit_log", {
+      p_entity_type: "capa",
+      p_entity_id: capaData.id,
+      p_action: "capa_created_from_ncmr",
+      p_details: governanceOverrideJustification
         ? `CAPA created from NCMR ${record?.ncmr_number || id} with governance override. Override justification: ${governanceOverrideJustification}`
         : `CAPA created from NCMR ${record?.ncmr_number || id}.`,
-      user_email: userEmail || "unknown",
     });
+
+    if (capaAuditError) {
+      console.warn("Unable to create governed CAPA audit log:", capaAuditError.message);
+    }
 
     alert("Linked CAPA created.");
     fetchRecord();
