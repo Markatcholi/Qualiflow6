@@ -4666,6 +4666,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
           assigned_to_email: normalizedAssignee,
           due_date: normalizedDueDate,
           comments: normalizedInstructions,
+          assignment_attachments: [],
           required: true,
         },
       }
