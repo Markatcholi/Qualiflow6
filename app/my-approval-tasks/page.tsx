@@ -286,13 +286,19 @@ export default function MyApprovalTasksPage() {
       return;
     }
 
-    await supabase.from("audit_logs").insert({
-      entity_type: "capa",
-      entity_id: reassignTask.id,
-      action: "workflow_owner_reassigned",
-      details: `CAPA ownership reassigned from ${currentOwner} to ${newOwner}.`,
-      user_email: userEmail,
-    });
+    const { error: reassignmentAuditError } = await supabase.rpc(
+      "qualisphere_add_audit_log",
+      {
+        p_entity_type: "capa",
+        p_entity_id: reassignTask.id,
+        p_action: "workflow_owner_reassigned",
+        p_details: `CAPA ownership reassigned from ${currentOwner} to ${newOwner}.`,
+      }
+    );
+
+    if (reassignmentAuditError) {
+      console.warn("CAPA reassignment audit log failed:", reassignmentAuditError.message);
+    }
 
     alert("CAPA ownership reassigned.");
     closeReassignDialog();
@@ -353,13 +359,19 @@ export default function MyApprovalTasksPage() {
       return;
     }
 
-    await supabase.from("audit_logs").insert({
-      entity_type: task.entity_type,
-      entity_id: task.entity_id,
-      action: `approval_task_${status}`,
-      details: `${task.required_function} approval task ${status} by ${userEmail}. Approver comment: ${approverComment || "N/A"}`,
-      user_email: userEmail,
-    });
+    const { error: approvalAuditError } = await supabase.rpc(
+      "qualisphere_add_audit_log",
+      {
+        p_entity_type: task.entity_type,
+        p_entity_id: task.entity_id,
+        p_action: `approval_task_${status}`,
+        p_details: `${task.required_function} approval task ${status} by ${userEmail}. Approver comment: ${approverComment || "N/A"}`,
+      }
+    );
+
+    if (approvalAuditError) {
+      console.warn("Approval task audit log failed:", approvalAuditError.message);
+    }
 
     alert(`Task ${status}.`);
     fetchTasks();
@@ -411,13 +423,19 @@ export default function MyApprovalTasksPage() {
       return;
     }
 
-    await supabase.from("audit_logs").insert({
-      entity_type: task.entity_type,
-      entity_id: task.entity_id,
-      action: `${task.task_type}_completed`,
-      details: `${task.task_type} completed by ${userEmail}. Completion comment: ${completionComment}`,
-      user_email: userEmail,
-    });
+    const { error: completionAuditError } = await supabase.rpc(
+      "qualisphere_add_audit_log",
+      {
+        p_entity_type: task.entity_type,
+        p_entity_id: task.entity_id,
+        p_action: `${task.task_type}_completed`,
+        p_details: `${task.task_type} completed by ${userEmail}. Completion comment: ${completionComment}`,
+      }
+    );
+
+    if (completionAuditError) {
+      console.warn("Task completion audit log failed:", completionAuditError.message);
+    }
 
     alert("Task completed.");
     fetchTasks();
