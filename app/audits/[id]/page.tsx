@@ -260,9 +260,98 @@ export default function AuditDetailPage() {
     fetchData();
   };
 
+  const closeAudit = async () => {
+    if (isLocked) return alert("This audit is already closed and locked.");
+
+    const openFindings = findings.filter(
+      (finding: any) => finding.finding_status !== "closed"
+    );
+
+    if (openFindings.length > 0) {
+      alert("Cannot close audit while findings remain open.");
+      return;
+    }
+
+    const { data: userData } = await supabase.auth.getUser();
+    const email = userData?.user?.email || "";
+
+    if (!email) {
+      alert("Unable to verify the logged-in user.");
+      return;
+    }
+
+    const enteredEmail = window.prompt(
+      "Electronic Signature Required\\n\\nRe-enter your email to close this audit:"
+    );
+
+    if (!enteredEmail) {
+      alert("Audit closure cancelled. Email re-entry is required.");
+      return;
+    }
+
+    if (enteredEmail.trim().toLowerCase() !== email.trim().toLowerCase()) {
+      alert("Electronic signature email does not match logged-in user.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Electronic Signature:\\n\\nI confirm this audit has been reviewed, findings have been addressed or appropriately documented, and the audit is approved for closure."
+    );
+
+    if (!confirmed) return;
+
+    const now = new Date().toISOString();
+    const meaning =
+      "I confirm this audit has been reviewed, findings have been addressed or appropriately documented, and the audit is approved for closure.";
+
+    const { error } = await supabase
+      .from("audits")
+      .update({
+        status: "closed",
+        closed_at: now,
+        closed_by: email,
+        signed_by: email,
+        signed_at: now,
+        signature_email_entered: enteredEmail,
+        signature_meaning: meaning,
+        is_locked: true,
+        locked_at: now,
+        locked_by: email,
+      })
+      .eq("id", id);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    const { error: auditLogError } = await supabase.rpc(
+      "qualisphere_add_audit_log",
+      {
+        p_entity_type: "audit",
+        p_entity_id: id,
+        p_action: "audit_closed_signature",
+        p_details: `Audit closed with e-signature. Meaning: ${meaning}`,
+      }
+    );
+
+    if (auditLogError) {
+      console.warn("Audit closure audit log failed:", auditLogError.message);
+    }
+
+    alert("Audit closed and locked successfully.");
+    await fetchData();
+  };
+
   return (
     <main style={{ padding: 30, fontFamily: "Arial, sans-serif" }}>
       <div style={{ marginBottom: "16px", display: "flex", gap: "10px", flexWrap: "wrap" }}>
+        {!isLocked && (
+          <button type="button" onClick={closeAudit} style={primaryButtonStyle}>
+            Close Audit
+          </button>
+        )}
+
         <button onClick={() => window.open(`/audits/${id}/report`, "_blank")} style={primaryButtonStyle}>
           Audit Report
         </button>
