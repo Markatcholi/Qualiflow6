@@ -224,57 +224,16 @@ export default function AuditsPage() {
   };
 
   const updateAuditStatus = async (audit: Audit, status: string) => {
-  const auditFindings = findingsForAudit(audit.id);
-  const openFindings = auditFindings.filter(
-    (finding) => finding.finding_status !== "closed"
-  );
-
-  if (status === "closed" && openFindings.length > 0) {
-    alert("Cannot close audit while findings remain open.");
-    return;
-  }
-
-  if (status === "closed") {
-    const { data: userData } = await supabase.auth.getUser();
-    const email = userData?.user?.email || "";
-
-    const enteredEmail = window.prompt(
-      "Electronic Signature Required\n\nRe-enter your email to close this audit:"
-    );
-
-    if (!enteredEmail) {
-      alert("Audit closure cancelled. Email re-entry is required.");
-      return;
-    }
-
-    if (enteredEmail.trim().toLowerCase() !== email.trim().toLowerCase()) {
-      alert("Electronic signature email does not match logged-in user.");
-      return;
-    }
-
-    const confirmed = window.confirm(
-      "Electronic Signature:\n\nI confirm this audit has been reviewed, findings have been addressed or appropriately documented, and the audit is approved for closure."
-    );
-
-    if (!confirmed) return;
-
-    const now = new Date().toISOString();
-    const meaning =
-      "I confirm this audit has been reviewed, findings have been addressed or appropriately documented, and the audit is approved for closure.";
-
     const { error } = await supabase
       .from("audits")
       .update({
-        status: "closed",
-        closed_at: now,
-        closed_by: email,
-        signed_by: email,
-        signed_at: now,
-        signature_email_entered: enteredEmail,
-        signature_meaning: meaning,
-        is_locked: true,
-        locked_at: now,
-        locked_by: email,
+        status,
+        closed_at: null,
+        closed_by: null,
+        signed_by: null,
+        signed_at: null,
+        signature_email_entered: null,
+        signature_meaning: null,
       })
       .eq("id", audit.id);
 
@@ -286,41 +245,12 @@ export default function AuditsPage() {
     await addAuditLog(
       "audit",
       audit.id,
-      "audit_closed_signature",
-      `Audit closed with e-signature. Meaning: ${meaning}`
+      "status_changed",
+      `Audit status changed to ${status}`
     );
 
     fetchData();
-    return;
-  }
-
-  const { error } = await supabase
-    .from("audits")
-    .update({
-      status,
-      closed_at: null,
-      closed_by: null,
-      signed_by: null,
-      signed_at: null,
-      signature_email_entered: null,
-      signature_meaning: null,
-    })
-    .eq("id", audit.id);
-
-  if (error) {
-    alert(error.message);
-    return;
-  }
-
-  await addAuditLog(
-    "audit",
-    audit.id,
-    "status_changed",
-    `Audit status changed to ${status}`
-  );
-
-  fetchData();
-};
+  };
 
   const closeFinding = async (finding: AuditFinding) => {
     const { error } = await supabase
@@ -734,17 +664,28 @@ export default function AuditsPage() {
                   </div>
 
                   <div style={{ marginTop: "14px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                    <button
-                      onClick={() => updateAuditStatus(audit, "in_progress")}
+                    <a
+                      href={`/audits/${audit.id}`}
+                      style={{
+                        padding: "8px 14px",
+                        background: "#111827",
+                        color: "white",
+                        borderRadius: "6px",
+                        textDecoration: "none",
+                        fontWeight: "600",
+                        display: "inline-block",
+                      }}
                     >
-                      In Progress
-                    </button>
+                      {audit.status === "closed" ? "View Workflow" : "Open Workflow"}
+                    </a>
 
-                    <button
-                      onClick={() => updateAuditStatus(audit, "closed")}
-                    >
-                      Close Audit
-                    </button>
+                    {audit.status !== "closed" ? (
+                      <button
+                        onClick={() => updateAuditStatus(audit, "in_progress")}
+                      >
+                        In Progress
+                      </button>
+                    ) : null}
 
                     <a
                       href={`/audits/${audit.id}/report`}
