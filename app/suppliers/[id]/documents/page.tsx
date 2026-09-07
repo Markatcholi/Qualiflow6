@@ -159,12 +159,11 @@ export default function SupplierDocumentsPage() {
       return;
     }
 
-    await supabase.from("audit_logs").insert({
-      entity_type: "supplier_document",
-      entity_id: data.id,
-      action: "supplier_document_added",
-      details: `Supplier document added: ${documentTitle}. Uploaded file: ${uploadedFileUrl ? "Yes" : "No"}. External URL: ${documentUrl ? "Yes" : "No"}.`,
-      user_email: userEmail,
+    await supabase.rpc("qualisphere_add_audit_log", {
+      p_entity_type: "supplier_document",
+      p_entity_id: data.id,
+      p_action: "supplier_document_added",
+      p_details: `Supplier document added: ${documentTitle}. Uploaded file: ${uploadedFileUrl ? "Yes" : "No"}. External URL: ${documentUrl ? "Yes" : "No"}.`,
     });
 
     alert("Supplier document added.");
@@ -193,12 +192,11 @@ export default function SupplierDocumentsPage() {
       return;
     }
 
-    await supabase.from("audit_logs").insert({
-      entity_type: "supplier_document",
-      entity_id: documentId,
-      action: "supplier_document_retired",
-      details: "Supplier document retired.",
-      user_email: userEmail,
+    await supabase.rpc("qualisphere_add_audit_log", {
+      p_entity_type: "supplier_document",
+      p_entity_id: documentId,
+      p_action: "supplier_document_retired",
+      p_details: "Supplier document retired.",
     });
 
     alert("Supplier document retired.");

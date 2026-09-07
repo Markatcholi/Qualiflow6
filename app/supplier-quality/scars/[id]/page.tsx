@@ -91,12 +91,11 @@ export default function ScarDetailPage() {
       return;
     }
 
-    await supabase.from("audit_logs").insert({
-      entity_type: "scar",
-      entity_id: id,
-      action: "scar_updated",
-      details: `SCAR updated. Status: ${status}`,
-      user_email: userEmail,
+    await supabase.rpc("qualisphere_add_audit_log", {
+      p_entity_type: "scar",
+      p_entity_id: id,
+      p_action: "scar_updated",
+      p_details: `SCAR updated. Status: ${status}`,
     });
 
     alert("SCAR saved.");
@@ -141,12 +140,11 @@ export default function ScarDetailPage() {
       return;
     }
 
-    await supabase.from("audit_logs").insert({
-      entity_type: "scar",
-      entity_id: id,
-      action: "scar_closed",
-      details: "SCAR closed with electronic signature confirmation.",
-      user_email: userEmail,
+    await supabase.rpc("qualisphere_add_audit_log", {
+      p_entity_type: "scar",
+      p_entity_id: id,
+      p_action: "scar_closed",
+      p_details: "SCAR closed with electronic signature confirmation.",
     });
 
     alert("SCAR closed.");

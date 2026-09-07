@@ -106,12 +106,11 @@ export default function SupplierReceivingInspectionsPage() {
       return;
     }
 
-    await supabase.from("audit_logs").insert({
-      entity_type: "receiving_inspection",
-      entity_id: data.id,
-      action: "receiving_inspection_created",
-      details: `Receiving inspection created for supplier ${supplier?.supplier_name || "supplier"}.`,
-      user_email: userEmail,
+    await supabase.rpc("qualisphere_add_audit_log", {
+      p_entity_type: "receiving_inspection",
+      p_entity_id: data.id,
+      p_action: "receiving_inspection_created",
+      p_details: `Receiving inspection created for supplier ${supplier?.supplier_name || "supplier"}.`,
     });
 
     alert("Receiving inspection created.");

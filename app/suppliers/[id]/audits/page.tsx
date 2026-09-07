@@ -108,12 +108,11 @@ export default function SupplierAuditsPage() {
       return;
     }
 
-    await supabase.from("audit_logs").insert({
-      entity_type: "supplier_audit",
-      entity_id: data.id,
-      action: "supplier_audit_created",
-      details: `Supplier audit created for ${supplier?.supplier_name || "supplier"}.`,
-      user_email: userEmail,
+    await supabase.rpc("qualisphere_add_audit_log", {
+      p_entity_type: "supplier_audit",
+      p_entity_id: data.id,
+      p_action: "supplier_audit_created",
+      p_details: `Supplier audit created for ${supplier?.supplier_name || "supplier"}.`,
     });
 
     alert("Supplier audit created.");

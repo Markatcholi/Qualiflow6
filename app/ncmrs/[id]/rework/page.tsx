@@ -150,7 +150,12 @@ export default function NcmrReworkWorkPackagePage() {
       const { data: updated, error } = await supabase.from("approval_tasks").update({ status: "returned", returned_reason: reason.trim(), returned_by: userEmail, returned_at: now }).eq("id", task.id).eq("entity_type", "ncmr").eq("entity_id", id).eq("task_type", "rework_task").eq("assigned_to_email", normalizeEmail(userEmail)).eq("status", "pending").select("*");
       if (error) throw new Error(error.message);
       if (!updated || updated.length === 0) throw new Error("The Rework task could not be returned. It may have changed or been reassigned.");
-      await supabase.from("audit_logs").insert({ entity_type: "ncmr", entity_id: id, action: "rework_task_returned", details: `Rework task returned by ${userEmail}. Reason: ${reason.trim()}`, user_email: userEmail });
+      await supabase.rpc("qualisphere_add_audit_log", {
+        p_entity_type: "ncmr",
+        p_entity_id: id,
+        p_action: "rework_task_returned",
+        p_details: `Rework task returned by ${userEmail}. Reason: ${reason.trim()}`,
+      });
       const ownerEmail = normalizeEmail(record?.owner || record?.owner_email);
       if (ownerEmail) await supabase.from("notifications").insert({ user_email: ownerEmail, assigned_role: "NCMR Owner", notification_type: "ncmr_rework_returned", title: `Rework task returned: ${record?.ncmr_number || "NCMR"}`, message: `${userEmail} returned the Rework task for refinement or clarification. Reason: ${reason.trim()}`, related_module: "ncmr", related_record_id: id, related_url: `/ncmrs/${id}#rework-verification`, severity: "info", read_status: false });
       alert("Rework task returned to the NCMR owner.");
@@ -257,12 +262,11 @@ export default function NcmrReworkWorkPackagePage() {
 
       setTask(updatedRows[0]);
 
-      await supabase.from("audit_logs").insert({
-        entity_type: "ncmr",
-        entity_id: id,
-        action: "rework_task_completed",
-        details: `Rework task completed by ${userEmail}. Completion notes: ${completionComment.trim()}`,
-        user_email: userEmail,
+      await supabase.rpc("qualisphere_add_audit_log", {
+        p_entity_type: "ncmr",
+        p_entity_id: id,
+        p_action: "rework_task_completed",
+        p_details: `Rework task completed by ${userEmail}. Completion notes: ${completionComment.trim()}`,
       });
 
       const ownerEmail = normalizeEmail(record?.owner || record?.owner_email);

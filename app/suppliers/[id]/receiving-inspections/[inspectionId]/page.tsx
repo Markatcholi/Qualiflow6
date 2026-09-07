@@ -103,12 +103,11 @@ export default function SupplierReceivingInspectionDetailPage() {
     const { data: userData } = await supabase.auth.getUser();
     const userEmail = userData?.user?.email || "unknown";
 
-    await supabase.from("audit_logs").insert({
-      entity_type: "receiving_inspection",
-      entity_id: inspectionId,
-      action,
-      details,
-      user_email: userEmail,
+    await supabase.rpc("qualisphere_add_audit_log", {
+      p_entity_type: "receiving_inspection",
+      p_entity_id: inspectionId,
+      p_action: action,
+      p_details: details,
     });
   };
 

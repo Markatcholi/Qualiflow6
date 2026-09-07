@@ -337,12 +337,11 @@ export default function NcmrPage() {
     const { data: userData } = await supabase.auth.getUser();
     const email = userData?.user?.email || "unknown";
 
-    await supabase.from("audit_logs").insert({
-      entity_type: entityType,
-      entity_id: entityId,
-      action,
-      details,
-      user_email: email,
+    await supabase.rpc("qualisphere_add_audit_log", {
+      p_entity_type: entityType,
+      p_entity_id: entityId,
+      p_action: action,
+      p_details: details,
     });
   };
 

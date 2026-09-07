@@ -260,12 +260,11 @@ export default function SupplierProfilePage() {
       return;
     }
 
-    await supabase.from("audit_logs").insert({
-      entity_type: "supplier",
-      entity_id: id,
-      action: "supplier_qualification_updated",
-      details: `Supplier qualification/status updated. Status: ${supplierStatus}. Risk: ${supplierRiskLevel}. Qualification: ${qualificationStatus}.`,
-      user_email: userEmail,
+    await supabase.rpc("qualisphere_add_audit_log", {
+      p_entity_type: "supplier",
+      p_entity_id: id,
+      p_action: "supplier_qualification_updated",
+      p_details: `Supplier qualification/status updated. Status: ${supplierStatus}. Risk: ${supplierRiskLevel}. Qualification: ${qualificationStatus}.`,
     });
 
     alert("Supplier qualification/status saved.");
@@ -338,12 +337,11 @@ export default function SupplierProfilePage() {
       return;
     }
 
-    await supabase.from("audit_logs").insert({
-      entity_type: "supplier",
-      entity_id: id,
-      action: "asl_governance_approved",
-      details: `ASL governance approved. ASL Status: ${aslStatus}. Critical Supplier: ${criticalSupplier ? "Yes" : "No"}. Quality Agreement Approved: ${qualityAgreementApproved ? "Yes" : "No"}.`,
-      user_email: userEmail,
+    await supabase.rpc("qualisphere_add_audit_log", {
+      p_entity_type: "supplier",
+      p_entity_id: id,
+      p_action: "asl_governance_approved",
+      p_details: `ASL governance approved. ASL Status: ${aslStatus}. Critical Supplier: ${criticalSupplier ? "Yes" : "No"}. Quality Agreement Approved: ${qualityAgreementApproved ? "Yes" : "No"}.`,
     });
 
     alert("ASL governance saved with electronic signature.");
@@ -368,12 +366,11 @@ export default function SupplierProfilePage() {
       return;
     }
 
-    await supabase.from("audit_logs").insert({
-      entity_type: "supplier",
-      entity_id: id,
-      action: "receiving_inspection_setting_updated",
-      details: `Receiving inspection ${receivingInspectionEnabled ? "enabled" : "disabled"} for supplier.`,
-      user_email: userEmail,
+    await supabase.rpc("qualisphere_add_audit_log", {
+      p_entity_type: "supplier",
+      p_entity_id: id,
+      p_action: "receiving_inspection_setting_updated",
+      p_details: `Receiving inspection ${receivingInspectionEnabled ? "enabled" : "disabled"} for supplier.`,
     });
 
     alert(

@@ -169,9 +169,11 @@ export default function RegisterEquipmentPage() {
   useEffect(()=>{ loadPage(); },[]);
 
   const addAuditLog = async (equipmentId:string,action:string,details:string) => {
-    const {error} = await supabase.from("audit_logs").insert({
-      entity_type:"equipment", entity_id:equipmentId, action, details,
-      user_email:currentUserEmail || "unknown",
+    const {error} = await supabase.rpc("qualisphere_add_audit_log", {
+      p_entity_type: "equipment",
+      p_entity_id: equipmentId,
+      p_action: action,
+      p_details: details,
     });
     if (error) console.warn("Unable to add equipment audit log:",error.message);
   };

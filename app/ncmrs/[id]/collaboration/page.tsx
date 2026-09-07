@@ -96,12 +96,11 @@ export default function NcmrCollaborationPage() {
   );
 
   const addAuditLog = async (action: string, details: string, actor?: string) => {
-    await supabase.from("audit_logs").insert({
-      entity_type: MODULE,
-      entity_id: id,
-      action,
-      details,
-      user_email: actor || userEmail || "unknown",
+    await supabase.rpc("qualisphere_add_audit_log", {
+      p_entity_type: MODULE,
+      p_entity_id: id,
+      p_action: action,
+      p_details: details,
     });
   };
 

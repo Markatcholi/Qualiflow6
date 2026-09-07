@@ -108,12 +108,11 @@ export default function OosOotDetailPage() {
   };
 
   const addAuditLog = async (action: string, details: string) => {
-    await supabase.from("audit_logs").insert({
-      entity_type: "oos_oot",
-      entity_id: id,
-      action,
-      details,
-      user_email: userEmail || "unknown",
+    await supabase.rpc("qualisphere_add_audit_log", {
+      p_entity_type: "oos_oot",
+      p_entity_id: id,
+      p_action: action,
+      p_details: details,
     });
   };
 

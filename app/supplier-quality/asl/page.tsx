@@ -182,12 +182,11 @@ export default function GlobalAslQualificationPage() {
       return;
     }
 
-    await supabase.from("audit_logs").insert({
-      entity_type: "supplier",
-      entity_id: editingSupplierId,
-      action: "global_asl_qualification_updated",
-      details: `Global ASL / Qualification decision updated. Status: ${supplierStatus}. ASL: ${aslStatus}. Qualification: ${qualificationStatus}.`,
-      user_email: userEmail,
+    await supabase.rpc("qualisphere_add_audit_log", {
+      p_entity_type: "supplier",
+      p_entity_id: editingSupplierId,
+      p_action: "global_asl_qualification_updated",
+      p_details: `Global ASL / Qualification decision updated. Status: ${supplierStatus}. ASL: ${aslStatus}. Qualification: ${qualificationStatus}.`,
     });
 
     alert("ASL / Qualification decision saved.");

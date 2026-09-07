@@ -168,12 +168,11 @@ export default function GlobalReceivingInspectionsPage() {
 
     if (error) return alert(error.message);
 
-    await supabase.from("audit_logs").insert({
-      entity_type: "receiving_inspection",
-      entity_id: data.id,
-      action: "receiving_inspection_created",
-      details: `Receiving inspection created for supplier ${selectedSupplier?.supplier_name || "supplier"}.`,
-      user_email: userEmail,
+    await supabase.rpc("qualisphere_add_audit_log", {
+      p_entity_type: "receiving_inspection",
+      p_entity_id: data.id,
+      p_action: "receiving_inspection_created",
+      p_details: `Receiving inspection created for supplier ${selectedSupplier?.supplier_name || "supplier"}.`,
     });
 
     alert("Receiving inspection created.");
@@ -244,12 +243,11 @@ export default function GlobalReceivingInspectionsPage() {
       return;
     }
 
-    await supabase.from("audit_logs").insert({
-      entity_type: "receiving_inspection",
-      entity_id: inspection.id,
-      action: "receiving_inspection_approved_locked",
-      details: "Receiving inspection electronically approved and locked.",
-      user_email: userEmail,
+    await supabase.rpc("qualisphere_add_audit_log", {
+      p_entity_type: "receiving_inspection",
+      p_entity_id: inspection.id,
+      p_action: "receiving_inspection_approved_locked",
+      p_details: "Receiving inspection electronically approved and locked.",
     });
 
     alert("Receiving inspection approved and locked.");
@@ -653,25 +651,23 @@ export default function GlobalReceivingInspectionsPage() {
       return;
     }
 
-    await supabase.from("audit_logs").insert([
-      {
-        entity_type: "receiving_inspection",
-        entity_id: inspection.id,
-        action: "linked_ncmr_created",
-        details: `Linked NCMR created from receiving inspection. NCMR title: ${title}.`,
-        user_email: userEmail,
-      },
-      {
-        entity_type: "ncmr",
-        entity_id: ncmrData.id,
-        action: "ncmr_created_from_receiving_inspection",
-        details: `NCMR created from receiving inspection for supplier ${
+    await Promise.all([
+      supabase.rpc("qualisphere_add_audit_log", {
+        p_entity_type: "receiving_inspection",
+        p_entity_id: inspection.id,
+        p_action: "linked_ncmr_created",
+        p_details: `Linked NCMR created from receiving inspection. NCMR title: ${title}.`,
+      }),
+      supabase.rpc("qualisphere_add_audit_log", {
+        p_entity_type: "ncmr",
+        p_entity_id: ncmrData.id,
+        p_action: "ncmr_created_from_receiving_inspection",
+        p_details: `NCMR created from receiving inspection for supplier ${
           supplier?.supplier_name || "N/A"
         }, part ${inspection.part_number || "N/A"}, lot ${
           inspection.lot_number || "N/A"
         }.`,
-        user_email: userEmail,
-      },
+      })
     ]);
 
     alert("Linked NCMR created.");

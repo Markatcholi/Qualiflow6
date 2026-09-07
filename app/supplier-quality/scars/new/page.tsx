@@ -88,12 +88,11 @@ export default function NewScarPage() {
 
     if (error) return alert(error.message);
 
-    await supabase.from("audit_logs").insert({
-      entity_type: "scar",
-      entity_id: data.id,
-      action: "scar_created",
-      details: `SCAR created for supplier ${supplierName}.`,
-      user_email: userEmail,
+    await supabase.rpc("qualisphere_add_audit_log", {
+      p_entity_type: "scar",
+      p_entity_id: data.id,
+      p_action: "scar_created",
+      p_details: `SCAR created for supplier ${supplierName}.`,
     });
 
     alert("SCAR created.");
