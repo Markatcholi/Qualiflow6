@@ -197,18 +197,27 @@ export default function NcmrImplementationWorkPackagePage() {
       const completedTask = updatedRows[0];
       setTask(completedTask);
 
-      await supabase.from("audit_logs").insert({
-        entity_type: "ncmr",
-        entity_id: id,
-        action:
-          String(task.task_type || "").toLowerCase() === "corrective_action_task"
-            ? "corrective_action_task_completed"
-            : "correction_task_completed",
-        details:
-          `${implementationLabel} implementation task completed by ${userEmail}. ` +
-          `Completion notes: ${completionComment.trim()}`,
-        user_email: userEmail,
-      });
+      const { error: auditError } = await supabase.rpc(
+        "qualisphere_add_audit_log",
+        {
+          p_entity_type: "ncmr",
+          p_entity_id: id,
+          p_action:
+            String(task.task_type || "").toLowerCase() === "corrective_action_task"
+              ? "corrective_action_task_completed"
+              : "correction_task_completed",
+          p_details:
+            `${implementationLabel} implementation task completed by ${userEmail}. ` +
+            `Completion notes: ${completionComment.trim()}`,
+        }
+      );
+
+      if (auditError) {
+        console.warn(
+          "Unable to create governed NCMR implementation audit log:",
+          auditError.message
+        );
+      }
 
       const ownerEmail = normalizeEmail(record?.owner || record?.owner_email);
       if (ownerEmail && ownerEmail !== normalizeEmail(userEmail)) {
