@@ -1,0 +1,47 @@
+name: Bulk Governed Audit Writer Migration
+
+on:
+  push:
+    branches:
+      - audit-hardening/bulk-governed-writers-20260907
+
+permissions:
+  contents: write
+
+jobs:
+  migrate-audit-writers:
+    if: ${{ !contains(github.event.head_commit.message, '[audit-codemod-applied]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout hardening branch
+        uses: actions/checkout@v4
+        with:
+          ref: audit-hardening/bulk-governed-writers-20260907
+          fetch-depth: 0
+
+      - name: Run governed audit writer migration
+        run: python3 scripts/migrate-audit-writers.py
+
+      - name: Verify zero direct audit mutations
+        shell: bash
+        run: |
+          if grep -RInE --include='*.ts' --include='*.tsx' --include='*.js' --include='*.jsx' \
+            'from\(["'"']audit_logs["'"']\)[[:space:]]*\.[[:space:]]*(insert|upsert|update|delete)[[:space:]]*\(' \
+            app components lib services 2>/dev/null; then
+            echo 'Direct audit_logs mutation remains.'
+            exit 1
+          fi
+          echo 'Verified: zero direct application audit_logs mutations remain.'
+
+      - name: Commit migrated application writers
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo 'No source changes were required.'
+            exit 0
+          fi
+          git config user.name 'QualiSphere Audit Hardening'
+          git config user.email 'actions@users.noreply.github.com'
+          git add app components lib services
+          git commit -m 'Migrate remaining direct audit writers to governed RPC [audit-codemod-applied]'
+          git push origin HEAD:audit-hardening/bulk-governed-writers-20260907
