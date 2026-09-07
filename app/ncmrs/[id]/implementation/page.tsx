@@ -338,6 +338,34 @@ export default function NcmrImplementationWorkPackagePage() {
           value={task.task_instructions || task.comments}
           multiline
         />
+
+        <div style={{ marginTop: "12px" }}>
+          <div style={labelStyle}>Assignment Attachment(s)</div>
+          {Array.isArray(task?.assignment_attachments) &&
+          task.assignment_attachments.length > 0 ? (
+            <div style={{ display: "grid", gap: "6px", marginTop: "6px" }}>
+              {task.assignment_attachments.map((attachment: any, index: number) => (
+                <a
+                  key={`${attachment?.storage_path || attachment?.url || index}`}
+                  href={attachment?.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{
+                    color: "#1d4ed8",
+                    textDecoration: "none",
+                    fontWeight: 700,
+                  }}
+                >
+                  📎 {attachment?.name || `Assignment Attachment ${index + 1}`}
+                </a>
+              ))}
+            </div>
+          ) : (
+            <div style={{ color: "#64748b", fontSize: "13px", marginTop: "5px" }}>
+              No optional assignment attachment was provided.
+            </div>
+          )}
+        </div>
       </section>
 
       <section style={cardStyle}>
