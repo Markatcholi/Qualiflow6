@@ -101,6 +101,7 @@ export default function NcmrDetailPage() {
   const [correctionTaskAssignee, setCorrectionTaskAssignee] = useState("");
   const [correctionTaskDueDate, setCorrectionTaskDueDate] = useState("");
   const [correctionTaskInstructions, setCorrectionTaskInstructions] = useState("");
+  const [implementationTaskAssignmentFiles, setImplementationTaskAssignmentFiles] = useState<File[]>([]);
   const [showAdditionalImplementationTaskForm, setShowAdditionalImplementationTaskForm] = useState(false);
   const [submittingImplementationTask, setSubmittingImplementationTask] = useState(false);
 
@@ -4577,6 +4578,48 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
     return [...(Array.isArray(existingAttachments) ? existingAttachments : []), ...uploaded];
   };
 
+  const uploadImplementationTaskAssignmentAttachments = async () => {
+    if (implementationTaskAssignmentFiles.length === 0) return [];
+
+    const uploaded: any[] = [];
+
+    for (let index = 0; index < implementationTaskAssignmentFiles.length; index += 1) {
+      const file = implementationTaskAssignmentFiles[index];
+      const safeName = file.name
+        .trim()
+        .replace(/[^a-zA-Z0-9._-]+/g, "_")
+        .replace(/_+/g, "_");
+      const storagePath = `ncmrs/${id}/implementation-assignment/${Date.now()}_${index + 1}_${safeName}`;
+
+      const upload = await supabase.storage
+        .from("evidence")
+        .upload(storagePath, file, {
+          upsert: false,
+          contentType: file.type || undefined,
+        });
+
+      if (upload.error) {
+        throw new Error(
+          `Unable to upload implementation task assignment attachment ${file.name}: ${upload.error.message}`
+        );
+      }
+
+      const publicUrl = supabase.storage
+        .from("evidence")
+        .getPublicUrl(storagePath).data.publicUrl;
+
+      uploaded.push({
+        name: file.name,
+        url: publicUrl,
+        storage_path: storagePath,
+        uploaded_at: new Date().toISOString(),
+        uploaded_by: userEmail || "unknown",
+      });
+    }
+
+    return uploaded;
+  };
+
   const submitImplementationTask = async () => {
     if (record?.is_locked) {
       alert("This record is locked after electronic signature and cannot be edited.");
@@ -4654,6 +4697,19 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
 
     setSubmittingImplementationTask(true);
 
+    let assignmentAttachments: any[] = [];
+
+    try {
+      assignmentAttachments = await uploadImplementationTaskAssignmentAttachments();
+    } catch (attachmentError: any) {
+      setSubmittingImplementationTask(false);
+      alert(
+        attachmentError?.message ||
+          "Unable to upload the implementation task assignment attachment."
+      );
+      return;
+    }
+
     const { data: task, error } = await supabase.rpc(
       "ncmr_create_governed_task",
       {
@@ -4666,7 +4722,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
           assigned_to_email: normalizedAssignee,
           due_date: normalizedDueDate,
           comments: normalizedInstructions,
-          assignment_attachments: [],
+          assignment_attachments: assignmentAttachments,
           required: true,
         },
       }
@@ -4717,6 +4773,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
     setCorrectionTaskAssignee("");
     setCorrectionTaskDueDate("");
     setCorrectionTaskInstructions("");
+    setImplementationTaskAssignmentFiles([]);
     setShowAdditionalImplementationTaskForm(false);
     setSubmittingImplementationTask(false);
     await fetchCorrectionTasks();
@@ -7646,6 +7703,65 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
                 />
               </div>
 
+              <div style={{ marginTop: "12px", maxWidth: "700px" }}>
+                <label><strong>Implementation Task Assignment Attachment (Optional)</strong></label><br />
+                <input
+                  type="file"
+                  multiple
+                  disabled={isPostMrbSectionLocked() || submittingImplementationTask}
+                  onChange={(event) => {
+                    const files = Array.from(event.target.files || []) as File[];
+                    setImplementationTaskAssignmentFiles((current) => {
+                      const keys = new Set(
+                        current.map((file) => `${file.name}:${file.size}:${file.lastModified}`)
+                      );
+                      return [
+                        ...current,
+                        ...files.filter(
+                          (file) => !keys.has(`${file.name}:${file.size}:${file.lastModified}`)
+                        ),
+                      ];
+                    });
+                    event.currentTarget.value = "";
+                  }}
+                  style={{ marginTop: "6px" }}
+                />
+                <div style={{ color: "#64748b", fontSize: "13px", marginTop: "6px" }}>
+                  Optional: attach an instruction, protocol, drawing, reference document, or other information provided to the Correction / Corrective Action Owner before execution.
+                </div>
+                {implementationTaskAssignmentFiles.length > 0 ? (
+                  <div style={{ display: "grid", gap: "6px", marginTop: "10px" }}>
+                    {implementationTaskAssignmentFiles.map((file, index) => (
+                      <div
+                        key={`${file.name}-${file.size}-${file.lastModified}`}
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          gap: "10px",
+                          border: "1px solid #e2e8f0",
+                          background: "white",
+                          borderRadius: "8px",
+                          padding: "8px 10px",
+                        }}
+                      >
+                        <span>📎 {file.name}</span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setImplementationTaskAssignmentFiles((current) =>
+                              current.filter((_, itemIndex) => itemIndex !== index)
+                            )
+                          }
+                          disabled={submittingImplementationTask}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+
               <button
                 type="button"
                 onClick={submitImplementationTask}
@@ -7660,6 +7776,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
                   setCorrectionTaskAssignee("");
                   setCorrectionTaskDueDate("");
                   setCorrectionTaskInstructions("");
+                  setImplementationTaskAssignmentFiles([]);
                   setImplementationTaskType("correction");
                   setShowAdditionalImplementationTaskForm(false);
                 }}
@@ -7690,6 +7807,7 @@ Governance override justification for opening CAPA: ${governanceOverrideJustific
                   setCorrectionTaskAssignee("");
                   setCorrectionTaskDueDate("");
                   setCorrectionTaskInstructions("");
+                  setImplementationTaskAssignmentFiles([]);
                   setShowAdditionalImplementationTaskForm(true);
                 }}
                 disabled={isPostMrbSectionLocked()}
