@@ -1,0 +1,20 @@
+name: Evidence Integrity Inventory
+
+on:
+  push:
+    branches:
+      - security-audit/evidence-integrity-20260907
+
+permissions:
+  contents: read
+
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: security-audit/evidence-integrity-20260907
+      - name: Run repository mutation inventory
+        run: python3 scripts/evidence-integrity-inventory.py
