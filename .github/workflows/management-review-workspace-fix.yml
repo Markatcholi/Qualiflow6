@@ -23,7 +23,7 @@ jobs:
         run: python3 scripts/fix-management-review-workspace-approvals.py
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install --no-audit --no-fund
 
       - name: TypeScript verification
         run: npx tsc --noEmit
