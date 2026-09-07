@@ -1,0 +1,50 @@
+name: Management Review Workspace Approval Fix
+
+on:
+  push:
+    branches:
+      - fix/management-review-workspace-approvals-20260907
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    if: ${{ !contains(github.event.head_commit.message, '[mr-workspace-fix-applied]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/management-review-workspace-approvals-20260907
+          fetch-depth: 0
+
+      - name: Apply narrow Management Review workspace fix
+        run: python3 scripts/fix-management-review-workspace-approvals.py
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript verification
+        run: npx tsc --noEmit
+
+      - name: Verify expected Management Review routing
+        shell: bash
+        run: |
+          grep -q 'management_review_approval' app/management-review/page.tsx
+          grep -q 'entity_type === "management_review"' app/workspace/page.tsx
+          grep -q 'isManagementReviewApprovalTask' app/my-approval-tasks/page.tsx
+          echo 'Management Review workspace approval routing verified.'
+
+      - name: Commit application changes
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo 'No source changes required.'
+            exit 0
+          fi
+          git config user.name 'QualiSphere Workflow Hardening'
+          git config user.email 'actions@users.noreply.github.com'
+          git add app/management-review/page.tsx app/workspace/page.tsx app/my-approval-tasks/page.tsx
+          git commit -m 'Route Management Review approvals through workspace [mr-workspace-fix-applied]'
+          git push origin HEAD:fix/management-review-workspace-approvals-20260907
