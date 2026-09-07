@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { supabase } from "../../../../lib/supabaseClient";
 
-export default function NcmrImplementationWorkPackagePage() {
+export default function NcmrReworkWorkPackagePage() {
   const params = useParams<{ id: string }>();
   const searchParams = useSearchParams();
 
@@ -15,29 +15,29 @@ export default function NcmrImplementationWorkPackagePage() {
   const [userEmail, setUserEmail] = useState("");
   const [record, setRecord] = useState<any>(null);
   const [task, setTask] = useState<any>(null);
+  const [reworkItems, setReworkItems] = useState<any[]>([]);
   const [completionComment, setCompletionComment] = useState("");
   const [signatureEmail, setSignatureEmail] = useState("");
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [returning, setReturning] = useState(false);
   const [completionFiles, setCompletionFiles] = useState<File[]>([]);
+  const [reworkOutcomes, setReworkOutcomes] = useState<Record<string, { finalDispositionAfterRework: string; finalQuantityAccepted: string; finalQuantityRejected: string }>>({});
 
   const normalizeEmail = (value: any) =>
     String(value || "").trim().toLowerCase();
 
-  const implementationLabel = useMemo(() => {
-    return String(task?.task_type || "").toLowerCase() ===
-      "corrective_action_task"
-      ? "Corrective Action"
-      : "Correction";
-  }, [task]);
+  const normalizeDisposition = (value: any) =>
+    String(value || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[\s-]+/g, "_");
 
-  const isValidImplementationTask = useMemo(() => {
+  const isValidReworkTask = useMemo(() => {
     return (
       task?.entity_type === "ncmr" &&
       String(task?.entity_id || "") === String(id || "") &&
-      ["correction_task", "corrective_action_task"].includes(
-        String(task?.task_type || "").toLowerCase()
-      )
+      String(task?.task_type || "").toLowerCase() === "rework_task"
     );
   }, [task, id]);
 
@@ -59,11 +59,11 @@ export default function NcmrImplementationWorkPackagePage() {
       setUserEmail(currentEmail);
 
       if (!currentEmail) {
-        throw new Error("You must be logged in to open this implementation task.");
+        throw new Error("You must be logged in to open this Rework task.");
       }
 
       if (!taskId) {
-        throw new Error("The implementation task link is missing a taskId.");
+        throw new Error("The Rework task link is missing a taskId.");
       }
 
       const { data: taskData, error: taskError } = await supabase
@@ -73,7 +73,7 @@ export default function NcmrImplementationWorkPackagePage() {
         .maybeSingle();
 
       if (taskError) throw new Error(taskError.message);
-      if (!taskData) throw new Error("Implementation task not found.");
+      if (!taskData) throw new Error("Rework task not found.");
 
       setTask(taskData);
       setCompletionComment(
@@ -90,8 +90,29 @@ export default function NcmrImplementationWorkPackagePage() {
       if (!recordData) throw new Error("NCMR record not found.");
 
       setRecord(recordData);
+
+      const { data: affectedData, error: affectedError } = await supabase
+        .from("ncmr_affected_items")
+        .select("*")
+        .eq("ncmr_id", id)
+        .order("created_at", { ascending: true });
+
+      if (affectedError) throw new Error(affectedError.message);
+
+      const loadedReworkItems = (affectedData || []).filter(
+        (item: any) => normalizeDisposition(item?.product_disposition) === "rework"
+      );
+      setReworkItems(loadedReworkItems);
+      setReworkOutcomes(loadedReworkItems.reduce((acc: any, item: any) => {
+        acc[item.id] = {
+          finalDispositionAfterRework: item.final_disposition_after_rework || "",
+          finalQuantityAccepted: item.final_rework_quantity_accepted ?? "",
+          finalQuantityRejected: item.final_rework_quantity_rejected ?? "",
+        };
+        return acc;
+      }, {}));
     } catch (error: any) {
-      alert(error?.message || "Unable to load implementation work package.");
+      alert(error?.message || "Unable to load Rework work package.");
     } finally {
       setLoading(false);
     }
@@ -101,7 +122,6 @@ export default function NcmrImplementationWorkPackagePage() {
     fetchPackage();
   }, [id, taskId]);
 
-
   const uploadCompletionAttachments = async () => {
     if (completionFiles.length === 0) return Array.isArray(task?.task_attachments) ? task.task_attachments : [];
     const existingAttachments = Array.isArray(task?.task_attachments) ? task.task_attachments : [];
@@ -109,7 +129,7 @@ export default function NcmrImplementationWorkPackagePage() {
     for (let index = 0; index < completionFiles.length; index += 1) {
       const file = completionFiles[index];
       const safeName = file.name.trim().replace(/[^a-zA-Z0-9._-]+/g, "_").replace(/_+/g, "_");
-      const storagePath = `ncmrs/${id}/implementation-tasks/${task.id}/${Date.now()}_${index + 1}_${safeName}`;
+      const storagePath = `ncmrs/${id}/rework-tasks/${task.id}/${Date.now()}_${index + 1}_${safeName}`;
       const upload = await supabase.storage.from("evidence").upload(storagePath, file, { upsert: false, contentType: file.type || undefined });
       if (upload.error) throw new Error(`Unable to upload ${file.name}: ${upload.error.message}`);
       const publicUrl = supabase.storage.from("evidence").getPublicUrl(storagePath).data.publicUrl;
@@ -118,27 +138,72 @@ export default function NcmrImplementationWorkPackagePage() {
     return [...existingAttachments, ...uploaded];
   };
 
+  const returnReworkTask = async () => {
+    if (!task || !record) return;
+    if (!isAssignedUser || !isPending) { alert("Only the currently assigned Rework Owner can return an active Rework task."); return; }
+    const reason = window.prompt("Return reason / clarification required:", "");
+    if (!reason?.trim()) { alert("A return reason is required."); return; }
+    if (!window.confirm("Return this Rework task to the NCMR owner for refinement or clarification?")) return;
+    setReturning(true);
+    try {
+      const now = new Date().toISOString();
+      const { data: updated, error } = await supabase.from("approval_tasks").update({ status: "returned", returned_reason: reason.trim(), returned_by: userEmail, returned_at: now }).eq("id", task.id).eq("entity_type", "ncmr").eq("entity_id", id).eq("task_type", "rework_task").eq("assigned_to_email", normalizeEmail(userEmail)).eq("status", "pending").select("*");
+      if (error) throw new Error(error.message);
+      if (!updated || updated.length === 0) throw new Error("The Rework task could not be returned. It may have changed or been reassigned.");
+      const { error: returnAuditError } = await supabase.rpc(
+        "qualisphere_add_audit_log",
+        {
+          p_entity_type: "ncmr",
+          p_entity_id: id,
+          p_action: "rework_task_returned",
+          p_details: `Rework task returned by ${userEmail}. Reason: ${reason.trim()}`,
+        }
+      );
+
+      if (returnAuditError) {
+        console.warn(
+          "Unable to create governed NCMR Rework return audit log:",
+          returnAuditError.message
+        );
+      }
+      const ownerEmail = normalizeEmail(record?.owner || record?.owner_email);
+      if (ownerEmail) await supabase.from("notifications").insert({ user_email: ownerEmail, assigned_role: "NCMR Owner", notification_type: "ncmr_rework_returned", title: `Rework task returned: ${record?.ncmr_number || "NCMR"}`, message: `${userEmail} returned the Rework task for refinement or clarification. Reason: ${reason.trim()}`, related_module: "ncmr", related_record_id: id, related_url: `/ncmrs/${id}#rework-verification`, severity: "info", read_status: false });
+      alert("Rework task returned to the NCMR owner.");
+      window.location.href = "/workspace";
+    } catch (error: any) { alert(error.message || "Unable to return Rework task."); } finally { setReturning(false); }
+  };
+
   const completeTask = async () => {
     if (!task || !record) return;
 
-    if (!isValidImplementationTask) {
-      alert("This task does not belong to this NCMR implementation package.");
+    if (!isValidReworkTask) {
+      alert("This task does not belong to this NCMR Rework package.");
       return;
     }
 
     if (!isAssignedUser) {
-      alert("Only the assigned Implementation Owner can complete this task.");
+      alert("Only the assigned Rework Owner can complete this task.");
       return;
     }
 
     if (!isPending) {
-      alert("This implementation task has already been completed or is no longer active.");
+      alert("This Rework task has already been completed or is no longer active.");
       return;
     }
 
     if (!completionComment.trim()) {
       alert("Completion notes are required.");
       return;
+    }
+
+    for (const item of reworkItems) {
+      const outcome = reworkOutcomes[item.id] || { finalDispositionAfterRework: "", finalQuantityAccepted: "", finalQuantityRejected: "" };
+      const affectedQty = Number(item.quantity_affected || 0);
+      const acceptedQty = Number(outcome.finalQuantityAccepted || 0);
+      const rejectedQty = Number(outcome.finalQuantityRejected || 0);
+      if (!outcome.finalDispositionAfterRework) return alert(`Final Disposition After Rework is required for ${item.product_part_number || "the affected item"}.`);
+      if (outcome.finalQuantityAccepted === "" || outcome.finalQuantityRejected === "") return alert(`Final accepted and rejected quantities are required for ${item.product_part_number || "the affected item"}.`);
+      if (acceptedQty + rejectedQty !== affectedQty) return alert(`Final quantity reconciliation failed. Accepted (${acceptedQty}) + Rejected (${rejectedQty}) must equal Affected (${affectedQty}).`);
     }
 
     if (!signatureEmail.trim()) {
@@ -152,7 +217,7 @@ export default function NcmrImplementationWorkPackagePage() {
     }
 
     const confirmed = window.confirm(
-      `Electronic Signature\n\nI confirm that the assigned ${implementationLabel.toLowerCase()} implementation work has been completed as documented. My identity, timestamp, and completion notes will become part of the quality record.`
+      "Electronic Signature\n\nI confirm that the assigned Rework has been completed as documented. My identity, timestamp, and completion notes will become part of the quality record."
     );
 
     if (!confirmed) return;
@@ -162,9 +227,19 @@ export default function NcmrImplementationWorkPackagePage() {
     try {
       const now = new Date().toISOString();
       const signatureMeaning =
-        `NCMR ${implementationLabel} Implementation: I confirm that the assigned work has been completed as documented.`;
+        "NCMR Rework Implementation: I confirm that the assigned Rework has been completed as documented.";
 
       const taskAttachments = await uploadCompletionAttachments();
+
+      for (const item of reworkItems) {
+        const outcome = reworkOutcomes[item.id];
+        const { error: outcomeError } = await supabase.from("ncmr_affected_items").update({
+          final_disposition_after_rework: outcome.finalDispositionAfterRework,
+          final_rework_quantity_accepted: Number(outcome.finalQuantityAccepted),
+          final_rework_quantity_rejected: Number(outcome.finalQuantityRejected),
+        }).eq("id", item.id).eq("ncmr_id", id);
+        if (outcomeError) throw new Error(outcomeError.message);
+      }
 
       const { data: updatedRows, error: taskError } = await supabase
         .from("approval_tasks")
@@ -182,6 +257,7 @@ export default function NcmrImplementationWorkPackagePage() {
         .eq("id", task.id)
         .eq("entity_type", "ncmr")
         .eq("entity_id", id)
+        .eq("task_type", "rework_task")
         .eq("assigned_to_email", normalizeEmail(userEmail))
         .eq("status", "pending")
         .select("*");
@@ -190,31 +266,25 @@ export default function NcmrImplementationWorkPackagePage() {
 
       if (!updatedRows || updatedRows.length === 0) {
         throw new Error(
-          "The task was not completed. It may have already been completed, reassigned, or changed by another user."
+          "The Rework task was not completed. It may have already been completed, reassigned, or changed by another user."
         );
       }
 
-      const completedTask = updatedRows[0];
-      setTask(completedTask);
+      setTask(updatedRows[0]);
 
       const { error: auditError } = await supabase.rpc(
         "qualisphere_add_audit_log",
         {
           p_entity_type: "ncmr",
           p_entity_id: id,
-          p_action:
-            String(task.task_type || "").toLowerCase() === "corrective_action_task"
-              ? "corrective_action_task_completed"
-              : "correction_task_completed",
-          p_details:
-            `${implementationLabel} implementation task completed by ${userEmail}. ` +
-            `Completion notes: ${completionComment.trim()}`,
+          p_action: "rework_task_completed",
+          p_details: `Rework task completed by ${userEmail}. Completion notes: ${completionComment.trim()}`,
         }
       );
 
       if (auditError) {
         console.warn(
-          "Unable to create governed NCMR implementation audit log:",
+          "Unable to create governed NCMR Rework audit log:",
           auditError.message
         );
       }
@@ -224,51 +294,48 @@ export default function NcmrImplementationWorkPackagePage() {
         await supabase.from("notifications").insert({
           user_email: ownerEmail,
           assigned_role: "NCMR Owner",
-          notification_type: "ncmr_implementation_completed",
-          title: `${implementationLabel} implementation completed: ${record?.ncmr_number || "NCMR"}`,
+          notification_type: "ncmr_rework_completed",
+          title: `Rework completed: ${record?.ncmr_number || "NCMR"}`,
           message:
-            `${userEmail} completed the assigned ${implementationLabel.toLowerCase()} implementation task. ` +
-            `Open the task verification section to review the completion comment and attached objective evidence.`,
+            `${userEmail} completed the assigned Rework task. ` +
+            "Open Rework Verification & Final Disposition to review the completion comment and attached objective evidence.",
           related_module: "ncmr",
           related_record_id: id,
-          related_url: `/ncmrs/${id}#correction-implementation`,
+          related_url: `/ncmrs/${id}#rework-verification`,
           severity: "info",
           read_status: false,
         });
       }
 
       alert(
-        `${implementationLabel} implementation task completed. The NCMR owner can now review the completion and record implementation verification.`
+        "Rework task completed. The NCMR owner can now document Rework Verification & Final Disposition."
       );
 
       window.location.href = "/workspace";
     } catch (error: any) {
-      alert(error?.message || "Unable to complete implementation task.");
+      alert(error?.message || "Unable to complete Rework task.");
       setSubmitting(false);
     }
   };
 
   if (loading) {
-    return <main style={pageStyle}>Loading implementation work package...</main>;
+    return <main style={pageStyle}>Loading Rework work package...</main>;
   }
 
   if (!task || !record) {
     return (
       <main style={pageStyle}>
-        <div style={errorPanelStyle}>
-          Unable to load the implementation work package.
-        </div>
+        <div style={errorPanelStyle}>Unable to load the Rework work package.</div>
         <Link href="/workspace">Return to My Workspace</Link>
       </main>
     );
   }
 
-  if (!isValidImplementationTask) {
+  if (!isValidReworkTask) {
     return (
       <main style={pageStyle}>
         <div style={errorPanelStyle}>
-          This task is not a valid Correction / Corrective Action implementation
-          task for this NCMR.
+          This task is not a valid Rework task for this NCMR.
         </div>
         <Link href="/workspace">Return to My Workspace</Link>
       </main>
@@ -279,12 +346,10 @@ export default function NcmrImplementationWorkPackagePage() {
     <main style={pageStyle}>
       <div style={topBarStyle}>
         <div>
-          <div style={eyebrowStyle}>NCMR IMPLEMENTATION WORK PACKAGE</div>
-          <h1 style={{ margin: "5px 0" }}>
-            {implementationLabel} Implementation
-          </h1>
+          <div style={eyebrowStyle}>NCMR REWORK WORK PACKAGE</div>
+          <h1 style={{ margin: "5px 0" }}>Rework Implementation</h1>
           <p style={{ margin: 0, color: "#475569" }}>
-            {record?.ncmr_number || "NCMR"} · Assigned work package
+            {record?.ncmr_number || "NCMR"} · Assigned Rework package
           </p>
         </div>
 
@@ -296,18 +361,22 @@ export default function NcmrImplementationWorkPackagePage() {
       {!isAssignedUser ? (
         <div style={errorPanelStyle}>
           This task is assigned to <strong>{task.assigned_to_email}</strong>.
-          You may review the package, but only the assigned Implementation Owner
-          can complete it.
+          You may review the package, but only the assigned Rework Owner can
+          complete it.
         </div>
       ) : null}
 
       <section style={cardStyle}>
         <h2 style={sectionTitleStyle}>1. NCMR Context</h2>
+
         <div style={gridStyle}>
           <ReadOnlyField label="NCMR Number" value={record.ncmr_number} />
-          <ReadOnlyField label="Status" value={record.status || record.review_status} />
           <ReadOnlyField label="Severity" value={record.severity} />
-          <ReadOnlyField label="Owner" value={record.owner || record.owner_email} />
+          <ReadOnlyField label="NCMR Owner" value={record.owner || record.owner_email} />
+          <ReadOnlyField
+            label="MRB Approved By"
+            value={record.mrb_approved_by}
+          />
         </div>
 
         <ReadOnlyField
@@ -315,138 +384,118 @@ export default function NcmrImplementationWorkPackagePage() {
           value={record.issue_description || record.problem_description}
           multiline
         />
+
         <ReadOnlyField
-          label="Investigation / Root Cause Context"
-          value={
-            [record.investigation_summary, record.root_cause]
-              .filter(Boolean)
-              .join("\n\n") || null
-          }
+          label="Disposition Justification"
+          value={record.disposition_justification}
           multiline
         />
       </section>
 
       <section style={cardStyle}>
-        <h2 style={sectionTitleStyle}>2. Assigned Implementation</h2>
+        <h2 style={sectionTitleStyle}>2. Rework Material</h2>
+
+        {reworkItems.length === 0 ? (
+          <div style={warningPanelStyle}>
+            No affected material rows with a Rework disposition were found.
+          </div>
+        ) : (
+          <div style={{ display: "grid", gap: "12px" }}>
+            {reworkItems.map((item: any, index: number) => (
+              <div key={item.id || index} style={materialCardStyle}>
+                <div style={{ fontWeight: 900, marginBottom: "10px" }}>
+                  Rework Item {index + 1}
+                </div>
+                <div style={gridStyle}>
+                  <ReadOnlyField label="Part Number" value={item.product_part_number} />
+                  <ReadOnlyField label="Part Description" value={item.part_description} />
+                  <ReadOnlyField label="Revision" value={item.part_revision} />
+                  <ReadOnlyField label="Lot Number" value={item.lot_number} />
+                  <ReadOnlyField label="Work Order" value={item.workorder_number} />
+                  <ReadOnlyField label="Quantity Affected" value={item.quantity_affected} />
+                  <ReadOnlyField label="Quantity Rejected" value={item.quantity_rejected} />
+                  <ReadOnlyField label="Disposition" value={item.product_disposition} />
+                </div>
+                <ReadOnlyField
+                  label="Disposition Justification"
+                  value={item.disposition_justification}
+                  multiline
+                />
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section style={cardStyle}>
+        <h2 style={sectionTitleStyle}>3. Assigned Rework</h2>
         <div style={gridStyle}>
-          <ReadOnlyField label="Implementation Type" value={implementationLabel} />
-          <ReadOnlyField
-            label="Assigned To"
-            value={task.assigned_to_email}
-          />
-          <ReadOnlyField
-            label="Assigned By"
-            value={task.assigned_by_email}
-          />
+          <ReadOnlyField label="Assigned To" value={task.assigned_to_email} />
+          <ReadOnlyField label="Assigned By" value={task.assigned_by_email} />
           <ReadOnlyField label="Due Date" value={formatIsoDate(task.due_date)} />
           <ReadOnlyField label="Task Status" value={task.status} />
         </div>
-
-        <ReadOnlyField
-          label="Implementation Instructions"
-          value={task.task_instructions || task.comments}
-          multiline
-        />
-
+        <div style={{ marginTop: "12px", border: "1px solid #93c5fd", background: "#eff6ff", borderRadius: "10px", padding: "14px" }}>
+          <div style={{ fontWeight: 900, marginBottom: "6px" }}>Assigned Rework Task</div>
+          <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.55 }}>{task.task_instructions || task.comments || "No Rework task was recorded."}</div>
+        </div>
         <div style={{ marginTop: "12px" }}>
-          <div style={labelStyle}>Assignment Attachment(s)</div>
-          {Array.isArray(task?.assignment_attachments) &&
-          task.assignment_attachments.length > 0 ? (
-            <div style={{ display: "grid", gap: "6px", marginTop: "6px" }}>
-              {task.assignment_attachments.map((attachment: any, index: number) => (
-                <a
-                  key={`${attachment?.storage_path || attachment?.url || index}`}
-                  href={attachment?.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  style={{
-                    color: "#1d4ed8",
-                    textDecoration: "none",
-                    fontWeight: 700,
-                  }}
-                >
-                  📎 {attachment?.name || `Assignment Attachment ${index + 1}`}
-                </a>
-              ))}
-            </div>
-          ) : (
-            <div style={{ color: "#64748b", fontSize: "13px", marginTop: "5px" }}>
-              No optional assignment attachment was provided.
-            </div>
-          )}
+          <strong>Rework Task Assignment Attachment</strong>
+          {Array.isArray(task?.assignment_attachments) && task.assignment_attachments.length > 0 ? (
+            <div style={{ display: "grid", gap: "6px", marginTop: "6px" }}>{task.assignment_attachments.map((attachment: any, index: number) => <a key={`${attachment?.storage_path || attachment?.url || index}`} href={attachment?.url} target="_blank" rel="noreferrer">📎 {attachment?.name || `Assignment Attachment ${index + 1}`}</a>)}</div>
+          ) : <div style={{ color: "#64748b", marginTop: "5px" }}>No optional assignment attachment was provided.</div>}
         </div>
       </section>
 
       <section style={cardStyle}>
-        <h2 style={sectionTitleStyle}>3. Completion</h2>
-
+        <h2 style={sectionTitleStyle}>4. Completion & Evidence</h2>
         {isPending ? (
           <>
             <label style={labelStyle}>Completion Notes</label>
-            <textarea
-              value={completionComment}
-              onChange={(event) => setCompletionComment(event.target.value)}
-              rows={6}
-              placeholder={`Document what was completed for this ${implementationLabel.toLowerCase()} task, including relevant results or evidence references.`}
-              disabled={!isAssignedUser || submitting}
-              style={textareaStyle}
-            />
-
+            <textarea value={completionComment} onChange={(event) => setCompletionComment(event.target.value)} rows={6} placeholder="Document the Rework performed, results, and any relevant evidence references." disabled={!isAssignedUser || submitting || returning} style={textareaStyle} />
             <label style={labelStyle}>Completion Attachment (Optional)</label>
-            <input type="file" multiple disabled={!isAssignedUser || submitting} onChange={(event) => { const files = Array.from(event.target.files || []) as File[]; setCompletionFiles((current) => { const keys = new Set(current.map((file) => `${file.name}:${file.size}:${file.lastModified}`)); return [...current, ...files.filter((file) => !keys.has(`${file.name}:${file.size}:${file.lastModified}`))]; }); event.currentTarget.value = ""; }} style={{ marginBottom: "10px" }} />
-            {completionFiles.length > 0 ? <div style={{ display: "grid", gap: "6px", marginBottom: "14px" }}>{completionFiles.map((file, index) => <div key={`${file.name}-${file.size}-${file.lastModified}`} style={attachmentDraftStyle}><span>📎 {file.name}</span><button type="button" onClick={() => setCompletionFiles((current) => current.filter((_, i) => i !== index))} disabled={submitting}>Remove</button></div>)}</div> : <div style={{ color: "#64748b", fontSize: "13px", marginBottom: "14px" }}>Optional: attach training records, completed forms, photographs, test results, or other objective evidence.</div>}
-
-            <label style={labelStyle}>Electronic Signature Email</label>
-            <input
-              type="email"
-              value={signatureEmail}
-              onChange={(event) => setSignatureEmail(event.target.value)}
-              placeholder={userEmail || "your.email@company.com"}
-              disabled={!isAssignedUser || submitting}
-              style={inputStyle}
-            />
-
-            <div style={signatureHelpStyle}>
-              Completing this task records your identity, timestamp, completion
-              notes, and electronic signature in the approval task and NCMR audit
-              trail. The NCMR owner remains responsible for reviewing the work and
-              recording final implementation verification.
-            </div>
-
-            <button
-              type="button"
-              onClick={completeTask}
-              disabled={!isAssignedUser || submitting}
-              style={{
-                ...completeButtonStyle,
-                opacity: !isAssignedUser || submitting ? 0.55 : 1,
-                cursor:
-                  !isAssignedUser || submitting ? "not-allowed" : "pointer",
-              }}
-            >
-              {submitting
-                ? "Completing..."
-                : `Complete ${implementationLabel} Task`}
-            </button>
+            <input type="file" multiple disabled={!isAssignedUser || submitting || returning} onChange={(event) => { const files = Array.from(event.target.files || []) as File[]; setCompletionFiles((current) => { const keys = new Set(current.map((file) => `${file.name}:${file.size}:${file.lastModified}`)); return [...current, ...files.filter((file) => !keys.has(`${file.name}:${file.size}:${file.lastModified}`))]; }); event.currentTarget.value = ""; }} style={{ marginBottom: "10px" }} />
+            {completionFiles.length > 0 ? <div style={{ display: "grid", gap: "6px", marginBottom: "14px" }}>{completionFiles.map((file, index) => <div key={`${file.name}-${file.size}-${file.lastModified}`} style={attachmentDraftStyle}><span>📎 {file.name}</span><button type="button" onClick={() => setCompletionFiles((current) => current.filter((_, i) => i !== index))} disabled={submitting || returning}>Remove</button></div>)}</div> : <div style={{ color: "#64748b", fontSize: "13px", marginBottom: "14px" }}>Optional: attach completed travelers, inspection records, approved rework instructions created during execution, photographs, test results, or other objective evidence.</div>}
           </>
         ) : (
           <div style={completedPanelStyle}>
-            <strong>{implementationLabel} task completed</strong>
-            <div style={{ marginTop: "8px" }}>
-              <strong>Completed By:</strong>{" "}
-              {task.completed_by || task.signed_by || "N/A"}
-            </div>
-            <div>
-              <strong>Completed At:</strong>{" "}
-              {formatIsoDateTime(task.completed_at || task.signed_at)}
-            </div>
-            <div style={{ marginTop: "8px" }}>
-              <strong>Completion Notes:</strong>{" "}
-              {task.completion_comment || task.approver_comment || "N/A"}
-            </div>
+            <strong>Rework task completed</strong>
+            <div style={{ marginTop: "8px" }}><strong>Completed By:</strong> {task.completed_by || task.signed_by || "N/A"}</div>
+            <div><strong>Completed At:</strong> {formatIsoDateTime(task.completed_at || task.signed_at)}</div>
+            <div style={{ marginTop: "8px" }}><strong>Completion Notes:</strong> {task.completion_comment || task.approver_comment || "N/A"}</div>
             <div style={{ marginTop: "10px" }}><strong>Completion Evidence:</strong>{Array.isArray(task?.task_attachments) && task.task_attachments.length > 0 ? <div style={{ display: "grid", gap: "6px", marginTop: "6px" }}>{task.task_attachments.map((attachment: any, index: number) => <a key={`${attachment?.storage_path || attachment?.url || index}`} href={attachment?.url} target="_blank" rel="noreferrer">📎 {attachment?.name || `Completion Attachment ${index + 1}`}</a>)}</div> : <div style={{ color: "#64748b", marginTop: "5px" }}>No optional completion attachment was provided.</div>}</div>
           </div>
         )}
+      </section>
+
+      <section style={cardStyle}>
+        <h2 style={sectionTitleStyle}>5. Final Rework Outcome & Electronic Signature</h2>
+        <p style={{ color: "#475569", marginTop: 0 }}>After documenting the completed Rework and evidence, record the actual final disposition and reconciled quantities.</p>
+        <div style={{ display: "grid", gap: "12px" }}>
+          {reworkItems.map((item: any, index: number) => {
+            const outcome = reworkOutcomes[item.id] || { finalDispositionAfterRework: "", finalQuantityAccepted: "", finalQuantityRejected: "" };
+            const affected = Number(item.quantity_affected || 0); const accepted = Number(outcome.finalQuantityAccepted || 0); const rejected = Number(outcome.finalQuantityRejected || 0);
+            const reconciled = outcome.finalQuantityAccepted !== "" && outcome.finalQuantityRejected !== "" && accepted + rejected === affected;
+            return <div key={item.id || index} style={materialCardStyle}>
+              <strong>{item.product_part_number || "Part N/A"} / Lot {item.lot_number || "N/A"}</strong>
+              <div style={{ margin: "8px 0" }}>MRB Disposition: <strong>Rework</strong> · Quantity Affected: <strong>{affected}</strong></div>
+              <label style={labelStyle}>Final Disposition After Rework</label>
+              <select value={outcome.finalDispositionAfterRework} onChange={(e) => setReworkOutcomes((c) => ({...c,[item.id]:{...outcome,finalDispositionAfterRework:e.target.value}}))} disabled={!isAssignedUser || !isPending || submitting || returning} style={inputStyle}><option value="">Select final disposition</option><option value="accepted_after_rework">Accepted After Rework</option><option value="scrap_after_rework">Scrap After Rework</option><option value="use_as_is_after_rework">Use As Is After Rework</option></select>
+              <div style={{ ...gridStyle, marginTop: "12px" }}><div><label style={labelStyle}>Final Quantity Accepted</label><input type="number" min="0" value={outcome.finalQuantityAccepted} onChange={(e)=>setReworkOutcomes((c)=>({...c,[item.id]:{...outcome,finalQuantityAccepted:e.target.value}}))} disabled={!isAssignedUser || !isPending || submitting || returning} style={inputStyle}/></div><div><label style={labelStyle}>Final Quantity Rejected</label><input type="number" min="0" value={outcome.finalQuantityRejected} onChange={(e)=>setReworkOutcomes((c)=>({...c,[item.id]:{...outcome,finalQuantityRejected:e.target.value}}))} disabled={!isAssignedUser || !isPending || submitting || returning} style={inputStyle}/></div></div>
+              <div style={{ marginTop:"10px", border: reconciled ? "1px solid #86efac":"1px solid #fca5a5", background: reconciled ? "#f0fdf4":"#fef2f2", borderRadius:"8px", padding:"10px" }}><strong>Final Quantity Reconciliation:</strong> {accepted} + {rejected} = {accepted+rejected} / {affected} — {reconciled ? "✓ Reconciled":"⚠ Not Reconciled"}</div>
+            </div>;
+          })}
+        </div>
+        {isPending ? <div style={{ marginTop: "18px" }}>
+          <label style={labelStyle}>Electronic Signature Email</label>
+          <input type="email" value={signatureEmail} onChange={(event) => setSignatureEmail(event.target.value)} placeholder={userEmail || "your.email@company.com"} disabled={!isAssignedUser || submitting || returning} style={inputStyle} />
+          <div style={signatureHelpStyle}>Completing this task records your identity, timestamp, completion notes, evidence, final Rework disposition, and reconciled final quantities. The NCMR owner remains responsible for independent implementation verification.</div>
+          <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+            <button type="button" onClick={completeTask} disabled={!isAssignedUser || submitting || returning} style={{...completeButtonStyle,opacity:!isAssignedUser||submitting||returning?0.55:1,cursor:!isAssignedUser||submitting||returning?"not-allowed":"pointer"}}>{submitting ? "Completing..." : "Complete Rework Task"}</button>
+            <button type="button" onClick={returnReworkTask} disabled={!isAssignedUser || submitting || returning} style={secondaryButtonStyle}>{returning ? "Returning..." : "Return Rework Task"}</button>
+          </div>
+          <div style={{ color: "#64748b", fontSize: "13px", marginTop: "8px" }}>Return the task when the assignment needs refinement or clarification. Reassignment is managed from the NCMR/My Workspace governance controls.</div>
+        </div> : null}
       </section>
     </main>
   );
@@ -535,8 +584,15 @@ const sectionTitleStyle: React.CSSProperties = {
 
 const gridStyle: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
   gap: "12px",
+};
+
+const materialCardStyle: React.CSSProperties = {
+  border: "1px solid #dbeafe",
+  background: "#f8fbff",
+  borderRadius: "10px",
+  padding: "14px",
 };
 
 const fieldWrapStyle: React.CSSProperties = {
@@ -595,10 +651,27 @@ const completeButtonStyle: React.CSSProperties = {
   fontWeight: 900,
 };
 
+const secondaryButtonStyle: React.CSSProperties = {
+  background: "#ffffff",
+  color: "#1d4ed8",
+  border: "1px solid #93c5fd",
+  borderRadius: "9px",
+  padding: "11px 16px",
+  fontWeight: 900,
+};
+
 const completedPanelStyle: React.CSSProperties = {
   border: "1px solid #86efac",
   background: "#f0fdf4",
   color: "#166534",
+  borderRadius: "10px",
+  padding: "14px",
+};
+
+const warningPanelStyle: React.CSSProperties = {
+  border: "1px solid #facc15",
+  background: "#fefce8",
+  color: "#854d0e",
   borderRadius: "10px",
   padding: "14px",
 };
