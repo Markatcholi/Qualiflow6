@@ -82,6 +82,7 @@ export default function ManagementReviewPage() {
 
   const [managementReviews, setManagementReviews] = useState<any[]>([]);
   const [selectedReviewId, setSelectedReviewId] = useState("");
+  const [currentUserEmail, setCurrentUserEmail] = useState("");
   const [approverName, setApproverName] = useState("");
   const [approverEmail, setApproverEmail] = useState("");
   const [approverRole, setApproverRole] = useState("");
@@ -1041,6 +1042,16 @@ export default function ManagementReviewPage() {
     fetchData();
     fetchManagementReviews();
     fetchManagementReviewActions();
+
+    supabase.auth.getUser().then(({ data }) => {
+      setCurrentUserEmail(String(data?.user?.email || "").trim().toLowerCase());
+    });
+
+    const params = new URLSearchParams(window.location.search);
+    const requestedReviewId = params.get("reviewId");
+    if (requestedReviewId) {
+      setSelectedReviewId(requestedReviewId);
+    }
   }, []);
 
   const ncmrClosureRate = ncmrTotal > 0 ? ((ncmrClosed / ncmrTotal) * 100).toFixed(1) : "0.0";
@@ -1125,21 +1136,78 @@ export default function ManagementReviewPage() {
       return;
     }
 
-    const { error } = await supabase.from("management_review_approvers").insert({
-      management_review_id: selectedReviewId,
-      approver_name: approverName,
-      approver_email: approverEmail,
-      approver_role: approverRole || null,
-      approval_status: "pending",
-      signature_meaning: signatureMeaning || null,
-    });
+    const normalizedApproverEmail = approverEmail.trim().toLowerCase();
+    const duplicateApprover = selectedApprovers.some(
+      (item: any) =>
+        String(item.approver_email || "").trim().toLowerCase() === normalizedApproverEmail &&
+        String(item.approval_status || "pending").toLowerCase() !== "cancelled"
+    );
 
-    if (error) {
-      alert(error.message);
+    if (duplicateApprover) {
+      alert("This user is already configured as an approver for the selected Management Review.");
       return;
     }
 
-    await supabase
+    const { data: userData } = await supabase.auth.getUser();
+    const assignedByEmail = String(userData?.user?.email || "").trim().toLowerCase();
+
+    if (!assignedByEmail) {
+      alert("An authenticated user is required to assign a Management Review approver.");
+      return;
+    }
+
+    const { data: insertedApprover, error: approverError } = await supabase
+      .from("management_review_approvers")
+      .insert({
+        management_review_id: selectedReviewId,
+        approver_name: approverName.trim(),
+        approver_email: normalizedApproverEmail,
+        approver_role: approverRole || null,
+        approval_status: "pending",
+        signature_meaning: signatureMeaning || null,
+      })
+      .select()
+      .single();
+
+    if (approverError || !insertedApprover) {
+      alert(approverError?.message || "Unable to add Management Review approver.");
+      return;
+    }
+
+    const reviewNumber = selectedReview?.review_number || "Management Review";
+    const approverMarker = `management_review_approver_id=${insertedApprover.id}`;
+
+    const { data: insertedTask, error: taskError } = await supabase
+      .from("approval_tasks")
+      .insert({
+        entity_type: "management_review",
+        entity_id: selectedReviewId,
+        task_type: "management_review_approval",
+        task_title: `${approverRole || "Approver"} — ${reviewNumber} Management Review Approval`,
+        required_function: approverRole || "Management Review Approver",
+        approver_job_title: approverRole || null,
+        assigned_to_email: normalizedApproverEmail,
+        assigned_by_email: assignedByEmail,
+        status: "pending",
+        required: true,
+        comments: `${approverMarker}\n\nPlease review ${reviewNumber} and approve only if the Management Review record, quality-system performance, risks, actions, and conclusions are acceptable. This approval becomes part of the official electronic quality record.`,
+        assignment_attachments: [],
+      })
+      .select()
+      .single();
+
+    if (taskError || !insertedTask) {
+      await supabase
+        .from("management_review_approvers")
+        .delete()
+        .eq("id", insertedApprover.id)
+        .eq("management_review_id", selectedReviewId);
+
+      alert(taskError?.message || "Unable to create the Management Review approval task.");
+      return;
+    }
+
+    const { error: reviewUpdateError } = await supabase
       .from("management_reviews")
       .update({
         approval_status: "pending_approval",
@@ -1147,7 +1215,40 @@ export default function ManagementReviewPage() {
       })
       .eq("id", selectedReviewId);
 
-    alert("Approver added.");
+    if (reviewUpdateError) {
+      console.warn("Unable to update Management Review approval status:", reviewUpdateError.message);
+    }
+
+    const taskUrl = `/management-review?reviewId=${selectedReviewId}&taskId=${insertedTask.id}`;
+    const { error: notificationError } = await supabase.from("notifications").insert({
+      user_email: normalizedApproverEmail,
+      assigned_role: approverRole || "Management Review Approver",
+      notification_type: "management_review_approval",
+      title: `Management Review approval assigned: ${reviewNumber}`,
+      message: `You have been assigned approval for ${reviewNumber}. Open My Workspace to review and sign.`,
+      related_module: "management_review",
+      related_record_id: selectedReviewId,
+      related_url: taskUrl,
+      severity: "info",
+      read_status: false,
+    });
+
+    if (notificationError) {
+      console.warn("Management Review approval notification failed:", notificationError.message);
+    }
+
+    const { error: auditError } = await supabase.rpc("qualisphere_add_audit_log", {
+      p_entity_type: "management_review",
+      p_entity_id: selectedReviewId,
+      p_action: "management_review_approver_assigned",
+      p_details: `Approval assigned to ${normalizedApproverEmail} (${approverRole || "Management Review Approver"}).`,
+    });
+
+    if (auditError) {
+      console.warn("Management Review approver assignment audit failed:", auditError.message);
+    }
+
+    alert("Approver added and approval task sent to My Workspace.");
     setApproverName("");
     setApproverEmail("");
     setApproverRole("");
@@ -1160,27 +1261,124 @@ export default function ManagementReviewPage() {
       return;
     }
 
+    const { data: userData } = await supabase.auth.getUser();
+    const userEmail = String(userData?.user?.email || "").trim().toLowerCase();
+    const assignedApproverEmail = String(approver.approver_email || "").trim().toLowerCase();
+
+    if (!userEmail) {
+      alert("An authenticated user is required to approve this Management Review.");
+      return;
+    }
+
+    if (userEmail !== assignedApproverEmail) {
+      alert(`This approval is assigned to ${approver.approver_email}. Sign in as the assigned approver to complete it.`);
+      return;
+    }
+
+    const taskIdFromUrl = new URLSearchParams(window.location.search).get("taskId");
+    let taskQuery = supabase
+      .from("approval_tasks")
+      .select("*")
+      .eq("entity_type", "management_review")
+      .eq("entity_id", approver.management_review_id)
+      .eq("task_type", "management_review_approval")
+      .eq("assigned_to_email", userEmail)
+      .eq("status", "pending");
+
+    if (taskIdFromUrl) {
+      taskQuery = taskQuery.eq("id", taskIdFromUrl);
+    }
+
+    const { data: pendingTasks, error: taskFetchError } = await taskQuery;
+
+    if (taskFetchError) {
+      alert(taskFetchError.message);
+      return;
+    }
+
+    const approverMarker = `management_review_approver_id=${approver.id}`;
+    const matchingTask = (pendingTasks || []).find((task: any) =>
+      String(task.comments || "").includes(approverMarker)
+    );
+
+    if (!matchingTask) {
+      alert("No pending Management Review approval task assigned to this account was found for this approver.");
+      return;
+    }
+
+    const enteredEmail = window.prompt(
+      `Electronic Signature Required\n\nApprover: ${approver.approver_name}\n\nRe-enter your email to approve:`
+    );
+
+    if (!enteredEmail) return;
+
+    if (enteredEmail.trim().toLowerCase() !== userEmail) {
+      alert("Electronic signature email does not match the logged-in user.");
+      return;
+    }
+
     const confirmed = window.confirm(
-      `Apply electronic approval for ${approver.approver_name}?\\n\\nMeaning: ${approver.signature_meaning || signatureMeaning}`
+      `Electronic Signature\n\n${approver.signature_meaning || signatureMeaning}\n\nBy clicking OK, your authenticated identity will be recorded as the signer.`
     );
 
     if (!confirmed) return;
 
-    const { data: userData } = await supabase.auth.getUser();
-    const userEmail = userData?.user?.email || "unknown";
+    const now = new Date().toISOString();
+    const meaning = approver.signature_meaning || signatureMeaning;
 
-    const { error } = await supabase
+    const { data: updatedApprovers, error: approverUpdateError } = await supabase
       .from("management_review_approvers")
       .update({
         approval_status: "approved",
         signed_by: userEmail,
-        signed_at: new Date().toISOString(),
-        signature_meaning: approver.signature_meaning || signatureMeaning,
+        signed_at: now,
+        signature_meaning: meaning,
       })
-      .eq("id", approver.id);
+      .eq("id", approver.id)
+      .eq("management_review_id", approver.management_review_id)
+      .eq("approver_email", approver.approver_email)
+      .eq("approval_status", "pending")
+      .select("id");
 
-    if (error) {
-      alert(error.message);
+    if (approverUpdateError) {
+      alert(approverUpdateError.message);
+      return;
+    }
+
+    if (!updatedApprovers || updatedApprovers.length === 0) {
+      alert("This approval is no longer pending or has already been completed.");
+      return;
+    }
+
+    const { data: completedTasks, error: taskUpdateError } = await supabase
+      .from("approval_tasks")
+      .update({
+        status: "approved",
+        approver_comment: "Management Review approved.",
+        signature_meaning: meaning,
+        completed_by: userEmail,
+        completed_at: now,
+        signed_by: userEmail,
+        signed_at: now,
+      })
+      .eq("id", matchingTask.id)
+      .eq("assigned_to_email", userEmail)
+      .eq("status", "pending")
+      .select("id");
+
+    if (taskUpdateError || !completedTasks || completedTasks.length === 0) {
+      await supabase
+        .from("management_review_approvers")
+        .update({
+          approval_status: "pending",
+          signed_by: null,
+          signed_at: null,
+        })
+        .eq("id", approver.id)
+        .eq("management_review_id", approver.management_review_id)
+        .eq("signed_by", userEmail);
+
+      alert(taskUpdateError?.message || "The approval task could not be completed. No approval was finalized.");
       return;
     }
 
@@ -1199,9 +1397,7 @@ export default function ManagementReviewPage() {
       (approvers || []).every((item: any) => item.approval_status === "approved");
 
     if (allApproved) {
-      const now = new Date().toISOString();
-
-      await supabase
+      const { error: lockError } = await supabase
         .from("management_reviews")
         .update({
           approval_status: "approved",
@@ -1213,18 +1409,23 @@ export default function ManagementReviewPage() {
         })
         .eq("id", approver.management_review_id);
 
+      if (lockError) {
+        alert(lockError.message);
+        return;
+      }
+
       const { error: auditError } = await supabase.rpc("qualisphere_add_audit_log", {
         p_entity_type: "management_review",
         p_entity_id: approver.management_review_id,
         p_action: "management_review_fully_approved_locked",
-        p_details: "All required approvers signed. Management review record locked.",
+        p_details: "All required approvers signed through assigned approval tasks. Management review record locked.",
       });
 
       if (auditError) {
         console.warn("Management Review audit log failed:", auditError.message);
       }
 
-      alert("Approval saved. All approvers have signed, and the management review record is now locked.");
+      alert("Approval saved. All required approvers have signed, and the Management Review is now locked.");
     } else {
       await supabase
         .from("management_reviews")
@@ -1234,14 +1435,14 @@ export default function ManagementReviewPage() {
         })
         .eq("id", approver.management_review_id);
 
-      alert("Approval saved.");
+      alert("Approval saved. Remaining approvers are still pending.");
     }
 
     const { error: approverAuditError } = await supabase.rpc("qualisphere_add_audit_log", {
       p_entity_type: "management_review_approver",
       p_entity_id: approver.id,
       p_action: "management_review_approver_signed",
-      p_details: `Approver ${approver.approver_name} signed management review approval.`,
+      p_details: `Assigned approver ${approver.approver_name} (${userEmail}) signed Management Review approval task ${matchingTask.id}.`,
     });
 
     if (approverAuditError) {
@@ -1260,17 +1461,60 @@ export default function ManagementReviewPage() {
     const confirmed = window.confirm(`Remove approver ${approver.approver_name}?`);
     if (!confirmed) return;
 
+    const approverMarker = `management_review_approver_id=${approver.id}`;
+    const { data: pendingTasks, error: taskFetchError } = await supabase
+      .from("approval_tasks")
+      .select("id, comments")
+      .eq("entity_type", "management_review")
+      .eq("entity_id", approver.management_review_id)
+      .eq("task_type", "management_review_approval")
+      .eq("status", "pending");
+
+    if (taskFetchError) {
+      alert(taskFetchError.message);
+      return;
+    }
+
+    const matchingTaskIds = (pendingTasks || [])
+      .filter((task: any) => String(task.comments || "").includes(approverMarker))
+      .map((task: any) => task.id);
+
+    if (matchingTaskIds.length > 0) {
+      const { error: taskCancelError } = await supabase
+        .from("approval_tasks")
+        .update({ status: "cancelled" })
+        .in("id", matchingTaskIds)
+        .eq("status", "pending");
+
+      if (taskCancelError) {
+        alert(taskCancelError.message);
+        return;
+      }
+    }
+
     const { error } = await supabase
       .from("management_review_approvers")
       .delete()
-      .eq("id", approver.id);
+      .eq("id", approver.id)
+      .eq("management_review_id", approver.management_review_id);
 
     if (error) {
       alert(error.message);
       return;
     }
 
-    alert("Approver removed.");
+    const { error: auditError } = await supabase.rpc("qualisphere_add_audit_log", {
+      p_entity_type: "management_review",
+      p_entity_id: approver.management_review_id,
+      p_action: "management_review_approver_removed",
+      p_details: `Approver ${approver.approver_name} (${approver.approver_email}) removed and pending approval task cancelled.`,
+    });
+
+    if (auditError) {
+      console.warn("Management Review approver removal audit failed:", auditError.message);
+    }
+
+    alert("Approver removed and pending approval task cancelled.");
     fetchManagementReviews();
   };
 
@@ -2928,7 +3172,10 @@ export default function ManagementReviewPage() {
                       <td style={tdStyle}>{approver.signed_by || "N/A"}</td>
                       <td style={tdStyle}>{approver.signed_at || "N/A"}</td>
                       <td style={tdStyle}>
-                        {approver.approval_status !== "approved" && !selectedReviewLocked ? (
+                        {approver.approval_status !== "approved" &&
+                        !selectedReviewLocked &&
+                        String(approver.approver_email || "").trim().toLowerCase() ===
+                          currentUserEmail ? (
                           <button type="button" onClick={() => approveReviewApprover(approver)}>
                             Approve / Sign
                           </button>

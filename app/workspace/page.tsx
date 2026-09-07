@@ -953,6 +953,7 @@ function getTaskUrl(task: any) {
   if (task.entity_type === "complaint") return `/complaints/${task.entity_id}`;
   if (task.entity_type === "audit") return `/audits/${task.entity_id}`;
   if (task.entity_type === "training") return `/training`;
+  if (task.entity_type === "management_review") return `/management-review?reviewId=${task.entity_id}&taskId=${task.id}`;
 
   return "/";
 }
@@ -999,6 +1000,7 @@ function getRecordDisplay(task: any) {
     task.document_number ||
     task.complaint_number ||
     task.audit_number ||
+    task.review_number ||
     task.record_number ||
     task.entity_number;
 
@@ -1006,7 +1008,7 @@ function getRecordDisplay(task: any) {
 
   const title = String(task.task_title || task.title || "");
   const recordMatch = title.match(
-    /\b(CAPA[-\s]?\d+|NCMR[-\s]?\d+|CC[-\s]?\d+|SCAR[-\s]?\d+|AUD[-\s]?\d+|DOC[-\s]?\d+|CMP[-\s]?\d+)\b/i
+    /\b(CAPA[-\s]?\d+|NCMR[-\s]?\d+|CC[-\s]?\d+|SCAR[-\s]?\d+|AUD[-\s]?\d+|DOC[-\s]?\d+|CMP[-\s]?\d+|MR[-\s]?\d+(?:[-\s]?\d+)?)\b/i
   );
 
   if (recordMatch?.[1]) return recordMatch[1].toUpperCase();
@@ -1235,6 +1237,7 @@ function getModuleLabel(task: any) {
   if (type.includes("training")) return "Training";
   if (type.includes("complaint")) return "Complaint";
   if (type.includes("audit")) return "Audit";
+  if (type.includes("management_review")) return "Management Review";
   return "Quality";
 }
 
@@ -1248,6 +1251,7 @@ function getModuleIcon(task: any) {
   if (label === "Training") return "🎓";
   if (label === "Complaint") return "📣";
   if (label === "Audit") return "🔎";
+  if (label === "Management Review") return "📊";
   return "📌";
 }
 

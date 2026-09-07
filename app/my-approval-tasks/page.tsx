@@ -121,6 +121,16 @@ export default function MyApprovalTasksPage() {
     );
   };
 
+  const isManagementReviewApprovalTask = (task: any) => {
+    return (
+      String(task.entity_type || "").trim().toLowerCase() === "management_review" &&
+      String(task.task_type || "").trim().toLowerCase() === "management_review_approval"
+    );
+  };
+
+  const getManagementReviewUrl = (task: any) =>
+    `/management-review?reviewId=${task.entity_id}&taskId=${task.id}`;
+
   const getNcmrReviewUrl = (task: any) =>
     `/ncmrs/${task.entity_id}/approval-review?taskId=${task.id}`;
 
@@ -316,6 +326,11 @@ export default function MyApprovalTasksPage() {
       return;
     }
 
+    if (isManagementReviewApprovalTask(task)) {
+      window.location.href = getManagementReviewUrl(task);
+      return;
+    }
+
     if (!signatureEmail) {
       alert("Please enter your email for electronic signature.");
       return;
@@ -473,7 +488,9 @@ export default function MyApprovalTasksPage() {
           {tasks.map((task) => {
             const capaApproval = isCapaApprovalTask(task);
             const ncmrMrbApproval = isNcmrMrbApprovalTask(task);
-            const centralizedApproval = capaApproval || ncmrMrbApproval;
+            const managementReviewApproval = isManagementReviewApprovalTask(task);
+            const centralizedApproval =
+              capaApproval || ncmrMrbApproval || managementReviewApproval;
             const ownedCapaWork =
               task.workspace_item_type === "owned_capa";
             const dueStatus = getDueStatus(task);
@@ -538,6 +555,10 @@ export default function MyApprovalTasksPage() {
                   ) : ncmrMrbApproval ? (
                     <a href={getNcmrReviewUrl(task)} style={primaryLinkStyle}>
                       Open MRB Review Package
+                    </a>
+                  ) : managementReviewApproval ? (
+                    <a href={getManagementReviewUrl(task)} style={primaryLinkStyle}>
+                      Open Management Review Approval
                     </a>
                   ) : null}
                 </div>
