@@ -64,8 +64,10 @@ jobs:
           p.write_text(s)
       - name: Install dependencies
         run: npm install --no-audit --no-fund
-      - name: Build
-        run: npm run build
+      - name: Verify TypeScript and generated diff
+        run: |
+          npx tsc --noEmit
+          git diff --check
       - name: Commit generated changes
         run: |
           git config user.name "github-actions[bot]"
