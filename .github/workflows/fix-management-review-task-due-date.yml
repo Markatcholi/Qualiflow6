@@ -1,0 +1,49 @@
+name: Fix Management Review Task Due Date
+
+on:
+  push:
+    branches:
+      - fix/management-review-report-approval-package-20260907
+
+permissions:
+  contents: write
+
+jobs:
+  fix-and-verify:
+    if: ${{ !contains(github.event.head_commit.message, '[mr-due-date-fixed]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/management-review-report-approval-package-20260907
+          fetch-depth: 0
+      - name: Remove nonexistent approval_tasks.approver_due_date write
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('app/management-review/page.tsx')
+          s = p.read_text()
+          target = '          approver_due_date: approver.approver_due_date,\n'
+          if target not in s:
+              raise SystemExit('Expected approval_tasks approver_due_date write not found')
+          s = s.replace(target, '', 1)
+          p.write_text(s)
+          PY
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: TypeScript verification
+        run: npx tsc --noEmit
+      - name: Verify due-date mapping
+        run: |
+          grep -q 'due_date: approver.approver_due_date' app/management-review/page.tsx
+          if grep -q '          approver_due_date: approver.approver_due_date' app/management-review/page.tsx; then
+            echo 'Unexpected approval_tasks.approver_due_date write still present'
+            exit 1
+          fi
+      - name: Commit correction
+        run: |
+          git config user.name 'QualiSphere Workflow Hardening'
+          git config user.email 'actions@users.noreply.github.com'
+          git add app/management-review/page.tsx
+          git commit -m 'Use approval_tasks.due_date for Management Review deadlines [mr-due-date-fixed]'
+          git push origin HEAD:fix/management-review-report-approval-package-20260907
