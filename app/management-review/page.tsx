@@ -103,6 +103,7 @@ export default function ManagementReviewPage() {
   const [site, setSite] = useState("");
   const [businessUnit, setBusinessUnit] = useState("");
   const [executiveSummaryText, setExecutiveSummaryText] = useState("");
+  const [reportDataPeriodKey, setReportDataPeriodKey] = useState("");
 
   const [ncmrOpen, setNcmrOpen] = useState(0);
   const [ncmrInvestigation, setNcmrInvestigation] = useState(0);
@@ -189,28 +190,70 @@ export default function ManagementReviewPage() {
   const [configuredChangeKpis, setConfiguredChangeKpis] = useState<ConfiguredKpi[]>([]);
   const [changeKpiValues, setChangeKpiValues] = useState<Record<string, KpiDisplayValue>>({});
 
-  const getLast6Months = () => {
-    const months: { key: string; label: string }[] = [];
-    const now = new Date();
+  const getReviewPeriodKey = () => `${reviewPeriodStart || ""}|${reviewPeriodEnd || ""}`;
 
+  const reviewAsOfDate = () => {
+    if (reviewPeriodEnd) {
+      return new Date(`${reviewPeriodEnd}T23:59:59.999`);
+    }
+    return new Date();
+  };
+
+  const filterByReviewPeriod = (items: any[], dateFields: string[] = ["created_at"]) => {
+    if (!reviewPeriodStart || !reviewPeriodEnd) return items;
+
+    const start = new Date(`${reviewPeriodStart}T00:00:00.000`).getTime();
+    const end = new Date(`${reviewPeriodEnd}T23:59:59.999`).getTime();
+
+    return items.filter((item: any) => {
+      const rawDate = dateFields
+        .map((field) => item?.[field])
+        .find((value) => value !== null && value !== undefined && String(value).trim() !== "");
+
+      if (!rawDate) return false;
+      const timestamp = new Date(rawDate).getTime();
+      return Number.isFinite(timestamp) && timestamp >= start && timestamp <= end;
+    });
+  };
+
+  const getTrendMonths = () => {
+    const months: { key: string; label: string }[] = [];
+
+    if (reviewPeriodStart && reviewPeriodEnd) {
+      const start = new Date(`${reviewPeriodStart}T00:00:00`);
+      const end = new Date(`${reviewPeriodEnd}T23:59:59`);
+      let cursor = new Date(start.getFullYear(), start.getMonth(), 1);
+      const last = new Date(end.getFullYear(), end.getMonth(), 1);
+
+      while (cursor <= last) {
+        const year = cursor.getFullYear();
+        const month = String(cursor.getMonth() + 1).padStart(2, "0");
+        months.push({
+          key: `${year}-${month}`,
+          label: cursor.toLocaleString("en-US", { month: "short", year: "2-digit" }),
+        });
+        cursor = new Date(year, cursor.getMonth() + 1, 1);
+      }
+
+      return months;
+    }
+
+    const now = new Date();
     for (let i = 5; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const year = d.getFullYear();
       const month = String(d.getMonth() + 1).padStart(2, "0");
-      const key = `${year}-${month}`;
-      const label = d.toLocaleString("en-US", {
-        month: "short",
-        year: "2-digit",
+      months.push({
+        key: `${year}-${month}`,
+        label: d.toLocaleString("en-US", { month: "short", year: "2-digit" }),
       });
-
-      months.push({ key, label });
     }
 
     return months;
   };
 
   const buildTrend = (items: any[]) => {
-    const months = getLast6Months();
+    const months = getTrendMonths();
     const counts: Record<string, number> = {};
 
     months.forEach((m) => {
@@ -218,9 +261,10 @@ export default function ManagementReviewPage() {
     });
 
     items.forEach((item) => {
-      if (!item.created_at) return;
+      const rawDate = item.created_at || item.date_detected || item.audit_date || item.assigned_at;
+      if (!rawDate) return;
 
-      const d = new Date(item.created_at);
+      const d = new Date(rawDate);
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 
       if (counts[key] !== undefined) {
@@ -228,16 +272,13 @@ export default function ManagementReviewPage() {
       }
     });
 
-    return months.map((m) => ({
-      label: m.label,
-      count: counts[m.key],
-    }));
+    return months.map((m) => ({ label: m.label, count: counts[m.key] }));
   };
 
   const daysBetween = (dateString: string) => {
     const start = new Date(dateString).getTime();
-    const now = new Date().getTime();
-    return Math.floor((now - start) / (1000 * 60 * 60 * 24));
+    const asOf = reviewAsOfDate().getTime();
+    return Math.floor((asOf - start) / (1000 * 60 * 60 * 24));
   };
 
 
@@ -469,7 +510,7 @@ export default function ManagementReviewPage() {
     allFindings: any[]
   ) => {
     const alerts: NotificationItem[] = [];
-    const today = new Date();
+    const today = reviewAsOfDate();
     const todayStr = today.toISOString().split("T")[0];
 
     allCapas.forEach((capa: any) => {
@@ -647,7 +688,7 @@ export default function ManagementReviewPage() {
       return;
     }
 
-    const allNcmrs = ncmrAllData || [];
+    const allNcmrs = filterByReviewPeriod(ncmrAllData || [], ["date_detected", "created_at"]);
     setNcmrTotal(allNcmrs.length);
 
     const closedNcmrs = allNcmrs.filter((item: any) => item.status === "closed");
@@ -719,7 +760,7 @@ export default function ManagementReviewPage() {
       return;
     }
 
-    const allCapas = capaAllData || [];
+    const allCapas = filterByReviewPeriod(capaAllData || [], ["created_at", "initiated_at"]);
     setCapaTotal(allCapas.length);
 
     const closedCapas = allCapas.filter((item: any) => item.status === "closed");
@@ -733,10 +774,10 @@ export default function ManagementReviewPage() {
     );
     setOpenSupplierCapas(supplierCapas.length);
 
-    const today = new Date();
+    const today = reviewAsOfDate();
     const todayStr = today.toISOString().split("T")[0];
 
-    const next7 = new Date();
+    const next7 = new Date(today);
     next7.setDate(today.getDate() + 7);
     const next7Str = next7.toISOString().split("T")[0];
 
@@ -825,7 +866,7 @@ export default function ManagementReviewPage() {
       return;
     }
 
-    const allScars = scarData || [];
+    const allScars = filterByReviewPeriod(scarData || [], ["created_at", "initiated_at"]);
     const activeScars = allScars.filter((item: any) => (item.status || item.scar_status) !== "closed");
     setOpenScars(activeScars.length);
 
@@ -862,7 +903,7 @@ export default function ManagementReviewPage() {
       return;
     }
 
-    const allOos = oosData || [];
+    const allOos = filterByReviewPeriod(oosData || [], ["created_at", "investigation_date"]);
     setOosTotal(allOos.length);
     setOosOpen(allOos.filter((item: any) => item.status !== "closed").length);
     setOosClosed(allOos.filter((item: any) => item.status === "closed").length);
@@ -877,7 +918,7 @@ export default function ManagementReviewPage() {
       .select("*");
 
     if (!complaintError) {
-      const allComplaints = complaintData || [];
+      const allComplaints = filterByReviewPeriod(complaintData || [], ["created_at", "date_received"]);
       const closedComplaints = allComplaints.filter((item: any) => item.status === "closed");
       const openComplaints = allComplaints.filter((item: any) => item.status !== "closed");
 
@@ -912,8 +953,8 @@ export default function ManagementReviewPage() {
       .select("*");
 
     if (!documentError) {
-      const allDocuments = documentData || [];
-      const todayStrForDocuments = new Date().toISOString().slice(0, 10);
+      const allDocuments = filterByReviewPeriod(documentData || [], ["created_at", "effective_date"]);
+      const todayStrForDocuments = reviewAsOfDate().toISOString().slice(0, 10);
 
       setDocumentTotal(allDocuments.length);
       setDocumentReleased(
@@ -943,8 +984,8 @@ export default function ManagementReviewPage() {
       .select("*");
 
     if (!trainingError) {
-      const allTraining = trainingData || [];
-      const todayStrForTraining = new Date().toISOString().slice(0, 10);
+      const allTraining = filterByReviewPeriod(trainingData || [], ["assigned_at", "created_at"]);
+      const todayStrForTraining = reviewAsOfDate().toISOString().slice(0, 10);
 
       setTrainingTotal(allTraining.length);
       setTrainingCompleted(
@@ -988,8 +1029,8 @@ export default function ManagementReviewPage() {
       return;
     }
 
-    const allAudits = auditData || [];
-    const allFindings = findingData || [];
+    const allAudits = filterByReviewPeriod(auditData || [], ["audit_date", "created_at"]);
+    const allFindings = filterByReviewPeriod(findingData || [], ["created_at"]);
 
     setAuditTotal(allAudits.length);
     setAuditOpen(allAudits.filter((item: any) => item.status !== "closed").length);
@@ -1029,13 +1070,14 @@ export default function ManagementReviewPage() {
       .select("*");
 
     if (!changeError) {
-      setChangeKpiValues((prev) => ({ ...prev, ...calculateChangeControlKpis(changeData || []) }));
+      setChangeKpiValues((prev) => ({ ...prev, ...calculateChangeControlKpis(filterByReviewPeriod(changeData || [], ["created_at", "requested_date"])) }));
     } else {
       console.warn(changeError.message);
       setChangeKpiValues({});
     }
 
     buildNotifications(allNcmrs, allCapas, allScars, allOos, allAudits, allFindings);
+    setReportDataPeriodKey(getReviewPeriodKey());
   };
 
   useEffect(() => {
@@ -1054,6 +1096,12 @@ export default function ManagementReviewPage() {
       setSelectedReviewId(requestedReviewId);
     }
   }, []);
+
+  useEffect(() => {
+    if (reviewPeriodStart && reviewPeriodEnd) {
+      fetchData();
+    }
+  }, [reviewPeriodStart, reviewPeriodEnd]);
 
   const ncmrClosureRate = ncmrTotal > 0 ? ((ncmrClosed / ncmrTotal) * 100).toFixed(1) : "0.0";
   const capaClosureRate = capaTotal > 0 ? ((capaClosed / capaTotal) * 100).toFixed(1) : "0.0";
@@ -1951,6 +1999,9 @@ Review and approve only the generated read-only Management Review report snapsho
   const buildReportSnapshot = () => {
     return {
       generated_at: new Date().toISOString(),
+      review_period_start: reviewPeriodStart || null,
+      review_period_end: reviewPeriodEnd || null,
+      as_of_date: reviewPeriodEnd || reviewDate || null,
       report_config: reportConfig,
       executive: {
         quality_health: executiveHealth,
@@ -2074,6 +2125,21 @@ Review and approve only the generated read-only Management Review report snapsho
   const createManagementReviewRecord = async () => {
     if (!reviewTitle.trim()) {
       alert("Review title is required.");
+      return;
+    }
+
+    if (!reviewPeriodStart || !reviewPeriodEnd) {
+      alert("Review period start and end dates are required before generating the Management Review report.");
+      return;
+    }
+
+    if (new Date(reviewPeriodStart).getTime() > new Date(reviewPeriodEnd).getTime()) {
+      alert("Review period start date cannot be after the end date.");
+      return;
+    }
+
+    if (reportDataPeriodKey !== getReviewPeriodKey()) {
+      alert("Management Review data is still refreshing for the selected report period. Please wait a moment and generate the report again.");
       return;
     }
 

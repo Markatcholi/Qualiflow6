@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "../../../../lib/supabaseClient";
+import ManagementReviewSnapshotReport from "../../components/ManagementReviewSnapshotReport";
 
 export default function ManagementReviewApprovalReviewPage() {
   const params = useParams();
@@ -214,30 +215,11 @@ export default function ManagementReviewApprovalReviewPage() {
         />
       </section>
 
-      {config.executiveSummary !== false ? (
-        <ReportSection title="Executive Summary">
-          <p style={paragraphStyle}>
-            {review?.executive_summary || snapshot?.executive?.auto_generated_summary || "No executive summary recorded."}
-          </p>
-          <MetricTable data={snapshot?.executive} exclude={["auto_generated_summary"]} />
-        </ReportSection>
-      ) : null}
-
-      {config.ncmrPerformance ? <ReportSection title="NCMR Performance"><MetricTable data={snapshot?.ncmr} /></ReportSection> : null}
-      {config.capaPerformance ? <ReportSection title="CAPA Performance"><MetricTable data={snapshot?.capa} /></ReportSection> : null}
-      {config.capaEffectiveness ? <ReportSection title="CAPA Effectiveness"><MetricTable data={pick(snapshot?.capa, ["effectiveness_rate", "effective", "partially_effective", "not_effective", "awaiting_effectiveness", "effectiveness_overdue", "followup_required"])} /></ReportSection> : null}
-      {config.scarPerformance ? <ReportSection title="SCAR Performance"><MetricTable data={snapshot?.scar} /></ReportSection> : null}
-      {config.supplierQuality ? <ReportSection title="Supplier Quality"><MetricTable data={snapshot?.supplier_quality} /></ReportSection> : null}
-      {config.auditPerformance ? <ReportSection title="Audit Performance"><MetricTable data={snapshot?.audits} /></ReportSection> : null}
-      {config.oosPerformance ? <ReportSection title="OOS / OOT Performance"><MetricTable data={snapshot?.oos_oot} /></ReportSection> : null}
-      {config.complaintPerformance ? <ReportSection title="Complaint Performance"><MetricTable data={snapshot?.complaints} /></ReportSection> : null}
-      {config.changeControlPerformance ? <ReportSection title="Change Control Performance"><MetricTable data={snapshot?.change_control} /></ReportSection> : null}
-      {config.documentControlPerformance ? <ReportSection title="Document Control Performance"><MetricTable data={snapshot?.document_control} /></ReportSection> : null}
-      {config.trainingPerformance ? <ReportSection title="Training Performance"><MetricTable data={snapshot?.training} /></ReportSection> : null}
-      {config.escalationQueues ? <ReportSection title="Escalation Queues"><MetricTable data={snapshot?.queues} /></ReportSection> : null}
-      {config.executiveNotifications ? <ReportSection title="Executive Notifications"><MetricTable data={{ notifications: snapshot?.notifications || [] }} /></ReportSection> : null}
-      {config.managementActions ? <ReportSection title="Management Actions"><MetricTable data={{ management_actions: snapshot?.management_actions || [] }} /></ReportSection> : null}
-      {config.trendCharts ? <ReportSection title="Trend Data Included in Report Snapshot"><MetricTable data={snapshot?.trends} /></ReportSection> : null}
+      <ManagementReviewSnapshotReport
+        snapshot={snapshot}
+        config={config}
+        executiveSummary={review?.executive_summary}
+      />
 
       <section style={cardStyle}>
         <h2 style={sectionTitleStyle}>Your Approval Assignment</h2>
