@@ -3667,9 +3667,7 @@ Review and approve only the generated read-only Management Review report snapsho
                       >
                         Open Electronic Report
                       </button>
-                      {review?.report_snapshot_json?.print_signing?.enabled === true &&
-                      Array.isArray(review?.report_snapshot_json?.print_signing?.signers) &&
-                      review.report_snapshot_json.print_signing.signers.length > 0 ? (
+                      {hasWetSignatureConfiguration(review) ? (
                         <button
                           type="button"
                           onClick={() =>
@@ -3694,6 +3692,23 @@ Review and approve only the generated read-only Management Review report snapsho
       </Section>
     </main>
   );
+}
+
+function hasWetSignatureConfiguration(review: any) {
+  const snapshotConfig = review?.report_snapshot_json?.print_signing;
+  const savedConfig = review?.report_config_json?.print_signing;
+
+  const snapshotHasSigners =
+    snapshotConfig?.enabled === true &&
+    Array.isArray(snapshotConfig?.signers) &&
+    snapshotConfig.signers.length > 0;
+
+  const savedHasSigners =
+    savedConfig?.enabled === true &&
+    Array.isArray(savedConfig?.signers) &&
+    savedConfig.signers.length > 0;
+
+  return snapshotHasSigners || savedHasSigners;
 }
 
 function ReportBuilder({

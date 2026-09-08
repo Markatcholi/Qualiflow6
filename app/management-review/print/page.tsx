@@ -37,10 +37,10 @@ export default function PrintManagementReview() {
         }
 
         if (requestedMode === "wet") {
-          const printSigning = data.report_snapshot_json?.print_signing || {};
+          const printSigning = resolvePrintSigning(data);
           const wetSigners = Array.isArray(printSigning?.signers) ? printSigning.signers : [];
           if (printSigning?.enabled !== true || wetSigners.length === 0) {
-            throw new Error("This Management Review snapshot was not configured with Print & Sign signers.");
+            throw new Error("This Management Review was not configured with Print & Sign signers.");
           }
         }
 
@@ -78,6 +78,10 @@ export default function PrintManagementReview() {
     : [];
   const period = formatPeriod(review.review_period_start, review.review_period_end);
   const wetSignatureMode = reportMode === "wet";
+  const resolvedPrintSigning = resolvePrintSigning(review);
+  const reportSnapshot = wetSignatureMode
+    ? { ...snapshot, print_signing: resolvedPrintSigning }
+    : snapshot;
 
   return (
     <main style={pageStyle}>
@@ -127,7 +131,7 @@ export default function PrintManagementReview() {
       </section>
 
       <ManagementReviewSnapshotReport
-        snapshot={snapshot}
+        snapshot={reportSnapshot}
         config={config}
         executiveSummary={review.executive_summary}
         showPrintSignatureBlocks={wetSignatureMode}
@@ -174,6 +178,29 @@ export default function PrintManagementReview() {
       </footer>
     </main>
   );
+}
+
+function resolvePrintSigning(review: any) {
+  const snapshotConfig = review?.report_snapshot_json?.print_signing;
+  const savedConfig = review?.report_config_json?.print_signing;
+
+  if (
+    snapshotConfig?.enabled === true &&
+    Array.isArray(snapshotConfig?.signers) &&
+    snapshotConfig.signers.length > 0
+  ) {
+    return snapshotConfig;
+  }
+
+  if (
+    savedConfig?.enabled === true &&
+    Array.isArray(savedConfig?.signers) &&
+    savedConfig.signers.length > 0
+  ) {
+    return savedConfig;
+  }
+
+  return snapshotConfig || savedConfig || {};
 }
 
 function formatPeriod(start?: string | null, end?: string | null) {
