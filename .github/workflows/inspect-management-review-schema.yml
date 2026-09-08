@@ -1,0 +1,24 @@
+name: Inspect Management Review Schema
+
+on:
+  push:
+    branches:
+      - fix/management-review-report-approval-package-20260907
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/management-review-report-approval-package-20260907
+      - name: Inspect schema references
+        shell: bash
+        run: |
+          echo '=== MANAGEMENT REVIEW APPROVER SCHEMA REFERENCES ==='
+          grep -Rni -E 'create table.*management_review_approvers|alter table.*management_review_approvers|management_review_approvers' --include='*.sql' . | head -n 260 || true
+          echo '=== MANAGEMENT REVIEW SNAPSHOT REFERENCES ==='
+          grep -Rni -E 'report_snapshot_json|report_config_json' --include='*.sql' . | head -n 200 || true
