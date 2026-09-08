@@ -233,11 +233,11 @@ export default function ManagementReviewSnapshotReport({
             ["PM Compliance Rate", percent(equipment.pm_compliance_rate)],
             ["Calibration Overdue", equipment.calibration_overdue],
             ["PM Overdue", equipment.pm_overdue],
-            ["Out of Service Equipment", equipment.out_of_service],
+            ["Out of Service at Snapshot", equipment.out_of_service],
             ["Equipment-Related Quality Events", equipment.quality_events],
             ["Significant Equipment Exceptions", equipment.significant_exceptions],
           ]} />
-          <p style={helperTextStyle}>Due-soon calibration and preventive-maintenance activity is intentionally excluded from Management Review and remains on the operational Equipment dashboard.</p>
+          <p style={helperTextStyle}>Calibration and PM overdue status is evaluated against the Management Review period end using the configured equipment due dates. Out-of-service status is preserved as a point-in-time value at snapshot generation. Due-soon activity remains on the operational Equipment dashboard.</p>
         </ReportSection>
       ) : null}
 
