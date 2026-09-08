@@ -953,7 +953,7 @@ function getTaskUrl(task: any) {
   if (task.entity_type === "complaint") return `/complaints/${task.entity_id}`;
   if (task.entity_type === "audit") return `/audits/${task.entity_id}`;
   if (task.entity_type === "training") return `/training`;
-  if (task.entity_type === "management_review") return `/management-review?reviewId=${task.entity_id}&taskId=${task.id}`;
+  if (task.entity_type === "management_review") return `/management-review/${task.entity_id}/approval-review?taskId=${task.id}`;
 
   return "/";
 }

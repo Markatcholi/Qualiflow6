@@ -129,7 +129,7 @@ export default function MyApprovalTasksPage() {
   };
 
   const getManagementReviewUrl = (task: any) =>
-    `/management-review?reviewId=${task.entity_id}&taskId=${task.id}`;
+    `/management-review/${task.entity_id}/approval-review?taskId=${task.id}`;
 
   const getNcmrReviewUrl = (task: any) =>
     `/ncmrs/${task.entity_id}/approval-review?taskId=${task.id}`;
@@ -558,7 +558,7 @@ export default function MyApprovalTasksPage() {
                     </a>
                   ) : managementReviewApproval ? (
                     <a href={getManagementReviewUrl(task)} style={primaryLinkStyle}>
-                      Open Management Review Approval
+                      Open Management Review Report Package
                     </a>
                   ) : null}
                 </div>

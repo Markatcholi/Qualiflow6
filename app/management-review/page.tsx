@@ -86,6 +86,7 @@ export default function ManagementReviewPage() {
   const [approverName, setApproverName] = useState("");
   const [approverEmail, setApproverEmail] = useState("");
   const [approverRole, setApproverRole] = useState("");
+  const [approverDueDate, setApproverDueDate] = useState("");
   const [signatureMeaning, setSignatureMeaning] = useState("I approve this management review record and confirm that the reviewed quality system performance, risks, actions, and conclusions are acceptable.");
   const [managementReviewActions, setManagementReviewActions] = useState<any[]>([]);
   const [actionTitle, setActionTitle] = useState("");
@@ -1114,6 +1115,9 @@ export default function ManagementReviewPage() {
     (action) => action.management_review_id === selectedReviewId
   );
   const selectedReviewLocked = selectedReview?.is_locked === true;
+  const selectedReviewApprovalStatus = String(selectedReview?.approval_status || "draft").trim().toLowerCase();
+  const selectedReviewPendingApproval = selectedReviewApprovalStatus === "pending_approval";
+  const selectedReviewRejected = selectedReviewApprovalStatus === "rejected";
 
   const addApprover = async () => {
     if (!selectedReviewId) {
@@ -1121,8 +1125,13 @@ export default function ManagementReviewPage() {
       return;
     }
 
-    if (selectedReviewLocked) {
-      alert("This management review is locked and cannot be changed.");
+    if (selectedReviewLocked || selectedReviewPendingApproval) {
+      alert("Approvers cannot be changed while this Management Review is locked or pending approval.");
+      return;
+    }
+
+    if (selectedReviewRejected) {
+      alert("This submitted report was rejected. Generate a revised Management Review report snapshot before configuring a new approval cycle.");
       return;
     }
 
@@ -1136,11 +1145,16 @@ export default function ManagementReviewPage() {
       return;
     }
 
+    if (!approverDueDate) {
+      alert("Approver due date is required.");
+      return;
+    }
+
     const normalizedApproverEmail = approverEmail.trim().toLowerCase();
     const duplicateApprover = selectedApprovers.some(
       (item: any) =>
         String(item.approver_email || "").trim().toLowerCase() === normalizedApproverEmail &&
-        String(item.approval_status || "pending").toLowerCase() !== "cancelled"
+        String(item.approval_status || "configured").toLowerCase() !== "cancelled"
     );
 
     if (duplicateApprover) {
@@ -1149,10 +1163,10 @@ export default function ManagementReviewPage() {
     }
 
     const { data: userData } = await supabase.auth.getUser();
-    const assignedByEmail = String(userData?.user?.email || "").trim().toLowerCase();
+    const configuredByEmail = String(userData?.user?.email || "").trim().toLowerCase();
 
-    if (!assignedByEmail) {
-      alert("An authenticated user is required to assign a Management Review approver.");
+    if (!configuredByEmail) {
+      alert("An authenticated user is required to configure a Management Review approver.");
       return;
     }
 
@@ -1163,48 +1177,183 @@ export default function ManagementReviewPage() {
         approver_name: approverName.trim(),
         approver_email: normalizedApproverEmail,
         approver_role: approverRole || null,
-        approval_status: "pending",
+        approver_due_date: approverDueDate,
+        approval_status: "configured",
         signature_meaning: signatureMeaning || null,
       })
       .select()
       .single();
 
     if (approverError || !insertedApprover) {
-      alert(approverError?.message || "Unable to add Management Review approver.");
+      alert(approverError?.message || "Unable to configure Management Review approver.");
       return;
     }
 
-    const reviewNumber = selectedReview?.review_number || "Management Review";
-    const approverMarker = `management_review_approver_id=${insertedApprover.id}`;
+    const { error: auditError } = await supabase.rpc("qualisphere_add_audit_log", {
+      p_entity_type: "management_review",
+      p_entity_id: selectedReviewId,
+      p_action: "management_review_approver_configured",
+      p_details: `Approver configured: ${normalizedApproverEmail} (${approverRole || "Management Review Approver"}), due ${approverDueDate}. No approval task was sent yet.`,
+    });
 
-    const { data: insertedTask, error: taskError } = await supabase
+    if (auditError) {
+      console.warn("Management Review approver configuration audit failed:", auditError.message);
+    }
+
+    alert("Approver configured. No approval task has been sent yet. Use Submit for Approval when the report is ready.");
+    setApproverName("");
+    setApproverEmail("");
+    setApproverRole("");
+    setApproverDueDate("");
+    fetchManagementReviews();
+  };
+
+  const submitManagementReviewForApproval = async () => {
+    if (!selectedReviewId || !selectedReview) {
+      alert("Select a Management Review report first.");
+      return;
+    }
+
+    if (selectedReviewLocked) {
+      alert("This Management Review is already locked.");
+      return;
+    }
+
+    if (selectedReviewPendingApproval) {
+      alert("This Management Review report is already pending approval.");
+      return;
+    }
+
+    if (selectedReviewRejected) {
+      alert("This report snapshot was rejected. Generate a revised Management Review report snapshot before starting a new approval cycle.");
+      return;
+    }
+
+    if (!selectedReview.report_snapshot_json) {
+      alert("A generated Management Review report snapshot is required before submission.");
+      return;
+    }
+
+    if (selectedApprovers.length === 0) {
+      alert("Add at least one approver before submitting the report for approval.");
+      return;
+    }
+
+    const missingDueDate = selectedApprovers.find((item: any) => !item.approver_due_date);
+    if (missingDueDate) {
+      alert(`A due date is required for ${missingDueDate.approver_name || missingDueDate.approver_email}.`);
+      return;
+    }
+
+    const { data: userData } = await supabase.auth.getUser();
+    const submittedByEmail = String(userData?.user?.email || "").trim().toLowerCase();
+
+    if (!submittedByEmail) {
+      alert("An authenticated user is required to submit this Management Review for approval.");
+      return;
+    }
+
+    const reviewNumber = selectedReview.review_number || "Management Review";
+
+    const { data: existingTasks, error: existingTaskError } = await supabase
       .from("approval_tasks")
-      .insert({
-        entity_type: "management_review",
-        entity_id: selectedReviewId,
-        task_type: "management_review_approval",
-        task_title: `${approverRole || "Approver"} — ${reviewNumber} Management Review Approval`,
-        required_function: approverRole || "Management Review Approver",
-        approver_job_title: approverRole || null,
-        assigned_to_email: normalizedApproverEmail,
-        assigned_by_email: assignedByEmail,
-        status: "pending",
-        required: true,
-        comments: `${approverMarker}\n\nPlease review ${reviewNumber} and approve only if the Management Review record, quality-system performance, risks, actions, and conclusions are acceptable. This approval becomes part of the official electronic quality record.`,
-        assignment_attachments: [],
-      })
-      .select()
-      .single();
+      .select("id, comments, status")
+      .eq("entity_type", "management_review")
+      .eq("entity_id", selectedReviewId)
+      .eq("task_type", "management_review_approval");
 
-    if (taskError || !insertedTask) {
-      await supabase
+    if (existingTaskError) {
+      alert(existingTaskError.message);
+      return;
+    }
+
+    const createdTaskIds: string[] = [];
+
+    for (const approver of selectedApprovers) {
+      const approverMarker = `management_review_approver_id=${approver.id}`;
+      const duplicateTask = (existingTasks || []).some((task: any) =>
+        String(task.comments || "").includes(approverMarker) &&
+        !["cancelled", "canceled"].includes(String(task.status || "").toLowerCase())
+      );
+
+      if (duplicateTask) {
+        alert(`An approval task already exists for ${approver.approver_email}. Submission stopped to prevent duplicates.`);
+        return;
+      }
+
+      const { data: insertedTask, error: taskError } = await supabase
+        .from("approval_tasks")
+        .insert({
+          entity_type: "management_review",
+          entity_id: selectedReviewId,
+          task_type: "management_review_approval",
+          task_title: `${approver.approver_role || "Approver"} — ${reviewNumber} Management Review Report Approval`,
+          required_function: approver.approver_role || "Management Review Approver",
+          approver_job_title: approver.approver_role || null,
+          assigned_to_email: String(approver.approver_email || "").trim().toLowerCase(),
+          assigned_by_email: submittedByEmail,
+          due_date: approver.approver_due_date,
+          approver_due_date: approver.approver_due_date,
+          status: "pending",
+          required: true,
+          comments: `${approverMarker}
+
+Review and approve only the generated read-only Management Review report snapshot for ${reviewNumber}. The underlying Management Review builder is not part of this approval package.`,
+          assignment_attachments: [],
+        })
+        .select("id")
+        .single();
+
+      if (taskError || !insertedTask) {
+        if (createdTaskIds.length > 0) {
+          await supabase
+            .from("approval_tasks")
+            .update({ status: "cancelled" })
+            .in("id", createdTaskIds)
+            .eq("status", "pending");
+        }
+        alert(taskError?.message || `Unable to create approval task for ${approver.approver_email}.`);
+        return;
+      }
+
+      createdTaskIds.push(insertedTask.id);
+
+      const taskUrl = `/management-review/${selectedReviewId}/approval-review?taskId=${insertedTask.id}`;
+      const { error: notificationError } = await supabase.from("notifications").insert({
+        user_email: String(approver.approver_email || "").trim().toLowerCase(),
+        assigned_role: approver.approver_role || "Management Review Approver",
+        notification_type: "management_review_approval",
+        title: `Management Review report approval assigned: ${reviewNumber}`,
+        message: `You have been assigned approval of the read-only generated report for ${reviewNumber}.`,
+        related_module: "management_review",
+        related_record_id: selectedReviewId,
+        related_url: taskUrl,
+        severity: "info",
+        read_status: false,
+      });
+
+      if (notificationError) {
+        console.warn("Management Review approval notification failed:", notificationError.message);
+      }
+    }
+
+    const approverIds = selectedApprovers.map((item: any) => item.id).filter(Boolean);
+    if (approverIds.length > 0) {
+      const { error: approverStatusError } = await supabase
         .from("management_review_approvers")
-        .delete()
-        .eq("id", insertedApprover.id)
+        .update({ approval_status: "pending" })
+        .in("id", approverIds)
         .eq("management_review_id", selectedReviewId);
 
-      alert(taskError?.message || "Unable to create the Management Review approval task.");
-      return;
+      if (approverStatusError) {
+        await supabase
+          .from("approval_tasks")
+          .update({ status: "cancelled" })
+          .in("id", createdTaskIds)
+          .eq("status", "pending");
+        alert(approverStatusError.message);
+        return;
+      }
     }
 
     const { error: reviewUpdateError } = await supabase
@@ -1216,42 +1365,27 @@ export default function ManagementReviewPage() {
       .eq("id", selectedReviewId);
 
     if (reviewUpdateError) {
-      console.warn("Unable to update Management Review approval status:", reviewUpdateError.message);
-    }
-
-    const taskUrl = `/management-review?reviewId=${selectedReviewId}&taskId=${insertedTask.id}`;
-    const { error: notificationError } = await supabase.from("notifications").insert({
-      user_email: normalizedApproverEmail,
-      assigned_role: approverRole || "Management Review Approver",
-      notification_type: "management_review_approval",
-      title: `Management Review approval assigned: ${reviewNumber}`,
-      message: `You have been assigned approval for ${reviewNumber}. Open My Workspace to review and sign.`,
-      related_module: "management_review",
-      related_record_id: selectedReviewId,
-      related_url: taskUrl,
-      severity: "info",
-      read_status: false,
-    });
-
-    if (notificationError) {
-      console.warn("Management Review approval notification failed:", notificationError.message);
+      await supabase
+        .from("approval_tasks")
+        .update({ status: "cancelled" })
+        .in("id", createdTaskIds)
+        .eq("status", "pending");
+      alert(reviewUpdateError.message);
+      return;
     }
 
     const { error: auditError } = await supabase.rpc("qualisphere_add_audit_log", {
       p_entity_type: "management_review",
       p_entity_id: selectedReviewId,
-      p_action: "management_review_approver_assigned",
-      p_details: `Approval assigned to ${normalizedApproverEmail} (${approverRole || "Management Review Approver"}).`,
+      p_action: "management_review_report_submitted_for_approval",
+      p_details: `Generated Management Review report snapshot ${reviewNumber} submitted for approval to ${selectedApprovers.length} approver(s).`,
     });
 
     if (auditError) {
-      console.warn("Management Review approver assignment audit failed:", auditError.message);
+      console.warn("Management Review submission audit failed:", auditError.message);
     }
 
-    alert("Approver added and approval task sent to My Workspace.");
-    setApproverName("");
-    setApproverEmail("");
-    setApproverRole("");
+    alert("Management Review report submitted for approval. Approval tasks were sent to My Workspace.");
     fetchManagementReviews();
   };
 
@@ -3095,9 +3229,10 @@ export default function ManagementReviewPage() {
             <p><strong>Approval Status:</strong> {selectedReview.approval_status || "draft"}</p>
             <p><strong>Locked:</strong> {selectedReviewLocked ? `Yes — ${selectedReview.locked_at || "N/A"}` : "No"}</p>
 
-            {!selectedReviewLocked ? (
+            {!selectedReviewLocked && !selectedReviewPendingApproval && !selectedReviewRejected ? (
               <>
                 <h3>Add Approver</h3>
+                <p style={{ color: "#475569" }}>Add Approver only configures the approval plan. No Workspace task is sent until you click Submit for Approval.</p>
 
                 <div style={builderGridStyle}>
                   <label>
@@ -3125,6 +3260,17 @@ export default function ManagementReviewPage() {
                       onChange={(e) => setApproverRole(e.target.value)}
                       placeholder="Example: VP Quality, Operations Leader"
                       style={inputStyle}
+                    />
+                  </label>
+
+                  <label>
+                    <strong>Due Date</strong>
+                    <input
+                      type="date"
+                      value={approverDueDate}
+                      onChange={(e) => setApproverDueDate(e.target.value)}
+                      style={inputStyle}
+                      required
                     />
                   </label>
                 </div>
@@ -3156,6 +3302,7 @@ export default function ManagementReviewPage() {
                     <th style={thStyle}>Name</th>
                     <th style={thStyle}>Email</th>
                     <th style={thStyle}>Role</th>
+                    <th style={thStyle}>Due Date</th>
                     <th style={thStyle}>Status</th>
                     <th style={thStyle}>Signed By</th>
                     <th style={thStyle}>Signed At</th>
@@ -3168,23 +3315,15 @@ export default function ManagementReviewPage() {
                       <td style={tdStyle}>{approver.approver_name || "N/A"}</td>
                       <td style={tdStyle}>{approver.approver_email || "N/A"}</td>
                       <td style={tdStyle}>{approver.approver_role || "N/A"}</td>
-                      <td style={tdStyle}>{approver.approval_status || "pending"}</td>
+                      <td style={tdStyle}>{approver.approver_due_date || "N/A"}</td>
+                      <td style={tdStyle}>{approver.approval_status || "configured"}</td>
                       <td style={tdStyle}>{approver.signed_by || "N/A"}</td>
                       <td style={tdStyle}>{approver.signed_at || "N/A"}</td>
                       <td style={tdStyle}>
-                        {approver.approval_status !== "approved" &&
-                        !selectedReviewLocked &&
-                        String(approver.approver_email || "").trim().toLowerCase() ===
-                          currentUserEmail ? (
-                          <button type="button" onClick={() => approveReviewApprover(approver)}>
-                            Approve / Sign
-                          </button>
-                        ) : null}
-                        {approver.approval_status !== "approved" && !selectedReviewLocked ? (
+                        {!selectedReviewLocked && !selectedReviewPendingApproval && !selectedReviewRejected ? (
                           <button
                             type="button"
                             onClick={() => removeApprover(approver)}
-                            style={{ marginLeft: "8px" }}
                           >
                             Remove
                           </button>
@@ -3195,6 +3334,29 @@ export default function ManagementReviewPage() {
                 </tbody>
               </table>
             )}
+
+            {!selectedReviewLocked && !selectedReviewPendingApproval && !selectedReviewRejected && selectedApprovers.length > 0 ? (
+              <div style={{ marginTop: "16px", paddingTop: "14px", borderTop: "1px solid #e5e7eb" }}>
+                <button type="button" onClick={submitManagementReviewForApproval} style={buttonStyle}>
+                  Submit for Approval
+                </button>
+                <p style={{ marginBottom: 0, color: "#475569" }}>
+                  This sends only the generated read-only Management Review report snapshot to the configured approvers.
+                </p>
+              </div>
+            ) : null}
+
+            {selectedReviewPendingApproval ? (
+              <p style={{ marginTop: "16px", color: "#1d4ed8", fontWeight: 600 }}>
+                This generated report snapshot is pending approval. Approvers receive only the read-only report package in My Workspace.
+              </p>
+            ) : null}
+
+            {selectedReviewRejected ? (
+              <p style={{ marginTop: "16px", color: "#991b1b", fontWeight: 600 }}>
+                This report snapshot was rejected and remains preserved as submitted evidence. Generate a revised Management Review report snapshot for the next approval cycle.
+              </p>
+            ) : null}
           </div>
         ) : (
           <p>Select a management review record to manage approvals.</p>
