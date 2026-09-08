@@ -104,6 +104,7 @@ export default function PrintManagementReview() {
         snapshot={snapshot}
         config={config}
         executiveSummary={review.executive_summary}
+        showPrintSignatureBlocks
       />
 
       <section style={cardStyle}>

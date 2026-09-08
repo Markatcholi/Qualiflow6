@@ -8,12 +8,14 @@ type Props = {
   snapshot: any;
   config: ReportConfig;
   executiveSummary?: string | null;
+  showPrintSignatureBlocks?: boolean;
 };
 
 export default function ManagementReviewSnapshotReport({
   snapshot,
   config,
   executiveSummary,
+  showPrintSignatureBlocks = false,
 }: Props) {
   const ncmr = snapshot?.ncmr || {};
   const capa = snapshot?.capa || {};
@@ -29,6 +31,8 @@ export default function ManagementReviewSnapshotReport({
   const notifications = Array.isArray(snapshot?.notifications) ? snapshot.notifications : [];
   const managementActions = Array.isArray(snapshot?.management_actions) ? snapshot.management_actions : [];
   const trends = snapshot?.trends || {};
+  const printSigning = snapshot?.print_signing || {};
+  const printSigners = Array.isArray(printSigning?.signers) ? printSigning.signers : [];
 
   return (
     <>
@@ -267,6 +271,15 @@ export default function ManagementReviewSnapshotReport({
           <TrendTable trends={trends} />
         </ReportSection>
       ) : null}
+
+      {showPrintSignatureBlocks && printSigning?.enabled && printSigners.length > 0 ? (
+        <ReportSection title="Print & Sign">
+          <p style={helperTextStyle}>
+            The following wet-signature blocks were configured when this report snapshot was generated. These signatures are separate from electronic Workspace approvals.
+          </p>
+          <PrintSignatureBlocks signers={printSigners} />
+        </ReportSection>
+      ) : null}
     </>
   );
 }
@@ -378,6 +391,24 @@ function TrendTable({ trends }: { trends: any }) {
   );
 }
 
+function PrintSignatureBlocks({ signers }: { signers: any[] }) {
+  return (
+    <div style={{ display: "grid", gap: "22px" }}>
+      {signers.map((signer: any, index: number) => (
+        <div key={`${signer?.name || "signer"}-${index}`} style={printSignatureBlockStyle}>
+          <div><strong>Printed Name:</strong> {signer?.name || "N/A"}</div>
+          <div><strong>Role / Title:</strong> {signer?.role || "N/A"}</div>
+          <div style={{ marginTop: "8px" }}><strong>Signature Meaning:</strong> {signer?.signature_meaning || "I reviewed this Management Review report."}</div>
+          <div style={signatureLineRowStyle}>
+            <div style={signatureLineStyle}>Signature</div>
+            <div style={dateLineStyle}>Date</div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function arrayCount(value: any) {
   return Array.isArray(value) ? value.length : Number(value || 0);
 }
@@ -392,6 +423,16 @@ function displayValue(value: any) {
   if (typeof value === "boolean") return value ? "Yes" : "No";
   return String(value);
 }
+
+const printSignatureBlockStyle: React.CSSProperties = {
+  border: "1px solid #cbd5e1",
+  borderRadius: 10,
+  padding: 18,
+  breakInside: "avoid",
+};
+const signatureLineRowStyle: React.CSSProperties = { display: "grid", gridTemplateColumns: "2fr 1fr", gap: 24, marginTop: 36 };
+const signatureLineStyle: React.CSSProperties = { borderTop: "1px solid #0f172a", paddingTop: 6, fontSize: 12, color: "#475569" };
+const dateLineStyle: React.CSSProperties = { borderTop: "1px solid #0f172a", paddingTop: 6, fontSize: 12, color: "#475569" };
 
 const sectionStyle: React.CSSProperties = {
   background: "#fff",

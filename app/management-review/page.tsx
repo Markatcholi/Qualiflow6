@@ -25,6 +25,13 @@ type SupplierCount = {
   count: number;
 };
 
+type PrintSigner = {
+  name: string;
+  role: string;
+  signature_meaning: string;
+};
+
+
 type ConfiguredKpi = {
   kpi_key: string;
   kpi_name: string;
@@ -104,6 +111,13 @@ export default function ManagementReviewPage() {
   const [businessUnit, setBusinessUnit] = useState("");
   const [executiveSummaryText, setExecutiveSummaryText] = useState("");
   const [reportDataPeriodKey, setReportDataPeriodKey] = useState("");
+  const [printAndSignEnabled, setPrintAndSignEnabled] = useState(false);
+  const [printSignerName, setPrintSignerName] = useState("");
+  const [printSignerRole, setPrintSignerRole] = useState("");
+  const [printSignerMeaning, setPrintSignerMeaning] = useState(
+    "I acknowledge that I reviewed this Management Review report and sign the printed controlled copy.",
+  );
+  const [printSigners, setPrintSigners] = useState<PrintSigner[]>([]);
 
   const [ncmrOpen, setNcmrOpen] = useState(0);
   const [ncmrInvestigation, setNcmrInvestigation] = useState(0);
@@ -1167,6 +1181,38 @@ export default function ManagementReviewPage() {
   const selectedReviewPendingApproval = selectedReviewApprovalStatus === "pending_approval";
   const selectedReviewRejected = selectedReviewApprovalStatus === "rejected";
 
+  const addPrintSigner = () => {
+    if (!printSignerName.trim()) {
+      alert("Print signer name is required.");
+      return;
+    }
+
+    if (!printSignerRole.trim()) {
+      alert("Print signer role / title is required.");
+      return;
+    }
+
+    if (!printSignerMeaning.trim()) {
+      alert("Print signer signature meaning is required.");
+      return;
+    }
+
+    setPrintSigners((current) => [
+      ...current,
+      {
+        name: printSignerName.trim(),
+        role: printSignerRole.trim(),
+        signature_meaning: printSignerMeaning.trim(),
+      },
+    ]);
+    setPrintSignerName("");
+    setPrintSignerRole("");
+  };
+
+  const removePrintSigner = (index: number) => {
+    setPrintSigners((current) => current.filter((_, signerIndex) => signerIndex !== index));
+  };
+
   const addApprover = async () => {
     if (!selectedReviewId) {
       alert("Select a management review record first.");
@@ -2003,6 +2049,10 @@ Review and approve only the generated read-only Management Review report snapsho
       review_period_end: reviewPeriodEnd || null,
       as_of_date: reviewPeriodEnd || reviewDate || null,
       report_config: reportConfig,
+      print_signing: {
+        enabled: printAndSignEnabled,
+        signers: printAndSignEnabled ? printSigners : [],
+      },
       executive: {
         quality_health: executiveHealth,
         risk_score: executiveRiskScore,
@@ -3191,7 +3241,62 @@ Review and approve only the generated read-only Management Review report snapsho
       )}
 
       <section className="report-section page-break" style={sectionStyle}>
-        <h2 style={{ marginTop: 0 }}>Approval Signature Summary</h2>
+              <div style={{ border: "1px solid #cbd5e1", borderRadius: "12px", padding: "18px", marginBottom: "22px", background: "#f8fafc" }}>
+        <h3 style={{ marginTop: 0 }}>Optional Print & Sign</h3>
+        <label style={{ display: "flex", gap: "10px", alignItems: "center", fontWeight: 700 }}>
+          <input
+            type="checkbox"
+            checked={printAndSignEnabled}
+            onChange={(event) => setPrintAndSignEnabled(event.target.checked)}
+            disabled={selectedReviewLocked || selectedReviewPendingApproval}
+          />
+          Include wet-signature blocks on the printable controlled report
+        </label>
+        <p style={{ color: "#475569", marginBottom: printAndSignEnabled ? "14px" : 0 }}>
+          Print signers are separate from electronic Workspace approvers. They do not create approval tasks or change electronic approval status.
+        </p>
+
+        {printAndSignEnabled ? (
+          <>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "12px", marginBottom: "12px" }}>
+              <label>
+                Signer Name
+                <input value={printSignerName} onChange={(event) => setPrintSignerName(event.target.value)} style={{ width: "100%" }} />
+              </label>
+              <label>
+                Role / Title
+                <input value={printSignerRole} onChange={(event) => setPrintSignerRole(event.target.value)} style={{ width: "100%" }} />
+              </label>
+            </div>
+            <label style={{ display: "block", marginBottom: "12px" }}>
+              Signature Meaning
+              <textarea
+                value={printSignerMeaning}
+                onChange={(event) => setPrintSignerMeaning(event.target.value)}
+                rows={3}
+                style={{ width: "100%" }}
+              />
+            </label>
+            <button type="button" onClick={addPrintSigner}>Add Print Signer</button>
+
+            {printSigners.length > 0 ? (
+              <div style={{ marginTop: "14px", display: "grid", gap: "8px" }}>
+                {printSigners.map((signer, index) => (
+                  <div key={`${signer.name}-${index}`} style={{ display: "flex", justifyContent: "space-between", gap: "12px", border: "1px solid #e2e8f0", borderRadius: "8px", padding: "10px", background: "white" }}>
+                    <div>
+                      <strong>{signer.name}</strong> — {signer.role}
+                      <div style={{ color: "#64748b", fontSize: "13px", marginTop: "4px" }}>{signer.signature_meaning}</div>
+                    </div>
+                    <button type="button" onClick={() => removePrintSigner(index)}>Remove</button>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </>
+        ) : null}
+      </div>
+
+<h2 style={{ marginTop: 0 }}>Approval Signature Summary</h2>
 
         <p style={{ color: "#4b5563" }}>
           This section documents management review approval routing, electronic signatures, and record lock status.
