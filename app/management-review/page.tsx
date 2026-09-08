@@ -1117,6 +1117,34 @@ export default function ManagementReviewPage() {
     }
   }, [reviewPeriodStart, reviewPeriodEnd]);
 
+  useEffect(() => {
+    if (!selectedReviewId) {
+      setPrintAndSignEnabled(false);
+      setPrintSigners([]);
+      return;
+    }
+
+    const review = managementReviews.find((item) => item.id === selectedReviewId);
+    if (!review) return;
+
+    const draftPrintSigning = review?.report_config_json?.print_signing;
+    const snapshotPrintSigning = review?.report_snapshot_json?.print_signing;
+    const savedPrintSigning = draftPrintSigning || snapshotPrintSigning || {};
+    const savedSigners = Array.isArray(savedPrintSigning?.signers) ? savedPrintSigning.signers : [];
+
+    setPrintAndSignEnabled(savedPrintSigning?.enabled === true);
+    setPrintSigners(
+      savedSigners.map((signer: any) => ({
+        name: String(signer?.name || ""),
+        role: String(signer?.role || ""),
+        signature_meaning: String(
+          signer?.signature_meaning ||
+            "I acknowledge that I reviewed this Management Review report and sign the printed controlled copy.",
+        ),
+      })),
+    );
+  }, [selectedReviewId, managementReviews]);
+
   const ncmrClosureRate = ncmrTotal > 0 ? ((ncmrClosed / ncmrTotal) * 100).toFixed(1) : "0.0";
   const capaClosureRate = capaTotal > 0 ? ((capaClosed / capaTotal) * 100).toFixed(1) : "0.0";
   const oosClosureRate = oosTotal > 0 ? ((oosClosed / oosTotal) * 100).toFixed(1) : "0.0";
@@ -1181,6 +1209,50 @@ export default function ManagementReviewPage() {
   const selectedReviewPendingApproval = selectedReviewApprovalStatus === "pending_approval";
   const selectedReviewRejected = selectedReviewApprovalStatus === "rejected";
 
+  const persistPrintSigningDraft = async (enabled: boolean, signers: PrintSigner[]) => {
+    if (!selectedReviewId || selectedReviewLocked || selectedReviewPendingApproval) return;
+
+    const currentConfig =
+      selectedReview?.report_config_json && typeof selectedReview.report_config_json === "object"
+        ? selectedReview.report_config_json
+        : {};
+
+    const { error } = await supabase
+      .from("management_reviews")
+      .update({
+        report_config_json: {
+          ...currentConfig,
+          print_signing: {
+            enabled,
+            signers: enabled ? signers : [],
+          },
+        },
+      })
+      .eq("id", selectedReviewId);
+
+    if (error) {
+      console.warn("Unable to persist Management Review Print & Sign draft configuration:", error.message);
+      return;
+    }
+
+    setManagementReviews((current) =>
+      current.map((review) =>
+        review.id === selectedReviewId
+          ? {
+              ...review,
+              report_config_json: {
+                ...(review.report_config_json || {}),
+                print_signing: {
+                  enabled,
+                  signers: enabled ? signers : [],
+                },
+              },
+            }
+          : review,
+      ),
+    );
+  };
+
   const addPrintSigner = () => {
     if (!printSignerName.trim()) {
       alert("Print signer name is required.");
@@ -1197,20 +1269,24 @@ export default function ManagementReviewPage() {
       return;
     }
 
-    setPrintSigners((current) => [
-      ...current,
+    const nextSigners = [
+      ...printSigners,
       {
         name: printSignerName.trim(),
         role: printSignerRole.trim(),
         signature_meaning: printSignerMeaning.trim(),
       },
-    ]);
+    ];
+    setPrintSigners(nextSigners);
+    void persistPrintSigningDraft(true, nextSigners);
     setPrintSignerName("");
     setPrintSignerRole("");
   };
 
   const removePrintSigner = (index: number) => {
-    setPrintSigners((current) => current.filter((_, signerIndex) => signerIndex !== index));
+    const nextSigners = printSigners.filter((_, signerIndex) => signerIndex !== index);
+    setPrintSigners(nextSigners);
+    void persistPrintSigningDraft(printAndSignEnabled, nextSigners);
   };
 
   const addApprover = async () => {
@@ -3247,7 +3323,11 @@ Review and approve only the generated read-only Management Review report snapsho
           <input
             type="checkbox"
             checked={printAndSignEnabled}
-            onChange={(event) => setPrintAndSignEnabled(event.target.checked)}
+            onChange={(event) => {
+              const enabled = event.target.checked;
+              setPrintAndSignEnabled(enabled);
+              void persistPrintSigningDraft(enabled, printSigners);
+            }}
             disabled={selectedReviewLocked || selectedReviewPendingApproval}
           />
           Include wet-signature blocks on the printable controlled report
