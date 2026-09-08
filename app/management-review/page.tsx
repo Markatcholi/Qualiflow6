@@ -59,6 +59,7 @@ type ReportConfig = {
   changeControlPerformance: boolean;
   documentControlPerformance: boolean;
   trainingPerformance: boolean;
+  equipmentPerformance: boolean;
   escalationQueues: boolean;
   trendCharts: boolean;
   executiveNotifications: boolean;
@@ -80,6 +81,7 @@ export default function ManagementReviewPage() {
     changeControlPerformance: true,
     documentControlPerformance: true,
     trainingPerformance: true,
+    equipmentPerformance: true,
     escalationQueues: true,
     trendCharts: true,
     executiveNotifications: true,
@@ -195,6 +197,14 @@ export default function ManagementReviewPage() {
   const [trainingCompleted, setTrainingCompleted] = useState(0);
   const [trainingOpen, setTrainingOpen] = useState(0);
   const [trainingOverdue, setTrainingOverdue] = useState(0);
+
+  const [equipmentCalibrationRequired, setEquipmentCalibrationRequired] = useState(0);
+  const [equipmentPmRequired, setEquipmentPmRequired] = useState(0);
+  const [equipmentCalibrationOverdue, setEquipmentCalibrationOverdue] = useState(0);
+  const [equipmentPmOverdue, setEquipmentPmOverdue] = useState(0);
+  const [equipmentOutOfService, setEquipmentOutOfService] = useState(0);
+  const [equipmentQualityEvents, setEquipmentQualityEvents] = useState(0);
+  const [equipmentCriticalEvents, setEquipmentCriticalEvents] = useState(0);
 
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [capaGovernanceQueue, setCapaGovernanceQueue] = useState<any[]>([]);
@@ -1025,6 +1035,41 @@ export default function ManagementReviewPage() {
       console.warn(trainingError.message);
     }
 
+    const [equipmentResult, equipmentScheduleResult, equipmentCalibrationResult, equipmentMaintenanceResult, equipmentOosLinkResult] = await Promise.all([
+      supabase.from("equipment").select("id,use_status,calibration_required,preventive_maintenance_required"),
+      supabase.from("equipment_current_schedule_status").select("equipment_id,activity_type,schedule_status"),
+      supabase.from("equipment_calibration_events").select("equipment_id,performed_date,result,status,created_at"),
+      supabase.from("equipment_maintenance_events").select("equipment_id,maintenance_type,performed_date,result,status,created_at"),
+      supabase.from("equipment_oos_oot_links").select("equipment_id,linked_at"),
+    ]);
+
+    if (!equipmentResult.error) {
+      const equipmentRows = equipmentResult.data || [];
+      const scheduleRows = equipmentScheduleResult.error ? [] : equipmentScheduleResult.data || [];
+      const calibrationRows = equipmentCalibrationResult.error ? [] : filterByReviewPeriod(equipmentCalibrationResult.data || [], ["performed_date", "created_at"]);
+      const maintenanceRows = equipmentMaintenanceResult.error ? [] : filterByReviewPeriod(equipmentMaintenanceResult.data || [], ["performed_date", "created_at"]);
+      const equipmentOosLinks = equipmentOosLinkResult.error ? [] : filterByReviewPeriod(equipmentOosLinkResult.data || [], ["linked_at"]);
+      const calibrationRequiredIds = new Set(equipmentRows.filter((item: any) => item.calibration_required === true).map((item: any) => item.id));
+      const pmRequiredIds = new Set(equipmentRows.filter((item: any) => item.preventive_maintenance_required === true).map((item: any) => item.id));
+      const calibrationOverdueIds = new Set(scheduleRows.filter((item: any) => item.activity_type === "calibration" && item.schedule_status === "overdue").map((item: any) => item.equipment_id));
+      const pmOverdueIds = new Set(scheduleRows.filter((item: any) => item.activity_type === "preventive_maintenance" && item.schedule_status === "overdue").map((item: any) => item.equipment_id));
+      const calibrationRequiredCount = calibrationRequiredIds.size;
+      const pmRequiredCount = pmRequiredIds.size;
+      const calibrationOverdueCount = [...calibrationOverdueIds].filter((id) => calibrationRequiredIds.has(id)).length;
+      const pmOverdueCount = [...pmOverdueIds].filter((id) => pmRequiredIds.has(id)).length;
+      setEquipmentCalibrationRequired(calibrationRequiredCount);
+      setEquipmentPmRequired(pmRequiredCount);
+      setEquipmentCalibrationOverdue(calibrationOverdueCount);
+      setEquipmentPmOverdue(pmOverdueCount);
+      setEquipmentOutOfService(equipmentRows.filter((item: any) => item.use_status === "out_of_service").length);
+      setEquipmentQualityEvents(equipmentOosLinks.length);
+      setEquipmentCriticalEvents(
+        calibrationRows.filter((item: any) => ["out_of_tolerance", "failed", "fail", "unacceptable"].includes(String(item.result || item.status || "").toLowerCase())).length +
+        maintenanceRows.filter((item: any) => ["failed", "fail", "unacceptable"].includes(String(item.result || item.status || "").toLowerCase())).length,
+      );
+    } else { console.warn(equipmentResult.error.message); }
+    [equipmentScheduleResult, equipmentCalibrationResult, equipmentMaintenanceResult, equipmentOosLinkResult].forEach((result: any) => { if (result.error) console.warn(result.error.message); });
+
     const { data: auditData, error: auditError } = await supabase
       .from("audits")
       .select("*");
@@ -1153,6 +1198,8 @@ export default function ManagementReviewPage() {
   const complaintClosureRate = complaintTotal > 0 ? ((complaintClosed / complaintTotal) * 100).toFixed(1) : "0.0";
   const documentReleaseRate = documentTotal > 0 ? ((documentReleased / documentTotal) * 100).toFixed(1) : "0.0";
   const trainingCompletionRate = trainingTotal > 0 ? ((trainingCompleted / trainingTotal) * 100).toFixed(1) : "0.0";
+  const equipmentCalibrationComplianceRate = equipmentCalibrationRequired > 0 ? (((equipmentCalibrationRequired - equipmentCalibrationOverdue) / equipmentCalibrationRequired) * 100).toFixed(1) : "100.0";
+  const equipmentPmComplianceRate = equipmentPmRequired > 0 ? (((equipmentPmRequired - equipmentPmOverdue) / equipmentPmRequired) * 100).toFixed(1) : "100.0";
 
   const totalHighPriorityAlerts = notifications.length;
   const totalOpenQualityItems = ncmrOpen + ncmrInvestigation + capaOpen + oosOpen + auditOpen + findingOpen + openScars;
@@ -1169,7 +1216,10 @@ export default function ManagementReviewPage() {
     complaintHighRisk +
     complaintReportable +
     documentOverdueReview +
-    trainingOverdue;
+    trainingOverdue +
+    equipmentCalibrationOverdue +
+    equipmentPmOverdue +
+    equipmentCriticalEvents;
 
   const overallClosureRate =
     ncmrTotal + capaTotal + oosTotal + auditTotal + findingTotal > 0
@@ -1188,7 +1238,10 @@ export default function ManagementReviewPage() {
     auditOverdue * 2 +
     criticalFindings * 5 +
     majorFindings * 3 +
-    ncmrInvestigation * 1;
+    ncmrInvestigation * 1 +
+    equipmentCalibrationOverdue * 3 +
+    equipmentPmOverdue * 2 +
+    equipmentCriticalEvents * 4;
 
   const executiveHealth =
     executiveRiskScore === 0
@@ -2036,6 +2089,9 @@ Review and approve only the generated read-only Management Review report snapsho
     auditOverdue > 0 ? `${auditOverdue} audit(s) are overdue or past due.` : "",
     capaEffectivenessOverdue > 0 ? `${capaEffectivenessOverdue} CAPA effectiveness check(s) are overdue.` : "",
     executiveRiskScore >= 25 ? "Executive quality health is Critical. Leadership review and action prioritization are recommended." : "",
+    equipmentCalibrationOverdue > 0 ? `${equipmentCalibrationOverdue} calibration item(s) are overdue and require equipment-system follow-up.` : "",
+    equipmentPmOverdue > 0 ? `${equipmentPmOverdue} preventive-maintenance item(s) are overdue and require equipment-system follow-up.` : "",
+    equipmentCriticalEvents > 0 ? `${equipmentCriticalEvents} significant equipment calibration or maintenance exception(s) were recorded in the review period.` : "",
     managementReviewActions.filter((action) => action.management_review_id === selectedReviewId && action.action_status !== "closed").length > 0 ? `${managementReviewActions.filter((action) => action.management_review_id === selectedReviewId && action.action_status !== "closed").length} management review action(s) remain open.` : "",
   ].filter(Boolean);
 
@@ -2062,6 +2118,7 @@ Review and approve only the generated read-only Management Review report snapsho
       changeControlPerformance: true,
       documentControlPerformance: false,
       trainingPerformance: false,
+      equipmentPerformance: true,
       escalationQueues: false,
       trendCharts: true,
       executiveNotifications: true,
@@ -2084,6 +2141,7 @@ Review and approve only the generated read-only Management Review report snapsho
       changeControlPerformance: true,
       documentControlPerformance: true,
       trainingPerformance: true,
+      equipmentPerformance: true,
       escalationQueues: true,
       trendCharts: true,
       executiveNotifications: true,
@@ -2110,6 +2168,7 @@ Review and approve only the generated read-only Management Review report snapsho
       `CAPA effectiveness is ${capaEffectivenessRate}%, with ${capaEffectivenessOverdue} overdue effectiveness check(s) and ${capaNotEffective} CAPA(s) rated not effective.`,
       `Supplier quality review identified ${supplierRecurrenceEvents} supplier recurrence event(s), ${supplierScarRequired} supplier-related SCAR trigger(s), and ${openScars} open SCAR(s).`,
       `Audit performance includes ${auditOpen} open audit(s), ${auditOverdue} overdue audit(s), ${majorFindings} major finding(s), and ${criticalFindings} critical finding(s).`,
+      `Equipment performance is ${equipmentCalibrationComplianceRate}% calibration compliant and ${equipmentPmComplianceRate}% preventive-maintenance compliant, with ${equipmentCalibrationOverdue} calibration overdue item(s), ${equipmentPmOverdue} PM overdue item(s), and ${equipmentCriticalEvents} significant equipment exception(s).`,
       configuredKpiCount > 0
         ? `${configuredKpiCount} catalog-driven Management Review KPI(s) are included in this review snapshot.`
         : "No catalog-driven Management Review KPIs are currently configured.",
@@ -2216,6 +2275,18 @@ Review and approve only the generated read-only Management Review report snapsho
         open: trainingOpen,
         overdue: trainingOverdue,
         completion_rate: trainingCompletionRate,
+      },
+      equipment: {
+        included: reportConfig.equipmentPerformance,
+        calibration_required: equipmentCalibrationRequired,
+        calibration_compliance_rate: equipmentCalibrationComplianceRate,
+        calibration_overdue: equipmentCalibrationOverdue,
+        pm_required: equipmentPmRequired,
+        pm_compliance_rate: equipmentPmComplianceRate,
+        pm_overdue: equipmentPmOverdue,
+        out_of_service: equipmentOutOfService,
+        quality_events: equipmentQualityEvents,
+        significant_exceptions: equipmentCriticalEvents,
       },
       audits: {
         total: auditTotal,
@@ -3220,6 +3291,21 @@ Review and approve only the generated read-only Management Review report snapsho
         </Section>
       )}
 
+      {reportConfig.equipmentPerformance && (
+        <Section title="Equipment Performance" label="EQUIPMENT SYSTEM EFFECTIVENESS" description="Management-level equipment compliance, overdue exceptions, significant equipment events, and quality-system impact. Operational due-soon activity remains on the Equipment dashboard.">
+          <div style={gridStyle}>
+            <KpiCard title="Calibration Compliance Rate" value={`${equipmentCalibrationComplianceRate}%`} color="#2563eb" />
+            <KpiCard title="PM Compliance Rate" value={`${equipmentPmComplianceRate}%`} color="#2563eb" />
+            <KpiCard title="Calibration Overdue" value={equipmentCalibrationOverdue} color={getStatusColor(equipmentCalibrationOverdue)} />
+            <KpiCard title="PM Overdue" value={equipmentPmOverdue} color={getStatusColor(equipmentPmOverdue)} />
+            <KpiCard title="Out of Service Equipment" value={equipmentOutOfService} color={getStatusColor(equipmentOutOfService, "warning")} />
+            <KpiCard title="Equipment-Related Quality Events" value={equipmentQualityEvents} color={getStatusColor(equipmentQualityEvents, "warning")} />
+            <KpiCard title="Significant Equipment Exceptions" value={equipmentCriticalEvents} color={getStatusColor(equipmentCriticalEvents)} />
+          </div>
+          <p style={{ color: "#6b7280", marginBottom: 0 }}>Due-soon calibration and preventive-maintenance activity is intentionally excluded from Management Review and remains available on the operational Equipment dashboard.</p>
+        </Section>
+      )}
+
       {reportConfig.recurrenceAnalysis && (
         <Section title="Recurrence Analysis">
           <div style={gridStyle}>
@@ -3743,6 +3829,7 @@ function ReportBuilder({
         <Checkbox label="Change Control Performance" checked={config.changeControlPerformance} onChange={() => toggle("changeControlPerformance")} />
         <Checkbox label="Document Control Performance" checked={config.documentControlPerformance} onChange={() => toggle("documentControlPerformance")} />
         <Checkbox label="Training Performance" checked={config.trainingPerformance} onChange={() => toggle("trainingPerformance")} />
+        <Checkbox label="Equipment Performance" checked={config.equipmentPerformance} onChange={() => toggle("equipmentPerformance")} />
         <Checkbox label="Escalation Queues" checked={config.escalationQueues} onChange={() => toggle("escalationQueues")} />
         <Checkbox label="Trend Charts" checked={config.trendCharts} onChange={() => toggle("trendCharts")} />
         <Checkbox label="Executive Notifications" checked={config.executiveNotifications} onChange={() => toggle("executiveNotifications")} />

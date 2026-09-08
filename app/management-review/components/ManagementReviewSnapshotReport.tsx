@@ -27,6 +27,7 @@ export default function ManagementReviewSnapshotReport({
   const changeControl = snapshot?.change_control || {};
   const documentControl = snapshot?.document_control || {};
   const training = snapshot?.training || {};
+  const equipment = snapshot?.equipment || {};
   const queues = snapshot?.queues || {};
   const notifications = Array.isArray(snapshot?.notifications) ? snapshot.notifications : [];
   const managementActions = Array.isArray(snapshot?.management_actions) ? snapshot.management_actions : [];
@@ -225,6 +226,21 @@ export default function ManagementReviewSnapshotReport({
         </ReportSection>
       ) : null}
 
+      {config.equipmentPerformance ? (
+        <ReportSection title="Equipment Performance">
+          <MetricGrid items={[
+            ["Calibration Compliance Rate", percent(equipment.calibration_compliance_rate)],
+            ["PM Compliance Rate", percent(equipment.pm_compliance_rate)],
+            ["Calibration Overdue", equipment.calibration_overdue],
+            ["PM Overdue", equipment.pm_overdue],
+            ["Out of Service Equipment", equipment.out_of_service],
+            ["Equipment-Related Quality Events", equipment.quality_events],
+            ["Significant Equipment Exceptions", equipment.significant_exceptions],
+          ]} />
+          <p style={helperTextStyle}>Due-soon calibration and preventive-maintenance activity is intentionally excluded from Management Review and remains on the operational Equipment dashboard.</p>
+        </ReportSection>
+      ) : null}
+
       {config.escalationQueues ? (
         <ReportSection title="Escalation Queues">
           <MetricGrid
@@ -275,7 +291,7 @@ export default function ManagementReviewSnapshotReport({
       {showPrintSignatureBlocks && printSigning?.enabled && printSigners.length > 0 ? (
         <ReportSection title="Print & Sign">
           <p style={helperTextStyle}>
-            The following wet-signature blocks were configured when this report snapshot was generated. These signatures are separate from electronic Workspace approvals.
+            The following wet-signature blocks were configured when this report snapshot was generated. These wet signatures are separate from electronic QualiSphere approvals and do not change the approval status of the Management Review record.
           </p>
           <PrintSignatureBlocks signers={printSigners} />
         </ReportSection>
