@@ -1,0 +1,48 @@
+name: Apply Management Review Print Signers
+
+on:
+  push:
+    branches:
+      - fix/management-review-report-alignment-20260908
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    if: ${{ !contains(github.event.head_commit.message, '[mr-print-signers]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/management-review-report-alignment-20260908
+          fetch-depth: 0
+
+      - name: Apply Print & Sign option
+        run: python3 scripts/add_management_review_print_signers.py
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: TypeScript verification
+        run: npx tsc --noEmit
+
+      - name: Verify Print & Sign isolation
+        run: |
+          grep -q 'print_signing:' app/management-review/page.tsx
+          grep -q 'Optional Print & Sign' app/management-review/page.tsx
+          grep -q 'showPrintSignatureBlocks' app/management-review/components/ManagementReviewSnapshotReport.tsx
+          grep -q 'PrintSignatureBlocks' app/management-review/components/ManagementReviewSnapshotReport.tsx
+          grep -q 'showPrintSignatureBlocks' app/management-review/print/page.tsx
+          if grep -q 'showPrintSignatureBlocks' app/management-review/[id]/approval-review/page.tsx; then
+            echo 'Print signature blocks leaked into electronic approval package'
+            exit 1
+          fi
+
+      - name: Commit Print & Sign implementation
+        run: |
+          git config user.name 'QualiSphere Workflow Hardening'
+          git config user.email 'actions@users.noreply.github.com'
+          git add app/management-review/page.tsx app/management-review/components/ManagementReviewSnapshotReport.tsx app/management-review/print/page.tsx
+          git commit -m 'Add optional Management Review print signers [mr-print-signers]'
+          git push origin HEAD:fix/management-review-report-alignment-20260908
