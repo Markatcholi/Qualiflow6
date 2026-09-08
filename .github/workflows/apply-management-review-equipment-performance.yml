@@ -1,0 +1,78 @@
+name: Apply Management Review Equipment Performance
+
+on:
+  push:
+    branches:
+      - feat/management-review-equipment-performance-20260908
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/management-review-equipment-performance-20260908
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Apply scoped Management Review changes
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('app/management-review/page.tsx')
+          s = p.read_text()
+          def rep(old, new, count=1):
+              global s
+              if s.count(old) < count: raise SystemExit(f'Expected text not found: {old[:100]!r}')
+              s = s.replace(old, new, count)
+          rep('  trainingPerformance: boolean;\n  escalationQueues: boolean;', '  trainingPerformance: boolean;\n  equipmentPerformance: boolean;\n  escalationQueues: boolean;')
+          rep('    trainingPerformance: true,\n    escalationQueues: true,', '    trainingPerformance: true,\n    equipmentPerformance: true,\n    escalationQueues: true;'.replace(';',''), 1)
+          rep('  const [trainingOverdue, setTrainingOverdue] = useState(0);\n\n  const [notifications', '  const [trainingOverdue, setTrainingOverdue] = useState(0);\n\n  const [equipmentCalibrationRequired, setEquipmentCalibrationRequired] = useState(0);\n  const [equipmentPmRequired, setEquipmentPmRequired] = useState(0);\n  const [equipmentCalibrationOverdue, setEquipmentCalibrationOverdue] = useState(0);\n  const [equipmentPmOverdue, setEquipmentPmOverdue] = useState(0);\n  const [equipmentOutOfService, setEquipmentOutOfService] = useState(0);\n  const [equipmentQualityEvents, setEquipmentQualityEvents] = useState(0);\n  const [equipmentCriticalEvents, setEquipmentCriticalEvents] = useState(0);\n\n  const [notifications')
+          marker = '    const { data: auditData, error: auditError } = await supabase\n      .from("audits")\n      .select("*");'
+          block = '''    const [equipmentResult, equipmentScheduleResult, equipmentCalibrationResult, equipmentMaintenanceResult, equipmentOosLinkResult] = await Promise.all([\n      supabase.from("equipment").select("id,use_status,calibration_required,preventive_maintenance_required"),\n      supabase.from("equipment_current_schedule_status").select("equipment_id,activity_type,schedule_status"),\n      supabase.from("equipment_calibration_events").select("equipment_id,performed_date,result,status,created_at"),\n      supabase.from("equipment_maintenance_events").select("equipment_id,maintenance_type,performed_date,result,status,created_at"),\n      supabase.from("equipment_oos_oot_links").select("equipment_id,linked_at"),\n    ]);\n\n    if (!equipmentResult.error) {\n      const equipmentRows = equipmentResult.data || [];\n      const scheduleRows = equipmentScheduleResult.error ? [] : equipmentScheduleResult.data || [];\n      const calibrationRows = equipmentCalibrationResult.error ? [] : filterByReviewPeriod(equipmentCalibrationResult.data || [], ["performed_date", "created_at"]);\n      const maintenanceRows = equipmentMaintenanceResult.error ? [] : filterByReviewPeriod(equipmentMaintenanceResult.data || [], ["performed_date", "created_at"]);\n      const equipmentOosLinks = equipmentOosLinkResult.error ? [] : filterByReviewPeriod(equipmentOosLinkResult.data || [], ["linked_at"]);\n      const calibrationRequiredIds = new Set(equipmentRows.filter((item: any) => item.calibration_required === true).map((item: any) => item.id));\n      const pmRequiredIds = new Set(equipmentRows.filter((item: any) => item.preventive_maintenance_required === true).map((item: any) => item.id));\n      const calibrationOverdueIds = new Set(scheduleRows.filter((item: any) => item.activity_type === "calibration" && item.schedule_status === "overdue").map((item: any) => item.equipment_id));\n      const pmOverdueIds = new Set(scheduleRows.filter((item: any) => item.activity_type === "preventive_maintenance" && item.schedule_status === "overdue").map((item: any) => item.equipment_id));\n      const calibrationRequiredCount = calibrationRequiredIds.size;\n      const pmRequiredCount = pmRequiredIds.size;\n      const calibrationOverdueCount = [...calibrationOverdueIds].filter((id) => calibrationRequiredIds.has(id)).length;\n      const pmOverdueCount = [...pmOverdueIds].filter((id) => pmRequiredIds.has(id)).length;\n      setEquipmentCalibrationRequired(calibrationRequiredCount);\n      setEquipmentPmRequired(pmRequiredCount);\n      setEquipmentCalibrationOverdue(calibrationOverdueCount);\n      setEquipmentPmOverdue(pmOverdueCount);\n      setEquipmentOutOfService(equipmentRows.filter((item: any) => item.use_status === "out_of_service").length);\n      setEquipmentQualityEvents(equipmentOosLinks.length);\n      setEquipmentCriticalEvents(\n        calibrationRows.filter((item: any) => ["out_of_tolerance", "failed", "fail", "unacceptable"].includes(String(item.result || item.status || "").toLowerCase())).length +\n        maintenanceRows.filter((item: any) => ["failed", "fail", "unacceptable"].includes(String(item.result || item.status || "").toLowerCase())).length,\n      );\n    } else { console.warn(equipmentResult.error.message); }\n    [equipmentScheduleResult, equipmentCalibrationResult, equipmentMaintenanceResult, equipmentOosLinkResult].forEach((result: any) => { if (result.error) console.warn(result.error.message); });\n\n''' + marker
+          rep(marker, block)
+          rep('  const trainingCompletionRate = trainingTotal > 0 ? ((trainingCompleted / trainingTotal) * 100).toFixed(1) : "0.0";\n', '  const trainingCompletionRate = trainingTotal > 0 ? ((trainingCompleted / trainingTotal) * 100).toFixed(1) : "0.0";\n  const equipmentCalibrationComplianceRate = equipmentCalibrationRequired > 0 ? (((equipmentCalibrationRequired - equipmentCalibrationOverdue) / equipmentCalibrationRequired) * 100).toFixed(1) : "100.0";\n  const equipmentPmComplianceRate = equipmentPmRequired > 0 ? (((equipmentPmRequired - equipmentPmOverdue) / equipmentPmRequired) * 100).toFixed(1) : "100.0";\n')
+          rep('    trainingOverdue;\n', '    trainingOverdue +\n    equipmentCalibrationOverdue +\n    equipmentPmOverdue +\n    equipmentCriticalEvents;\n')
+          rep('    ncmrInvestigation * 1;\n', '    ncmrInvestigation * 1 +\n    equipmentCalibrationOverdue * 3 +\n    equipmentPmOverdue * 2 +\n    equipmentCriticalEvents * 4;\n')
+          rep('    managementReviewActions.filter((action) => action.management_review_id === selectedReviewId && action.action_status !== "closed").length > 0 ? `${managementReviewActions.filter((action) => action.management_review_id === selectedReviewId && action.action_status !== "closed").length} management review action(s) remain open.` : "",\n', '    equipmentCalibrationOverdue > 0 ? `${equipmentCalibrationOverdue} calibration item(s) are overdue and require equipment-system follow-up.` : "",\n    equipmentPmOverdue > 0 ? `${equipmentPmOverdue} preventive-maintenance item(s) are overdue and require equipment-system follow-up.` : "",\n    equipmentCriticalEvents > 0 ? `${equipmentCriticalEvents} significant equipment calibration or maintenance exception(s) were recorded in the review period.` : "",\n    managementReviewActions.filter((action) => action.management_review_id === selectedReviewId && action.action_status !== "closed").length > 0 ? `${managementReviewActions.filter((action) => action.management_review_id === selectedReviewId && action.action_status !== "closed").length} management review action(s) remain open.` : "",\n')
+          rep('      trainingPerformance: false,\n      escalationQueues: false,', '      trainingPerformance: false,\n      equipmentPerformance: true,\n      escalationQueues: false,')
+          rep('      trainingPerformance: true,\n      escalationQueues: true,', '      trainingPerformance: true,\n      equipmentPerformance: true,\n      escalationQueues: true,')
+          rep('      `Audit performance includes ${auditOpen} open audit(s), ${auditOverdue} overdue audit(s), ${majorFindings} major finding(s), and ${criticalFindings} critical finding(s).`,\n', '      `Audit performance includes ${auditOpen} open audit(s), ${auditOverdue} overdue audit(s), ${majorFindings} major finding(s), and ${criticalFindings} critical finding(s).`,\n      `Equipment performance is ${equipmentCalibrationComplianceRate}% calibration compliant and ${equipmentPmComplianceRate}% preventive-maintenance compliant, with ${equipmentCalibrationOverdue} calibration overdue item(s), ${equipmentPmOverdue} PM overdue item(s), and ${equipmentCriticalEvents} significant equipment exception(s).`,\n')
+          rep('      training: {\n        included: reportConfig.trainingPerformance,\n        total: trainingTotal,\n        completed: trainingCompleted,\n        open: trainingOpen,\n        overdue: trainingOverdue,\n        completion_rate: trainingCompletionRate,\n      },\n', '      training: {\n        included: reportConfig.trainingPerformance,\n        total: trainingTotal,\n        completed: trainingCompleted,\n        open: trainingOpen,\n        overdue: trainingOverdue,\n        completion_rate: trainingCompletionRate,\n      },\n      equipment: {\n        included: reportConfig.equipmentPerformance,\n        calibration_required: equipmentCalibrationRequired,\n        calibration_compliance_rate: equipmentCalibrationComplianceRate,\n        calibration_overdue: equipmentCalibrationOverdue,\n        pm_required: equipmentPmRequired,\n        pm_compliance_rate: equipmentPmComplianceRate,\n        pm_overdue: equipmentPmOverdue,\n        out_of_service: equipmentOutOfService,\n        quality_events: equipmentQualityEvents,\n        significant_exceptions: equipmentCriticalEvents,\n      },\n')
+          marker = '      {reportConfig.recurrenceAnalysis && (\n        <Section title="Recurrence Analysis">'
+          block = '''      {reportConfig.equipmentPerformance && (\n        <Section title="Equipment Performance" label="EQUIPMENT SYSTEM EFFECTIVENESS" description="Management-level equipment compliance, overdue exceptions, significant equipment events, and quality-system impact. Operational due-soon activity remains on the Equipment dashboard.">\n          <div style={gridStyle}>\n            <KpiCard title="Calibration Compliance Rate" value={`${equipmentCalibrationComplianceRate}%`} color="#2563eb" />\n            <KpiCard title="PM Compliance Rate" value={`${equipmentPmComplianceRate}%`} color="#2563eb" />\n            <KpiCard title="Calibration Overdue" value={equipmentCalibrationOverdue} color={getStatusColor(equipmentCalibrationOverdue)} />\n            <KpiCard title="PM Overdue" value={equipmentPmOverdue} color={getStatusColor(equipmentPmOverdue)} />\n            <KpiCard title="Out of Service Equipment" value={equipmentOutOfService} color={getStatusColor(equipmentOutOfService, "warning")} />\n            <KpiCard title="Equipment-Related Quality Events" value={equipmentQualityEvents} color={getStatusColor(equipmentQualityEvents, "warning")} />\n            <KpiCard title="Significant Equipment Exceptions" value={equipmentCriticalEvents} color={getStatusColor(equipmentCriticalEvents)} />\n          </div>\n          <p style={{ color: "#6b7280", marginBottom: 0 }}>Due-soon calibration and preventive-maintenance activity is intentionally excluded from Management Review and remains available on the operational Equipment dashboard.</p>\n        </Section>\n      )}\n\n''' + marker
+          rep(marker, block)
+          rep('        <Checkbox label="Training Performance" checked={config.trainingPerformance} onChange={() => toggle("trainingPerformance")} />\n', '        <Checkbox label="Training Performance" checked={config.trainingPerformance} onChange={() => toggle("trainingPerformance")} />\n        <Checkbox label="Equipment Performance" checked={config.equipmentPerformance} onChange={() => toggle("equipmentPerformance")} />\n')
+          p.write_text(s)
+
+          p = Path('app/management-review/components/ManagementReviewSnapshotReport.tsx')
+          s = p.read_text()
+          if '  const training = snapshot?.training || {};\n' not in s: raise SystemExit('training snapshot marker missing')
+          s = s.replace('  const training = snapshot?.training || {};\n', '  const training = snapshot?.training || {};\n  const equipment = snapshot?.equipment || {};\n', 1)
+          marker = '      {config.escalationQueues ? (\n        <ReportSection title="Escalation Queues">'
+          block = '''      {config.equipmentPerformance ? (\n        <ReportSection title="Equipment Performance">\n          <MetricGrid items={[\n            ["Calibration Compliance Rate", percent(equipment.calibration_compliance_rate)],\n            ["PM Compliance Rate", percent(equipment.pm_compliance_rate)],\n            ["Calibration Overdue", equipment.calibration_overdue],\n            ["PM Overdue", equipment.pm_overdue],\n            ["Out of Service Equipment", equipment.out_of_service],\n            ["Equipment-Related Quality Events", equipment.quality_events],\n            ["Significant Equipment Exceptions", equipment.significant_exceptions],\n          ]} />\n          <p style={helperTextStyle}>Due-soon calibration and preventive-maintenance activity is intentionally excluded from Management Review and remains on the operational Equipment dashboard.</p>\n        </ReportSection>\n      ) : null}\n\n''' + marker
+          if marker not in s: raise SystemExit('snapshot equipment marker missing')
+          s = s.replace(marker, block, 1)
+          old = 'The following wet-signature blocks were configured when this report snapshot was generated. These signatures are separate from electronic Workspace approvals.'
+          new = 'The following wet-signature blocks were configured when this report snapshot was generated. These wet signatures are separate from electronic QualiSphere approvals and do not change the approval status of the Management Review record.'
+          if old not in s: raise SystemExit('wet signature wording marker missing')
+          s = s.replace(old, new, 1)
+          p.write_text(s)
+      - name: Install dependencies
+        run: npm ci
+      - name: Build
+        run: npm run build
+      - name: Commit generated changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/management-review/page.tsx app/management-review/components/ManagementReviewSnapshotReport.tsx
+          git diff --cached --check
+          git diff --cached --quiet && exit 0
+          git commit -m "Add equipment performance to management review"
+          git push origin HEAD:feat/management-review-equipment-performance-20260908
