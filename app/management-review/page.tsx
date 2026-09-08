@@ -3658,14 +3658,28 @@ Review and approve only the generated read-only Management Review report snapsho
                       : "N/A"}
                   </td>
                   <td style={tdStyle}>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        window.open(`/management-review/print?review_id=${review.id}`, "_blank")
-                      }
-                    >
-                      Open Report
-                    </button>
+                    <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          window.open(`/management-review/print?review_id=${review.id}`, "_blank")
+                        }
+                      >
+                        Open Electronic Report
+                      </button>
+                      {review?.report_snapshot_json?.print_signing?.enabled === true &&
+                      Array.isArray(review?.report_snapshot_json?.print_signing?.signers) &&
+                      review.report_snapshot_json.print_signing.signers.length > 0 ? (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            window.open(`/management-review/print?review_id=${review.id}&mode=wet`, "_blank")
+                          }
+                        >
+                          Open Wet Signature Report
+                        </button>
+                      ) : null}
+                    </div>
                   </td>
                   <td style={tdStyle}>
                     <button type="button" onClick={() => setSelectedReviewId(review.id)}>

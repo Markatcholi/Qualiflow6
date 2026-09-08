@@ -8,6 +8,7 @@ export default function PrintManagementReview() {
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
   const [review, setReview] = useState<any>(null);
+  const [reportMode, setReportMode] = useState<"electronic" | "wet">("electronic");
 
   useEffect(() => {
     const load = async () => {
@@ -17,6 +18,7 @@ export default function PrintManagementReview() {
       try {
         const params = new URLSearchParams(window.location.search);
         const reviewId = params.get("review_id") || params.get("reviewId") || "";
+        const requestedMode = params.get("mode") === "wet" ? "wet" : "electronic";
 
         if (!reviewId) {
           throw new Error("A Management Review record is required to generate this controlled report.");
@@ -34,6 +36,15 @@ export default function PrintManagementReview() {
           throw new Error("This Management Review does not contain a generated report snapshot.");
         }
 
+        if (requestedMode === "wet") {
+          const printSigning = data.report_snapshot_json?.print_signing || {};
+          const wetSigners = Array.isArray(printSigning?.signers) ? printSigning.signers : [];
+          if (printSigning?.enabled !== true || wetSigners.length === 0) {
+            throw new Error("This Management Review snapshot was not configured with Print & Sign signers.");
+          }
+        }
+
+        setReportMode(requestedMode);
         setReview(data);
       } catch (error: any) {
         setErrorMessage(error?.message || "Unable to load Management Review report.");
@@ -66,6 +77,7 @@ export default function PrintManagementReview() {
     ? review.management_review_approvers
     : [];
   const period = formatPeriod(review.review_period_start, review.review_period_end);
+  const wetSignatureMode = reportMode === "wet";
 
   return (
     <main style={pageStyle}>
@@ -73,7 +85,7 @@ export default function PrintManagementReview() {
 
       <div className="no-print" style={{ marginBottom: 18 }}>
         <button type="button" onClick={() => window.print()} style={buttonStyle}>
-          Print / Save as PDF
+          {wetSignatureMode ? "Print Wet-Signature Report / Save as PDF" : "Print / Save as PDF"}
         </button>
       </div>
 
@@ -90,23 +102,38 @@ export default function PrintManagementReview() {
         <div style={{ textAlign: "right" }}>
           <div><strong>Prepared By:</strong> {review.prepared_by || "N/A"}</div>
           <div><strong>Snapshot Generated:</strong> {formatDateTime(snapshot.generated_at)}</div>
-          <div><strong>Approval Status:</strong> {review.approval_status || review.status || "draft"}</div>
-          <div><strong>Locked:</strong> {review.is_locked ? "Yes" : "No"}</div>
-          {review.locked_at ? <div><strong>Locked At:</strong> {formatDateTime(review.locked_at)}</div> : null}
+          {wetSignatureMode ? (
+            <div><strong>Report Type:</strong> Wet Signature Copy</div>
+          ) : (
+            <>
+              <div><strong>Approval Status:</strong> {review.approval_status || review.status || "draft"}</div>
+              <div><strong>Locked:</strong> {review.is_locked ? "Yes" : "No"}</div>
+              {review.locked_at ? <div><strong>Locked At:</strong> {formatDateTime(review.locked_at)}</div> : null}
+            </>
+          )}
         </div>
       </header>
 
       <section style={noticeStyle}>
-        <strong>Controlled report source:</strong> This report is rendered from the saved Management Review report snapshot. It does not recalculate live QMS data when opened or printed.
+        {wetSignatureMode ? (
+          <>
+            <strong>Wet-signature report:</strong> This copy is rendered from the saved Management Review report snapshot and is intended only for configured physical signatures. Wet signatures do not close or lock the Management Review record; electronic approval in QualiSphere remains required.
+          </>
+        ) : (
+          <>
+            <strong>Controlled report source:</strong> This report is rendered from the saved Management Review report snapshot. It does not recalculate live QMS data when opened or printed.
+          </>
+        )}
       </section>
 
       <ManagementReviewSnapshotReport
         snapshot={snapshot}
         config={config}
         executiveSummary={review.executive_summary}
-        showPrintSignatureBlocks
+        showPrintSignatureBlocks={wetSignatureMode}
       />
 
+      {!wetSignatureMode ? (
       <section style={cardStyle}>
         <h2 style={sectionTitleStyle}>Approval Record</h2>
         {approvers.length === 0 ? (
@@ -140,9 +167,10 @@ export default function PrintManagementReview() {
           </div>
         )}
       </section>
+      ) : null}
 
       <footer style={footerStyle}>
-        QualiSphere Enterprise QMS | Management Review | {period} | {review.review_number || "N/A"}
+        QualiSphere Enterprise QMS | Management Review | {period} | {review.review_number || "N/A"}{wetSignatureMode ? " | Wet Signature Copy" : ""}
       </footer>
     </main>
   );
