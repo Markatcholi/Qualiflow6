@@ -1293,7 +1293,6 @@ export default function ManagementReviewPage() {
           assigned_to_email: String(approver.approver_email || "").trim().toLowerCase(),
           assigned_by_email: submittedByEmail,
           due_date: approver.approver_due_date,
-          approver_due_date: approver.approver_due_date,
           status: "pending",
           required: true,
           comments: `${approverMarker}
