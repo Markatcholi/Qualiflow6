@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   apply-and-verify:
-    if: github.actor != 'github-actions[bot]'
+    if: ${{ github.actor != 'github-actions[bot]' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,64 +19,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Apply review-period alignment patch
-        shell: python
-        run: |
-          from pathlib import Path
-
-          p = Path('app/management-review/page.tsx')
-          s = p.read_text()
-
-          old = 'supabase.from("equipment_current_schedule_status").select("equipment_id,activity_type,schedule_status"),'
-          new = 'supabase.from("equipment_current_schedule_status").select("equipment_id,activity_type,schedule_status,nominal_due_date,scheduled_service_date,hard_due_date,use_status,lifecycle_status"),'
-          if old not in s:
-              raise SystemExit('Equipment schedule select marker not found')
-          s = s.replace(old, new, 1)
-
-          old = '''      const calibrationRequiredIds = new Set(equipmentRows.filter((item: any) => item.calibration_required === true).map((item: any) => item.id));
-      const pmRequiredIds = new Set(equipmentRows.filter((item: any) => item.preventive_maintenance_required === true).map((item: any) => item.id));
-      const calibrationOverdueIds = new Set(scheduleRows.filter((item: any) => item.activity_type === "calibration" && item.schedule_status === "overdue").map((item: any) => item.equipment_id));
-      const pmOverdueIds = new Set(scheduleRows.filter((item: any) => item.activity_type === "preventive_maintenance" && item.schedule_status === "overdue").map((item: any) => item.equipment_id));
-'''
-          new = '''      const calibrationRequiredIds = new Set(equipmentRows.filter((item: any) => item.calibration_required === true).map((item: any) => item.id));
-      const pmRequiredIds = new Set(equipmentRows.filter((item: any) => item.preventive_maintenance_required === true).map((item: any) => item.id));
-      const reviewCutoff = reviewAsOfDate().toISOString().slice(0, 10);
-      const scheduleDueDate = (item: any) => String(item.hard_due_date || item.scheduled_service_date || item.nominal_due_date || "").slice(0, 10);
-      const isOverdueAsOfReviewEnd = (item: any) => {
-        const due = scheduleDueDate(item);
-        return Boolean(due && due < reviewCutoff);
-      };
-      const calibrationOverdueIds = new Set(
-        scheduleRows
-          .filter((item: any) => item.activity_type === "calibration" && isOverdueAsOfReviewEnd(item))
-          .map((item: any) => item.equipment_id),
-      );
-      const pmOverdueIds = new Set(
-        scheduleRows
-          .filter((item: any) => item.activity_type === "preventive_maintenance" && isOverdueAsOfReviewEnd(item))
-          .map((item: any) => item.equipment_id),
-      );
-'''
-          if old not in s:
-              raise SystemExit('Equipment overdue logic marker not found')
-          s = s.replace(old, new, 1)
-
-          s = s.replace('Out of Service Equipment', 'Out of Service at Snapshot')
-          s = s.replace(
-              'Due-soon calibration and preventive-maintenance activity is intentionally excluded from Management Review and remains available on the operational Equipment dashboard.',
-              'Calibration and PM overdue status is evaluated against the Management Review period end using the configured equipment due dates. Out-of-service status is preserved as a point-in-time value at snapshot generation. Due-soon activity remains on the operational Equipment dashboard.',
-          )
-          p.write_text(s)
-
-          p = Path('app/management-review/components/ManagementReviewSnapshotReport.tsx')
-          s = p.read_text()
-          s = s.replace('Out of Service Equipment', 'Out of Service at Snapshot')
-          s = s.replace(
-              'Due-soon calibration and preventive-maintenance activity is intentionally excluded from Management Review and remains on the operational Equipment dashboard.',
-              'Calibration and PM overdue status is evaluated against the Management Review period end using the configured equipment due dates. Out-of-service status is preserved as a point-in-time value at snapshot generation. Due-soon activity remains on the operational Equipment dashboard.',
-          )
-          p.write_text(s)
-
+      - name: Apply patch
+        run: python scripts/patch_management_review_equipment_period.py
       - name: Install dependencies
         run: npm install --no-audit --no-fund
       - name: Verify TypeScript and diff
