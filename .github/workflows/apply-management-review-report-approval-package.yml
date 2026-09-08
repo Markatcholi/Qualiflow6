@@ -1,0 +1,54 @@
+name: Apply Management Review Report Approval Package
+
+on:
+  push:
+    branches:
+      - fix/management-review-report-approval-package-20260907
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    if: ${{ !contains(github.event.head_commit.message, '[mr-report-approval-applied]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/management-review-report-approval-package-20260907
+          fetch-depth: 0
+
+      - name: Apply Management Review approval package changes
+        run: python3 scripts/apply-management-review-report-approval-package.py
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: TypeScript verification
+        run: npx tsc --noEmit
+
+      - name: Verify intended approval architecture
+        shell: bash
+        run: |
+          grep -q 'approverDueDate' app/management-review/page.tsx
+          grep -q 'Submit for Approval' app/management-review/page.tsx
+          grep -q 'No Workspace task is sent until you click Submit for Approval' app/management-review/page.tsx
+          grep -q 'approval-review?taskId=' app/workspace/page.tsx
+          grep -q 'Open Management Review Report Package' app/my-approval-tasks/page.tsx
+          grep -q 'report_snapshot_json' app/management-review/'[id]'/approval-review/page.tsx
+          grep -q 'qualisphere_decide_management_review_approval' app/management-review/'[id]'/approval-review/page.tsx
+          echo 'Management Review report approval package checks passed.'
+
+      - name: Commit application changes
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo 'No source changes required.'
+            exit 0
+          fi
+          git config user.name 'QualiSphere Workflow Hardening'
+          git config user.email 'actions@users.noreply.github.com'
+          git add app/management-review/page.tsx app/workspace/page.tsx app/my-approval-tasks/page.tsx
+          git commit -m 'Align Management Review approval with read-only report snapshot [mr-report-approval-applied]'
+          git push origin HEAD:fix/management-review-report-approval-package-20260907
