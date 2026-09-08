@@ -16,7 +16,7 @@ jobs:
       - name: Apply fallback
         run: python scripts/apply_management_review_wet_sign_fallback.py
       - name: Install dependencies
-        run: npm ci
+        run: npm install --no-audit --no-fund
       - name: TypeScript verification
         run: npx tsc --noEmit
       - name: Verify fallback behavior
