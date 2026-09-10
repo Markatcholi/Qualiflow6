@@ -52,6 +52,7 @@ export default function CompanyRegistryPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [creating, setCreating] = useState(false);
   const [message, setMessage] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
   const [form, setForm] = useState(emptyForm);
 
   useEffect(() => {
@@ -61,29 +62,48 @@ export default function CompanyRegistryPage() {
   const initialize = async () => {
     setLoading(true);
     setMessage("");
+    setErrorMessage("");
 
-    const { data: authData } = await supabase.auth.getUser();
-    const email = authData?.user?.email || "";
-    setUserEmail(email);
+    try {
+      const { data: authData, error: authError } = await supabase.auth.getUser();
 
-    if (!email) {
+      if (authError) {
+        setUserEmail("");
+        setIsPlatformAdmin(false);
+        setErrorMessage("Unable to verify your QualiSphere session. Please sign in again.");
+        return;
+      }
+
+      const email = authData?.user?.email || "";
+      setUserEmail(email);
+
+      if (!email) {
+        setIsPlatformAdmin(false);
+        return;
+      }
+
+      const { data: adminData, error: adminError } = await supabase.rpc(
+        "is_platform_admin",
+      );
+
+      if (adminError) {
+        setIsPlatformAdmin(false);
+        setErrorMessage("Unable to verify Platform Administrator access.");
+        return;
+      }
+
+      if (adminData !== true) {
+        setIsPlatformAdmin(false);
+        return;
+      }
+
+      setIsPlatformAdmin(true);
+      await loadRegistry();
+    } catch (error: any) {
+      setErrorMessage(error?.message || "Unable to load the Company Registry.");
+    } finally {
       setLoading(false);
-      return;
     }
-
-    const { data: adminData, error: adminError } = await supabase.rpc(
-      "is_platform_admin",
-    );
-
-    if (adminError || adminData !== true) {
-      setIsPlatformAdmin(false);
-      setLoading(false);
-      return;
-    }
-
-    setIsPlatformAdmin(true);
-    await loadRegistry();
-    setLoading(false);
   };
 
   const loadRegistry = async () => {
@@ -155,48 +175,61 @@ export default function CompanyRegistryPage() {
   const createTenant = async (event: FormEvent) => {
     event.preventDefault();
     setMessage("");
+    setErrorMessage("");
 
     if (!form.companyName.trim()) {
-      setMessage("Company name is required.");
+      setErrorMessage("Company name is required.");
       return;
     }
     if (!form.tenantCode.trim()) {
-      setMessage("Tenant code is required.");
+      setErrorMessage("Tenant code is required.");
       return;
     }
     if (!form.slug.trim()) {
-      setMessage("Tenant slug is required.");
+      setErrorMessage("Tenant slug is required.");
       return;
     }
     if (!form.companyAdminEmail.trim()) {
-      setMessage("Initial Company Administrator email is required.");
+      setErrorMessage("Initial Company Administrator email is required.");
       return;
     }
 
     setCreating(true);
 
-    const { data, error } = await supabase.rpc("qualisphere_create_tenant", {
-      p_company_name: form.companyName.trim(),
-      p_legal_name: form.legalName.trim(),
-      p_tenant_code: form.tenantCode.trim(),
-      p_slug: form.slug.trim(),
-      p_primary_contact_email: form.primaryContactEmail.trim(),
-      p_company_admin_email: form.companyAdminEmail.trim(),
-      p_country_code: form.countryCode.trim() || "US",
-      p_default_timezone: form.defaultTimezone.trim() || "America/Chicago",
-    });
+    try {
+      const { data, error } = await supabase.rpc("qualisphere_create_tenant", {
+        p_company_name: form.companyName.trim(),
+        p_legal_name: form.legalName.trim(),
+        p_tenant_code: form.tenantCode.trim(),
+        p_slug: form.slug.trim(),
+        p_primary_contact_email: form.primaryContactEmail.trim(),
+        p_company_admin_email: form.companyAdminEmail.trim(),
+        p_country_code: form.countryCode.trim() || "US",
+        p_default_timezone: form.defaultTimezone.trim() || "America/Chicago",
+      });
 
-    if (error) {
-      setMessage(error.message);
+      if (error) {
+        setErrorMessage(error.message);
+        return;
+      }
+
+      const tenantId = String(data || "");
+      setForm(emptyForm);
+      setShowCreate(false);
+      setMessage(`Company created successfully. Tenant ID: ${tenantId}`);
+
+      try {
+        await loadRegistry();
+      } catch (refreshError: any) {
+        setErrorMessage(
+          `The company was created successfully, but the registry could not refresh. Do not create the company again. Refresh this page before retrying. ${refreshError?.message || ""}`.trim(),
+        );
+      }
+    } catch (error: any) {
+      setErrorMessage(error?.message || "Unable to create the company.");
+    } finally {
       setCreating(false);
-      return;
     }
-
-    setForm(emptyForm);
-    setShowCreate(false);
-    await loadRegistry();
-    setMessage(`Company created successfully. Tenant ID: ${String(data || "")}`);
-    setCreating(false);
   };
 
   if (loading) {
@@ -207,6 +240,7 @@ export default function CompanyRegistryPage() {
     return (
       <main style={pageStyle}>
         <h1>Company Registry</h1>
+        {errorMessage ? <div style={warningStyle}>{errorMessage}</div> : null}
         <p>You must be signed in to access Platform Administration.</p>
         <Link href="/login">Sign In</Link>
       </main>
@@ -223,6 +257,7 @@ export default function CompanyRegistryPage() {
           </div>
           <Link href="/" style={linkButtonStyle}>Home</Link>
         </div>
+        {errorMessage ? <div style={warningStyle}>{errorMessage}</div> : null}
         <div style={warningStyle}>
           Platform Administrator access is required. Company Administrator access does not grant visibility to other QualiSphere tenants.
         </div>
@@ -254,6 +289,7 @@ export default function CompanyRegistryPage() {
       </div>
 
       {message ? <div style={messageStyle}>{message}</div> : null}
+      {errorMessage ? <div style={warningStyle}>{errorMessage}</div> : null}
 
       {showCreate ? (
         <section style={cardStyle}>
@@ -359,7 +395,7 @@ const sectionHeaderStyle: React.CSSProperties = { display: "flex", justifyConten
 const sectionTitleStyle: React.CSSProperties = { margin: 0, fontSize: 24 };
 const helperStyle: React.CSSProperties = { color: "#64748b", lineHeight: 1.5, margin: "8px 0 18px" };
 const identityBarStyle: React.CSSProperties = { background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 12, padding: "12px 16px", marginBottom: 20, color: "#1e3a8a" };
-const warningStyle: React.CSSProperties = { background: "#fff7ed", border: "1px solid #fdba74", borderRadius: 12, padding: 18, color: "#9a3412" };
+const warningStyle: React.CSSProperties = { background: "#fff7ed", border: "1px solid #fdba74", borderRadius: 12, padding: 18, color: "#9a3412", marginBottom: 20 };
 const messageStyle: React.CSSProperties = { background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 12, padding: 14, marginBottom: 20, color: "#166534" };
 const formGridStyle: React.CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 16 };
 const fieldStyle: React.CSSProperties = { display: "grid", gap: 7 };
