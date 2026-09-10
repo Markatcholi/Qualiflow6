@@ -6,16 +6,78 @@ import { supabase } from "../../lib/supabaseClient";
 
 export default function AdminPage() {
   const [loading, setLoading] = useState(true);
+  const [authenticated, setAuthenticated] = useState(false);
   const [platformAdmin, setPlatformAdmin] = useState(false);
+  const [accessError, setAccessError] = useState("");
 
   useEffect(() => {
     const load = async () => {
-      const { data } = await supabase.rpc("is_platform_admin");
-      setPlatformAdmin(data === true);
-      setLoading(false);
+      setLoading(true);
+      setAccessError("");
+
+      try {
+        const { data: authData, error: authError } = await supabase.auth.getUser();
+
+        if (authError) {
+          setAuthenticated(false);
+          setPlatformAdmin(false);
+          setAccessError("Unable to verify your QualiSphere session. Please sign in again.");
+          return;
+        }
+
+        if (!authData?.user?.email) {
+          setAuthenticated(false);
+          setPlatformAdmin(false);
+          return;
+        }
+
+        setAuthenticated(true);
+
+        const { data, error } = await supabase.rpc("is_platform_admin");
+        if (error) {
+          setPlatformAdmin(false);
+          setAccessError("Administration access was loaded, but Platform Administrator status could not be verified.");
+          return;
+        }
+
+        setPlatformAdmin(data === true);
+      } catch (error: any) {
+        setAuthenticated(false);
+        setPlatformAdmin(false);
+        setAccessError(error?.message || "Unable to load administration access.");
+      } finally {
+        setLoading(false);
+      }
     };
+
     void load();
   }, []);
+
+  if (loading) {
+    return (
+      <main style={pageStyle}>
+        <div style={noticeStyle}>Loading administration access...</div>
+      </main>
+    );
+  }
+
+  if (!authenticated) {
+    return (
+      <main style={pageStyle}>
+        <div style={headerStyle}>
+          <div>
+            <div style={eyebrowStyle}>QUALISPHERE ADMINISTRATION</div>
+            <h1 style={titleStyle}>Administration</h1>
+            <p style={subtitleStyle}>An authenticated QualiSphere session is required to access administration.</p>
+          </div>
+          <Link href="/" style={linkButtonStyle}>Home</Link>
+        </div>
+
+        {accessError ? <div style={warningStyle}>{accessError}</div> : null}
+        <Link href="/login" style={signinButtonStyle}>Sign In</Link>
+      </main>
+    );
+  }
 
   return (
     <main style={pageStyle}>
@@ -28,7 +90,7 @@ export default function AdminPage() {
         <Link href="/" style={linkButtonStyle}>Home</Link>
       </div>
 
-      {loading ? <div style={noticeStyle}>Loading administration access...</div> : null}
+      {accessError ? <div style={warningStyle}>{accessError}</div> : null}
 
       <div style={gridStyle}>
         {platformAdmin ? (
@@ -48,7 +110,7 @@ export default function AdminPage() {
         <AdminCard title="Module Releases" description="Review and manage controlled module release information." href="/admin/module-releases" />
       </div>
 
-      {!loading && !platformAdmin ? (
+      {!platformAdmin ? (
         <div style={noticeStyle}>Company Registry is hidden because this account is not registered as a QualiSphere Platform Administrator.</div>
       ) : null}
     </main>
@@ -81,4 +143,6 @@ const cardTextStyle: React.CSSProperties = { color: "#64748b", lineHeight: 1.5, 
 const openStyle: React.CSSProperties = { color: "#1d4ed8", fontWeight: 900 };
 const badgeStyle: React.CSSProperties = { background: "#dbeafe", color: "#1d4ed8", borderRadius: 999, padding: "4px 8px", fontSize: 11, fontWeight: 900 };
 const noticeStyle: React.CSSProperties = { background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 12, padding: 14, color: "#1e3a8a", marginBottom: 20 };
+const warningStyle: React.CSSProperties = { background: "#fff7ed", border: "1px solid #fdba74", borderRadius: 12, padding: 14, color: "#9a3412", marginBottom: 20 };
 const linkButtonStyle: React.CSSProperties = { border: "1px solid #cbd5e1", borderRadius: 9, background: "white", color: "#0f172a", padding: "10px 15px", fontWeight: 800, textDecoration: "none" };
+const signinButtonStyle: React.CSSProperties = { display: "inline-block", borderRadius: 9, background: "#2563eb", color: "white", padding: "11px 17px", fontWeight: 800, textDecoration: "none" };
