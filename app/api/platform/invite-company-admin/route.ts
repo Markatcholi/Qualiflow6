@@ -4,6 +4,11 @@ import { createClient } from "@supabase/supabase-js";
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const configuredAppUrl = process.env.QUALISPHERE_APP_URL || process.env.NEXT_PUBLIC_QUALISPHERE_APP_URL;
+
+function normalizeBaseUrl(value: string) {
+  return value.replace(/\/+$/, "");
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -78,8 +83,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const origin = new URL(request.url).origin;
-    const redirectTo = `${origin}/activate-account?tenant=${encodeURIComponent(tenantId)}`;
+    const requestOrigin = new URL(request.url).origin;
+    const appBaseUrl = normalizeBaseUrl(configuredAppUrl || requestOrigin);
+    const activationUrl = new URL("/activate-account", `${appBaseUrl}/`);
+    activationUrl.searchParams.set("tenant", tenantId);
+    const redirectTo = activationUrl.toString();
 
     const { data, error } = await adminClient.auth.admin.inviteUserByEmail(email, {
       redirectTo,
@@ -98,8 +106,9 @@ export async function POST(request: NextRequest) {
       email,
       tenantId,
       invitedUserId: data.user?.id || null,
+      activationRedirect: redirectTo,
       message:
-        "Activation email sent. The email link verifies the address and opens the secure password-creation page.",
+        "Activation email sent. The email link verifies the address and opens the secure QualiSphere password-creation page.",
     });
   } catch (error: any) {
     return NextResponse.json(
