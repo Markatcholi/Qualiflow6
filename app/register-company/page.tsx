@@ -1,10 +1,14 @@
 "use client";
 
-import { useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
 
 export default function RegisterCompanyPage() {
-  const params = useSearchParams();
-  const demo = params.get("intent") === "demo";
+  const [demo, setDemo] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setDemo(params.get("intent") === "demo");
+  }, []);
 
   return (
     <main style={pageStyle}>
