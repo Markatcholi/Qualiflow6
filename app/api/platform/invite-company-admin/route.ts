@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createClient, SupabaseClient, User } from "@supabase/supabase-js";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -8,6 +8,24 @@ const configuredAppUrl = process.env.QUALISPHERE_APP_URL || process.env.NEXT_PUB
 
 function normalizeBaseUrl(value: string) {
   return value.replace(/\/+$/, "");
+}
+
+async function findAuthUserByEmail(adminClient: SupabaseClient, email: string): Promise<User | null> {
+  const perPage = 200;
+
+  for (let page = 1; page <= 100; page += 1) {
+    const { data, error } = await adminClient.auth.admin.listUsers({ page, perPage });
+    if (error) throw error;
+
+    const match = data.users.find(
+      (user) => (user.email || "").trim().toLowerCase() === email,
+    );
+
+    if (match) return match;
+    if (data.users.length < perPage) return null;
+  }
+
+  throw new Error("Unable to resolve Company Administrator authentication status.");
 }
 
 export async function POST(request: NextRequest) {
@@ -89,6 +107,33 @@ export async function POST(request: NextRequest) {
     activationUrl.searchParams.set("tenant", tenantId);
     const redirectTo = activationUrl.toString();
 
+    const existingAuthUser = await findAuthUserByEmail(adminClient, email);
+
+    if (existingAuthUser) {
+      const mailClient = createClient(supabaseUrl, supabaseAnonKey, {
+        auth: { persistSession: false, autoRefreshToken: false },
+      });
+
+      const { error: resendError } = await mailClient.auth.resetPasswordForEmail(email, {
+        redirectTo,
+      });
+
+      if (resendError) {
+        return NextResponse.json({ error: resendError.message }, { status: 400 });
+      }
+
+      return NextResponse.json({
+        ok: true,
+        mode: "resent",
+        email,
+        tenantId,
+        authUserId: existingAuthUser.id,
+        activationRedirect: redirectTo,
+        message:
+          "Activation email resent. The secure link opens the QualiSphere password-creation page so account setup can be completed.",
+      });
+    }
+
     const { data, error } = await adminClient.auth.admin.inviteUserByEmail(email, {
       redirectTo,
       data: {
@@ -103,6 +148,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       ok: true,
+      mode: "invited",
       email,
       tenantId,
       invitedUserId: data.user?.id || null,
