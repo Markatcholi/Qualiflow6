@@ -1,11 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import { supabase } from "../../lib/supabaseClient";
 
 export default function AppHeader() {
+  const pathname = usePathname();
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("");
+
+  const isPlatformContext =
+    pathname?.startsWith("/platform-admin") ||
+    pathname?.startsWith("/admin/companies");
 
   const fetchUser = async () => {
     const { data: userData } = await supabase.auth.getUser();
@@ -14,6 +20,12 @@ export default function AppHeader() {
 
     if (!userEmail) {
       setRole("");
+      return;
+    }
+
+    if (isPlatformContext) {
+      const { data: isPlatformAdmin } = await supabase.rpc("is_platform_admin");
+      setRole(isPlatformAdmin === true ? "Platform Administrator" : "Unauthorized");
       return;
     }
 
@@ -28,26 +40,33 @@ export default function AppHeader() {
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
-    window.location.href = "/login";
+    window.sessionStorage.removeItem("qualisphere_access_context");
+    window.localStorage.removeItem("qualisphere_active_tenant_id");
+    window.localStorage.removeItem("qualisphere_active_tenant_name");
+    window.localStorage.removeItem("qualisphere_active_tenant_slug");
+    window.location.href = isPlatformContext ? "/platform-admin/login" : "/login";
   };
 
   useEffect(() => {
-    fetchUser();
-  }, []);
+    void fetchUser();
+  }, [pathname]);
+
+  const homeHref = isPlatformContext ? "/admin/companies" : "/workspace";
+  const brandSubtext = isPlatformContext ? "Platform Administration" : "Enterprise QMS";
 
   return (
     <header style={headerStyle}>
-      <a href="/workspace" style={brandStyle}>
+      <a href={homeHref} style={brandStyle}>
         <span style={logoMarkStyle}>Q</span>
 
         <span>
           <span style={brandNameStyle}>QualiSphere</span>
-          <span style={brandSubtextStyle}>Enterprise QMS</span>
+          <span style={brandSubtextStyle}>{brandSubtext}</span>
         </span>
       </a>
 
       <div style={rightSideStyle}>
-        <a href="/workspace" style={headerLinkStyle}>
+        <a href={homeHref} style={headerLinkStyle}>
           Home
         </a>
 
@@ -60,7 +79,7 @@ export default function AppHeader() {
             Logout
           </button>
         ) : (
-          <a href="/login" style={primaryLinkStyle}>
+          <a href={isPlatformContext ? "/platform-admin/login" : "/login"} style={primaryLinkStyle}>
             Login
           </a>
         )}
