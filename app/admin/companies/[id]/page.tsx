@@ -47,6 +47,9 @@ export default function CompanyDetailPage() {
   const [memberships, setMemberships] = useState<Membership[]>([]);
   const [modules, setModules] = useState<ModuleAccess[]>([]);
   const [error, setError] = useState("");
+  const [activationMessage, setActivationMessage] = useState("");
+  const [activationError, setActivationError] = useState("");
+  const [sendingActivationFor, setSendingActivationFor] = useState("");
 
   useEffect(() => {
     void load();
@@ -88,6 +91,43 @@ export default function CompanyDetailPage() {
     setLoading(false);
   };
 
+  const sendActivation = async (membership: Membership) => {
+    setActivationMessage("");
+    setActivationError("");
+    setSendingActivationFor(membership.user_email);
+
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData.session?.access_token;
+
+      if (!accessToken) {
+        setActivationError("Your Platform Administrator session has expired. Please sign in again.");
+        return;
+      }
+
+      const response = await fetch("/api/platform/invite-company-admin", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ tenantId, email: membership.user_email }),
+      });
+
+      const result = await response.json();
+      if (!response.ok) {
+        setActivationError(result?.error || "Unable to send activation email.");
+        return;
+      }
+
+      setActivationMessage(`Activation email sent to ${membership.user_email}.`);
+    } catch (requestError: any) {
+      setActivationError(requestError?.message || "Unable to send activation email.");
+    } finally {
+      setSendingActivationFor("");
+    }
+  };
+
   if (loading) return <main style={pageStyle}>Loading company...</main>;
 
   if (!authorized) {
@@ -108,6 +148,8 @@ export default function CompanyDetailPage() {
       </main>
     );
   }
+
+  const companyAdmins = memberships.filter((membership) => membership.membership_role === "company_admin");
 
   return (
     <main style={pageStyle}>
@@ -181,6 +223,54 @@ export default function CompanyDetailPage() {
       <section style={cardStyle}>
         <div style={sectionHeaderStyle}>
           <div>
+            <h2 style={sectionTitleStyle}>Company Administrator Activation</h2>
+            <p style={helperStyle}>Send a secure activation email to the Company Administrator. The email link verifies the address, then the administrator creates a private password.</p>
+          </div>
+          <Link href="/admin/company-admin-activation" style={linkButtonStyle}>Activation Console</Link>
+        </div>
+
+        <div style={activationPolicyStyle}>
+          <strong>Security model:</strong> QualiSphere does not email temporary passwords. Activation uses a single-purpose invitation link followed by password creation by the recipient.
+        </div>
+
+        {activationMessage ? <div style={successStyle}>{activationMessage}</div> : null}
+        {activationError ? <div style={warningStyle}>{activationError}</div> : null}
+
+        <div style={{ overflowX: "auto" }}>
+          <table style={tableStyle}>
+            <thead>
+              <tr>
+                <th style={thStyle}>Company Admin Email</th>
+                <th style={thStyle}>Membership Status</th>
+                <th style={thStyle}>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {companyAdmins.map((membership) => (
+                <tr key={membership.id}>
+                  <td style={tdStyle}>{membership.user_email}</td>
+                  <td style={tdStyle}>{humanize(membership.membership_status)}</td>
+                  <td style={tdStyle}>
+                    <button
+                      type="button"
+                      style={primaryButtonStyle}
+                      disabled={sendingActivationFor === membership.user_email}
+                      onClick={() => void sendActivation(membership)}
+                    >
+                      {sendingActivationFor === membership.user_email ? "Sending..." : "Send Activation Email"}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {companyAdmins.length === 0 ? <tr><td colSpan={3} style={tdStyle}>No Company Administrator membership found for this tenant.</td></tr> : null}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section style={cardStyle}>
+        <div style={sectionHeaderStyle}>
+          <div>
             <h2 style={sectionTitleStyle}>Module Entitlements</h2>
             <p style={helperStyle}>Company-level module availability. Individual user authorization will be layered on top of these entitlements.</p>
           </div>
@@ -202,7 +292,7 @@ export default function CompanyDetailPage() {
       </section>
 
       <section style={noteStyle}>
-        <strong>Phase 2 scope:</strong> this screen is intentionally read-only. Tenant creation is controlled through the Company Registry. Membership administration, module changes, invitations, and tenant-scoped QMS role management will be added only after the tenant boundary is tested.
+        <strong>Phase 2 scope:</strong> tenant creation and initial Company Administrator activation are enabled. Broader membership administration, module changes, and tenant-scoped QMS role management will be added only after the tenant boundary is tested.
       </section>
     </main>
   );
@@ -251,5 +341,8 @@ const countBadgeStyle: React.CSSProperties = { background: "#eff6ff", color: "#1
 const smallStyle: React.CSSProperties = { color: "#64748b", fontSize: 12, marginTop: 10 };
 const linkButtonStyle: React.CSSProperties = { border: "1px solid #cbd5e1", borderRadius: 9, background: "white", color: "#0f172a", padding: "10px 15px", fontWeight: 800, textDecoration: "none" };
 const backLinkStyle: React.CSSProperties = { color: "#1d4ed8", fontWeight: 800, textDecoration: "none" };
+const primaryButtonStyle: React.CSSProperties = { border: 0, borderRadius: 9, background: "#2563eb", color: "white", padding: "9px 12px", fontWeight: 900, cursor: "pointer" };
+const activationPolicyStyle: React.CSSProperties = { background: "#eff6ff", border: "1px solid #bfdbfe", color: "#1e3a8a", borderRadius: 12, padding: 14, marginBottom: 16, lineHeight: 1.5 };
+const successStyle: React.CSSProperties = { background: "#ecfdf5", border: "1px solid #a7f3d0", color: "#166534", borderRadius: 12, padding: 14, marginBottom: 16 };
 const warningStyle: React.CSSProperties = { background: "#fff7ed", border: "1px solid #fdba74", borderRadius: 12, padding: 16, color: "#9a3412" };
 const noteStyle: React.CSSProperties = { background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 12, padding: 16, color: "#1e3a8a", lineHeight: 1.5 };
