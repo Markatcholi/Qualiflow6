@@ -24,10 +24,20 @@ export default function LoginPage() {
         return;
       }
 
+      const { data: userData, error: userError } = await supabase.auth.getUser();
+      const authenticatedEmail = userData?.user?.email?.trim().toLowerCase() || "";
+
+      if (userError || !authenticatedEmail) {
+        await supabase.auth.signOut();
+        alert("Unable to verify the authenticated QualiSphere user.");
+        return;
+      }
+
       const { data: memberships, error: membershipError } = await supabase
         .from("tenant_memberships")
-        .select("tenant_id,membership_role,membership_status,tenants(company_name,slug,status)")
-        .eq("membership_status", "active");
+        .select("tenant_id,membership_role,membership_status,user_email,tenants(company_name,slug,status)")
+        .eq("membership_status", "active")
+        .ilike("user_email", authenticatedEmail);
 
       if (membershipError) {
         await supabase.auth.signOut();
@@ -39,6 +49,9 @@ export default function LoginPage() {
         const tenant = Array.isArray(membership.tenants) ? membership.tenants[0] : membership.tenants;
         return tenant?.status === "active";
       });
+
+      window.sessionStorage.removeItem("qualisphere_access_context");
+      window.sessionStorage.removeItem("qualisphere_membership_selection_required");
 
       if (activeMemberships.length === 0) {
         await supabase.auth.signOut();
