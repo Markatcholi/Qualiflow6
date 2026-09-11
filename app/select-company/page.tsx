@@ -6,6 +6,7 @@ import { supabase } from "../../lib/supabaseClient";
 type Membership = {
   tenant_id: string;
   membership_role: string;
+  user_email: string;
   tenants: { company_name: string; slug: string; status: string } | { company_name: string; slug: string; status: string }[] | null;
 };
 
@@ -16,16 +17,19 @@ export default function SelectCompanyPage() {
 
   useEffect(() => {
     const load = async () => {
-      const { data: authData } = await supabase.auth.getUser();
-      if (!authData?.user) {
+      const { data: authData, error: authError } = await supabase.auth.getUser();
+      const authenticatedEmail = authData?.user?.email?.trim().toLowerCase() || "";
+
+      if (authError || !authData?.user || !authenticatedEmail) {
         window.location.href = "/login";
         return;
       }
 
       const { data, error } = await supabase
         .from("tenant_memberships")
-        .select("tenant_id,membership_role,tenants(company_name,slug,status)")
-        .eq("membership_status", "active");
+        .select("tenant_id,membership_role,user_email,tenants(company_name,slug,status)")
+        .eq("membership_status", "active")
+        .ilike("user_email", authenticatedEmail);
 
       if (error) {
         setMessage(error.message);
@@ -37,6 +41,17 @@ export default function SelectCompanyPage() {
         const tenant = Array.isArray(membership.tenants) ? membership.tenants[0] : membership.tenants;
         return tenant?.status === "active";
       });
+
+      if (active.length === 1) {
+        const membership = active[0];
+        const tenant = Array.isArray(membership.tenants) ? membership.tenants[0] : membership.tenants;
+        window.localStorage.setItem("qualisphere_active_tenant_id", membership.tenant_id);
+        window.localStorage.setItem("qualisphere_active_tenant_name", tenant?.company_name || "");
+        window.localStorage.setItem("qualisphere_active_tenant_slug", tenant?.slug || "");
+        window.sessionStorage.removeItem("qualisphere_membership_selection_required");
+        window.location.href = "/workspace";
+        return;
+      }
 
       setMemberships(active);
       setLoading(false);
