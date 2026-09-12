@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
 
     if (!tenantId || !email) {
       return NextResponse.json(
-        { error: "Tenant ID and Company Administrator email are required." },
+        { error: "Tenant ID and Customer Contact email are required." },
         { status: 400 },
       );
     }
@@ -74,6 +74,8 @@ export async function POST(request: NextRequest) {
       auth: { persistSession: false, autoRefreshToken: false },
     });
 
+    // Backward-compatible bootstrap membership. The legacy company_admin value is
+    // account-bootstrap authority only; it must not be treated as a customer QMS role.
     const { data: membership, error: membershipError } = await adminClient
       .from("tenant_memberships")
       .select("tenant_id,user_email,membership_role,membership_status")
@@ -88,7 +90,7 @@ export async function POST(request: NextRequest) {
 
     if (!membership) {
       return NextResponse.json(
-        { error: "The email is not registered as a Company Administrator for this tenant." },
+        { error: "The email is not registered as the bootstrap Customer Contact for this company account." },
         { status: 400 },
       );
     }
@@ -103,7 +105,7 @@ export async function POST(request: NextRequest) {
       redirectTo,
       data: {
         qualisphere_tenant_id: tenantId,
-        qualisphere_membership_role: "company_admin",
+        qualisphere_account_authority: "customer_contact",
       },
     });
 
@@ -116,7 +118,7 @@ export async function POST(request: NextRequest) {
         invitedUserId: inviteData.user?.id || null,
         activationRedirect: redirectTo,
         message:
-          "Activation email sent. The email link verifies the address and opens the secure QualiSphere password-creation page.",
+          "Activation email sent to the Customer Contact. The secure link verifies the address and opens the QualiSphere password-creation page.",
       });
     }
 
@@ -143,11 +145,11 @@ export async function POST(request: NextRequest) {
       tenantId,
       activationRedirect: redirectTo,
       message:
-        "Activation email resent. The secure link opens the QualiSphere password-creation page so account setup can be completed.",
+        "Activation email resent to the Customer Contact. The secure link opens the QualiSphere password-creation page so account setup can be completed.",
     });
   } catch (error: any) {
     return NextResponse.json(
-      { error: error?.message || "Unable to send Company Administrator activation email." },
+      { error: error?.message || "Unable to send Customer Contact activation email." },
       { status: 500 },
     );
   }
