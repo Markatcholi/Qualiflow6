@@ -66,6 +66,7 @@ export default function LoginPage() {
         window.localStorage.setItem("qualisphere_active_tenant_id", membership.tenant_id);
         window.localStorage.setItem("qualisphere_active_tenant_name", tenant?.company_name || "");
         window.localStorage.setItem("qualisphere_active_tenant_slug", tenant?.slug || "");
+        window.localStorage.setItem("qualisphere_active_tenant_role", membership.membership_role || "user");
         window.location.href = "/workspace";
         return;
       }
