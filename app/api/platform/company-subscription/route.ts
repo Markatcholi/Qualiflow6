@@ -6,6 +6,18 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
+// Backward-compatible aliases for subscription rows created before the
+// Platform Module Catalog was standardized. These are normalized only inside
+// the QualiSphere Platform Administration boundary.
+const LEGACY_MODULE_ALIASES: Record<string, string> = {
+  audit: "audit_management",
+};
+
+function normalizeModuleCode(value: unknown) {
+  const code = String(value || "").trim();
+  return LEGACY_MODULE_ALIASES[code] || code;
+}
+
 export async function POST(request: NextRequest) {
   try {
     if (!supabaseServiceRoleKey) {
@@ -49,9 +61,10 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const tenantId = String(body?.tenantId || "").trim();
-    const requestedCodes = Array.isArray(body?.enabledModuleCodes)
-      ? body.enabledModuleCodes.map((value: unknown) => String(value).trim())
+    const rawRequestedCodes = Array.isArray(body?.enabledModuleCodes)
+      ? body.enabledModuleCodes.map((value: unknown) => String(value).trim()).filter(Boolean)
       : [];
+    const requestedCodes = Array.from(new Set(rawRequestedCodes.map(normalizeModuleCode)));
 
     if (!tenantId) {
       return NextResponse.json({ error: "Company Account ID is required." }, { status: 400 });
@@ -108,6 +121,22 @@ export async function POST(request: NextRequest) {
 
     if (saveError) {
       return NextResponse.json({ error: saveError.message }, { status: 500 });
+    }
+
+    // Remove obsolete alias rows after their state has been migrated to the
+    // canonical catalog code. This prevents stale legacy rows from inflating
+    // subscription counts or reappearing on the next save.
+    const legacyCodes = Object.keys(LEGACY_MODULE_ALIASES);
+    if (legacyCodes.length > 0) {
+      const { error: cleanupError } = await adminClient
+        .from("tenant_module_access")
+        .delete()
+        .eq("tenant_id", tenantId)
+        .in("module_code", legacyCodes);
+
+      if (cleanupError) {
+        return NextResponse.json({ error: cleanupError.message }, { status: 500 });
+      }
     }
 
     const { data: savedModules, error: refreshError } = await adminClient
