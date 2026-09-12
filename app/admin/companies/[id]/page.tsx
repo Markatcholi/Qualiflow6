@@ -234,7 +234,7 @@ export default function CompanyDetailPage() {
     );
   }
 
-  const customerContacts = memberships.filter((membership) => membership.membership_role === "company_admin");
+  const companyAdministrators = memberships.filter((membership) => membership.membership_role === "company_admin");
   const moduleGroups = ["Quality Management", "Analytics & Governance"] as const;
 
   return (
@@ -243,7 +243,7 @@ export default function CompanyDetailPage() {
         <div>
           <div style={eyebrowStyle}>QUALISPHERE PLATFORM ADMINISTRATION</div>
           <h1 style={titleStyle}>{tenant.company_name}</h1>
-          <p style={subtitleStyle}>Company Account profile, Customer Contact, and QualiSphere-controlled module subscription.</p>
+          <p style={subtitleStyle}>Company Account profile, relationship contact, administrative handoff, and QualiSphere-controlled module subscription.</p>
         </div>
         <div style={headerActionsStyle}>
           <Link href="/admin/companies" style={linkButtonStyle}>Company Registry</Link>
@@ -275,7 +275,7 @@ export default function CompanyDetailPage() {
         <div style={sectionHeaderStyle}>
           <div>
             <h2 style={sectionTitleStyle}>Company Account Members</h2>
-            <p style={helperStyle}>These users belong to this Company Account. Account membership is separate from customer-defined QMS roles and separate from QualiSphere Platform Administration.</p>
+            <p style={helperStyle}>These users belong to this Company Account. Account administration is tenant-scoped and remains separate from customer-defined QMS process roles and from QualiSphere Platform Administration.</p>
           </div>
           <div style={countBadgeStyle}>{memberships.length} member{memberships.length === 1 ? "" : "s"}</div>
         </div>
@@ -309,14 +309,14 @@ export default function CompanyDetailPage() {
       <section style={cardStyle}>
         <div style={sectionHeaderStyle}>
           <div>
-            <h2 style={sectionTitleStyle}>Customer Contact Activation</h2>
-            <p style={helperStyle}>Send a secure activation email to the designated Customer Contact. After activation, the customer manages its own QMS configuration inside its Company Account.</p>
+            <h2 style={sectionTitleStyle}>Initial Company Administrator Activation</h2>
+            <p style={helperStyle}>Send a secure activation email to the person receiving initial Master Data Administration authority for this Company Account. The Customer Contact is shown above for relationship management and does not receive QMS authority automatically.</p>
           </div>
           <Link href="/admin/company-admin-activation" style={linkButtonStyle}>Activation Console</Link>
         </div>
 
         <div style={activationPolicyStyle}>
-          <strong>Security model:</strong> QualiSphere does not email temporary passwords. Activation uses a secure invitation link followed by password creation by the recipient. Customer Contact authority is account bootstrap authority, not a customer QMS role.
+          <strong>Administrative handoff:</strong> Master Data Administration is included with the Company Account from creation. The Initial Company Administrator receives tenant-scoped administrative authority and can later delegate company administration according to the customer's own access model. QualiSphere does not create or assign the customer's QMS process roles.
         </div>
 
         {activationMessage ? <div style={successStyle}>{activationMessage}</div> : null}
@@ -326,13 +326,13 @@ export default function CompanyDetailPage() {
           <table style={tableStyle}>
             <thead>
               <tr>
-                <th style={thStyle}>Customer Contact Email</th>
+                <th style={thStyle}>Company Administrator Email</th>
                 <th style={thStyle}>Membership Status</th>
                 <th style={thStyle}>Action</th>
               </tr>
             </thead>
             <tbody>
-              {customerContacts.map((membership) => (
+              {companyAdministrators.map((membership) => (
                 <tr key={membership.id}>
                   <td style={tdStyle}>{membership.user_email}</td>
                   <td style={tdStyle}>{humanize(membership.membership_status)}</td>
@@ -348,7 +348,7 @@ export default function CompanyDetailPage() {
                   </td>
                 </tr>
               ))}
-              {customerContacts.length === 0 ? <tr><td colSpan={3} style={tdStyle}>No bootstrap Customer Contact membership found for this Company Account.</td></tr> : null}
+              {companyAdministrators.length === 0 ? <tr><td colSpan={3} style={tdStyle}>No Initial Company Administrator membership found for this Company Account.</td></tr> : null}
             </tbody>
           </table>
         </div>
@@ -422,7 +422,7 @@ function Info({ label, value }: { label: string; value: string }) {
 }
 
 function displayAccountAuthority(value: string) {
-  if (value === "company_admin") return "Customer Contact (Bootstrap)";
+  if (value === "company_admin") return "Company Administrator";
   return "Company Member";
 }
 
