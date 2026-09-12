@@ -15,7 +15,7 @@ export default function AppHeader() {
 
   const fetchUser = async () => {
     const { data: userData } = await supabase.auth.getUser();
-    const userEmail = userData?.user?.email || "";
+    const userEmail = String(userData?.user?.email || "").trim().toLowerCase();
     setEmail(userEmail);
 
     if (!userEmail) {
@@ -26,6 +26,55 @@ export default function AppHeader() {
     if (isPlatformContext) {
       const { data: isPlatformAdmin } = await supabase.rpc("is_platform_admin");
       setRole(isPlatformAdmin === true ? "Platform Administrator" : "Unauthorized");
+      return;
+    }
+
+    const activeTenantId = window.localStorage.getItem("qualisphere_active_tenant_id") || "";
+
+    let membershipQuery = supabase
+      .from("tenant_memberships")
+      .select("tenant_id,membership_role,membership_status,user_email,tenants(company_name,slug,status)")
+      .eq("membership_status", "active")
+      .ilike("user_email", userEmail);
+
+    if (activeTenantId) {
+      membershipQuery = membershipQuery.eq("tenant_id", activeTenantId);
+    }
+
+    const { data: memberships, error: membershipError } = await membershipQuery;
+
+    if (!membershipError) {
+      const activeMemberships = (memberships || []).filter((membership: any) => {
+        const tenant = Array.isArray(membership.tenants)
+          ? membership.tenants[0]
+          : membership.tenants;
+        return tenant?.status === "active";
+      });
+
+      const membership = activeTenantId
+        ? activeMemberships[0]
+        : activeMemberships.length === 1
+          ? activeMemberships[0]
+          : null;
+
+      if (membership) {
+        const tenant = Array.isArray(membership.tenants)
+          ? membership.tenants[0]
+          : membership.tenants;
+        const membershipRole = String(membership.membership_role || "user");
+
+        window.localStorage.setItem("qualisphere_active_tenant_id", membership.tenant_id);
+        window.localStorage.setItem("qualisphere_active_tenant_name", tenant?.company_name || "");
+        window.localStorage.setItem("qualisphere_active_tenant_slug", tenant?.slug || "");
+        window.localStorage.setItem("qualisphere_active_tenant_role", membershipRole);
+        setRole(formatMembershipRole(membershipRole));
+        return;
+      }
+    }
+
+    const storedTenantRole = window.localStorage.getItem("qualisphere_active_tenant_role") || "";
+    if (storedTenantRole) {
+      setRole(formatMembershipRole(storedTenantRole));
       return;
     }
 
@@ -44,6 +93,7 @@ export default function AppHeader() {
     window.localStorage.removeItem("qualisphere_active_tenant_id");
     window.localStorage.removeItem("qualisphere_active_tenant_name");
     window.localStorage.removeItem("qualisphere_active_tenant_slug");
+    window.localStorage.removeItem("qualisphere_active_tenant_role");
     window.location.href = isPlatformContext ? "/platform-admin/login" : "/login";
   };
 
@@ -86,6 +136,14 @@ export default function AppHeader() {
       </div>
     </header>
   );
+}
+
+function formatMembershipRole(value: string) {
+  return String(value || "user")
+    .trim()
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
 const headerStyle: React.CSSProperties = {
