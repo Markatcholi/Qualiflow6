@@ -57,6 +57,7 @@ export default function HomePage() {
   const canAccessAdmin = [
     "admin",
     "administrator",
+    "company admin",
     "coordinator",
     "approver",
     "vp quality",
@@ -75,6 +76,20 @@ export default function HomePage() {
       if (!userEmail) {
         setWorkItems([]);
         return;
+      }
+
+      const activeMembership = await resolveActiveTenantMembership(userEmail);
+      const tenantRole = String(activeMembership?.membership_role || "").trim();
+
+      if (activeMembership) {
+        const tenant = Array.isArray(activeMembership.tenants)
+          ? activeMembership.tenants[0]
+          : activeMembership.tenants;
+
+        window.localStorage.setItem("qualisphere_active_tenant_id", activeMembership.tenant_id);
+        window.localStorage.setItem("qualisphere_active_tenant_name", tenant?.company_name || "");
+        window.localStorage.setItem("qualisphere_active_tenant_slug", tenant?.slug || "");
+        window.localStorage.setItem("qualisphere_active_tenant_role", tenantRole || "user");
       }
 
       const [roleResponse, taskResponse, usersResponse, notificationResponse] =
@@ -101,7 +116,11 @@ export default function HomePage() {
             .eq("read_status", false),
         ]);
 
-      setRole(roleResponse.data?.role || "user");
+      setRole(
+        tenantRole
+          ? formatMembershipRole(tenantRole)
+          : roleResponse.data?.role || "user"
+      );
 
       if (taskResponse.error) {
         throw new Error(taskResponse.error.message);
@@ -605,6 +624,40 @@ export default function HomePage() {
   );
 }
 
+async function resolveActiveTenantMembership(userEmail: string) {
+  const activeTenantId = window.localStorage.getItem("qualisphere_active_tenant_id") || "";
+
+  let query = supabase
+    .from("tenant_memberships")
+    .select("tenant_id,membership_role,membership_status,user_email,tenants(company_name,slug,status)")
+    .eq("membership_status", "active")
+    .ilike("user_email", userEmail);
+
+  if (activeTenantId) {
+    query = query.eq("tenant_id", activeTenantId);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    console.warn("Unable to resolve active tenant membership:", error.message);
+    return null;
+  }
+
+  const activeMemberships = (data || []).filter((membership: any) => {
+    const tenant = Array.isArray(membership.tenants)
+      ? membership.tenants[0]
+      : membership.tenants;
+    return tenant?.status === "active";
+  });
+
+  if (activeTenantId) {
+    return activeMemberships[0] || null;
+  }
+
+  return activeMemberships.length === 1 ? activeMemberships[0] : null;
+}
+
 async function fetchOwnedRecordItems(userEmail: string) {
   const configurations: Array<{
     table: string;
@@ -763,11 +816,6 @@ function requiresUserAction(record: any, itemType: WorkspaceItemType) {
     return shouldShowOwnedCapaWork(record);
   }
 
-  /*
-   * Controlled Documents use "release" as the completed released state in
-   * the current workflow. Release metadata is also checked because older
-   * records may not have a normalized terminal status value.
-   */
   if (itemType === "owned_document") {
     const hasReleaseEvidence = Boolean(
       record.released_at ||
@@ -842,10 +890,6 @@ function requiresUserAction(record: any, itemType: WorkspaceItemType) {
     return false;
   }
 
-  /*
-   * A blank status is kept visible because it usually represents a newly
-   * created record that still requires the owner's attention.
-   */
   return true;
 }
 
@@ -919,11 +963,6 @@ function getTaskUrl(task: any) {
   if (task.workspace_item_type === "owned_complaint") return `/complaints/${task.id}`;
   if (task.workspace_item_type === "owned_audit") return `/audits/${task.id}`;
 
-  /*
-   * Collaboration assignments must open the Collaboration Workspace directly.
-   * This check must remain above the normal entity routes so an NCMR
-   * collaboration task does not first open the parent NCMR workflow.
-   */
   if (isCollaborationTask(task)) {
     return getCollaborationTaskUrl(task);
   }
@@ -1355,6 +1394,14 @@ function normalizeRole(value: any) {
     .toLowerCase()
     .replace(/[_-]+/g, " ")
     .replace(/\s+/g, " ");
+}
+
+function formatMembershipRole(value: any) {
+  return String(value || "user")
+    .trim()
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
 function formatTaskType(value: any) {
