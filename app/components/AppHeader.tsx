@@ -8,6 +8,8 @@ export default function AppHeader() {
   const pathname = usePathname();
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("");
+  const [companyName, setCompanyName] = useState("");
+  const [isCustomerContact, setIsCustomerContact] = useState(false);
 
   const isPlatformContext =
     pathname?.startsWith("/platform-admin") ||
@@ -17,6 +19,8 @@ export default function AppHeader() {
     const { data: userData } = await supabase.auth.getUser();
     const userEmail = String(userData?.user?.email || "").trim().toLowerCase();
     setEmail(userEmail);
+    setCompanyName("");
+    setIsCustomerContact(false);
 
     if (!userEmail) {
       setRole("");
@@ -33,7 +37,7 @@ export default function AppHeader() {
 
     let membershipQuery = supabase
       .from("tenant_memberships")
-      .select("tenant_id,membership_role,membership_status,user_email,tenants(company_name,slug,status)")
+      .select("tenant_id,membership_status,user_email,tenants(company_name,slug,status)")
       .eq("membership_status", "active")
       .ilike("user_email", userEmail);
 
@@ -43,48 +47,80 @@ export default function AppHeader() {
 
     const { data: memberships, error: membershipError } = await membershipQuery;
 
-    if (!membershipError) {
-      const activeMemberships = (memberships || []).filter((membership: any) => {
-        const tenant = Array.isArray(membership.tenants)
-          ? membership.tenants[0]
-          : membership.tenants;
-        return tenant?.status === "active";
-      });
-
-      const membership = activeTenantId
-        ? activeMemberships[0]
-        : activeMemberships.length === 1
-          ? activeMemberships[0]
-          : null;
-
-      if (membership) {
-        const tenant = Array.isArray(membership.tenants)
-          ? membership.tenants[0]
-          : membership.tenants;
-        const membershipRole = String(membership.membership_role || "user");
-
-        window.localStorage.setItem("qualisphere_active_tenant_id", membership.tenant_id);
-        window.localStorage.setItem("qualisphere_active_tenant_name", tenant?.company_name || "");
-        window.localStorage.setItem("qualisphere_active_tenant_slug", tenant?.slug || "");
-        window.localStorage.setItem("qualisphere_active_tenant_role", membershipRole);
-        setRole(formatMembershipRole(membershipRole));
-        return;
-      }
-    }
-
-    const storedTenantRole = window.localStorage.getItem("qualisphere_active_tenant_role") || "";
-    if (storedTenantRole) {
-      setRole(formatMembershipRole(storedTenantRole));
+    if (membershipError) {
+      setRole("QMS User");
       return;
     }
 
-    const { data } = await supabase
+    const activeMemberships = (memberships || []).filter((membership: any) => {
+      const tenant = Array.isArray(membership.tenants)
+        ? membership.tenants[0]
+        : membership.tenants;
+      return tenant?.status === "active";
+    });
+
+    const membership = activeTenantId
+      ? activeMemberships[0]
+      : activeMemberships.length === 1
+        ? activeMemberships[0]
+        : null;
+
+    if (!membership) {
+      setRole("QMS User");
+      return;
+    }
+
+    const tenant = Array.isArray(membership.tenants)
+      ? membership.tenants[0]
+      : membership.tenants;
+    const tenantId = String(membership.tenant_id || "");
+    const tenantName = String(tenant?.company_name || "");
+
+    window.localStorage.setItem("qualisphere_active_tenant_id", tenantId);
+    window.localStorage.setItem("qualisphere_active_tenant_name", tenantName);
+    window.localStorage.setItem("qualisphere_active_tenant_slug", tenant?.slug || "");
+    window.localStorage.removeItem("qualisphere_active_tenant_role");
+    setCompanyName(tenantName);
+
+    const [contactResult, roleAssignmentsResult] = await Promise.all([
+      supabase.rpc("qualisphere_is_customer_contact", { p_tenant_id: tenantId }),
+      supabase
+        .from("tenant_user_role_assignments")
+        .select("role_id,customer_roles(role_name,is_active)")
+        .eq("tenant_id", tenantId)
+        .ilike("user_email", userEmail)
+        .eq("is_active", true),
+    ]);
+
+    const contact = contactResult.data === true;
+    setIsCustomerContact(contact);
+
+    const assignedRoleNames = (roleAssignmentsResult.data || [])
+      .map((assignment: any) => {
+        const roleRow = Array.isArray(assignment.customer_roles)
+          ? assignment.customer_roles[0]
+          : assignment.customer_roles;
+        return roleRow?.is_active === false ? "" : String(roleRow?.role_name || "").trim();
+      })
+      .filter(Boolean);
+
+    if (assignedRoleNames.length > 0) {
+      setRole(assignedRoleNames.join(", "));
+      return;
+    }
+
+    const { data: legacyRole } = await supabase
       .from("user_roles")
       .select("role")
       .eq("user_email", userEmail)
       .maybeSingle();
 
-    setRole(data?.role || "user");
+    if (legacyRole?.role && tenantName.toLowerCase().includes("qualisphere")) {
+      setRole(legacyRole.role);
+      return;
+    }
+
+    setRole(contact ? "Customer Contact" : "QMS User");
   };
 
   const handleLogout = async () => {
@@ -102,7 +138,9 @@ export default function AppHeader() {
   }, [pathname]);
 
   const homeHref = isPlatformContext ? "/admin/companies" : "/workspace";
-  const brandSubtext = isPlatformContext ? "Platform Administration" : "Enterprise QMS";
+  const brandSubtext = isPlatformContext
+    ? "Platform Administration"
+    : companyName || "Enterprise QMS";
 
   return (
     <header style={headerStyle}>
@@ -120,8 +158,14 @@ export default function AppHeader() {
           Home
         </a>
 
+        {!isPlatformContext && isCustomerContact ? (
+          <a href="/company-administration/roles" style={headerLinkStyle}>
+            Company Administration
+          </a>
+        ) : null}
+
         <span style={userTextStyle}>
-          {email ? `${email} (${role || "user"})` : "Not logged in"}
+          {email ? `${email} (${role || "QMS User"})` : "Not logged in"}
         </span>
 
         {email ? (
@@ -136,14 +180,6 @@ export default function AppHeader() {
       </div>
     </header>
   );
-}
-
-function formatMembershipRole(value: string) {
-  return String(value || "user")
-    .trim()
-    .replace(/[_-]+/g, " ")
-    .replace(/\s+/g, " ")
-    .replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
 const headerStyle: React.CSSProperties = {
