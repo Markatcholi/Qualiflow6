@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { supabase } from "../../../lib/supabaseClient";
+import { PLATFORM_MODULE_CATALOG } from "../../../lib/platformModuleCatalog";
 
 type Tenant = {
   id: string;
@@ -26,6 +27,7 @@ type Membership = {
 };
 
 type ModuleAccess = {
+  id?: string;
   tenant_id: string;
   module_code: string;
   is_enabled: boolean;
@@ -53,6 +55,7 @@ export default function CompanyRegistryPage() {
   const [message, setMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [form, setForm] = useState(emptyForm);
+  const [selectedModules, setSelectedModules] = useState<string[]>([]);
 
   useEffect(() => {
     void initialize();
@@ -113,7 +116,7 @@ export default function CompanyRegistryPage() {
         .select("tenant_id,user_email,membership_role,membership_status"),
       supabase
         .from("tenant_module_access")
-        .select("tenant_id,module_code,is_enabled"),
+        .select("id,tenant_id,module_code,is_enabled"),
     ]);
 
     if (tenantResult.error) throw tenantResult.error;
@@ -171,6 +174,54 @@ export default function CompanyRegistryPage() {
     setField("slug", value);
   };
 
+  const toggleModule = (moduleCode: string) => {
+    setSelectedModules((current) =>
+      current.includes(moduleCode)
+        ? current.filter((code) => code !== moduleCode)
+        : [...current, moduleCode],
+    );
+  };
+
+  const saveSubscriptionModules = async (tenantId: string) => {
+    const { data: existingRows, error: existingError } = await supabase
+      .from("tenant_module_access")
+      .select("id,module_code")
+      .eq("tenant_id", tenantId);
+
+    if (existingError) throw existingError;
+
+    const existingByCode = new Map(
+      (existingRows || []).map((row: any) => [String(row.module_code), row]),
+    );
+    const changedAt = new Date().toISOString();
+
+    for (const moduleDefinition of PLATFORM_MODULE_CATALOG) {
+      const enabled = selectedModules.includes(moduleDefinition.code);
+      const existing = existingByCode.get(moduleDefinition.code) as any;
+
+      if (existing?.id) {
+        const { error } = await supabase
+          .from("tenant_module_access")
+          .update({
+            is_enabled: enabled,
+            enabled_by: userEmail,
+            enabled_at: changedAt,
+          })
+          .eq("id", existing.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from("tenant_module_access").insert({
+          tenant_id: tenantId,
+          module_code: moduleDefinition.code,
+          is_enabled: enabled,
+          enabled_by: userEmail,
+          enabled_at: changedAt,
+        });
+        if (error) throw error;
+      }
+    }
+  };
+
   const createTenant = async (event: FormEvent) => {
     event.preventDefault();
     setMessage("");
@@ -192,6 +243,10 @@ export default function CompanyRegistryPage() {
       setErrorMessage("Customer Contact email is required.");
       return;
     }
+    if (selectedModules.length === 0) {
+      setErrorMessage("Select at least one subscribed QualiSphere module.");
+      return;
+    }
 
     setCreating(true);
 
@@ -203,8 +258,6 @@ export default function CompanyRegistryPage() {
         p_tenant_code: form.tenantCode.trim(),
         p_slug: form.slug.trim(),
         p_primary_contact_email: contactEmail,
-        // Backward-compatible RPC parameter. This value now represents the
-        // bootstrap Customer Contact, not a customer-defined QMS role.
         p_company_admin_email: contactEmail,
         p_country_code: form.countryCode.trim() || "US",
         p_default_timezone: form.defaultTimezone.trim() || "America/Chicago",
@@ -216,15 +269,30 @@ export default function CompanyRegistryPage() {
       }
 
       const tenantId = String(data || "");
+
+      try {
+        await saveSubscriptionModules(tenantId);
+      } catch (moduleError: any) {
+        setMessage(`Company account created successfully. Tenant ID: ${tenantId}`);
+        setErrorMessage(
+          `The Company Account was created, but its module subscription could not be saved. Do not create the company again. Open the Company Account and retry the subscription assignment. ${moduleError?.message || ""}`.trim(),
+        );
+        await loadRegistry();
+        return;
+      }
+
       setForm(emptyForm);
+      setSelectedModules([]);
       setShowCreate(false);
-      setMessage(`Company account created successfully. Tenant ID: ${tenantId}`);
+      setMessage(
+        `Company account created successfully with ${selectedModules.length} subscribed module${selectedModules.length === 1 ? "" : "s"}. Tenant ID: ${tenantId}`,
+      );
 
       try {
         await loadRegistry();
       } catch (refreshError: any) {
         setErrorMessage(
-          `The company account was created successfully, but the registry could not refresh. Do not create the company again. Refresh this page before retrying. ${refreshError?.message || ""}`.trim(),
+          `The company account and subscription were created successfully, but the registry could not refresh. Do not create the company again. Refresh this page before retrying. ${refreshError?.message || ""}`.trim(),
         );
       }
     } catch (error: any) {
@@ -267,6 +335,8 @@ export default function CompanyRegistryPage() {
     );
   }
 
+  const moduleGroups = ["Quality Management", "Analytics & Governance"] as const;
+
   return (
     <main style={pageStyle}>
       <div style={headerRowStyle}>
@@ -274,7 +344,7 @@ export default function CompanyRegistryPage() {
           <div style={eyebrowStyle}>QUALISPHERE PLATFORM ADMINISTRATION</div>
           <h1 style={titleStyle}>Company Registry</h1>
           <p style={subtitleStyle}>
-            Provision and review independent customer company accounts and control the modules included in each subscription.
+            Create independent Company Accounts and assign the QualiSphere modules included in each subscription.
           </p>
         </div>
         <div style={headerActionsStyle}>
@@ -297,7 +367,7 @@ export default function CompanyRegistryPage() {
         <section style={cardStyle}>
           <h2 style={sectionTitleStyle}>Create Company Account</h2>
           <p style={helperStyle}>
-            QualiSphere creates the company account, activates the customer's subscribed modules, and designates the initial Customer Contact. The customer then owns its QMS users, roles, and role assignments.
+            Create the independent Company Account, designate its initial Customer Contact, and assign only the operational modules included in the customer's subscription.
           </p>
           <form onSubmit={createTenant}>
             <div style={formGridStyle}>
@@ -309,6 +379,41 @@ export default function CompanyRegistryPage() {
               <Field label="Country Code" value={form.countryCode} onChange={(value) => setField("countryCode", value.toUpperCase())} />
               <Field label="Default Time Zone" value={form.defaultTimezone} onChange={(value) => setField("defaultTimezone", value)} />
             </div>
+
+            <div style={subscriptionSectionStyle}>
+              <div style={subscriptionHeaderStyle}>
+                <div>
+                  <h3 style={subscriptionTitleStyle}>Subscribed Modules *</h3>
+                  <p style={subscriptionHelperStyle}>
+                    Master Data Administration is included automatically with every Company Account and is not a subscription checkbox.
+                  </p>
+                </div>
+                <div style={subscriptionActionsStyle}>
+                  <button type="button" style={secondaryButtonStyle} onClick={() => setSelectedModules(PLATFORM_MODULE_CATALOG.map((module) => module.code))}>Select All</button>
+                  <button type="button" style={secondaryButtonStyle} onClick={() => setSelectedModules([])}>Clear</button>
+                </div>
+              </div>
+
+              {moduleGroups.map((group) => (
+                <div key={group} style={{ marginTop: 18 }}>
+                  <div style={groupLabelStyle}>{group}</div>
+                  <div style={moduleGridStyle}>
+                    {PLATFORM_MODULE_CATALOG.filter((module) => module.group === group).map((module) => (
+                      <label key={module.code} style={moduleOptionStyle}>
+                        <input
+                          type="checkbox"
+                          checked={selectedModules.includes(module.code)}
+                          onChange={() => toggleModule(module.code)}
+                        />
+                        <span>{module.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              ))}
+              <div style={includedCoreStyle}><strong>Always included:</strong> Master Data Administration</div>
+            </div>
+
             <div style={{ marginTop: 20 }}>
               <button type="submit" style={primaryButtonStyle} disabled={creating}>
                 {creating ? "Creating Company..." : "Create Company Account"}
@@ -336,7 +441,7 @@ export default function CompanyRegistryPage() {
                 <th style={thStyle}>Status</th>
                 <th style={thStyle}>Customer Contact</th>
                 <th style={thStyle}>Active Members</th>
-                <th style={thStyle}>Enabled Modules</th>
+                <th style={thStyle}>Subscribed Modules</th>
                 <th style={thStyle}>Action</th>
               </tr>
             </thead>
@@ -350,7 +455,7 @@ export default function CompanyRegistryPage() {
                     ) : null}
                   </td>
                   <td style={tdStyle}>{tenant.tenant_code}</td>
-                  <td style={tdStyle}>{tenant.is_internal ? "Internal" : "Customer"}</td>
+                  <td style={tdStyle}>{tenant.is_internal ? "Development / Validation" : "Customer"}</td>
                   <td style={tdStyle}><StatusBadge status={tenant.status} /></td>
                   <td style={tdStyle}>{tenant.primary_contact_email || "N/A"}</td>
                   <td style={tdStyle}>{memberCounts[tenant.id] || 0}</td>
@@ -403,6 +508,7 @@ const fieldStyle: React.CSSProperties = { display: "grid", gap: 7 };
 const labelStyle: React.CSSProperties = { fontWeight: 800, fontSize: 14, color: "#334155" };
 const inputStyle: React.CSSProperties = { width: "100%", boxSizing: "border-box", border: "1px solid #cbd5e1", borderRadius: 9, padding: "11px 12px", fontSize: 15 };
 const primaryButtonStyle: React.CSSProperties = { border: 0, borderRadius: 9, background: "#2563eb", color: "white", padding: "11px 17px", fontWeight: 800, cursor: "pointer" };
+const secondaryButtonStyle: React.CSSProperties = { border: "1px solid #cbd5e1", borderRadius: 8, background: "white", color: "#334155", padding: "8px 11px", fontWeight: 800, cursor: "pointer" };
 const linkButtonStyle: React.CSSProperties = { border: "1px solid #cbd5e1", borderRadius: 9, background: "white", color: "#0f172a", padding: "10px 15px", fontWeight: 800, textDecoration: "none" };
 const tableStyle: React.CSSProperties = { width: "100%", borderCollapse: "collapse", minWidth: 1050 };
 const thStyle: React.CSSProperties = { textAlign: "left", borderBottom: "1px solid #cbd5e1", padding: "12px 10px", background: "#f8fafc", fontSize: 13 };
@@ -410,3 +516,12 @@ const tdStyle: React.CSSProperties = { borderBottom: "1px solid #e2e8f0", paddin
 const smallStyle: React.CSSProperties = { fontSize: 12, color: "#64748b", marginTop: 4 };
 const badgeStyle: React.CSSProperties = { display: "inline-block", borderRadius: 999, padding: "5px 9px", fontSize: 12, fontWeight: 800 };
 const actionLinkStyle: React.CSSProperties = { color: "#1d4ed8", fontWeight: 800, textDecoration: "none" };
+const subscriptionSectionStyle: React.CSSProperties = { marginTop: 24, border: "1px solid #bfdbfe", borderRadius: 14, padding: 18, background: "#f8fbff" };
+const subscriptionHeaderStyle: React.CSSProperties = { display: "flex", justifyContent: "space-between", gap: 16, alignItems: "flex-start", flexWrap: "wrap" };
+const subscriptionActionsStyle: React.CSSProperties = { display: "flex", gap: 8, flexWrap: "wrap" };
+const subscriptionTitleStyle: React.CSSProperties = { margin: 0, fontSize: 19 };
+const subscriptionHelperStyle: React.CSSProperties = { color: "#64748b", margin: "6px 0 0", lineHeight: 1.45, maxWidth: 760 };
+const groupLabelStyle: React.CSSProperties = { fontSize: 12, fontWeight: 900, color: "#475569", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 };
+const moduleGridStyle: React.CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 10 };
+const moduleOptionStyle: React.CSSProperties = { display: "flex", alignItems: "center", gap: 9, border: "1px solid #dbe3ef", borderRadius: 10, padding: "10px 12px", background: "white", fontWeight: 700, cursor: "pointer" };
+const includedCoreStyle: React.CSSProperties = { marginTop: 18, borderRadius: 10, padding: "11px 13px", background: "#ecfdf5", border: "1px solid #a7f3d0", color: "#166534" };
