@@ -23,6 +23,12 @@ type WorkspaceItemType =
   | "owned_complaint"
   | "owned_audit";
 
+type ModuleItem = {
+  label: string;
+  href: string;
+  module: string;
+};
+
 const CLOSED_STATUSES = new Set([
   "closed",
   "cancelled",
@@ -32,9 +38,35 @@ const CLOSED_STATUSES = new Set([
   "superseded",
 ]);
 
+const QUALITY_MODULES: ModuleItem[] = [
+  { label: "CAPA", href: "/capa", module: "capa" },
+  { label: "NCMR", href: "/ncmrs", module: "ncmr" },
+  { label: "Change Control", href: "/change-control", module: "change_control" },
+  { label: "Controlled Documents", href: "/documents", module: "controlled_documents" },
+  { label: "Training", href: "/training", module: "training" },
+  { label: "SCAR", href: "/supplier-quality/scars", module: "scar" },
+  { label: "Complaints", href: "/complaints", module: "complaints" },
+  { label: "Audit Management", href: "/audits", module: "audit_management" },
+  { label: "OOS / OOT", href: "/oos-oot", module: "oos_oot" },
+  { label: "Suppliers", href: "/suppliers", module: "suppliers" },
+  { label: "Equipment", href: "/equipment", module: "equipment" },
+];
+
+const ANALYTICS_MODULES: ModuleItem[] = [
+  { label: "Executive Dashboard", href: "/dashboard", module: "executive_dashboard" },
+  { label: "Management Review", href: "/management-review", module: "management_review" },
+  { label: "KPI Reports", href: "/kpi-reports", module: "kpi_reports" },
+  { label: "Audit Trail", href: "/audit", module: "audit_trail" },
+];
+
 export default function HomePage() {
   const [email, setEmail] = useState("");
-  const [role, setRole] = useState("user");
+  const [role, setRole] = useState("QMS User");
+  const [companyName, setCompanyName] = useState("");
+  const [activeTenantId, setActiveTenantId] = useState("");
+  const [isInternalTenant, setIsInternalTenant] = useState(false);
+  const [isCustomerContact, setIsCustomerContact] = useState(false);
+  const [enabledModules, setEnabledModules] = useState<Set<string>>(new Set());
   const [workItems, setWorkItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -54,15 +86,24 @@ export default function HomePage() {
   });
 
   const normalizedRole = normalizeRole(role);
-  const canAccessAdmin = [
+  const legacyInternalAdmin = [
     "admin",
     "administrator",
-    "company admin",
     "coordinator",
     "approver",
     "vp quality",
     "quality manager",
   ].includes(normalizedRole);
+
+  const qualityModules = useMemo(
+    () => QUALITY_MODULES.filter((item) => isInternalTenant || moduleIsEnabled(item.module, enabledModules)),
+    [enabledModules, isInternalTenant]
+  );
+
+  const analyticsModules = useMemo(
+    () => ANALYTICS_MODULES.filter((item) => isInternalTenant || moduleIsEnabled(item.module, enabledModules)),
+    [enabledModules, isInternalTenant]
+  );
 
   const fetchHomeData = async (showFullLoader = true) => {
     if (showFullLoader) setLoading(true);
@@ -79,62 +120,117 @@ export default function HomePage() {
       }
 
       const activeMembership = await resolveActiveTenantMembership(userEmail);
-      const tenantRole = String(activeMembership?.membership_role || "").trim();
-
-      if (activeMembership) {
-        const tenant = Array.isArray(activeMembership.tenants)
-          ? activeMembership.tenants[0]
-          : activeMembership.tenants;
-
-        window.localStorage.setItem("qualisphere_active_tenant_id", activeMembership.tenant_id);
-        window.localStorage.setItem("qualisphere_active_tenant_name", tenant?.company_name || "");
-        window.localStorage.setItem("qualisphere_active_tenant_slug", tenant?.slug || "");
-        window.localStorage.setItem("qualisphere_active_tenant_role", tenantRole || "user");
+      if (!activeMembership) {
+        setWorkItems([]);
+        setRole("QMS User");
+        return;
       }
 
-      const [roleResponse, taskResponse, usersResponse, notificationResponse] =
-        await Promise.all([
-          supabase
-            .from("user_roles")
-            .select("role")
-            .eq("user_email", userEmail)
-            .maybeSingle(),
-          supabase
-            .from("approval_tasks")
-            .select("*")
-            .eq("assigned_to_email", userEmail)
-            .eq("status", "pending")
-            .order("created_at", { ascending: true }),
-          supabase
-            .from("user_roles")
-            .select("user_email")
-            .order("user_email", { ascending: true }),
-          supabase
-            .from("notifications")
-            .select("id", { count: "exact", head: true })
-            .eq("user_email", userEmail)
-            .eq("read_status", false),
-        ]);
+      const tenant = Array.isArray(activeMembership.tenants)
+        ? activeMembership.tenants[0]
+        : activeMembership.tenants;
+      const tenantId = String(activeMembership.tenant_id || "");
+      const tenantName = String(tenant?.company_name || "");
+      const internalTenant = tenant?.is_internal === true;
 
-      setRole(
-        tenantRole
-          ? formatMembershipRole(tenantRole)
-          : roleResponse.data?.role || "user"
+      setActiveTenantId(tenantId);
+      setCompanyName(tenantName);
+      setIsInternalTenant(internalTenant);
+
+      window.localStorage.setItem("qualisphere_active_tenant_id", tenantId);
+      window.localStorage.setItem("qualisphere_active_tenant_name", tenantName);
+      window.localStorage.setItem("qualisphere_active_tenant_slug", tenant?.slug || "");
+      window.localStorage.removeItem("qualisphere_active_tenant_role");
+
+      const [
+        contactResponse,
+        roleAssignmentResponse,
+        moduleResponse,
+        taskResponse,
+        usersResponse,
+        notificationResponse,
+        legacyRoleResponse,
+      ] = await Promise.all([
+        supabase.rpc("qualisphere_is_customer_contact", { p_tenant_id: tenantId }),
+        supabase
+          .from("tenant_user_role_assignments")
+          .select("role_id,customer_roles(role_name,is_active)")
+          .eq("tenant_id", tenantId)
+          .ilike("user_email", userEmail)
+          .eq("is_active", true),
+        supabase
+          .from("tenant_module_access")
+          .select("module_code,is_enabled")
+          .eq("tenant_id", tenantId),
+        supabase
+          .from("approval_tasks")
+          .select("*")
+          .eq("assigned_to_email", userEmail)
+          .eq("status", "pending")
+          .order("created_at", { ascending: true }),
+        supabase
+          .from("tenant_memberships")
+          .select("user_email")
+          .eq("tenant_id", tenantId)
+          .eq("membership_status", "active")
+          .order("user_email", { ascending: true }),
+        supabase
+          .from("notifications")
+          .select("id", { count: "exact", head: true })
+          .eq("user_email", userEmail)
+          .eq("read_status", false),
+        supabase
+          .from("user_roles")
+          .select("role")
+          .eq("user_email", userEmail)
+          .maybeSingle(),
+      ]);
+
+      const contactAuthority = contactResponse.data === true;
+      setIsCustomerContact(contactAuthority);
+
+      const roleNames = (roleAssignmentResponse.data || [])
+        .map((assignment: any) => {
+          const roleRow = Array.isArray(assignment.customer_roles)
+            ? assignment.customer_roles[0]
+            : assignment.customer_roles;
+          return roleRow?.is_active === false ? "" : String(roleRow?.role_name || "").trim();
+        })
+        .filter(Boolean);
+
+      if (roleNames.length > 0) {
+        setRole(roleNames.join(", "));
+      } else if (internalTenant && legacyRoleResponse.data?.role) {
+        setRole(legacyRoleResponse.data.role);
+      } else {
+        setRole(contactAuthority ? "Customer Contact" : "QMS User");
+      }
+
+      const entitlementSet = new Set(
+        (moduleResponse.data || [])
+          .filter((module: any) => module.is_enabled)
+          .map((module: any) => normalizeModuleCode(module.module_code))
       );
+      setEnabledModules(entitlementSet);
 
       if (taskResponse.error) {
         throw new Error(taskResponse.error.message);
       }
 
-      const assignedTaskItems = (taskResponse.data || []).map((task: any) => ({
-        ...task,
-        workspace_item_type: "assigned_task" as WorkspaceItemType,
-      }));
+      const assignedTaskItems = (taskResponse.data || [])
+        .map((task: any) => ({
+          ...task,
+          workspace_item_type: "assigned_task" as WorkspaceItemType,
+        }))
+        .filter((task: any) => internalTenant || workItemModuleEnabled(task, entitlementSet));
 
       const ownedRecordItems = await fetchOwnedRecordItems(userEmail);
+      const entitlementFilteredOwnedItems = ownedRecordItems.filter(
+        (item: any) => internalTenant || workItemModuleEnabled(item, entitlementSet)
+      );
 
       setWorkItems(
-        [...assignedTaskItems, ...ownedRecordItems].sort(compareWorkspaceItems)
+        [...assignedTaskItems, ...entitlementFilteredOwnedItems].sort(compareWorkspaceItems)
       );
 
       setAvailableUsers(
@@ -373,12 +469,21 @@ export default function HomePage() {
           </p>
           <div style={publicActionRowStyle}>
             <a href="/login" style={loginButtonStyle}>Login</a>
-            <a href="/signup" style={signupButtonStyle}>Sign Up</a>
           </div>
         </section>
       </main>
     );
   }
+
+  const administrationItems = isInternalTenant && legacyInternalAdmin
+    ? [
+        { label: "Master Data", href: "/admin/master-data" },
+        { label: "Approval Matrix", href: "/approval-matrix" },
+        { label: "Company Settings", href: "/admin/company-settings" },
+      ]
+    : isCustomerContact
+      ? [{ label: "Role Management", href: "/company-administration/roles" }]
+      : [];
 
   return (
     <main style={pageStyle}>
@@ -386,8 +491,11 @@ export default function HomePage() {
         <div>
           <div style={eyebrowStyle}>QUALISPHERE HOME</div>
           <h1 style={{ margin: "4px 0" }}>My Workspace</h1>
-          <p style={{ margin: 0, color: "#475569" }}>
-            Logged in as <strong>{email}</strong> ({role || "user"})
+          <p style={companyContextStyle}>
+            <strong>Company Account:</strong> {companyName || "Not resolved"}
+          </p>
+          <p style={{ margin: "4px 0 0", color: "#475569" }}>
+            Logged in as <strong>{email}</strong> ({role || "QMS User"})
           </p>
           <p style={lastUpdatedStyle}>
             {lastUpdatedAt ? `Last updated ${formatDateTime(lastUpdatedAt)}` : ""}
@@ -395,6 +503,11 @@ export default function HomePage() {
         </div>
 
         <div style={headerActionRowStyle}>
+          {isCustomerContact ? (
+            <a href="/company-administration/roles" style={companyAdminButtonStyle}>
+              Company Administration
+            </a>
+          ) : null}
           <a href="/notifications" style={notificationButtonStyle}>
             Notifications
             {notificationCount > 0 ? (
@@ -415,49 +528,43 @@ export default function HomePage() {
       <section style={workspaceGridStyle}>
         <aside style={leftPanelStyle}>
           <h2 style={panelTitleStyle}>Modules</h2>
+          {!isInternalTenant ? (
+            <p style={subscriptionNoteStyle}>
+              Showing modules activated by QualiSphere for this Company Account.
+            </p>
+          ) : null}
 
-          <ModuleGroup
-            title="Quality Management"
-            isOpen={openGroups.quality}
-            onToggle={() => toggleGroup("quality")}
-            items={[
-              { label: "CAPA", href: "/capa" },
-              { label: "NCMR", href: "/ncmrs" },
-              { label: "Change Control", href: "/change-control" },
-              { label: "Controlled Documents", href: "/documents" },
-              { label: "Training", href: "/training" },
-              { label: "SCAR", href: "/supplier-quality/scars" },
-              { label: "Complaints", href: "/complaints" },
-              { label: "Audit Management", href: "/audits" },
-              { label: "OOS / OOT", href: "/oos-oot" },
-              { label: "Suppliers", href: "/suppliers" },
-              { label: "Equipment", href: "/equipment" },
-            ]}
-          />
+          {qualityModules.length > 0 ? (
+            <ModuleGroup
+              title="Quality Management"
+              isOpen={openGroups.quality}
+              onToggle={() => toggleGroup("quality")}
+              items={qualityModules}
+            />
+          ) : null}
 
-          <ModuleGroup
-            title="Analytics"
-            isOpen={openGroups.analytics}
-            onToggle={() => toggleGroup("analytics")}
-            items={[
-              { label: "Executive Dashboard", href: "/dashboard" },
-              { label: "Management Review", href: "/management-review" },
-              { label: "KPI Reports", href: "/kpi-reports" },
-              { label: "Audit Trail", href: "/audit" },
-            ]}
-          />
+          {analyticsModules.length > 0 ? (
+            <ModuleGroup
+              title="Analytics"
+              isOpen={openGroups.analytics}
+              onToggle={() => toggleGroup("analytics")}
+              items={analyticsModules}
+            />
+          ) : null}
 
-          {canAccessAdmin ? (
+          {administrationItems.length > 0 ? (
             <ModuleGroup
               title="Administration"
               isOpen={openGroups.administration}
               onToggle={() => toggleGroup("administration")}
-              items={[
-                { label: "Master Data", href: "/admin/master-data" },
-                { label: "Approval Matrix", href: "/approval-matrix" },
-                { label: "Company Settings", href: "/admin/company-settings" },
-              ]}
+              items={administrationItems}
             />
+          ) : null}
+
+          {!isInternalTenant && qualityModules.length === 0 && analyticsModules.length === 0 ? (
+            <div style={emptyModuleStyle}>
+              No subscribed modules are currently enabled for this Company Account.
+            </div>
           ) : null}
         </aside>
 
@@ -629,7 +736,7 @@ async function resolveActiveTenantMembership(userEmail: string) {
 
   let query = supabase
     .from("tenant_memberships")
-    .select("tenant_id,membership_role,membership_status,user_email,tenants(company_name,slug,status)")
+    .select("tenant_id,membership_status,user_email,tenants(company_name,slug,status,is_internal)")
     .eq("membership_status", "active")
     .ilike("user_email", userEmail);
 
@@ -778,6 +885,53 @@ function WorkspaceFilterButton({
   );
 }
 
+function normalizeModuleCode(value: string) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s/-]+/g, "_")
+    .replace(/_+/g, "_");
+}
+
+function moduleIsEnabled(requiredModule: string, enabledModules: Set<string>) {
+  const required = normalizeModuleCode(requiredModule);
+  const aliases: Record<string, string[]> = {
+    capa: ["capa"],
+    ncmr: ["ncmr", "ncmrs"],
+    change_control: ["change_control", "change"],
+    controlled_documents: ["controlled_documents", "document_control", "documents"],
+    training: ["training", "training_management"],
+    scar: ["scar", "scars", "supplier_quality"],
+    complaints: ["complaints", "complaint"],
+    audit_management: ["audit_management", "audits", "audit"],
+    oos_oot: ["oos_oot", "oos", "oot"],
+    suppliers: ["suppliers", "supplier_management"],
+    equipment: ["equipment", "equipment_management"],
+    executive_dashboard: ["executive_dashboard", "dashboard", "analytics"],
+    management_review: ["management_review", "management_reviews", "analytics"],
+    kpi_reports: ["kpi_reports", "kpi", "analytics"],
+    audit_trail: ["audit_trail", "audit_log", "analytics"],
+  };
+  return (aliases[required] || [required]).some((alias) => enabledModules.has(alias));
+}
+
+function workItemModuleEnabled(item: any, enabledModules: Set<string>) {
+  const type = String(item.entity_type || item.workspace_item_type || "")
+    .trim()
+    .toLowerCase();
+  if (type.includes("ncmr")) return moduleIsEnabled("ncmr", enabledModules);
+  if (type.includes("capa")) return moduleIsEnabled("capa", enabledModules);
+  if (type.includes("change")) return moduleIsEnabled("change_control", enabledModules);
+  if (type.includes("scar")) return moduleIsEnabled("scar", enabledModules);
+  if (type.includes("document")) return moduleIsEnabled("controlled_documents", enabledModules);
+  if (type.includes("training")) return moduleIsEnabled("training", enabledModules);
+  if (type.includes("complaint")) return moduleIsEnabled("complaints", enabledModules);
+  if (type.includes("audit")) return moduleIsEnabled("audit_management", enabledModules) || moduleIsEnabled("audit_trail", enabledModules);
+  if (type.includes("management_review")) return moduleIsEnabled("management_review", enabledModules);
+  if (type.includes("oos") || type.includes("oot")) return moduleIsEnabled("oos_oot", enabledModules);
+  return true;
+}
+
 function isRecordOwnedByUser(record: any, userEmail: string) {
   const ownerCandidates = [
     record.owner_email,
@@ -832,77 +986,24 @@ function requiresUserAction(record: any, itemType: WorkspaceItemType) {
   }
 
   const terminalByModule: Partial<Record<WorkspaceItemType, Set<string>>> = {
-    owned_ncmr: new Set([
-      "closed",
-      "cancelled",
-      "canceled",
-      "completed",
-      "obsolete",
-    ]),
-    owned_change_control: new Set([
-      "closed",
-      "cancelled",
-      "canceled",
-      "completed",
-      "implemented",
-      "obsolete",
-    ]),
-    owned_scar: new Set([
-      "closed",
-      "cancelled",
-      "canceled",
-      "completed",
-      "obsolete",
-    ]),
-    owned_document: new Set([
-      "release",
-      "released",
-      "effective",
-      "approved",
-      "superseded",
-      "obsolete",
-      "archived",
-      "cancelled",
-      "canceled",
-      "closed",
-      "completed",
-    ]),
-    owned_complaint: new Set([
-      "closed",
-      "cancelled",
-      "canceled",
-      "completed",
-      "obsolete",
-    ]),
-    owned_audit: new Set([
-      "closed",
-      "cancelled",
-      "canceled",
-      "completed",
-      "finalized",
-      "obsolete",
-    ]),
+    owned_ncmr: new Set(["closed", "cancelled", "canceled", "completed", "obsolete"]),
+    owned_change_control: new Set(["closed", "cancelled", "canceled", "completed", "implemented", "obsolete"]),
+    owned_scar: new Set(["closed", "cancelled", "canceled", "completed", "obsolete"]),
+    owned_document: new Set(["release", "released", "effective", "approved", "superseded", "obsolete", "archived", "cancelled", "canceled", "closed", "completed"]),
+    owned_complaint: new Set(["closed", "cancelled", "canceled", "completed", "obsolete"]),
+    owned_audit: new Set(["closed", "cancelled", "canceled", "completed", "finalized", "obsolete"]),
   };
 
   const terminalStatuses = terminalByModule[itemType] || CLOSED_STATUSES;
-
-  if (terminalStatuses.has(status)) {
-    return false;
-  }
-
-  return true;
+  return !terminalStatuses.has(status);
 }
 
 function canReassignItem(item: any) {
-  return (
-    item.workspace_item_type === "assigned_task" ||
-    item.workspace_item_type === "owned_capa"
-  );
+  return item.workspace_item_type === "assigned_task" || item.workspace_item_type === "owned_capa";
 }
 
 function matchesWorkspaceFilter(item: any, filter: WorkspaceFilter) {
   const dueStatus = getDueStatus(item);
-
   if (filter === "tasks") return item.workspace_item_type === "assigned_task";
   if (filter === "approvals") return isApprovalTask(item);
   if (filter === "owned") return item.workspace_item_type !== "assigned_task";
@@ -914,43 +1015,25 @@ function matchesWorkspaceFilter(item: any, filter: WorkspaceFilter) {
 
 function isApprovalTask(task: any) {
   if (task.workspace_item_type !== "assigned_task") return false;
-
-  if (isCapaApprovalTask(task) || isNcmrMrbApprovalTask(task)) {
-    return true;
-  }
-
-  return String(task.task_type || "")
-    .trim()
-    .toLowerCase()
-    .includes("approval");
+  if (isCapaApprovalTask(task) || isNcmrMrbApprovalTask(task)) return true;
+  return String(task.task_type || "").trim().toLowerCase().includes("approval");
 }
 
 function compareWorkspaceItems(a: any, b: any) {
   const priorityDifference = getSortScore(a) - getSortScore(b);
   if (priorityDifference !== 0) return priorityDifference;
-
   const dueA = getDueDateValue(a);
   const dueB = getDueDateValue(b);
-
   if (dueA && dueB) return String(dueA).localeCompare(String(dueB));
   if (dueA) return -1;
   if (dueB) return 1;
-
   return String(a.created_at || "").localeCompare(String(b.created_at || ""));
 }
 
 function getSortScore(item: any) {
   const due = getDueStatus(item);
   const priority = getPriority(item).rank;
-
-  const dueRank: Record<string, number> = {
-    overdue: 0,
-    today: 10,
-    soon: 20,
-    future: 30,
-    none: 40,
-  };
-
+  const dueRank: Record<string, number> = { overdue: 0, today: 10, soon: 20, future: 30, none: 40 };
   return (dueRank[due.category] ?? 40) + priority;
 }
 
@@ -962,28 +1045,14 @@ function getTaskUrl(task: any) {
   if (task.workspace_item_type === "owned_document") return `/documents/${task.id}`;
   if (task.workspace_item_type === "owned_complaint") return `/complaints/${task.id}`;
   if (task.workspace_item_type === "owned_audit") return `/audits/${task.id}`;
-
-  if (isCollaborationTask(task)) {
-    return getCollaborationTaskUrl(task);
-  }
-
+  if (isCollaborationTask(task)) return getCollaborationTaskUrl(task);
   if (isCapaApprovalTask(task)) {
     const gate = getCapaGateFromTask(task);
     return `/capa/${task.entity_id}/approval-review?gate=${gate}&taskId=${task.id}`;
   }
-
-  if (isNcmrMrbApprovalTask(task)) {
-    return `/ncmrs/${task.entity_id}/approval-review?taskId=${task.id}`;
-  }
-
-  if (isNcmrImplementationTask(task)) {
-    return `/ncmrs/${task.entity_id}/implementation?taskId=${task.id}`;
-  }
-
-  if (isNcmrReworkTask(task)) {
-    return `/ncmrs/${task.entity_id}/rework?taskId=${task.id}`;
-  }
-
+  if (isNcmrMrbApprovalTask(task)) return `/ncmrs/${task.entity_id}/approval-review?taskId=${task.id}`;
+  if (isNcmrImplementationTask(task)) return `/ncmrs/${task.entity_id}/implementation?taskId=${task.id}`;
+  if (isNcmrReworkTask(task)) return `/ncmrs/${task.entity_id}/rework?taskId=${task.id}`;
   if (task.entity_type === "ncmr") return `/ncmrs/${task.entity_id}`;
   if (task.entity_type === "capa") return `/capa/${task.entity_id}`;
   if (task.entity_type === "change_control") return `/change-control/${task.entity_id}`;
@@ -993,176 +1062,67 @@ function getTaskUrl(task: any) {
   if (task.entity_type === "audit") return `/audits/${task.entity_id}`;
   if (task.entity_type === "training") return `/training`;
   if (task.entity_type === "management_review") return `/management-review/${task.entity_id}/approval-review?taskId=${task.id}`;
-
   return "/";
 }
 
 function isCollaborationTask(task: any) {
-  return (
-    task.workspace_item_type === "assigned_task" &&
-    String(task.task_type || "").trim().toLowerCase() === "collaboration_task"
-  );
+  return task.workspace_item_type === "assigned_task" && String(task.task_type || "").trim().toLowerCase() === "collaboration_task";
 }
 
 function getCollaborationTaskUrl(task: any) {
   const entityId = String(task.entity_id || "").trim();
-  const entityType = String(task.entity_type || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[\s-]+/g, "_");
-
+  const entityType = String(task.entity_type || "").trim().toLowerCase().replace(/[\s-]+/g, "_");
   if (!entityId) return "/";
-
   if (entityType === "ncmr") return `/ncmrs/${entityId}/collaboration`;
   if (entityType === "capa") return `/capa/${entityId}/collaboration`;
   if (entityType === "change_control") return `/change-control/${entityId}/collaboration`;
-  if (entityType === "document" || entityType === "controlled_document") {
-    return `/documents/${entityId}/collaboration`;
-  }
+  if (entityType === "document" || entityType === "controlled_document") return `/documents/${entityId}/collaboration`;
   if (entityType === "scar") return `/supplier-quality/scars/${entityId}/collaboration`;
   if (entityType === "complaint") return `/complaints/${entityId}/collaboration`;
   if (entityType === "audit") return `/audits/${entityId}/collaboration`;
-  if (entityType === "oos_oot" || entityType === "oos" || entityType === "oot") {
-    return `/oos-oot/${entityId}/collaboration`;
-  }
-
+  if (entityType === "oos_oot" || entityType === "oos" || entityType === "oot") return `/oos-oot/${entityId}/collaboration`;
   return "/";
 }
 
 function getRecordDisplay(task: any) {
-  const directRecord =
-    task.capa_number ||
-    task.ncmr_number ||
-    task.change_number ||
-    task.change_control_number ||
-    task.scar_number ||
-    task.document_number ||
-    task.complaint_number ||
-    task.audit_number ||
-    task.review_number ||
-    task.record_number ||
-    task.entity_number;
-
+  const directRecord = task.capa_number || task.ncmr_number || task.change_number || task.change_control_number || task.scar_number || task.document_number || task.complaint_number || task.audit_number || task.review_number || task.record_number || task.entity_number;
   if (directRecord) return directRecord;
-
   const title = String(task.task_title || task.title || "");
-  const recordMatch = title.match(
-    /\b(CAPA[-\s]?\d+|NCMR[-\s]?\d+|CC[-\s]?\d+|SCAR[-\s]?\d+|AUD[-\s]?\d+|DOC[-\s]?\d+|CMP[-\s]?\d+|MR[-\s]?\d+(?:[-\s]?\d+)?)\b/i
-  );
-
+  const recordMatch = title.match(/\b(CAPA[-\s]?\d+|NCMR[-\s]?\d+|CC[-\s]?\d+|SCAR[-\s]?\d+|AUD[-\s]?\d+|DOC[-\s]?\d+|CMP[-\s]?\d+|MR[-\s]?\d+(?:[-\s]?\d+)?)\b/i);
   if (recordMatch?.[1]) return recordMatch[1].toUpperCase();
   return task.entity_id || task.id || "Record";
 }
 
 function getTaskName(task: any) {
-  if (task.workspace_item_type === "owned_capa") {
-    return getOwnedCapaWorkLabel(task);
-  }
-
-  if (task.workspace_item_type !== "assigned_task") {
-    return getGenericOwnedWorkLabel(task);
-  }
-
-  if (isCapaApprovalTask(task)) {
-    return getCapaApprovalLabel(task);
-  }
-
-  if (isNcmrMrbApprovalTask(task)) {
-    return "MRB Approval";
-  }
-
-  if (isNcmrImplementationTask(task)) {
-    return String(task.task_type || "").toLowerCase() === "corrective_action_task"
-      ? "Corrective Action Implementation"
-      : "Correction Implementation";
-  }
-
-  if (isNcmrReworkTask(task)) {
-    return "Rework Implementation";
-  }
-
-  if (task.task_title) {
-    return cleanTaskTitle(task.task_title);
-  }
-
+  if (task.workspace_item_type === "owned_capa") return getOwnedCapaWorkLabel(task);
+  if (task.workspace_item_type !== "assigned_task") return getGenericOwnedWorkLabel(task);
+  if (isCapaApprovalTask(task)) return getCapaApprovalLabel(task);
+  if (isNcmrMrbApprovalTask(task)) return "MRB Approval";
+  if (isNcmrImplementationTask(task)) return String(task.task_type || "").toLowerCase() === "corrective_action_task" ? "Corrective Action Implementation" : "Correction Implementation";
+  if (isNcmrReworkTask(task)) return "Rework Implementation";
+  if (task.task_title) return cleanTaskTitle(task.task_title);
   return formatTaskType(task.task_type);
 }
 
 function getGenericOwnedWorkLabel(record: any) {
   const module = getModuleLabel(record);
   const status = normalizeWorkflowStatus(record);
-
   const labelsByModule: Record<string, Record<string, string>> = {
-    NCMR: {
-      draft: "Complete Initiation",
-      open: "Continue NCMR",
-      initiated: "Complete Containment",
-      containment: "Complete Containment",
-      risk_assessment: "Complete Risk Assessment",
-      investigation: "Complete Investigation / Root Cause",
-      mrb: "Prepare MRB Review",
-      pending_mrb_approval: "Awaiting MRB Approval",
-      implementation: "Complete Disposition Implementation",
-      verification: "Complete Verification",
-      closure: "Complete Closure",
-    },
-    Change: {
-      draft: "Complete Change Request",
-      open: "Continue Change Control",
-      impact_assessment: "Complete Impact Assessment",
-      pending_approval: "Awaiting Approval",
-      implementation: "Complete Implementation",
-      verification: "Complete Verification",
-      closure: "Complete Closure",
-    },
-    SCAR: {
-      draft: "Complete SCAR Initiation",
-      open: "Continue SCAR",
-      supplier_response: "Review Supplier Response",
-      corrective_action: "Review Corrective Action",
-      effectiveness: "Complete Effectiveness Verification",
-      closure: "Complete Closure",
-    },
-    Document: {
-      draft: "Complete Draft",
-      collaboration: "Continue Collaboration",
-      formal_review: "Prepare Formal Review",
-      pending_review: "Awaiting Formal Review",
-      rejected: "Revise Document",
-      pending_release: "Complete Release",
-    },
-    Complaint: {
-      draft: "Complete Complaint Intake",
-      open: "Continue Complaint",
-      evaluation: "Complete Evaluation",
-      investigation: "Complete Investigation",
-      reportability: "Complete Reportability Assessment",
-      closure: "Complete Closure",
-    },
-    Audit: {
-      draft: "Complete Audit Plan",
-      planned: "Prepare Audit",
-      scheduled: "Prepare Audit",
-      in_progress: "Continue Audit Execution",
-      findings: "Complete Findings",
-      corrective_action: "Track Corrective Actions",
-      closure: "Complete Audit Closure",
-    },
+    NCMR: { draft: "Complete Initiation", open: "Continue NCMR", initiated: "Complete Containment", containment: "Complete Containment", risk_assessment: "Complete Risk Assessment", investigation: "Complete Investigation / Root Cause", mrb: "Prepare MRB Review", pending_mrb_approval: "Awaiting MRB Approval", implementation: "Complete Disposition Implementation", verification: "Complete Verification", closure: "Complete Closure" },
+    Change: { draft: "Complete Change Request", open: "Continue Change Control", impact_assessment: "Complete Impact Assessment", pending_approval: "Awaiting Approval", implementation: "Complete Implementation", verification: "Complete Verification", closure: "Complete Closure" },
+    SCAR: { draft: "Complete SCAR Initiation", open: "Continue SCAR", supplier_response: "Review Supplier Response", corrective_action: "Review Corrective Action", effectiveness: "Complete Effectiveness Verification", closure: "Complete Closure" },
+    Document: { draft: "Complete Draft", collaboration: "Continue Collaboration", formal_review: "Prepare Formal Review", pending_review: "Awaiting Formal Review", rejected: "Revise Document", pending_release: "Complete Release" },
+    Complaint: { draft: "Complete Complaint Intake", open: "Continue Complaint", evaluation: "Complete Evaluation", investigation: "Complete Investigation", reportability: "Complete Reportability Assessment", closure: "Complete Closure" },
+    Audit: { draft: "Complete Audit Plan", planned: "Prepare Audit", scheduled: "Prepare Audit", in_progress: "Continue Audit Execution", findings: "Complete Findings", corrective_action: "Track Corrective Actions", closure: "Complete Audit Closure" },
   };
-
   const mappedLabel = labelsByModule[module]?.[status];
   if (mappedLabel) return mappedLabel;
-
   const formattedStatus = formatTaskType(status || "active");
-  return formattedStatus === "Active"
-    ? `Continue ${module} Record`
-    : `Continue ${module} — ${formattedStatus}`;
+  return formattedStatus === "Active" ? `Continue ${module} Record` : `Continue ${module} — ${formattedStatus}`;
 }
 
 function cleanTaskTitle(value: any) {
-  return String(value || "Task")
-    .replace(/\s+for\s+(CAPA[-\s]?\d+|NCMR[-\s]?\d+|CC[-\s]?\d+|SCAR[-\s]?\d+|AUD[-\s]?\d+|DOC[-\s]?\d+)\b/gi, "")
-    .trim();
+  return String(value || "Task").replace(/\s+for\s+(CAPA[-\s]?\d+|NCMR[-\s]?\d+|CC[-\s]?\d+|SCAR[-\s]?\d+|AUD[-\s]?\d+|DOC[-\s]?\d+)\b/gi, "").trim();
 }
 
 function getCapaApprovalLabel(task: any) {
@@ -1177,45 +1137,19 @@ function getCapaApprovalLabel(task: any) {
 }
 
 function isCapaApprovalTask(task: any) {
-  return (
-    task.entity_type === "capa" &&
-    [
-      "capa_initiation_approval",
-      "capa_investigation_approval",
-      "capa_action_plan_approval",
-      "capa_implementation_approval",
-      "capa_effectiveness_plan_approval",
-      "capa_closure_approval",
-    ].includes(task.task_type)
-  );
+  return task.entity_type === "capa" && ["capa_initiation_approval", "capa_investigation_approval", "capa_action_plan_approval", "capa_implementation_approval", "capa_effectiveness_plan_approval", "capa_closure_approval"].includes(task.task_type);
 }
 
 function isNcmrMrbApprovalTask(task: any) {
-  return (
-    task.workspace_item_type === "assigned_task" &&
-    String(task.entity_type || "").trim().toLowerCase() === "ncmr" &&
-    ["mrb_approval", "ncmr_mrb_approval", "ncmr_mrb_review"].includes(
-      String(task.task_type || "").trim().toLowerCase()
-    )
-  );
+  return task.workspace_item_type === "assigned_task" && String(task.entity_type || "").trim().toLowerCase() === "ncmr" && ["mrb_approval", "ncmr_mrb_approval", "ncmr_mrb_review"].includes(String(task.task_type || "").trim().toLowerCase());
 }
 
 function isNcmrImplementationTask(task: any) {
-  return (
-    task.workspace_item_type === "assigned_task" &&
-    String(task.entity_type || "").trim().toLowerCase() === "ncmr" &&
-    ["correction_task", "corrective_action_task"].includes(
-      String(task.task_type || "").trim().toLowerCase()
-    )
-  );
+  return task.workspace_item_type === "assigned_task" && String(task.entity_type || "").trim().toLowerCase() === "ncmr" && ["correction_task", "corrective_action_task"].includes(String(task.task_type || "").trim().toLowerCase());
 }
 
 function isNcmrReworkTask(task: any) {
-  return (
-    task.workspace_item_type === "assigned_task" &&
-    String(task.entity_type || "").trim().toLowerCase() === "ncmr" &&
-    String(task.task_type || "").trim().toLowerCase() === "rework_task"
-  );
+  return task.workspace_item_type === "assigned_task" && String(task.entity_type || "").trim().toLowerCase() === "ncmr" && String(task.task_type || "").trim().toLowerCase() === "rework_task";
 }
 
 function getCapaGateFromTask(task: any) {
@@ -1232,7 +1166,6 @@ function getCapaGateFromTask(task: any) {
 function shouldShowOwnedCapaWork(capa: any) {
   const status = String(capa.status || "").toLowerCase();
   if (status === "closed" || status === "cancelled") return false;
-
   const approvalPending = status.includes("pending") && status.includes("approval");
   const pendingGateApproved =
     (status.includes("initiation") && capa.initiation_approval_status === "approved") ||
@@ -1240,7 +1173,6 @@ function shouldShowOwnedCapaWork(capa: any) {
     (status.includes("action_plan") && capa.action_plan_approval_status === "approved") ||
     (status.includes("effectiveness_plan") && capa.effectiveness_plan_approval_status === "approved") ||
     (status.includes("closure") && capa.closure_approval_status === "approved");
-
   if (approvalPending && !pendingGateApproved) return false;
   return true;
 }
@@ -1252,13 +1184,11 @@ function getOwnedCapaWorkLabel(capa: any) {
   if (capa.investigation_approval_status === "rejected") return "Revise Investigation";
   if (capa.investigation_approval_status === "approved" && !capa.action_plan_approval_status) return "Complete Action Plan Proposal";
   if (capa.action_plan_approval_status === "rejected") return "Revise Action Plan";
-
   if (capa.action_plan_approval_status === "approved" && !capa.implemented_by) {
     const status = String(capa.status || "").toLowerCase();
     if (status === "implementation") return "Complete Implementation";
     return "Continue CAPA";
   }
-
   if (capa.implemented_by && capa.effectiveness_plan_approval_status !== "approved") return "Complete / Submit Effectiveness Plan";
   if (capa.implemented_by && capa.effectiveness_plan_approval_status === "approved" && !capa.effectiveness_verified_by && !capa.effectiveness_rating) return "Complete Effectiveness Verification";
   if (capa.effectiveness_rating && !capa.closure_approval_status) return "Submit Closure";
@@ -1298,116 +1228,54 @@ function getPriority(task: any) {
   const rawPriority = String(task.priority || task.task_priority || "").toLowerCase();
   const severity = String(task.severity || task.risk_level || "").toLowerCase();
   const dueStatus = getDueStatus(task);
-
   let label = "Medium";
   let icon = "🟡";
   let rank = 2;
-  let style: React.CSSProperties = {
-    background: "#fffbeb",
-    borderColor: "#fde68a",
-    color: "#92400e",
-  };
-
+  let style: React.CSSProperties = { background: "#fffbeb", borderColor: "#fde68a", color: "#92400e" };
   if (rawPriority.includes("critical") || severity.includes("critical")) {
-    label = "Critical";
-    icon = "🔴";
-    rank = 0;
-    style = { background: "#fef2f2", borderColor: "#fecaca", color: "#991b1b" };
+    label = "Critical"; icon = "🔴"; rank = 0; style = { background: "#fef2f2", borderColor: "#fecaca", color: "#991b1b" };
   } else if (rawPriority.includes("high") || severity.includes("major") || dueStatus.category === "overdue") {
-    label = "High";
-    icon = "🟠";
-    rank = 1;
-    style = { background: "#fff7ed", borderColor: "#fed7aa", color: "#9a3412" };
+    label = "High"; icon = "🟠"; rank = 1; style = { background: "#fff7ed", borderColor: "#fed7aa", color: "#9a3412" };
   } else if (rawPriority.includes("low") || severity.includes("minor")) {
-    label = "Low";
-    icon = "🟢";
-    rank = 3;
-    style = { background: "#f0fdf4", borderColor: "#bbf7d0", color: "#166534" };
+    label = "Low"; icon = "🟢"; rank = 3; style = { background: "#f0fdf4", borderColor: "#bbf7d0", color: "#166534" };
   }
-
   return { label, icon, rank, style };
 }
 
 function getDueDateValue(task: any) {
-  return (
-    task.due_date ||
-    task.action_due_date ||
-    task.effectiveness_due_date ||
-    task.response_due_date ||
-    task.target_completion_date ||
-    task.required_completion_date ||
-    null
-  );
+  return task.due_date || task.action_due_date || task.effectiveness_due_date || task.response_due_date || task.target_completion_date || task.required_completion_date || null;
 }
 
 function getDueStatus(task: any) {
   const dueDateValue = getDueDateValue(task);
-
-  if (!dueDateValue) {
-    return {
-      category: "none",
-      label: "No due date",
-      icon: "⚪",
-      background: "#f8fafc",
-      border: "#cbd5e1",
-      text: "#475569",
-    };
-  }
-
+  if (!dueDateValue) return { category: "none", label: "No due date", icon: "⚪", background: "#f8fafc", border: "#cbd5e1", text: "#475569" };
   const today = new Date();
   const dueDate = new Date(`${String(dueDateValue).slice(0, 10)}T23:59:59`);
   today.setHours(0, 0, 0, 0);
-
   const daysRemaining = Math.ceil((dueDate.getTime() - today.getTime()) / 86400000);
-
-  if (daysRemaining < 0) {
-    return { category: "overdue", label: `${Math.abs(daysRemaining)} day${Math.abs(daysRemaining) === 1 ? "" : "s"} overdue`, icon: "🔴", background: "#fef2f2", border: "#fecaca", text: "#991b1b" };
-  }
-
-  if (daysRemaining === 0) {
-    return { category: "today", label: "Due today", icon: "🟡", background: "#fffbeb", border: "#fde68a", text: "#92400e" };
-  }
-
-  if (daysRemaining <= 7) {
-    return { category: "soon", label: `Due in ${daysRemaining} day${daysRemaining === 1 ? "" : "s"}`, icon: "🟡", background: "#fffbeb", border: "#fde68a", text: "#92400e" };
-  }
-
+  if (daysRemaining < 0) return { category: "overdue", label: `${Math.abs(daysRemaining)} day${Math.abs(daysRemaining) === 1 ? "" : "s"} overdue`, icon: "🔴", background: "#fef2f2", border: "#fecaca", text: "#991b1b" };
+  if (daysRemaining === 0) return { category: "today", label: "Due today", icon: "🟡", background: "#fffbeb", border: "#fde68a", text: "#92400e" };
+  if (daysRemaining <= 7) return { category: "soon", label: `Due in ${daysRemaining} day${daysRemaining === 1 ? "" : "s"}`, icon: "🟡", background: "#fffbeb", border: "#fde68a", text: "#92400e" };
   return { category: "future", label: `Due in ${daysRemaining} days`, icon: "🟢", background: "#f0fdf4", border: "#bbf7d0", text: "#166534" };
 }
 
 function getAgeLabel(task: any) {
   const createdAt = task.created_at || task.initiated_at || task.opened_at;
   if (!createdAt) return "N/A";
-
   const createdDate = new Date(createdAt);
   const today = new Date();
   createdDate.setHours(0, 0, 0, 0);
   today.setHours(0, 0, 0, 0);
-
   const ageDays = Math.max(0, Math.floor((today.getTime() - createdDate.getTime()) / 86400000));
   return `${ageDays} day${ageDays === 1 ? "" : "s"}`;
 }
 
 function normalizeRole(value: any) {
-  return String(value || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[_-]+/g, " ")
-    .replace(/\s+/g, " ");
-}
-
-function formatMembershipRole(value: any) {
-  return String(value || "user")
-    .trim()
-    .replace(/[_-]+/g, " ")
-    .replace(/\s+/g, " ")
-    .replace(/\b\w/g, (character) => character.toUpperCase());
+  return String(value || "").trim().toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ");
 }
 
 function formatTaskType(value: any) {
-  return String(value || "task")
-    .replaceAll("_", " ")
-    .replace(/\b\w/g, (char) => char.toUpperCase());
+  return String(value || "task").replaceAll("_", " ").replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 function formatDueDate(value: any) {
@@ -1427,12 +1295,13 @@ const publicTitleStyle: React.CSSProperties = { fontSize: "64px", lineHeight: 1,
 const publicSubtitleStyle: React.CSSProperties = { color: "#334155", fontSize: "21px", lineHeight: "32px" };
 const publicActionRowStyle: React.CSSProperties = { display: "flex", justifyContent: "center", gap: "12px", flexWrap: "wrap", marginTop: "18px" };
 const loginButtonStyle: React.CSSProperties = { display: "inline-block", background: "#111827", color: "white", padding: "12px 24px", borderRadius: "999px", textDecoration: "none", fontWeight: 900 };
-const signupButtonStyle: React.CSSProperties = { display: "inline-block", background: "#ffffff", color: "#111827", border: "1px solid #cbd5e1", padding: "12px 24px", borderRadius: "999px", textDecoration: "none", fontWeight: 900 };
 const homeHeaderStyle: React.CSSProperties = { display: "flex", justifyContent: "space-between", alignItems: "center", gap: "16px", flexWrap: "wrap", marginBottom: "22px" };
 const headerActionRowStyle: React.CSSProperties = { display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center" };
 const eyebrowStyle: React.CSSProperties = { color: "#2563eb", fontSize: "12px", fontWeight: 900, letterSpacing: "0.14em" };
+const companyContextStyle: React.CSSProperties = { margin: "6px 0 0", color: "#1e3a8a", fontSize: "14px" };
 const lastUpdatedStyle: React.CSSProperties = { margin: "6px 0 0", color: "#94a3b8", fontSize: "12px" };
 const notificationButtonStyle: React.CSSProperties = { position: "relative", display: "inline-flex", alignItems: "center", gap: "8px", background: "#ffffff", color: "#1e3a8a", border: "1px solid #bfdbfe", borderRadius: "10px", padding: "10px 14px", textDecoration: "none", fontWeight: 900 };
+const companyAdminButtonStyle: React.CSSProperties = { display: "inline-flex", alignItems: "center", background: "#eff6ff", color: "#1d4ed8", border: "1px solid #93c5fd", borderRadius: "10px", padding: "10px 14px", textDecoration: "none", fontWeight: 900 };
 const notificationBadgeStyle: React.CSSProperties = { minWidth: "22px", height: "22px", borderRadius: "999px", display: "inline-flex", alignItems: "center", justifyContent: "center", background: "#dc2626", color: "#ffffff", fontSize: "12px", padding: "0 5px" };
 const refreshButtonStyle: React.CSSProperties = { background: "#2563eb", color: "white", border: "none", borderRadius: "10px", padding: "10px 14px", fontWeight: 900, cursor: "pointer" };
 const workspaceGridStyle: React.CSSProperties = { display: "grid", gridTemplateColumns: "minmax(280px, 360px) minmax(0, 1fr)", gap: "22px", alignItems: "start" };
@@ -1441,6 +1310,8 @@ const rightPanelStyle: React.CSSProperties = { minWidth: 0, background: "white",
 const rightPanelHeaderStyle: React.CSSProperties = { display: "flex", justifyContent: "space-between", gap: "14px", alignItems: "center", marginBottom: "12px" };
 const panelTitleStyle: React.CSSProperties = { margin: "0 0 8px 0" };
 const panelSubtitleStyle: React.CSSProperties = { margin: 0, color: "#64748b", fontSize: "14px" };
+const subscriptionNoteStyle: React.CSSProperties = { margin: "0 0 10px", color: "#64748b", fontSize: "12px", lineHeight: 1.4 };
+const emptyModuleStyle: React.CSSProperties = { marginTop: 14, border: "1px dashed #cbd5e1", borderRadius: 10, padding: 12, color: "#64748b", fontSize: 13 };
 const taskCountStyle: React.CSSProperties = { background: "#2563eb", color: "white", borderRadius: "999px", minWidth: "34px", height: "34px", display: "inline-flex", alignItems: "center", justifyContent: "center", fontWeight: 900 };
 const moduleGroupStyle: React.CSSProperties = { borderTop: "1px solid #e5e7eb", paddingTop: "12px", marginTop: "12px" };
 const moduleHeaderButtonStyle: React.CSSProperties = { width: "100%", background: "transparent", border: "none", padding: 0, textAlign: "left", fontSize: "16px", fontWeight: 900, cursor: "pointer", color: "#111827" };
