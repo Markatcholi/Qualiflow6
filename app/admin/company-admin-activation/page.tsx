@@ -120,14 +120,14 @@ export default function CompanyAdminActivationPage() {
           <div style={eyebrowStyle}>QUALISPHERE PLATFORM ADMINISTRATION</div>
           <h1 style={titleStyle}>Company Administrator Activation</h1>
           <p style={subtitleStyle}>
-            Send a secure invitation to the initial Company Administrator. The email link verifies the address, then the administrator creates a private password.
+            Send a secure invitation to the Initial Company Administrator designated when the Company Account is created. This person receives the account's initial Master Data Administration authority; Customer Contact remains a separate relationship designation.
           </p>
         </div>
         <Link href="/admin/companies" style={linkButtonStyle}>Company Registry</Link>
       </div>
 
       <div style={policyStyle}>
-        <strong>Security model:</strong> QualiSphere does not email temporary passwords. Activation uses a single-purpose invitation link followed by password creation by the recipient.
+        <strong>Administrative handoff:</strong> Master Data Administration is included automatically with every Company Account. The Company Administrator authority is tenant-scoped and is not a customer QMS process role. After activation, the customer can manage its own administrative access model.
       </div>
 
       {message ? <div style={successStyle}>{message}</div> : null}
@@ -139,7 +139,7 @@ export default function CompanyAdminActivationPage() {
             <thead>
               <tr>
                 <th style={thStyle}>Company</th>
-                <th style={thStyle}>Company Admin Email</th>
+                <th style={thStyle}>Initial Company Administrator</th>
                 <th style={thStyle}>Tenant Status</th>
                 <th style={thStyle}>Membership</th>
                 <th style={thStyle}>Action</th>
