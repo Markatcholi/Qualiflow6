@@ -35,7 +35,7 @@ export default function LoginPage() {
 
       const { data: memberships, error: membershipError } = await supabase
         .from("tenant_memberships")
-        .select("tenant_id,membership_role,membership_status,user_email,tenants(company_name,slug,status)")
+        .select("tenant_id,membership_status,user_email,tenants(company_name,slug,status)")
         .eq("membership_status", "active")
         .ilike("user_email", authenticatedEmail);
 
@@ -52,10 +52,11 @@ export default function LoginPage() {
 
       window.sessionStorage.removeItem("qualisphere_access_context");
       window.sessionStorage.removeItem("qualisphere_membership_selection_required");
+      window.localStorage.removeItem("qualisphere_active_tenant_role");
 
       if (activeMemberships.length === 0) {
         await supabase.auth.signOut();
-        alert("Your login is valid, but you do not have an active QualiSphere company membership. Contact your Company Administrator.");
+        alert("Your login is valid, but you do not have an active QualiSphere Company Account membership. Contact your organization's QualiSphere Customer Contact.");
         return;
       }
 
@@ -66,7 +67,6 @@ export default function LoginPage() {
         window.localStorage.setItem("qualisphere_active_tenant_id", membership.tenant_id);
         window.localStorage.setItem("qualisphere_active_tenant_name", tenant?.company_name || "");
         window.localStorage.setItem("qualisphere_active_tenant_slug", tenant?.slug || "");
-        window.localStorage.setItem("qualisphere_active_tenant_role", membership.membership_role || "user");
         window.location.href = "/workspace";
         return;
       }
@@ -92,7 +92,7 @@ export default function LoginPage() {
             </div>
           </div>
           <p style={brandTextStyle}>
-            Sign in to your company's QualiSphere workspace. Your company membership determines which tenant you enter.
+            Sign in to your company's QualiSphere workspace. Your Company Account membership determines which workspace you enter.
           </p>
           <div style={featureGridStyle}>
             <FeaturePill label="CAPA" /><FeaturePill label="NCMR" /><FeaturePill label="Change Control" />
@@ -104,7 +104,7 @@ export default function LoginPage() {
           <div style={formHeaderStyle}>
             <div style={eyebrowStyle}>SECURE COMPANY ACCESS</div>
             <h2 style={titleStyle}>Sign In</h2>
-            <p style={subtitleStyle}>For users provisioned by their Company Administrator.</p>
+            <p style={subtitleStyle}>For users provisioned within their organization's QualiSphere Company Account.</p>
           </div>
           <label style={labelStyle}>Email</label>
           <input type="email" placeholder="Enter your email" value={email} onChange={(event) => setEmail(event.target.value)} style={inputStyle} />
