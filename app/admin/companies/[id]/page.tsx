@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { supabase } from "../../../../lib/supabaseClient";
+import { PLATFORM_MODULE_CATALOG } from "../../../../lib/platformModuleCatalog";
 
 type Tenant = {
   id: string;
@@ -43,13 +44,18 @@ export default function CompanyDetailPage() {
   const tenantId = params?.id || "";
   const [loading, setLoading] = useState(true);
   const [authorized, setAuthorized] = useState(false);
+  const [platformAdminEmail, setPlatformAdminEmail] = useState("");
   const [tenant, setTenant] = useState<Tenant | null>(null);
   const [memberships, setMemberships] = useState<Membership[]>([]);
   const [modules, setModules] = useState<ModuleAccess[]>([]);
+  const [enabledModuleCodes, setEnabledModuleCodes] = useState<string[]>([]);
   const [error, setError] = useState("");
   const [activationMessage, setActivationMessage] = useState("");
   const [activationError, setActivationError] = useState("");
   const [sendingActivationFor, setSendingActivationFor] = useState("");
+  const [savingModules, setSavingModules] = useState(false);
+  const [moduleMessage, setModuleMessage] = useState("");
+  const [moduleError, setModuleError] = useState("");
 
   useEffect(() => {
     void load();
@@ -61,7 +67,10 @@ export default function CompanyDetailPage() {
     setError("");
 
     const { data: authData } = await supabase.auth.getUser();
-    if (!authData?.user?.email) {
+    const email = String(authData?.user?.email || "").trim().toLowerCase();
+    setPlatformAdminEmail(email);
+
+    if (!email) {
       setLoading(false);
       return;
     }
@@ -85,9 +94,13 @@ export default function CompanyDetailPage() {
     if (membershipResult.error) setError(membershipResult.error.message);
     if (moduleResult.error) setError(moduleResult.error.message);
 
+    const loadedModules = (moduleResult.data || []) as ModuleAccess[];
     setTenant((tenantResult.data || null) as Tenant | null);
     setMemberships((membershipResult.data || []) as Membership[]);
-    setModules((moduleResult.data || []) as ModuleAccess[]);
+    setModules(loadedModules);
+    setEnabledModuleCodes(
+      loadedModules.filter((module) => module.is_enabled).map((module) => module.module_code),
+    );
     setLoading(false);
   };
 
@@ -128,6 +141,78 @@ export default function CompanyDetailPage() {
     }
   };
 
+  const toggleModule = (moduleCode: string) => {
+    setEnabledModuleCodes((current) =>
+      current.includes(moduleCode)
+        ? current.filter((code) => code !== moduleCode)
+        : [...current, moduleCode],
+    );
+  };
+
+  const saveSubscriptionModules = async () => {
+    setModuleMessage("");
+    setModuleError("");
+
+    if (enabledModuleCodes.length === 0) {
+      setModuleError("Select at least one subscribed QualiSphere module.");
+      return;
+    }
+
+    setSavingModules(true);
+
+    try {
+      const existingByCode = new Map(modules.map((module) => [module.module_code, module]));
+      const changedAt = new Date().toISOString();
+
+      for (const moduleDefinition of PLATFORM_MODULE_CATALOG) {
+        const enabled = enabledModuleCodes.includes(moduleDefinition.code);
+        const existing = existingByCode.get(moduleDefinition.code);
+
+        if (existing?.id) {
+          const { error: updateError } = await supabase
+            .from("tenant_module_access")
+            .update({
+              is_enabled: enabled,
+              enabled_by: platformAdminEmail,
+              enabled_at: changedAt,
+            })
+            .eq("id", existing.id);
+          if (updateError) throw updateError;
+        } else {
+          const { error: insertError } = await supabase
+            .from("tenant_module_access")
+            .insert({
+              tenant_id: tenantId,
+              module_code: moduleDefinition.code,
+              is_enabled: enabled,
+              enabled_by: platformAdminEmail,
+              enabled_at: changedAt,
+            });
+          if (insertError) throw insertError;
+        }
+      }
+
+      const { data: refreshedModules, error: refreshError } = await supabase
+        .from("tenant_module_access")
+        .select("*")
+        .eq("tenant_id", tenantId)
+        .order("module_code");
+
+      if (refreshError) throw refreshError;
+
+      const nextModules = (refreshedModules || []) as ModuleAccess[];
+      setModules(nextModules);
+      setEnabledModuleCodes(
+        nextModules.filter((module) => module.is_enabled).map((module) => module.module_code),
+      );
+      setModuleMessage("Company subscription updated successfully.");
+    } catch (saveError: any) {
+      setModuleError(saveError?.message || "Unable to update the company subscription.");
+    } finally {
+      setSavingModules(false);
+    }
+  };
+
   if (loading) return <main style={pageStyle}>Loading company...</main>;
 
   if (!authorized) {
@@ -149,9 +234,8 @@ export default function CompanyDetailPage() {
     );
   }
 
-  // Legacy company_admin is retained only as the bootstrap account authority until
-  // the Customer Contact database migration is applied. It is not a customer QMS role.
   const customerContacts = memberships.filter((membership) => membership.membership_role === "company_admin");
+  const moduleGroups = ["Quality Management", "Analytics & Governance"] as const;
 
   return (
     <main style={pageStyle}>
@@ -159,7 +243,7 @@ export default function CompanyDetailPage() {
         <div>
           <div style={eyebrowStyle}>QUALISPHERE PLATFORM ADMINISTRATION</div>
           <h1 style={titleStyle}>{tenant.company_name}</h1>
-          <p style={subtitleStyle}>Company account profile, customer contact, and QualiSphere-controlled module subscription.</p>
+          <p style={subtitleStyle}>Company Account profile, Customer Contact, and QualiSphere-controlled module subscription.</p>
         </div>
         <div style={headerActionsStyle}>
           <Link href="/admin/companies" style={linkButtonStyle}>Company Registry</Link>
@@ -178,7 +262,7 @@ export default function CompanyDetailPage() {
           <Info label="Legal Name" value={tenant.legal_name || "N/A"} />
           <Info label="Slug" value={tenant.slug} />
           <Info label="Status" value={tenant.status} />
-          <Info label="Account Type" value={tenant.is_internal ? "QualiSphere Internal" : "Customer"} />
+          <Info label="Account Type" value={tenant.is_internal ? "Development / Validation" : "Customer"} />
           <Info label="Customer Contact" value={tenant.primary_contact_email || "N/A"} />
           <Info label="Country" value={tenant.country_code || "N/A"} />
           <Info label="Default Time Zone" value={tenant.default_timezone || "N/A"} />
@@ -191,7 +275,7 @@ export default function CompanyDetailPage() {
         <div style={sectionHeaderStyle}>
           <div>
             <h2 style={sectionTitleStyle}>Company Account Members</h2>
-            <p style={helperStyle}>These users belong to this company account. Account membership is separate from customer-defined QMS roles and separate from QualiSphere Platform Administration.</p>
+            <p style={helperStyle}>These users belong to this Company Account. Account membership is separate from customer-defined QMS roles and separate from QualiSphere Platform Administration.</p>
           </div>
           <div style={countBadgeStyle}>{memberships.length} member{memberships.length === 1 ? "" : "s"}</div>
         </div>
@@ -226,7 +310,7 @@ export default function CompanyDetailPage() {
         <div style={sectionHeaderStyle}>
           <div>
             <h2 style={sectionTitleStyle}>Customer Contact Activation</h2>
-            <p style={helperStyle}>Send a secure activation email to the designated Customer Contact. After activation, the customer will manage its own QMS users, roles, and role assignments.</p>
+            <p style={helperStyle}>Send a secure activation email to the designated Customer Contact. After activation, the customer manages its own QMS configuration inside its Company Account.</p>
           </div>
           <Link href="/admin/company-admin-activation" style={linkButtonStyle}>Activation Console</Link>
         </div>
@@ -264,7 +348,7 @@ export default function CompanyDetailPage() {
                   </td>
                 </tr>
               ))}
-              {customerContacts.length === 0 ? <tr><td colSpan={3} style={tdStyle}>No bootstrap Customer Contact membership found for this company account.</td></tr> : null}
+              {customerContacts.length === 0 ? <tr><td colSpan={3} style={tdStyle}>No bootstrap Customer Contact membership found for this Company Account.</td></tr> : null}
             </tbody>
           </table>
         </div>
@@ -274,27 +358,55 @@ export default function CompanyDetailPage() {
         <div style={sectionHeaderStyle}>
           <div>
             <h2 style={sectionTitleStyle}>Subscribed Modules</h2>
-            <p style={helperStyle}>QualiSphere controls which modules are enabled for this customer subscription. Customer-created roles may grant permissions only within modules enabled for this company account.</p>
+            <p style={helperStyle}>QualiSphere Platform Administration controls the modules included in this Company Account's subscription. Master Data Administration is included automatically and is not a subscription item.</p>
           </div>
-          <div style={countBadgeStyle}>{modules.filter((module) => module.is_enabled).length} enabled</div>
+          <div style={countBadgeStyle}>{enabledModuleCodes.length} enabled</div>
         </div>
-        <div style={moduleGridStyle}>
-          {modules.map((module) => (
-            <div key={module.id} style={moduleCardStyle}>
-              <div style={{ fontWeight: 900 }}>{humanize(module.module_code)}</div>
-              <div style={{ marginTop: 8 }}>
-                <span style={{ ...statusBadgeStyle, background: module.is_enabled ? "#dcfce7" : "#fee2e2", color: module.is_enabled ? "#166534" : "#991b1b" }}>
-                  {module.is_enabled ? "Enabled" : "Disabled"}
-                </span>
-              </div>
-              <div style={smallStyle}>Enabled by: {module.enabled_by || "N/A"}</div>
+
+        {moduleMessage ? <div style={successStyle}>{moduleMessage}</div> : null}
+        {moduleError ? <div style={warningStyle}>{moduleError}</div> : null}
+
+        <div style={subscriptionActionsStyle}>
+          <button type="button" style={secondaryButtonStyle} onClick={() => setEnabledModuleCodes(PLATFORM_MODULE_CATALOG.map((module) => module.code))}>Select All</button>
+          <button type="button" style={secondaryButtonStyle} onClick={() => setEnabledModuleCodes([])}>Clear</button>
+        </div>
+
+        {moduleGroups.map((group) => (
+          <div key={group} style={{ marginTop: 18 }}>
+            <div style={groupLabelStyle}>{group}</div>
+            <div style={moduleGridStyle}>
+              {PLATFORM_MODULE_CATALOG.filter((module) => module.group === group).map((module) => (
+                <label key={module.code} style={moduleCardStyle}>
+                  <div style={moduleOptionHeaderStyle}>
+                    <input
+                      type="checkbox"
+                      checked={enabledModuleCodes.includes(module.code)}
+                      onChange={() => toggleModule(module.code)}
+                    />
+                    <span style={{ fontWeight: 900 }}>{module.label}</span>
+                  </div>
+                  <div style={{ marginTop: 8 }}>
+                    <span style={{ ...statusBadgeStyle, background: enabledModuleCodes.includes(module.code) ? "#dcfce7" : "#fee2e2", color: enabledModuleCodes.includes(module.code) ? "#166534" : "#991b1b" }}>
+                      {enabledModuleCodes.includes(module.code) ? "Subscribed" : "Not Subscribed"}
+                    </span>
+                  </div>
+                </label>
+              ))}
             </div>
-          ))}
+          </div>
+        ))}
+
+        <div style={includedCoreStyle}><strong>Always included:</strong> Master Data Administration</div>
+
+        <div style={{ marginTop: 18 }}>
+          <button type="button" style={primaryButtonStyle} disabled={savingModules} onClick={() => void saveSubscriptionModules()}>
+            {savingModules ? "Saving Subscription..." : "Save Subscription"}
+          </button>
         </div>
       </section>
 
       <section style={noteStyle}>
-        <strong>Account boundary:</strong> QualiSphere provisions the company account and its subscribed modules. The customer owns its QMS users, role names, role permissions, and role assignments. Platform Administrator access remains separate from every customer account.
+        <strong>Account boundary:</strong> Every Company Account is independent. A module subscription enables that module only inside this Company Account; it does not share or continue another company's records. The QualiSphere Development / Validation account follows the same Company Account model and is used to test modules and releases before customer deployment.
       </section>
     </main>
   );
@@ -342,13 +454,17 @@ const tableStyle: React.CSSProperties = { width: "100%", borderCollapse: "collap
 const thStyle: React.CSSProperties = { textAlign: "left", borderBottom: "1px solid #cbd5e1", padding: "11px 9px", background: "#f8fafc", fontSize: 13 };
 const tdStyle: React.CSSProperties = { borderBottom: "1px solid #e2e8f0", padding: "12px 9px", fontSize: 14 };
 const moduleGridStyle: React.CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 13 };
-const moduleCardStyle: React.CSSProperties = { border: "1px solid #e2e8f0", borderRadius: 12, padding: 15, background: "#f8fafc" };
+const moduleCardStyle: React.CSSProperties = { border: "1px solid #e2e8f0", borderRadius: 12, padding: 15, background: "#f8fafc", cursor: "pointer" };
+const moduleOptionHeaderStyle: React.CSSProperties = { display: "flex", alignItems: "center", gap: 9 };
 const statusBadgeStyle: React.CSSProperties = { display: "inline-block", padding: "4px 9px", borderRadius: 999, fontWeight: 800, fontSize: 12 };
 const countBadgeStyle: React.CSSProperties = { background: "#eff6ff", color: "#1d4ed8", border: "1px solid #bfdbfe", borderRadius: 999, padding: "6px 10px", fontWeight: 900, fontSize: 13 };
-const smallStyle: React.CSSProperties = { color: "#64748b", fontSize: 12, marginTop: 10 };
 const linkButtonStyle: React.CSSProperties = { border: "1px solid #cbd5e1", borderRadius: 9, background: "white", color: "#0f172a", padding: "10px 15px", fontWeight: 800, textDecoration: "none" };
 const backLinkStyle: React.CSSProperties = { color: "#1d4ed8", fontWeight: 800, textDecoration: "none" };
 const primaryButtonStyle: React.CSSProperties = { border: 0, borderRadius: 9, background: "#2563eb", color: "white", padding: "9px 12px", fontWeight: 900, cursor: "pointer" };
+const secondaryButtonStyle: React.CSSProperties = { border: "1px solid #cbd5e1", borderRadius: 8, background: "white", color: "#334155", padding: "8px 11px", fontWeight: 800, cursor: "pointer" };
+const subscriptionActionsStyle: React.CSSProperties = { display: "flex", gap: 8, flexWrap: "wrap", marginTop: 6 };
+const groupLabelStyle: React.CSSProperties = { fontSize: 12, fontWeight: 900, color: "#475569", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 };
+const includedCoreStyle: React.CSSProperties = { marginTop: 18, borderRadius: 10, padding: "11px 13px", background: "#ecfdf5", border: "1px solid #a7f3d0", color: "#166534" };
 const activationPolicyStyle: React.CSSProperties = { background: "#eff6ff", border: "1px solid #bfdbfe", color: "#1e3a8a", borderRadius: 12, padding: 14, marginBottom: 16, lineHeight: 1.5 };
 const successStyle: React.CSSProperties = { background: "#ecfdf5", border: "1px solid #a7f3d0", color: "#166534", borderRadius: 12, padding: 14, marginBottom: 16 };
 const warningStyle: React.CSSProperties = { background: "#fff7ed", border: "1px solid #fdba74", borderRadius: 12, padding: 16, color: "#9a3412" };
