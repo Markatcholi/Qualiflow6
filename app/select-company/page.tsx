@@ -5,7 +5,6 @@ import { supabase } from "../../lib/supabaseClient";
 
 type Membership = {
   tenant_id: string;
-  membership_role: string;
   user_email: string;
   tenants: { company_name: string; slug: string; status: string } | { company_name: string; slug: string; status: string }[] | null;
 };
@@ -27,7 +26,7 @@ export default function SelectCompanyPage() {
 
       const { data, error } = await supabase
         .from("tenant_memberships")
-        .select("tenant_id,membership_role,user_email,tenants(company_name,slug,status)")
+        .select("tenant_id,user_email,tenants(company_name,slug,status)")
         .eq("membership_status", "active")
         .ilike("user_email", authenticatedEmail);
 
@@ -43,14 +42,7 @@ export default function SelectCompanyPage() {
       });
 
       if (active.length === 1) {
-        const membership = active[0];
-        const tenant = Array.isArray(membership.tenants) ? membership.tenants[0] : membership.tenants;
-        window.localStorage.setItem("qualisphere_active_tenant_id", membership.tenant_id);
-        window.localStorage.setItem("qualisphere_active_tenant_name", tenant?.company_name || "");
-        window.localStorage.setItem("qualisphere_active_tenant_slug", tenant?.slug || "");
-        window.localStorage.setItem("qualisphere_active_tenant_role", membership.membership_role || "user");
-        window.sessionStorage.removeItem("qualisphere_membership_selection_required");
-        window.location.href = "/workspace";
+        choose(active[0]);
         return;
       }
 
@@ -66,7 +58,7 @@ export default function SelectCompanyPage() {
     window.localStorage.setItem("qualisphere_active_tenant_id", membership.tenant_id);
     window.localStorage.setItem("qualisphere_active_tenant_name", tenant?.company_name || "");
     window.localStorage.setItem("qualisphere_active_tenant_slug", tenant?.slug || "");
-    window.localStorage.setItem("qualisphere_active_tenant_role", membership.membership_role || "user");
+    window.localStorage.removeItem("qualisphere_active_tenant_role");
     window.sessionStorage.removeItem("qualisphere_membership_selection_required");
     window.location.href = "/workspace";
   };
@@ -75,24 +67,24 @@ export default function SelectCompanyPage() {
     <main style={pageStyle}>
       <section style={cardStyle}>
         <div style={eyebrowStyle}>QUALISPHERE COMPANY ACCESS</div>
-        <h1 style={titleStyle}>Choose Company</h1>
-        <p style={subtleStyle}>Your account belongs to more than one active QualiSphere company. Choose the workspace you want to enter.</p>
+        <h1 style={titleStyle}>Choose Company Account</h1>
+        <p style={subtleStyle}>Your login belongs to more than one active QualiSphere Company Account. Choose the company workspace you want to enter.</p>
 
-        {loading ? <div>Loading company memberships...</div> : null}
+        {loading ? <div>Loading Company Accounts...</div> : null}
         {message ? <div style={messageStyle}>{message}</div> : null}
 
         {!loading && memberships.map((membership) => {
           const tenant = Array.isArray(membership.tenants) ? membership.tenants[0] : membership.tenants;
           return (
             <button key={membership.tenant_id} type="button" style={companyButtonStyle} onClick={() => choose(membership)}>
-              <strong>{tenant?.company_name || "Company"}</strong>
-              <span style={smallStyle}>{membership.membership_role.replaceAll("_", " ")}</span>
+              <strong>{tenant?.company_name || "Company Account"}</strong>
+              <span style={smallStyle}>Open workspace</span>
             </button>
           );
         })}
 
         {!loading && memberships.length === 0 ? (
-          <div style={messageStyle}>No active company memberships are available for this account.</div>
+          <div style={messageStyle}>No active Company Accounts are available for this login.</div>
         ) : null}
 
         <a href="/login" style={linkStyle}>Back to Sign In</a>
@@ -107,6 +99,6 @@ const eyebrowStyle: React.CSSProperties = { color:"#2563eb", fontWeight:900, fon
 const titleStyle: React.CSSProperties = { fontSize:34, margin:"8px 0" };
 const subtleStyle: React.CSSProperties = { color:"#64748b", lineHeight:1.5, marginBottom:20 };
 const companyButtonStyle: React.CSSProperties = { width:"100%", display:"flex", justifyContent:"space-between", alignItems:"center", gap:16, padding:"16px 18px", marginBottom:12, background:"#f8fafc", border:"1px solid #cbd5e1", borderRadius:12, cursor:"pointer", textAlign:"left", fontSize:16 };
-const smallStyle: React.CSSProperties = { color:"#64748b", fontSize:13, textTransform:"capitalize" };
+const smallStyle: React.CSSProperties = { color:"#64748b", fontSize:13 };
 const messageStyle: React.CSSProperties = { padding:12, borderRadius:10, border:"1px solid #fdba74", background:"#fff7ed", color:"#9a3412", marginBottom:14 };
 const linkStyle: React.CSSProperties = { display:"inline-block", marginTop:8, color:"#1d4ed8", fontWeight:800, textDecoration:"none" };
