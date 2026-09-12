@@ -39,6 +39,7 @@ const emptyForm = {
   tenantCode: "",
   slug: "",
   customerContactEmail: "",
+  initialCompanyAdminEmail: "",
   countryCode: "US",
   defaultTimezone: "America/Chicago",
 };
@@ -243,6 +244,10 @@ export default function CompanyRegistryPage() {
       setErrorMessage("Customer Contact email is required.");
       return;
     }
+    if (!form.initialCompanyAdminEmail.trim()) {
+      setErrorMessage("Initial Company Administrator email is required.");
+      return;
+    }
     if (selectedModules.length === 0) {
       setErrorMessage("Select at least one subscribed QualiSphere module.");
       return;
@@ -252,13 +257,14 @@ export default function CompanyRegistryPage() {
 
     try {
       const contactEmail = form.customerContactEmail.trim().toLowerCase();
+      const initialAdminEmail = form.initialCompanyAdminEmail.trim().toLowerCase();
       const { data, error } = await supabase.rpc("qualisphere_create_tenant", {
         p_company_name: form.companyName.trim(),
         p_legal_name: form.legalName.trim(),
         p_tenant_code: form.tenantCode.trim(),
         p_slug: form.slug.trim(),
         p_primary_contact_email: contactEmail,
-        p_company_admin_email: contactEmail,
+        p_company_admin_email: initialAdminEmail,
         p_country_code: form.countryCode.trim() || "US",
         p_default_timezone: form.defaultTimezone.trim() || "America/Chicago",
       });
@@ -285,7 +291,7 @@ export default function CompanyRegistryPage() {
       setSelectedModules([]);
       setShowCreate(false);
       setMessage(
-        `Company account created successfully with ${selectedModules.length} subscribed module${selectedModules.length === 1 ? "" : "s"}. Tenant ID: ${tenantId}`,
+        `Company account created successfully. Master Data Administration is included and initial administrative authority was assigned to ${initialAdminEmail}. ${selectedModules.length} subscribed module${selectedModules.length === 1 ? "" : "s"} enabled. Tenant ID: ${tenantId}`,
       );
 
       try {
@@ -344,7 +350,7 @@ export default function CompanyRegistryPage() {
           <div style={eyebrowStyle}>QUALISPHERE PLATFORM ADMINISTRATION</div>
           <h1 style={titleStyle}>Company Registry</h1>
           <p style={subtitleStyle}>
-            Create independent Company Accounts and assign the QualiSphere modules included in each subscription.
+            Create independent Company Accounts, establish the initial administrative handoff, and assign the QualiSphere modules included in each subscription.
           </p>
         </div>
         <div style={headerActionsStyle}>
@@ -367,7 +373,7 @@ export default function CompanyRegistryPage() {
         <section style={cardStyle}>
           <h2 style={sectionTitleStyle}>Create Company Account</h2>
           <p style={helperStyle}>
-            Create the independent Company Account, designate its initial Customer Contact, and assign only the operational modules included in the customer's subscription.
+            Create the independent Company Account, identify the relationship contact, designate the Initial Company Administrator who receives Master Data Administration authority, and assign only the operational modules included in the customer's subscription.
           </p>
           <form onSubmit={createTenant}>
             <div style={formGridStyle}>
@@ -376,8 +382,13 @@ export default function CompanyRegistryPage() {
               <Field label="Tenant Code *" value={form.tenantCode} onChange={(value) => setField("tenantCode", value.toUpperCase())} />
               <Field label="Tenant Slug *" value={form.slug} onChange={(value) => setField("slug", value.toLowerCase())} />
               <Field label="Customer Contact Email *" type="email" value={form.customerContactEmail} onChange={(value) => setField("customerContactEmail", value)} />
+              <Field label="Initial Company Administrator Email *" type="email" value={form.initialCompanyAdminEmail} onChange={(value) => setField("initialCompanyAdminEmail", value)} />
               <Field label="Country Code" value={form.countryCode} onChange={(value) => setField("countryCode", value.toUpperCase())} />
               <Field label="Default Time Zone" value={form.defaultTimezone} onChange={(value) => setField("defaultTimezone", value)} />
+            </div>
+
+            <div style={handoffStyle}>
+              <strong>Administrative handoff:</strong> The Customer Contact is the relationship contact and receives no automatic QMS authority. The Initial Company Administrator receives the tenant-scoped Master Data Administration authority at account creation. Both fields may use the same person when the customer chooses.
             </div>
 
             <div style={subscriptionSectionStyle}>
@@ -385,7 +396,7 @@ export default function CompanyRegistryPage() {
                 <div>
                   <h3 style={subscriptionTitleStyle}>Subscribed Modules *</h3>
                   <p style={subscriptionHelperStyle}>
-                    Master Data Administration is included automatically with every Company Account and is not a subscription checkbox.
+                    Master Data Administration is provisioned automatically with every Company Account and is not a subscription checkbox.
                   </p>
                 </div>
                 <div style={subscriptionActionsStyle}>
@@ -516,6 +527,7 @@ const tdStyle: React.CSSProperties = { borderBottom: "1px solid #e2e8f0", paddin
 const smallStyle: React.CSSProperties = { fontSize: 12, color: "#64748b", marginTop: 4 };
 const badgeStyle: React.CSSProperties = { display: "inline-block", borderRadius: 999, padding: "5px 9px", fontSize: 12, fontWeight: 800 };
 const actionLinkStyle: React.CSSProperties = { color: "#1d4ed8", fontWeight: 800, textDecoration: "none" };
+const handoffStyle: React.CSSProperties = { marginTop: 18, borderRadius: 10, padding: "12px 14px", background: "#f8fafc", border: "1px solid #cbd5e1", color: "#334155", lineHeight: 1.5 };
 const subscriptionSectionStyle: React.CSSProperties = { marginTop: 24, border: "1px solid #bfdbfe", borderRadius: 14, padding: 18, background: "#f8fbff" };
 const subscriptionHeaderStyle: React.CSSProperties = { display: "flex", justifyContent: "space-between", gap: 16, alignItems: "flex-start", flexWrap: "wrap" };
 const subscriptionActionsStyle: React.CSSProperties = { display: "flex", gap: 8, flexWrap: "wrap" };
