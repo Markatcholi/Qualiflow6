@@ -149,7 +149,9 @@ export default function CompanyDetailPage() {
     );
   }
 
-  const companyAdmins = memberships.filter((membership) => membership.membership_role === "company_admin");
+  // Legacy company_admin is retained only as the bootstrap account authority until
+  // the Customer Contact database migration is applied. It is not a customer QMS role.
+  const customerContacts = memberships.filter((membership) => membership.membership_role === "company_admin");
 
   return (
     <main style={pageStyle}>
@@ -157,7 +159,7 @@ export default function CompanyDetailPage() {
         <div>
           <div style={eyebrowStyle}>QUALISPHERE PLATFORM ADMINISTRATION</div>
           <h1 style={titleStyle}>{tenant.company_name}</h1>
-          <p style={subtitleStyle}>Tenant profile, membership, and company-level module entitlement.</p>
+          <p style={subtitleStyle}>Company account profile, customer contact, and QualiSphere-controlled module subscription.</p>
         </div>
         <div style={headerActionsStyle}>
           <Link href="/admin/companies" style={linkButtonStyle}>Company Registry</Link>
@@ -168,7 +170,7 @@ export default function CompanyDetailPage() {
       {error ? <div style={warningStyle}>{error}</div> : null}
 
       <section style={cardStyle}>
-        <h2 style={sectionTitleStyle}>Company Profile</h2>
+        <h2 style={sectionTitleStyle}>Company Account</h2>
         <div style={profileGridStyle}>
           <Info label="Tenant ID" value={tenant.id} />
           <Info label="Tenant Code" value={tenant.tenant_code} />
@@ -176,8 +178,8 @@ export default function CompanyDetailPage() {
           <Info label="Legal Name" value={tenant.legal_name || "N/A"} />
           <Info label="Slug" value={tenant.slug} />
           <Info label="Status" value={tenant.status} />
-          <Info label="Tenant Type" value={tenant.is_internal ? "QualiSphere Internal" : "Customer"} />
-          <Info label="Primary Contact" value={tenant.primary_contact_email || "N/A"} />
+          <Info label="Account Type" value={tenant.is_internal ? "QualiSphere Internal" : "Customer"} />
+          <Info label="Customer Contact" value={tenant.primary_contact_email || "N/A"} />
           <Info label="Country" value={tenant.country_code || "N/A"} />
           <Info label="Default Time Zone" value={tenant.default_timezone || "N/A"} />
           <Info label="Created By" value={tenant.created_by || "N/A"} />
@@ -188,8 +190,8 @@ export default function CompanyDetailPage() {
       <section style={cardStyle}>
         <div style={sectionHeaderStyle}>
           <div>
-            <h2 style={sectionTitleStyle}>Company Memberships</h2>
-            <p style={helperStyle}>These users belong to this tenant. Company membership is separate from QualiSphere Platform Administration.</p>
+            <h2 style={sectionTitleStyle}>Company Account Members</h2>
+            <p style={helperStyle}>These users belong to this company account. Account membership is separate from customer-defined QMS roles and separate from QualiSphere Platform Administration.</p>
           </div>
           <div style={countBadgeStyle}>{memberships.length} member{memberships.length === 1 ? "" : "s"}</div>
         </div>
@@ -198,7 +200,7 @@ export default function CompanyDetailPage() {
             <thead>
               <tr>
                 <th style={thStyle}>User Email</th>
-                <th style={thStyle}>Membership Role</th>
+                <th style={thStyle}>Account Authority</th>
                 <th style={thStyle}>Status</th>
                 <th style={thStyle}>Joined</th>
                 <th style={thStyle}>Invited By</th>
@@ -208,7 +210,7 @@ export default function CompanyDetailPage() {
               {memberships.map((membership) => (
                 <tr key={membership.id}>
                   <td style={tdStyle}>{membership.user_email}</td>
-                  <td style={tdStyle}>{humanize(membership.membership_role)}</td>
+                  <td style={tdStyle}>{displayAccountAuthority(membership.membership_role)}</td>
                   <td style={tdStyle}>{humanize(membership.membership_status)}</td>
                   <td style={tdStyle}>{formatDate(membership.joined_at)}</td>
                   <td style={tdStyle}>{membership.invited_by || "N/A"}</td>
@@ -223,14 +225,14 @@ export default function CompanyDetailPage() {
       <section style={cardStyle}>
         <div style={sectionHeaderStyle}>
           <div>
-            <h2 style={sectionTitleStyle}>Company Administrator Activation</h2>
-            <p style={helperStyle}>Send a secure activation email to the Company Administrator. The email link verifies the address, then the administrator creates a private password.</p>
+            <h2 style={sectionTitleStyle}>Customer Contact Activation</h2>
+            <p style={helperStyle}>Send a secure activation email to the designated Customer Contact. After activation, the customer will manage its own QMS users, roles, and role assignments.</p>
           </div>
           <Link href="/admin/company-admin-activation" style={linkButtonStyle}>Activation Console</Link>
         </div>
 
         <div style={activationPolicyStyle}>
-          <strong>Security model:</strong> QualiSphere does not email temporary passwords. Activation uses a single-purpose invitation link followed by password creation by the recipient.
+          <strong>Security model:</strong> QualiSphere does not email temporary passwords. Activation uses a secure invitation link followed by password creation by the recipient. Customer Contact authority is account bootstrap authority, not a customer QMS role.
         </div>
 
         {activationMessage ? <div style={successStyle}>{activationMessage}</div> : null}
@@ -240,13 +242,13 @@ export default function CompanyDetailPage() {
           <table style={tableStyle}>
             <thead>
               <tr>
-                <th style={thStyle}>Company Admin Email</th>
+                <th style={thStyle}>Customer Contact Email</th>
                 <th style={thStyle}>Membership Status</th>
                 <th style={thStyle}>Action</th>
               </tr>
             </thead>
             <tbody>
-              {companyAdmins.map((membership) => (
+              {customerContacts.map((membership) => (
                 <tr key={membership.id}>
                   <td style={tdStyle}>{membership.user_email}</td>
                   <td style={tdStyle}>{humanize(membership.membership_status)}</td>
@@ -262,7 +264,7 @@ export default function CompanyDetailPage() {
                   </td>
                 </tr>
               ))}
-              {companyAdmins.length === 0 ? <tr><td colSpan={3} style={tdStyle}>No Company Administrator membership found for this tenant.</td></tr> : null}
+              {customerContacts.length === 0 ? <tr><td colSpan={3} style={tdStyle}>No bootstrap Customer Contact membership found for this company account.</td></tr> : null}
             </tbody>
           </table>
         </div>
@@ -271,8 +273,8 @@ export default function CompanyDetailPage() {
       <section style={cardStyle}>
         <div style={sectionHeaderStyle}>
           <div>
-            <h2 style={sectionTitleStyle}>Module Entitlements</h2>
-            <p style={helperStyle}>Company-level module availability. Individual user authorization will be layered on top of these entitlements.</p>
+            <h2 style={sectionTitleStyle}>Subscribed Modules</h2>
+            <p style={helperStyle}>QualiSphere controls which modules are enabled for this customer subscription. Customer-created roles may grant permissions only within modules enabled for this company account.</p>
           </div>
           <div style={countBadgeStyle}>{modules.filter((module) => module.is_enabled).length} enabled</div>
         </div>
@@ -292,7 +294,7 @@ export default function CompanyDetailPage() {
       </section>
 
       <section style={noteStyle}>
-        <strong>Phase 2 scope:</strong> tenant creation and initial Company Administrator activation are enabled. Broader membership administration, module changes, and tenant-scoped QMS role management will be added only after the tenant boundary is tested.
+        <strong>Account boundary:</strong> QualiSphere provisions the company account and its subscribed modules. The customer owns its QMS users, role names, role permissions, and role assignments. Platform Administrator access remains separate from every customer account.
       </section>
     </main>
   );
@@ -305,6 +307,11 @@ function Info({ label, value }: { label: string; value: string }) {
       <div style={infoValueStyle}>{value}</div>
     </div>
   );
+}
+
+function displayAccountAuthority(value: string) {
+  if (value === "company_admin") return "Customer Contact (Bootstrap)";
+  return "Company Member";
 }
 
 function humanize(value: string) {
