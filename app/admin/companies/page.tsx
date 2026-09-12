@@ -36,8 +36,7 @@ const emptyForm = {
   legalName: "",
   tenantCode: "",
   slug: "",
-  primaryContactEmail: "",
-  companyAdminEmail: "",
+  customerContactEmail: "",
   countryCode: "US",
   defaultTimezone: "America/Chicago",
 };
@@ -189,21 +188,24 @@ export default function CompanyRegistryPage() {
       setErrorMessage("Tenant slug is required.");
       return;
     }
-    if (!form.companyAdminEmail.trim()) {
-      setErrorMessage("Initial Company Administrator email is required.");
+    if (!form.customerContactEmail.trim()) {
+      setErrorMessage("Customer Contact email is required.");
       return;
     }
 
     setCreating(true);
 
     try {
+      const contactEmail = form.customerContactEmail.trim().toLowerCase();
       const { data, error } = await supabase.rpc("qualisphere_create_tenant", {
         p_company_name: form.companyName.trim(),
         p_legal_name: form.legalName.trim(),
         p_tenant_code: form.tenantCode.trim(),
         p_slug: form.slug.trim(),
-        p_primary_contact_email: form.primaryContactEmail.trim(),
-        p_company_admin_email: form.companyAdminEmail.trim(),
+        p_primary_contact_email: contactEmail,
+        // Backward-compatible RPC parameter. This value now represents the
+        // bootstrap Customer Contact, not a customer-defined QMS role.
+        p_company_admin_email: contactEmail,
         p_country_code: form.countryCode.trim() || "US",
         p_default_timezone: form.defaultTimezone.trim() || "America/Chicago",
       });
@@ -216,17 +218,17 @@ export default function CompanyRegistryPage() {
       const tenantId = String(data || "");
       setForm(emptyForm);
       setShowCreate(false);
-      setMessage(`Company created successfully. Tenant ID: ${tenantId}`);
+      setMessage(`Company account created successfully. Tenant ID: ${tenantId}`);
 
       try {
         await loadRegistry();
       } catch (refreshError: any) {
         setErrorMessage(
-          `The company was created successfully, but the registry could not refresh. Do not create the company again. Refresh this page before retrying. ${refreshError?.message || ""}`.trim(),
+          `The company account was created successfully, but the registry could not refresh. Do not create the company again. Refresh this page before retrying. ${refreshError?.message || ""}`.trim(),
         );
       }
     } catch (error: any) {
-      setErrorMessage(error?.message || "Unable to create the company.");
+      setErrorMessage(error?.message || "Unable to create the company account.");
     } finally {
       setCreating(false);
     }
@@ -259,7 +261,7 @@ export default function CompanyRegistryPage() {
         </div>
         {errorMessage ? <div style={warningStyle}>{errorMessage}</div> : null}
         <div style={warningStyle}>
-          Platform Administrator access is required. Company Administrator access does not grant visibility to other QualiSphere tenants.
+          Platform Administrator access is required. Customer account access does not grant visibility to other QualiSphere company accounts.
         </div>
       </main>
     );
@@ -272,7 +274,7 @@ export default function CompanyRegistryPage() {
           <div style={eyebrowStyle}>QUALISPHERE PLATFORM ADMINISTRATION</div>
           <h1 style={titleStyle}>Company Registry</h1>
           <p style={subtitleStyle}>
-            Provision and review customer tenants without exposing one company to another.
+            Provision and review independent customer company accounts and control the modules included in each subscription.
           </p>
         </div>
         <div style={headerActionsStyle}>
@@ -293,9 +295,9 @@ export default function CompanyRegistryPage() {
 
       {showCreate ? (
         <section style={cardStyle}>
-          <h2 style={sectionTitleStyle}>Create Company / Tenant</h2>
+          <h2 style={sectionTitleStyle}>Create Company Account</h2>
           <p style={helperStyle}>
-            Creating a company also creates its initial Company Administrator membership and enables the standard QualiSphere module set. This does not give the Company Administrator access to Platform Administration.
+            QualiSphere creates the company account, activates the customer's subscribed modules, and designates the initial Customer Contact. The customer then owns its QMS users, roles, and role assignments.
           </p>
           <form onSubmit={createTenant}>
             <div style={formGridStyle}>
@@ -303,14 +305,13 @@ export default function CompanyRegistryPage() {
               <Field label="Legal Name" value={form.legalName} onChange={(value) => setField("legalName", value)} />
               <Field label="Tenant Code *" value={form.tenantCode} onChange={(value) => setField("tenantCode", value.toUpperCase())} />
               <Field label="Tenant Slug *" value={form.slug} onChange={(value) => setField("slug", value.toLowerCase())} />
-              <Field label="Primary Contact Email" type="email" value={form.primaryContactEmail} onChange={(value) => setField("primaryContactEmail", value)} />
-              <Field label="Initial Company Administrator Email *" type="email" value={form.companyAdminEmail} onChange={(value) => setField("companyAdminEmail", value)} />
+              <Field label="Customer Contact Email *" type="email" value={form.customerContactEmail} onChange={(value) => setField("customerContactEmail", value)} />
               <Field label="Country Code" value={form.countryCode} onChange={(value) => setField("countryCode", value.toUpperCase())} />
               <Field label="Default Time Zone" value={form.defaultTimezone} onChange={(value) => setField("defaultTimezone", value)} />
             </div>
             <div style={{ marginTop: 20 }}>
               <button type="submit" style={primaryButtonStyle} disabled={creating}>
-                {creating ? "Creating Company..." : "Create Company"}
+                {creating ? "Creating Company..." : "Create Company Account"}
               </button>
             </div>
           </form>
@@ -320,8 +321,8 @@ export default function CompanyRegistryPage() {
       <section style={cardStyle}>
         <div style={sectionHeaderStyle}>
           <div>
-            <h2 style={sectionTitleStyle}>Registered Companies</h2>
-            <p style={helperStyle}>{tenants.length} tenant{tenants.length === 1 ? "" : "s"} registered.</p>
+            <h2 style={sectionTitleStyle}>Registered Company Accounts</h2>
+            <p style={helperStyle}>{tenants.length} company account{tenants.length === 1 ? "" : "s"} registered.</p>
           </div>
         </div>
 
@@ -333,7 +334,7 @@ export default function CompanyRegistryPage() {
                 <th style={thStyle}>Tenant Code</th>
                 <th style={thStyle}>Type</th>
                 <th style={thStyle}>Status</th>
-                <th style={thStyle}>Primary Contact</th>
+                <th style={thStyle}>Customer Contact</th>
                 <th style={thStyle}>Active Members</th>
                 <th style={thStyle}>Enabled Modules</th>
                 <th style={thStyle}>Action</th>
@@ -360,7 +361,7 @@ export default function CompanyRegistryPage() {
                 </tr>
               ))}
               {tenants.length === 0 ? (
-                <tr><td style={tdStyle} colSpan={8}>No companies found.</td></tr>
+                <tr><td style={tdStyle} colSpan={8}>No company accounts found.</td></tr>
               ) : null}
             </tbody>
           </table>
