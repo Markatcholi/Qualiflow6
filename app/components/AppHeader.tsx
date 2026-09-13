@@ -9,7 +9,7 @@ export default function AppHeader() {
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("");
   const [companyName, setCompanyName] = useState("");
-  const [isCustomerContact, setIsCustomerContact] = useState(false);
+  const [isCompanyAdministrator, setIsCompanyAdministrator] = useState(false);
 
   const isPlatformContext =
     pathname?.startsWith("/platform-admin") ||
@@ -20,7 +20,7 @@ export default function AppHeader() {
     const userEmail = String(userData?.user?.email || "").trim().toLowerCase();
     setEmail(userEmail);
     setCompanyName("");
-    setIsCustomerContact(false);
+    setIsCompanyAdministrator(false);
 
     if (!userEmail) {
       setRole("");
@@ -37,7 +37,7 @@ export default function AppHeader() {
 
     let membershipQuery = supabase
       .from("tenant_memberships")
-      .select("tenant_id,membership_status,user_email,tenants(company_name,slug,status)")
+      .select("tenant_id,membership_status,user_email,tenants(company_name,slug,status,is_internal)")
       .eq("membership_status", "active")
       .ilike("user_email", userEmail);
 
@@ -75,6 +75,7 @@ export default function AppHeader() {
       : membership.tenants;
     const tenantId = String(membership.tenant_id || "");
     const tenantName = String(tenant?.company_name || "");
+    const isInternalTenant = tenant?.is_internal === true;
 
     window.localStorage.setItem("qualisphere_active_tenant_id", tenantId);
     window.localStorage.setItem("qualisphere_active_tenant_name", tenantName);
@@ -82,8 +83,8 @@ export default function AppHeader() {
     window.localStorage.removeItem("qualisphere_active_tenant_role");
     setCompanyName(tenantName);
 
-    const [contactResult, roleAssignmentsResult] = await Promise.all([
-      supabase.rpc("qualisphere_is_customer_contact", { p_tenant_id: tenantId }),
+    const [companyAdminResult, roleAssignmentsResult] = await Promise.all([
+      supabase.rpc("qualisphere_is_company_admin", { p_tenant_id: tenantId }),
       supabase
         .from("tenant_user_role_assignments")
         .select("role_id,customer_roles(role_name,is_active)")
@@ -92,8 +93,8 @@ export default function AppHeader() {
         .eq("is_active", true),
     ]);
 
-    const contact = contactResult.data === true;
-    setIsCustomerContact(contact);
+    const companyAdmin = companyAdminResult.data === true;
+    setIsCompanyAdministrator(companyAdmin);
 
     const assignedRoleNames = (roleAssignmentsResult.data || [])
       .map((assignment: any) => {
@@ -109,18 +110,20 @@ export default function AppHeader() {
       return;
     }
 
-    const { data: legacyRole } = await supabase
-      .from("user_roles")
-      .select("role")
-      .eq("user_email", userEmail)
-      .maybeSingle();
+    if (isInternalTenant) {
+      const { data: legacyRole } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_email", userEmail)
+        .maybeSingle();
 
-    if (legacyRole?.role && tenantName.toLowerCase().includes("qualisphere")) {
-      setRole(legacyRole.role);
-      return;
+      if (legacyRole?.role) {
+        setRole(legacyRole.role);
+        return;
+      }
     }
 
-    setRole(contact ? "Customer Contact" : "QMS User");
+    setRole(companyAdmin ? "Company Administrator" : "QMS User");
   };
 
   const handleLogout = async () => {
@@ -158,8 +161,8 @@ export default function AppHeader() {
           Home
         </a>
 
-        {!isPlatformContext && isCustomerContact ? (
-          <a href="/company-administration/roles" style={headerLinkStyle}>
+        {!isPlatformContext && isCompanyAdministrator ? (
+          <a href="/company-administration" style={headerLinkStyle}>
             Company Administration
           </a>
         ) : null}
