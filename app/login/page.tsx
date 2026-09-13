@@ -55,6 +55,25 @@ export default function LoginPage() {
       window.localStorage.removeItem("qualisphere_active_tenant_role");
 
       if (activeMemberships.length === 0) {
+        // QualiSphere Internal is the preserved QualiSphere 1.0 development /
+        // validation environment, not a customer Company Account. Legacy active
+        // users remain governed by the original user_roles administration. This
+        // controlled bridge creates only the technical Internal access record
+        // required by the tenant-aware shell; it does not replace legacy roles,
+        // assignments, record ownership, or historical data.
+        const { data: internalAccess, error: internalAccessError } = await supabase.rpc(
+          "qualisphere_bridge_internal_legacy_access",
+        );
+
+        if (!internalAccessError && Array.isArray(internalAccess) && internalAccess.length > 0) {
+          const internal = internalAccess[0] as any;
+          window.localStorage.setItem("qualisphere_active_tenant_id", String(internal.tenant_id || ""));
+          window.localStorage.setItem("qualisphere_active_tenant_name", String(internal.company_name || "QualiSphere Development / Validation"));
+          window.localStorage.setItem("qualisphere_active_tenant_slug", String(internal.slug || ""));
+          window.location.href = "/workspace";
+          return;
+        }
+
         await supabase.auth.signOut();
         alert("Your login is valid, but you do not have an active QualiSphere Company Account membership. Contact your organization's QualiSphere Customer Contact.");
         return;
