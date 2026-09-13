@@ -51,6 +51,7 @@ export default function CompanyUserAdministration({ tenantId, administratorEmail
   const [savingUser, setSavingUser] = useState(false);
   const [savingAssignment, setSavingAssignment] = useState(false);
   const [savingRole, setSavingRole] = useState(false);
+  const [activatingEmail, setActivatingEmail] = useState("");
 
   const inputStyle: React.CSSProperties = { padding: 8, marginRight: 8, marginBottom: 8 };
   const selectStyle: React.CSSProperties = { padding: 8, marginRight: 8, marginBottom: 8, minWidth: 190 };
@@ -126,10 +127,47 @@ export default function CompanyUserAdministration({ tenantId, administratorEmail
     setNewUserStatus("active");
     setMessage(
       newUserStatus === "active"
-        ? "Company user profile and Company Account access updated successfully."
+        ? "Company user profile and Company Account access updated successfully. Assign the required access role(s), then send activation."
         : "Company user profile updated and Company Account access deactivated."
     );
     await load();
+  };
+
+  const sendActivation = async (userEmail: string) => {
+    const normalizedEmail = String(userEmail || "").trim().toLowerCase();
+    if (!normalizedEmail) return;
+
+    setMessage("");
+    setActivatingEmail(normalizedEmail);
+
+    try {
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !sessionData.session?.access_token) {
+        setMessage("Your QualiSphere session is no longer available. Sign in again and retry activation.");
+        return;
+      }
+
+      const response = await fetch("/api/company/invite-user", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${sessionData.session.access_token}`,
+        },
+        body: JSON.stringify({ tenantId, email: normalizedEmail }),
+      });
+
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setMessage(result?.error || "Unable to send user activation.");
+        return;
+      }
+
+      setMessage(result?.message || "User activation processed successfully.");
+    } catch (error: any) {
+      setMessage(error?.message || "Unable to send user activation.");
+    } finally {
+      setActivatingEmail("");
+    }
   };
 
   const saveRole = async () => {
@@ -199,7 +237,7 @@ export default function CompanyUserAdministration({ tenantId, administratorEmail
     }
 
     setSelectedRoleId("");
-    setMessage("Module access role assigned successfully.");
+    setMessage("Module access role assigned successfully. You may now send account activation to this user.");
     await load();
   };
 
@@ -223,7 +261,7 @@ export default function CompanyUserAdministration({ tenantId, administratorEmail
     <section id="user-administration" style={{ border: "1px solid #ccc", padding: 16, marginBottom: 20, borderRadius: 8 }}>
       <h2>User Administration</h2>
       <p style={{ color: "#4b5563" }}>
-        Maintain users for this Company Account and assign customer-controlled QualiSphere access roles. Users and assignments from other Company Accounts are never displayed here.
+        Maintain users for this Company Account, assign customer-controlled QualiSphere access roles, and send secure account activation. Users and assignments from other Company Accounts are never displayed here.
       </p>
 
       {message ? (
@@ -241,6 +279,9 @@ export default function CompanyUserAdministration({ tenantId, administratorEmail
         <option value="inactive">Inactive</option>
       </select>
       <button onClick={saveUser} disabled={savingUser}>{savingUser ? "Saving..." : "Add / Update User"}</button>
+      <p style={{ marginTop: 4, color: "#64748b", fontSize: 13 }}>
+        Recommended sequence: add the user → assign the required role(s) → send activation. QualiSphere never emails a temporary password.
+      </p>
 
       <h3 style={{ marginTop: 24 }}>Assign Module Access</h3>
       <select value={selectedUserEmail} onChange={(e) => setSelectedUserEmail(e.target.value)} style={selectStyle}>
@@ -290,7 +331,11 @@ export default function CompanyUserAdministration({ tenantId, administratorEmail
           </thead>
           <tbody>
             {users.map((user) => {
-              const userAssignments = assignmentsByUser.get(user.user_email.toLowerCase()) || [];
+              const normalizedUserEmail = user.user_email.toLowerCase();
+              const userAssignments = assignmentsByUser.get(normalizedUserEmail) || [];
+              const canActivate = user.account_status === "active" && userAssignments.length > 0;
+              const isActivating = activatingEmail === normalizedUserEmail;
+
               return (
                 <tr key={user.id}>
                   <td style={{ padding: 10, borderBottom: "1px solid #e5e7eb" }}>{user.user_email}</td>
@@ -312,13 +357,22 @@ export default function CompanyUserAdministration({ tenantId, administratorEmail
                     )}
                   </td>
                   <td style={{ padding: 10, borderBottom: "1px solid #e5e7eb" }}>
-                    <button onClick={() => {
-                      setNewUserEmail(user.user_email);
-                      setNewUserJobTitle(user.job_title || "");
-                      setNewUserDepartment(user.department || "");
-                      setNewUserStatus(user.account_status || "active");
-                      document.getElementById("user-administration")?.scrollIntoView({ behavior: "smooth" });
-                    }}>Edit</button>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <button onClick={() => {
+                        setNewUserEmail(user.user_email);
+                        setNewUserJobTitle(user.job_title || "");
+                        setNewUserDepartment(user.department || "");
+                        setNewUserStatus(user.account_status || "active");
+                        document.getElementById("user-administration")?.scrollIntoView({ behavior: "smooth" });
+                      }}>Edit</button>
+                      <button
+                        onClick={() => sendActivation(user.user_email)}
+                        disabled={!canActivate || Boolean(activatingEmail)}
+                        title={!canActivate ? "User must be Active and have at least one assigned access role before activation." : "Send secure QualiSphere account activation"}
+                      >
+                        {isActivating ? "Sending..." : "Send Activation"}
+                      </button>
+                    </div>
                   </td>
                 </tr>
               );
