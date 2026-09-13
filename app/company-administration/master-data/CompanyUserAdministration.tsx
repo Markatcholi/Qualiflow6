@@ -106,18 +106,13 @@ export default function CompanyUserAdministration({ tenantId, administratorEmail
     }
 
     setSavingUser(true);
-    const { error } = await supabase.from("tenant_user_profiles").upsert(
-      {
-        tenant_id: tenantId,
-        user_email: normalizedEmail,
-        job_title: newUserJobTitle.trim() || null,
-        department: newUserDepartment.trim() || null,
-        account_status: newUserStatus,
-        updated_at: new Date().toISOString(),
-        updated_by: administratorEmail,
-      },
-      { onConflict: "tenant_id,user_email" }
-    );
+    const { error } = await supabase.rpc("qualisphere_set_company_user", {
+      p_tenant_id: tenantId,
+      p_user_email: normalizedEmail,
+      p_job_title: newUserJobTitle.trim() || null,
+      p_department: newUserDepartment.trim() || null,
+      p_account_status: newUserStatus,
+    });
     setSavingUser(false);
 
     if (error) {
@@ -129,7 +124,11 @@ export default function CompanyUserAdministration({ tenantId, administratorEmail
     setNewUserJobTitle("");
     setNewUserDepartment("");
     setNewUserStatus("active");
-    setMessage("Company user profile updated successfully.");
+    setMessage(
+      newUserStatus === "active"
+        ? "Company user profile and Company Account access updated successfully."
+        : "Company user profile updated and Company Account access deactivated."
+    );
     await load();
   };
 
