@@ -65,7 +65,7 @@ export default function HomePage() {
   const [companyName, setCompanyName] = useState("");
   const [activeTenantId, setActiveTenantId] = useState("");
   const [isInternalTenant, setIsInternalTenant] = useState(false);
-  const [isCustomerContact, setIsCustomerContact] = useState(false);
+  const [isCompanyAdministrator, setIsCompanyAdministrator] = useState(false);
   const [enabledModules, setEnabledModules] = useState<Set<string>>(new Set());
   const [workItems, setWorkItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -143,7 +143,7 @@ export default function HomePage() {
       window.localStorage.removeItem("qualisphere_active_tenant_role");
 
       const [
-        contactResponse,
+        companyAdminResponse,
         roleAssignmentResponse,
         moduleResponse,
         taskResponse,
@@ -151,7 +151,7 @@ export default function HomePage() {
         notificationResponse,
         legacyRoleResponse,
       ] = await Promise.all([
-        supabase.rpc("qualisphere_is_customer_contact", { p_tenant_id: tenantId }),
+        supabase.rpc("qualisphere_is_company_admin", { p_tenant_id: tenantId }),
         supabase
           .from("tenant_user_role_assignments")
           .select("role_id,customer_roles(role_name,is_active)")
@@ -186,8 +186,8 @@ export default function HomePage() {
           .maybeSingle(),
       ]);
 
-      const contactAuthority = contactResponse.data === true;
-      setIsCustomerContact(contactAuthority);
+      const companyAdminAuthority = companyAdminResponse.data === true;
+      setIsCompanyAdministrator(companyAdminAuthority);
 
       const roleNames = (roleAssignmentResponse.data || [])
         .map((assignment: any) => {
@@ -203,7 +203,7 @@ export default function HomePage() {
       } else if (internalTenant && legacyRoleResponse.data?.role) {
         setRole(legacyRoleResponse.data.role);
       } else {
-        setRole(contactAuthority ? "Customer Contact" : "QMS User");
+        setRole(companyAdminAuthority ? "Company Administrator" : "QMS User");
       }
 
       const entitlementSet = new Set(
@@ -481,8 +481,14 @@ export default function HomePage() {
         { label: "Approval Matrix", href: "/approval-matrix" },
         { label: "Company Settings", href: "/admin/company-settings" },
       ]
-    : isCustomerContact
-      ? [{ label: "Role Management", href: "/company-administration/roles" }]
+    : isCompanyAdministrator
+      ? [
+          { label: "Company Administration", href: "/company-administration" },
+          { label: "Admin Master Data", href: "/company-administration/master-data" },
+          { label: "Approval Matrix", href: "/company-administration/approval-matrix" },
+          { label: "Company Settings", href: "/company-administration/settings" },
+          { label: "NCMR Risk & CAPA Governance", href: "/company-administration/ncmr-risk-governance" },
+        ]
       : [];
 
   return (
@@ -503,8 +509,8 @@ export default function HomePage() {
         </div>
 
         <div style={headerActionRowStyle}>
-          {isCustomerContact ? (
-            <a href="/company-administration/roles" style={companyAdminButtonStyle}>
+          {isCompanyAdministrator ? (
+            <a href="/company-administration" style={companyAdminButtonStyle}>
               Company Administration
             </a>
           ) : null}
