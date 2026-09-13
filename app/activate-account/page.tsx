@@ -25,7 +25,7 @@ export default function ActivateAccountPage() {
         const session = data.session;
         if (!session?.user) {
           setError(
-            "This activation link is invalid, expired, or has already been used. Request a new activation email from your QualiSphere administrator.",
+            "This activation link is invalid, expired, or has already been used. Request a new activation email from your QualiSphere Company Administrator.",
           );
           return;
         }
@@ -82,9 +82,9 @@ export default function ActivateAccountPage() {
     <main style={pageStyle}>
       <section style={cardStyle}>
         <div style={eyebrowStyle}>QUALISPHERE ACCOUNT ACTIVATION</div>
-        <h1 style={titleStyle}>Activate Your Company Admin Account</h1>
+        <h1 style={titleStyle}>Activate Your QualiSphere Account</h1>
         <p style={subtitleStyle}>
-          Step 1 verifies your email through the secure invitation link. Step 2 creates your private QualiSphere password.
+          Step 1 verifies your email through the secure invitation link. Step 2 creates your private QualiSphere password. Your Company Account access and assigned roles are managed separately by your Company Administrator.
         </p>
 
         {checking ? <div style={noticeStyle}>Validating activation link...</div> : null}
