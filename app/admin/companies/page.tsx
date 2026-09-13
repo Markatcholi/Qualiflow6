@@ -69,34 +69,19 @@ export default function CompanyRegistryPage() {
 
     try {
       const { data: authData, error: authError } = await supabase.auth.getUser();
-
       if (authError) {
-        setUserEmail("");
-        setIsPlatformAdmin(false);
         setErrorMessage("Unable to verify your QualiSphere session. Please sign in again.");
         return;
       }
 
       const email = authData?.user?.email || "";
       setUserEmail(email);
+      if (!email) return;
 
-      if (!email) {
+      const { data: adminData, error: adminError } = await supabase.rpc("is_platform_admin");
+      if (adminError || adminData !== true) {
         setIsPlatformAdmin(false);
-        return;
-      }
-
-      const { data: adminData, error: adminError } = await supabase.rpc(
-        "is_platform_admin",
-      );
-
-      if (adminError) {
-        setIsPlatformAdmin(false);
-        setErrorMessage("Unable to verify Platform Administrator access.");
-        return;
-      }
-
-      if (adminData !== true) {
-        setIsPlatformAdmin(false);
+        if (adminError) setErrorMessage("Unable to verify Platform Administrator access.");
         return;
       }
 
@@ -112,12 +97,8 @@ export default function CompanyRegistryPage() {
   const loadRegistry = async () => {
     const [tenantResult, membershipResult, moduleResult] = await Promise.all([
       supabase.from("tenants").select("*").order("company_name"),
-      supabase
-        .from("tenant_memberships")
-        .select("tenant_id,user_email,membership_role,membership_status"),
-      supabase
-        .from("tenant_module_access")
-        .select("id,tenant_id,module_code,is_enabled"),
+      supabase.from("tenant_memberships").select("tenant_id,user_email,membership_role,membership_status"),
+      supabase.from("tenant_module_access").select("id,tenant_id,module_code,is_enabled"),
     ]);
 
     if (tenantResult.error) throw tenantResult.error;
@@ -128,6 +109,16 @@ export default function CompanyRegistryPage() {
     setMemberships((membershipResult.data || []) as Membership[]);
     setModules((moduleResult.data || []) as ModuleAccess[]);
   };
+
+  const developmentEnvironments = useMemo(
+    () => tenants.filter((tenant) => tenant.is_internal),
+    [tenants],
+  );
+
+  const customerTenants = useMemo(
+    () => tenants.filter((tenant) => !tenant.is_internal),
+    [tenants],
+  );
 
   const memberCounts = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -142,9 +133,7 @@ export default function CompanyRegistryPage() {
   const moduleCounts = useMemo(() => {
     const counts: Record<string, number> = {};
     modules.forEach((module) => {
-      if (module.is_enabled) {
-        counts[module.tenant_id] = (counts[module.tenant_id] || 0) + 1;
-      }
+      if (module.is_enabled) counts[module.tenant_id] = (counts[module.tenant_id] || 0) + 1;
     });
     return counts;
   }, [modules]);
@@ -155,24 +144,18 @@ export default function CompanyRegistryPage() {
 
   const autoTenantCode = () => {
     if (form.tenantCode.trim()) return;
-    const value = form.companyName
-      .trim()
-      .toUpperCase()
-      .replace(/[^A-Z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .slice(0, 40);
-    setField("tenantCode", value);
+    setField(
+      "tenantCode",
+      form.companyName.trim().toUpperCase().replace(/[^A-Z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40),
+    );
   };
 
   const autoSlug = () => {
     if (form.slug.trim()) return;
-    const value = form.companyName
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .slice(0, 60);
-    setField("slug", value);
+    setField(
+      "slug",
+      form.companyName.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60),
+    );
   };
 
   const toggleModule = (moduleCode: string) => {
@@ -191,9 +174,7 @@ export default function CompanyRegistryPage() {
 
     if (existingError) throw existingError;
 
-    const existingByCode = new Map(
-      (existingRows || []).map((row: any) => [String(row.module_code), row]),
-    );
+    const existingByCode = new Map((existingRows || []).map((row: any) => [String(row.module_code), row]));
     const changedAt = new Date().toISOString();
 
     for (const moduleDefinition of PLATFORM_MODULE_CATALOG) {
@@ -203,11 +184,7 @@ export default function CompanyRegistryPage() {
       if (existing?.id) {
         const { error } = await supabase
           .from("tenant_module_access")
-          .update({
-            is_enabled: enabled,
-            enabled_by: userEmail,
-            enabled_at: changedAt,
-          })
+          .update({ is_enabled: enabled, enabled_by: userEmail, enabled_at: changedAt })
           .eq("id", existing.id);
         if (error) throw error;
       } else {
@@ -228,30 +205,12 @@ export default function CompanyRegistryPage() {
     setMessage("");
     setErrorMessage("");
 
-    if (!form.companyName.trim()) {
-      setErrorMessage("Company name is required.");
-      return;
-    }
-    if (!form.tenantCode.trim()) {
-      setErrorMessage("Tenant code is required.");
-      return;
-    }
-    if (!form.slug.trim()) {
-      setErrorMessage("Tenant slug is required.");
-      return;
-    }
-    if (!form.customerContactEmail.trim()) {
-      setErrorMessage("Customer Contact email is required.");
-      return;
-    }
-    if (!form.initialCompanyAdminEmail.trim()) {
-      setErrorMessage("Initial Company Administrator email is required.");
-      return;
-    }
-    if (selectedModules.length === 0) {
-      setErrorMessage("Select at least one subscribed QualiSphere module.");
-      return;
-    }
+    if (!form.companyName.trim()) return setErrorMessage("Company name is required.");
+    if (!form.tenantCode.trim()) return setErrorMessage("Tenant code is required.");
+    if (!form.slug.trim()) return setErrorMessage("Tenant slug is required.");
+    if (!form.customerContactEmail.trim()) return setErrorMessage("Customer Contact email is required.");
+    if (!form.initialCompanyAdminEmail.trim()) return setErrorMessage("Initial Company Administrator email is required.");
+    if (selectedModules.length === 0) return setErrorMessage("Select at least one subscribed QualiSphere module.");
 
     setCreating(true);
 
@@ -269,19 +228,15 @@ export default function CompanyRegistryPage() {
         p_default_timezone: form.defaultTimezone.trim() || "America/Chicago",
       });
 
-      if (error) {
-        setErrorMessage(error.message);
-        return;
-      }
+      if (error) return setErrorMessage(error.message);
 
       const tenantId = String(data || "");
-
       try {
         await saveSubscriptionModules(tenantId);
       } catch (moduleError: any) {
-        setMessage(`Company account created successfully. Tenant ID: ${tenantId}`);
+        setMessage(`Customer Company Account created successfully. Tenant ID: ${tenantId}`);
         setErrorMessage(
-          `The Company Account was created, but its module subscription could not be saved. Do not create the company again. Open the Company Account and retry the subscription assignment. ${moduleError?.message || ""}`.trim(),
+          `The customer account was created, but its module subscription could not be saved. Do not create the company again. Open the Company Account and retry the subscription assignment. ${moduleError?.message || ""}`.trim(),
         );
         await loadRegistry();
         return;
@@ -291,26 +246,17 @@ export default function CompanyRegistryPage() {
       setSelectedModules([]);
       setShowCreate(false);
       setMessage(
-        `Company account created successfully. Master Data Administration is included and initial administrative authority was assigned to ${initialAdminEmail}. ${selectedModules.length} subscribed module${selectedModules.length === 1 ? "" : "s"} enabled. Tenant ID: ${tenantId}`,
+        `Customer Company Account created successfully. Controlled starter Master Data was provisioned and Company Administrator authority was assigned to ${initialAdminEmail}.`,
       );
-
-      try {
-        await loadRegistry();
-      } catch (refreshError: any) {
-        setErrorMessage(
-          `The company account and subscription were created successfully, but the registry could not refresh. Do not create the company again. Refresh this page before retrying. ${refreshError?.message || ""}`.trim(),
-        );
-      }
+      await loadRegistry();
     } catch (error: any) {
-      setErrorMessage(error?.message || "Unable to create the company account.");
+      setErrorMessage(error?.message || "Unable to create the customer Company Account.");
     } finally {
       setCreating(false);
     }
   };
 
-  if (loading) {
-    return <main style={pageStyle}>Loading Company Registry...</main>;
-  }
+  if (loading) return <main style={pageStyle}>Loading Company Registry...</main>;
 
   if (!userEmail) {
     return (
@@ -334,9 +280,7 @@ export default function CompanyRegistryPage() {
           <Link href="/" style={linkButtonStyle}>Home</Link>
         </div>
         {errorMessage ? <div style={warningStyle}>{errorMessage}</div> : null}
-        <div style={warningStyle}>
-          Platform Administrator access is required. Customer account access does not grant visibility to other QualiSphere company accounts.
-        </div>
+        <div style={warningStyle}>Platform Administrator access is required.</div>
       </main>
     );
   }
@@ -350,30 +294,57 @@ export default function CompanyRegistryPage() {
           <div style={eyebrowStyle}>QUALISPHERE PLATFORM ADMINISTRATION</div>
           <h1 style={titleStyle}>Company Registry</h1>
           <p style={subtitleStyle}>
-            Create independent Company Accounts, establish the initial administrative handoff, and assign the QualiSphere modules included in each subscription.
+            Manage customer Company Accounts separately from the preserved QualiSphere Development / Validation environment.
           </p>
         </div>
         <div style={headerActionsStyle}>
           <Link href="/admin/company-settings" style={linkButtonStyle}>Company Settings</Link>
           <Link href="/" style={linkButtonStyle}>Home</Link>
           <button style={primaryButtonStyle} onClick={() => setShowCreate((value) => !value)}>
-            {showCreate ? "Cancel" : "Create Company"}
+            {showCreate ? "Cancel" : "Create Customer Company"}
           </button>
         </div>
       </div>
 
-      <div style={identityBarStyle}>
-        <strong>Platform Administrator:</strong> {userEmail}
-      </div>
-
+      <div style={identityBarStyle}><strong>Platform Administrator:</strong> {userEmail}</div>
       {message ? <div style={messageStyle}>{message}</div> : null}
       {errorMessage ? <div style={warningStyle}>{errorMessage}</div> : null}
 
+      {developmentEnvironments.length > 0 ? (
+        <section style={developmentCardStyle}>
+          <div style={sectionHeaderStyle}>
+            <div>
+              <div style={developmentLabelStyle}>QUALISPHERE PRODUCT ENVIRONMENT</div>
+              <h2 style={sectionTitleStyle}>Development / Validation Environment</h2>
+              <p style={helperStyle}>
+                Original QualiSphere 1.0 is preserved for development, validation, design-freeze completion, and regression testing. It is not a customer Company Account and is not re-provisioned from the customer baseline.
+              </p>
+            </div>
+          </div>
+          <div style={{ overflowX: "auto" }}>
+            <table style={tableStyle}>
+              <thead><tr><th style={thStyle}>Environment</th><th style={thStyle}>Code</th><th style={thStyle}>Status</th><th style={thStyle}>Legacy Access</th><th style={thStyle}>Action</th></tr></thead>
+              <tbody>
+                {developmentEnvironments.map((tenant) => (
+                  <tr key={tenant.id}>
+                    <td style={tdStyle}><strong>{tenant.company_name}</strong><div style={smallStyle}>Original QualiSphere 1.0</div></td>
+                    <td style={tdStyle}>{tenant.tenant_code}</td>
+                    <td style={tdStyle}><StatusBadge status={tenant.status} /></td>
+                    <td style={tdStyle}>{memberCounts[tenant.id] || 0} active technical access record{(memberCounts[tenant.id] || 0) === 1 ? "" : "s"}</td>
+                    <td style={tdStyle}><Link href="/admin/master-data" style={actionLinkStyle}>Open Development Master Data</Link></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ) : null}
+
       {showCreate ? (
         <section style={cardStyle}>
-          <h2 style={sectionTitleStyle}>Create Company Account</h2>
+          <h2 style={sectionTitleStyle}>Create Customer Company Account</h2>
           <p style={helperStyle}>
-            Create the independent Company Account, identify the relationship contact, designate the Initial Company Administrator who receives Master Data Administration authority, and assign only the operational modules included in the customer's subscription.
+            Each new customer receives an independent Company Account provisioned from the controlled QualiSphere starter baseline. Development users, historical records, tasks, approvals, and validation transactions are never copied.
           </p>
           <form onSubmit={createTenant}>
             <div style={formGridStyle}>
@@ -388,16 +359,14 @@ export default function CompanyRegistryPage() {
             </div>
 
             <div style={handoffStyle}>
-              <strong>Administrative handoff:</strong> The Customer Contact is the relationship contact and receives no automatic QMS authority. The Initial Company Administrator receives the tenant-scoped Master Data Administration authority at account creation. Both fields may use the same person when the customer chooses.
+              <strong>Administrative handoff:</strong> The Customer Contact is the relationship contact. The Initial Company Administrator receives tenant-scoped Master Data Administration authority. Customer users and assignments remain customer-specific.
             </div>
 
             <div style={subscriptionSectionStyle}>
               <div style={subscriptionHeaderStyle}>
                 <div>
                   <h3 style={subscriptionTitleStyle}>Subscribed Modules *</h3>
-                  <p style={subscriptionHelperStyle}>
-                    Master Data Administration is provisioned automatically with every Company Account and is not a subscription checkbox.
-                  </p>
+                  <p style={subscriptionHelperStyle}>Master Data Administration is included with every customer Company Account.</p>
                 </div>
                 <div style={subscriptionActionsStyle}>
                   <button type="button" style={secondaryButtonStyle} onClick={() => setSelectedModules(PLATFORM_MODULE_CATALOG.map((module) => module.code))}>Select All</button>
@@ -411,11 +380,7 @@ export default function CompanyRegistryPage() {
                   <div style={moduleGridStyle}>
                     {PLATFORM_MODULE_CATALOG.filter((module) => module.group === group).map((module) => (
                       <label key={module.code} style={moduleOptionStyle}>
-                        <input
-                          type="checkbox"
-                          checked={selectedModules.includes(module.code)}
-                          onChange={() => toggleModule(module.code)}
-                        />
+                        <input type="checkbox" checked={selectedModules.includes(module.code)} onChange={() => toggleModule(module.code)} />
                         <span>{module.label}</span>
                       </label>
                     ))}
@@ -427,7 +392,7 @@ export default function CompanyRegistryPage() {
 
             <div style={{ marginTop: 20 }}>
               <button type="submit" style={primaryButtonStyle} disabled={creating}>
-                {creating ? "Creating Company..." : "Create Company Account"}
+                {creating ? "Creating Customer Company..." : "Create Customer Company Account"}
               </button>
             </div>
           </form>
@@ -437,48 +402,29 @@ export default function CompanyRegistryPage() {
       <section style={cardStyle}>
         <div style={sectionHeaderStyle}>
           <div>
-            <h2 style={sectionTitleStyle}>Registered Company Accounts</h2>
-            <p style={helperStyle}>{tenants.length} company account{tenants.length === 1 ? "" : "s"} registered.</p>
+            <h2 style={sectionTitleStyle}>Customer Company Accounts</h2>
+            <p style={helperStyle}>{customerTenants.length} customer company account{customerTenants.length === 1 ? "" : "s"} registered.</p>
           </div>
         </div>
 
         <div style={{ overflowX: "auto" }}>
           <table style={tableStyle}>
             <thead>
-              <tr>
-                <th style={thStyle}>Company</th>
-                <th style={thStyle}>Tenant Code</th>
-                <th style={thStyle}>Type</th>
-                <th style={thStyle}>Status</th>
-                <th style={thStyle}>Customer Contact</th>
-                <th style={thStyle}>Active Members</th>
-                <th style={thStyle}>Subscribed Modules</th>
-                <th style={thStyle}>Action</th>
-              </tr>
+              <tr><th style={thStyle}>Company</th><th style={thStyle}>Tenant Code</th><th style={thStyle}>Status</th><th style={thStyle}>Customer Contact</th><th style={thStyle}>Active Members</th><th style={thStyle}>Subscribed Modules</th><th style={thStyle}>Action</th></tr>
             </thead>
             <tbody>
-              {tenants.map((tenant) => (
+              {customerTenants.map((tenant) => (
                 <tr key={tenant.id}>
-                  <td style={tdStyle}>
-                    <strong>{tenant.company_name}</strong>
-                    {tenant.legal_name && tenant.legal_name !== tenant.company_name ? (
-                      <div style={smallStyle}>{tenant.legal_name}</div>
-                    ) : null}
-                  </td>
+                  <td style={tdStyle}><strong>{tenant.company_name}</strong>{tenant.legal_name && tenant.legal_name !== tenant.company_name ? <div style={smallStyle}>{tenant.legal_name}</div> : null}</td>
                   <td style={tdStyle}>{tenant.tenant_code}</td>
-                  <td style={tdStyle}>{tenant.is_internal ? "Development / Validation" : "Customer"}</td>
                   <td style={tdStyle}><StatusBadge status={tenant.status} /></td>
                   <td style={tdStyle}>{tenant.primary_contact_email || "N/A"}</td>
                   <td style={tdStyle}>{memberCounts[tenant.id] || 0}</td>
                   <td style={tdStyle}>{moduleCounts[tenant.id] || 0}</td>
-                  <td style={tdStyle}>
-                    <Link href={`/admin/companies/${tenant.id}`} style={actionLinkStyle}>Open Company</Link>
-                  </td>
+                  <td style={tdStyle}><Link href={`/admin/companies/${tenant.id}`} style={actionLinkStyle}>Open Company</Link></td>
                 </tr>
               ))}
-              {tenants.length === 0 ? (
-                <tr><td style={tdStyle} colSpan={8}>No company accounts found.</td></tr>
-              ) : null}
+              {customerTenants.length === 0 ? <tr><td style={tdStyle} colSpan={7}>No customer Company Accounts found.</td></tr> : null}
             </tbody>
           </table>
         </div>
@@ -488,12 +434,7 @@ export default function CompanyRegistryPage() {
 }
 
 function Field({ label, value, onChange, onBlur, type = "text" }: { label: string; value: string; onChange: (value: string) => void; onBlur?: () => void; type?: string }) {
-  return (
-    <label style={fieldStyle}>
-      <span style={labelStyle}>{label}</span>
-      <input type={type} value={value} onChange={(event) => onChange(event.target.value)} onBlur={onBlur} style={inputStyle} />
-    </label>
-  );
+  return <label style={fieldStyle}><span style={labelStyle}>{label}</span><input type={type} value={value} onChange={(event) => onChange(event.target.value)} onBlur={onBlur} style={inputStyle} /></label>;
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -508,6 +449,8 @@ const eyebrowStyle: React.CSSProperties = { fontSize: 12, fontWeight: 900, lette
 const titleStyle: React.CSSProperties = { margin: "6px 0 4px", fontSize: 36 };
 const subtitleStyle: React.CSSProperties = { margin: 0, color: "#475569", maxWidth: 760, lineHeight: 1.5 };
 const cardStyle: React.CSSProperties = { background: "white", border: "1px solid #dbe3ef", borderRadius: 16, padding: 24, marginBottom: 22, boxShadow: "0 8px 22px rgba(15,23,42,0.05)" };
+const developmentCardStyle: React.CSSProperties = { ...cardStyle, border: "1px solid #93c5fd", background: "#f8fbff" };
+const developmentLabelStyle: React.CSSProperties = { fontSize: 11, fontWeight: 900, letterSpacing: "0.12em", color: "#1d4ed8", marginBottom: 6 };
 const sectionHeaderStyle: React.CSSProperties = { display: "flex", justifyContent: "space-between", gap: 16, alignItems: "center", marginBottom: 14 };
 const sectionTitleStyle: React.CSSProperties = { margin: 0, fontSize: 24 };
 const helperStyle: React.CSSProperties = { color: "#64748b", lineHeight: 1.5, margin: "8px 0 18px" };
@@ -521,7 +464,7 @@ const inputStyle: React.CSSProperties = { width: "100%", boxSizing: "border-box"
 const primaryButtonStyle: React.CSSProperties = { border: 0, borderRadius: 9, background: "#2563eb", color: "white", padding: "11px 17px", fontWeight: 800, cursor: "pointer" };
 const secondaryButtonStyle: React.CSSProperties = { border: "1px solid #cbd5e1", borderRadius: 8, background: "white", color: "#334155", padding: "8px 11px", fontWeight: 800, cursor: "pointer" };
 const linkButtonStyle: React.CSSProperties = { border: "1px solid #cbd5e1", borderRadius: 9, background: "white", color: "#0f172a", padding: "10px 15px", fontWeight: 800, textDecoration: "none" };
-const tableStyle: React.CSSProperties = { width: "100%", borderCollapse: "collapse", minWidth: 1050 };
+const tableStyle: React.CSSProperties = { width: "100%", borderCollapse: "collapse", minWidth: 900 };
 const thStyle: React.CSSProperties = { textAlign: "left", borderBottom: "1px solid #cbd5e1", padding: "12px 10px", background: "#f8fafc", fontSize: 13 };
 const tdStyle: React.CSSProperties = { borderBottom: "1px solid #e2e8f0", padding: "14px 10px", verticalAlign: "top", fontSize: 14 };
 const smallStyle: React.CSSProperties = { fontSize: 12, color: "#64748b", marginTop: 4 };
