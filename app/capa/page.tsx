@@ -123,20 +123,19 @@ export default function CapaPage() {
       return;
     }
 
-    const { data: ownerUser, error: ownerValidationError } = await supabase
-      .from("user_roles")
-      .select("user_email")
-      .eq("user_email", normalizedOwner)
-      .maybeSingle();
+    const { data: ownerIsValid, error: ownerValidationError } = await supabase.rpc(
+      "qualisphere_validate_capa_user",
+      { p_user_email: normalizedOwner }
+    );
 
     if (ownerValidationError) {
       alert(ownerValidationError.message);
       return;
     }
 
-    if (!ownerUser?.user_email) {
+    if (ownerIsValid !== true) {
       alert(
-        "The selected CAPA owner is not a valid QualiSphere user. Please select a valid user before creating this CAPA."
+        "The selected CAPA owner is not an active QualiSphere user for this Company Account. Please select a valid user before creating this CAPA."
       );
       return;
     }
