@@ -1,6 +1,7 @@
 -- QualiSphere CAPA tenant-aware user validation
 -- Customer Company Accounts validate CAPA users only against their own active tenant directory.
 -- QualiSphere Internal preserves legacy user_roles validation.
+-- UUID tenant resolution intentionally avoids aggregate functions such as min(uuid).
 
 create or replace function public.qualisphere_validate_capa_user(p_user_email text)
 returns boolean
@@ -16,14 +17,25 @@ declare
 begin
   if auth.uid() is null or v_email='' then return false; end if;
 
-  select count(distinct tm.tenant_id),min(tm.tenant_id)
-    into v_count,v_tenant
+  select count(distinct tm.tenant_id)
+    into v_count
   from public.tenant_memberships tm
   where tm.user_id=auth.uid()
     and tm.is_active=true
     and public.qualisphere_tenant_module_enabled(tm.tenant_id,'capa');
 
-  if v_count<>1 or v_tenant is null then return false; end if;
+  if v_count<>1 then return false; end if;
+
+  select tm.tenant_id
+    into v_tenant
+  from public.tenant_memberships tm
+  where tm.user_id=auth.uid()
+    and tm.is_active=true
+    and public.qualisphere_tenant_module_enabled(tm.tenant_id,'capa')
+  group by tm.tenant_id
+  limit 1;
+
+  if v_tenant is null then return false; end if;
 
   select coalesce(t.is_internal,false) into v_is_internal
   from public.tenants t where t.id=v_tenant;
