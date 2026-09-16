@@ -16,11 +16,17 @@ as $$
 declare v_tenant uuid; v_count integer;
 begin
  if new.tenant_id is not null and exists(select 1 from public.tenants t where t.id=new.tenant_id) then return new; end if;
- select count(distinct tm.tenant_id),min(tm.tenant_id) into v_count,v_tenant
+ select count(distinct tm.tenant_id) into v_count
  from public.tenant_memberships tm
  where tm.user_id=auth.uid() and tm.is_active=true
    and public.qualisphere_tenant_module_enabled(tm.tenant_id,'capa');
- if v_count<>1 or v_tenant is null then raise exception 'Unable to resolve a unique active CAPA Company Account.'; end if;
+ if v_count<>1 then raise exception 'Unable to resolve a unique active CAPA Company Account.'; end if;
+ select tm.tenant_id into v_tenant
+ from public.tenant_memberships tm
+ where tm.user_id=auth.uid() and tm.is_active=true
+   and public.qualisphere_tenant_module_enabled(tm.tenant_id,'capa')
+ group by tm.tenant_id limit 1;
+ if v_tenant is null then raise exception 'Unable to resolve a unique active CAPA Company Account.'; end if;
  new.tenant_id:=v_tenant;
  return new;
 end;$$;
