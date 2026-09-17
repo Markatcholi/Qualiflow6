@@ -21,7 +21,8 @@ type WorkspaceItemType =
   | "owned_scar"
   | "owned_document"
   | "owned_complaint"
-  | "owned_audit";
+  | "owned_audit"
+  | "owned_oos_oot";
 
 type ModuleItem = {
   label: string;
@@ -784,6 +785,7 @@ async function fetchOwnedRecordItems(userEmail: string) {
     { table: "controlled_documents", workspaceItemType: "owned_document", entityType: "document" },
     { table: "complaints", workspaceItemType: "owned_complaint", entityType: "complaint" },
     { table: "audits", workspaceItemType: "owned_audit", entityType: "audit" },
+    { table: "oos_oot_investigations", workspaceItemType: "owned_oos_oot", entityType: "oos_oot" },
   ];
 
   const results = await Promise.all(
@@ -949,6 +951,7 @@ function isRecordOwnedByUser(record: any, userEmail: string) {
     record.assigned_to_email,
     record.assigned_owner_email,
     record.initiated_by,
+    record.detected_by,
   ]
     .map((value) => String(value || "").trim().toLowerCase())
     .filter(Boolean);
@@ -998,6 +1001,7 @@ function requiresUserAction(record: any, itemType: WorkspaceItemType) {
     owned_document: new Set(["release", "released", "effective", "approved", "superseded", "obsolete", "archived", "cancelled", "canceled", "closed", "completed"]),
     owned_complaint: new Set(["closed", "cancelled", "canceled", "completed", "obsolete"]),
     owned_audit: new Set(["closed", "cancelled", "canceled", "completed", "finalized", "obsolete"]),
+    owned_oos_oot: new Set(["closed", "cancelled", "canceled", "completed", "finalized", "obsolete"]),
   };
 
   const terminalStatuses = terminalByModule[itemType] || CLOSED_STATUSES;
@@ -1051,6 +1055,7 @@ function getTaskUrl(task: any) {
   if (task.workspace_item_type === "owned_document") return `/documents/${task.id}`;
   if (task.workspace_item_type === "owned_complaint") return `/complaints/${task.id}`;
   if (task.workspace_item_type === "owned_audit") return `/audits/${task.id}`;
+  if (task.workspace_item_type === "owned_oos_oot") return `/oos-oot/${task.id}`;
   if (isCollaborationTask(task)) return getCollaborationTaskUrl(task);
   if (isCapaApprovalTask(task)) {
     const gate = getCapaGateFromTask(task);
@@ -1091,7 +1096,7 @@ function getCollaborationTaskUrl(task: any) {
 }
 
 function getRecordDisplay(task: any) {
-  const directRecord = task.capa_number || task.ncmr_number || task.change_number || task.change_control_number || task.scar_number || task.document_number || task.complaint_number || task.audit_number || task.review_number || task.record_number || task.entity_number;
+  const directRecord = task.capa_number || task.ncmr_number || task.change_number || task.change_control_number || task.scar_number || task.document_number || task.complaint_number || task.audit_number || task.investigation_number || task.review_number || task.record_number || task.entity_number;
   if (directRecord) return directRecord;
   const title = String(task.task_title || task.title || "");
   const recordMatch = title.match(/\b(CAPA[-\s]?\d+|NCMR[-\s]?\d+|CC[-\s]?\d+|SCAR[-\s]?\d+|AUD[-\s]?\d+|DOC[-\s]?\d+|CMP[-\s]?\d+|MR[-\s]?\d+(?:[-\s]?\d+)?)\b/i);
@@ -1120,6 +1125,7 @@ function getGenericOwnedWorkLabel(record: any) {
     Document: { draft: "Complete Draft", collaboration: "Continue Collaboration", formal_review: "Prepare Formal Review", pending_review: "Awaiting Formal Review", rejected: "Revise Document", pending_release: "Complete Release" },
     Complaint: { draft: "Complete Complaint Intake", open: "Continue Complaint", evaluation: "Complete Evaluation", investigation: "Complete Investigation", reportability: "Complete Reportability Assessment", closure: "Complete Closure" },
     Audit: { draft: "Complete Audit Plan", planned: "Prepare Audit", scheduled: "Prepare Audit", in_progress: "Continue Audit Execution", findings: "Complete Findings", corrective_action: "Track Corrective Actions", closure: "Complete Audit Closure" },
+    "OOS/OOT": { draft: "Complete Investigation", open: "Continue Investigation", initiated: "Continue Investigation", investigation: "Continue Investigation", verification: "Complete Verification", closure: "Complete Closure" },
   };
   const mappedLabel = labelsByModule[module]?.[status];
   if (mappedLabel) return mappedLabel;
@@ -1212,6 +1218,7 @@ function getModuleLabel(task: any) {
   if (type.includes("training")) return "Training";
   if (type.includes("complaint")) return "Complaint";
   if (type.includes("audit")) return "Audit";
+  if (type.includes("oos") || type.includes("oot")) return "OOS/OOT";
   if (type.includes("management_review")) return "Management Review";
   return "Quality";
 }
@@ -1226,6 +1233,7 @@ function getModuleIcon(task: any) {
   if (label === "Training") return "🎓";
   if (label === "Complaint") return "📣";
   if (label === "Audit") return "🔎";
+  if (label === "OOS/OOT") return "🧪";
   if (label === "Management Review") return "📊";
   return "📌";
 }
