@@ -9,6 +9,11 @@ import { createESignature } from "../../../lib/eSignatureEngine";
 import { processRetrainingForDocument } from "../../../services/retrainingService";
 import { generateControlledCopy } from "../../../services/controlledCopyService";
 import {
+  buildControlledDocumentStoragePath,
+  createControlledDocumentSignedUrl,
+  resolveControlledDocumentFileUrl,
+} from "../../../lib/controlledDocumentStorage";
+import {
   canManageWorkflow as canUserManageWorkflow,
   canTransition,
   getSlaLabel,
@@ -426,7 +431,17 @@ export default function DocumentWorkflowPage() {
       .order("created_at", { ascending: false });
 
     if (docRes.error) alert(docRes.error.message);
-    else setDocuments((docRes.data as ControlledDocument[]) || []);
+    else {
+      const tenantSafeDocuments = await Promise.all(
+        (((docRes.data as ControlledDocument[]) || []).map(async (documentRecord) => ({
+          ...documentRecord,
+          file_url: await resolveControlledDocumentFileUrl({ filePath: documentRecord.file_path, legacyUrl: documentRecord.file_url }),
+          release_pdf_file_url: await resolveControlledDocumentFileUrl({ filePath: documentRecord.release_pdf_file_path, legacyUrl: documentRecord.release_pdf_file_url }),
+          controlled_copy_file_url: await resolveControlledDocumentFileUrl({ filePath: documentRecord.controlled_copy_file_path, legacyUrl: documentRecord.controlled_copy_file_url }),
+        })))
+      );
+      setDocuments(tenantSafeDocuments);
+    }
 
     const [
       ackRes,
@@ -489,7 +504,17 @@ export default function DocumentWorkflowPage() {
     if (!templateRes.error) setApprovalTemplates(templateRes.data || []);
     if (!reviewerRes.error) setAssignedReviewers((reviewerRes.data as AssignedReviewer[]) || []);
     if (!eventRes.error) setWorkflowEvents((eventRes.data as WorkflowEvent[]) || []);
-    if (!allDocsRes.error) setAllDocuments((allDocsRes.data as ControlledDocument[]) || []);
+    if (!allDocsRes.error) {
+      const tenantSafeAllDocuments = await Promise.all(
+        (((allDocsRes.data as ControlledDocument[]) || []).map(async (documentRecord) => ({
+          ...documentRecord,
+          file_url: await resolveControlledDocumentFileUrl({ filePath: documentRecord.file_path, legacyUrl: documentRecord.file_url }),
+          release_pdf_file_url: await resolveControlledDocumentFileUrl({ filePath: documentRecord.release_pdf_file_path, legacyUrl: documentRecord.release_pdf_file_url }),
+          controlled_copy_file_url: await resolveControlledDocumentFileUrl({ filePath: documentRecord.controlled_copy_file_path, legacyUrl: documentRecord.controlled_copy_file_url }),
+        })))
+      );
+      setAllDocuments(tenantSafeAllDocuments);
+    }
     if (!relationshipRes.error) setDocumentRelationships((relationshipRes.data as DocumentRelationship[]) || []);
 
     setLoading(false);
@@ -566,9 +591,12 @@ export default function DocumentWorkflowPage() {
       };
     }
 
-    const safeDocNumber = doc.document_number.replace(/[^a-zA-Z0-9-_]/g, "_");
-    const safeRev = doc.revision.replace(/[^a-zA-Z0-9-_]/g, "_");
-    const filePath = `${safeDocNumber}/${safeRev}/initiation/${Date.now()}_${initiationFile.name}`;
+    const filePath = await buildControlledDocumentStoragePath({
+      documentNumber: doc.document_number,
+      revision: doc.revision,
+      area: "initiation",
+      fileName: `${Date.now()}_${initiationFile.name}`,
+    });
 
     const { error } = await supabase.storage
       .from("controlled-documents")
@@ -576,14 +604,12 @@ export default function DocumentWorkflowPage() {
 
     if (error) throw new Error(error.message);
 
-    const { data } = supabase.storage
-      .from("controlled-documents")
-      .getPublicUrl(filePath);
+    const fileUrl = await createControlledDocumentSignedUrl(filePath);
 
     return {
       file_name: initiationFile.name,
       file_path: filePath,
-      file_url: data?.publicUrl || null,
+      file_url: fileUrl,
     };
   };
 
@@ -726,10 +752,13 @@ export default function DocumentWorkflowPage() {
       };
     }
 
-    const safeDocNumber = doc.document_number.replace(/[^a-zA-Z0-9-_]/g, "_");
-    const safeRev = doc.revision.replace(/[^a-zA-Z0-9-_]/g, "_");
     const safeReviewer = normalizeEmail(reviewer.reviewer_email).replace(/[^a-zA-Z0-9-_]/g, "_");
-    const filePath = `${safeDocNumber}/${safeRev}/reviewed/${reviewer.id}_${safeReviewer}_${Date.now()}_${file.name}`;
+    const filePath = await buildControlledDocumentStoragePath({
+      documentNumber: doc.document_number,
+      revision: doc.revision,
+      area: "reviewed",
+      fileName: `${reviewer.id}_${safeReviewer}_${Date.now()}_${file.name}`,
+    });
 
     const { error } = await supabase.storage
       .from("controlled-documents")
@@ -737,14 +766,12 @@ export default function DocumentWorkflowPage() {
 
     if (error) throw new Error(error.message);
 
-    const { data } = supabase.storage
-      .from("controlled-documents")
-      .getPublicUrl(filePath);
+    const reviewedFileUrl = await createControlledDocumentSignedUrl(filePath);
 
     return {
       reviewed_file_name: file.name,
       reviewed_file_path: filePath,
-      reviewed_file_url: data?.publicUrl || null,
+      reviewed_file_url: reviewedFileUrl,
     };
   };
 
@@ -1308,9 +1335,12 @@ export default function DocumentWorkflowPage() {
     setUploadingReleasePdf(true);
 
     try {
-      const safeDocNumber = doc.document_number.replace(/[^a-zA-Z0-9-_]/g, "_");
-      const safeRev = doc.revision.replace(/[^a-zA-Z0-9-_]/g, "_");
-      const filePath = `release-pdfs/${safeDocNumber}/Rev-${safeRev}/${Date.now()}_${releasePdfFile.name}`;
+      const filePath = await buildControlledDocumentStoragePath({
+        documentNumber: doc.document_number,
+        revision: doc.revision,
+        area: "release-pdfs",
+        fileName: `${Date.now()}_${releasePdfFile.name}`,
+      });
 
       const { error: uploadError } = await supabase.storage
         .from("controlled-documents")
@@ -1321,11 +1351,7 @@ export default function DocumentWorkflowPage() {
 
       if (uploadError) throw new Error(uploadError.message);
 
-      const { data } = supabase.storage
-        .from("controlled-documents")
-        .getPublicUrl(filePath);
-
-      const releasePdfUrl = data?.publicUrl || null;
+      const releasePdfUrl = await createControlledDocumentSignedUrl(filePath);
 
       const { error: updateError } = await supabase
         .from("controlled_documents")
