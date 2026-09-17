@@ -3,6 +3,11 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
 import { isOverdue } from "../../lib/documentWorkflowEngine";
+import {
+  buildControlledDocumentStoragePath,
+  createControlledDocumentSignedUrl,
+  resolveControlledDocumentFileUrl,
+} from "../../lib/controlledDocumentStorage";
 
 type ControlledDocument = {
   id: string;
@@ -138,7 +143,26 @@ export default function DocumentControlLandingPage() {
     ]);
 
     if (docRes.error) alert(docRes.error.message);
-    else setDocuments((docRes.data as ControlledDocument[]) || []);
+    else {
+      const tenantSafeDocuments = await Promise.all(
+        (((docRes.data as ControlledDocument[]) || []).map(async (documentRecord) => ({
+          ...documentRecord,
+          file_url: await resolveControlledDocumentFileUrl({
+            filePath: documentRecord.file_path,
+            legacyUrl: documentRecord.file_url,
+          }),
+          release_pdf_file_url: await resolveControlledDocumentFileUrl({
+            filePath: documentRecord.release_pdf_file_path,
+            legacyUrl: documentRecord.release_pdf_file_url,
+          }),
+          controlled_copy_file_url: await resolveControlledDocumentFileUrl({
+            filePath: documentRecord.controlled_copy_file_path,
+            legacyUrl: documentRecord.controlled_copy_file_url,
+          }),
+        })))
+      );
+      setDocuments(tenantSafeDocuments);
+    }
 
     if (!reviewerRes.error) setAssignedReviewers((reviewerRes.data as AssignedReviewer[]) || []);
 
@@ -435,12 +459,12 @@ export default function DocumentControlLandingPage() {
   const uploadDocumentFile = async () => {
     if (!selectedFile) return { fileName: null, filePath: null, fileUrl: null };
 
-    const safeDocNumber =
-      newDoc.document_number.trim().replace(/[^a-zA-Z0-9-_]/g, "_") ||
-      "document";
-    const safeRevision =
-      newDoc.revision.trim().replace(/[^a-zA-Z0-9-_]/g, "_") || "rev";
-    const filePath = `${safeDocNumber}/${safeRevision}/${Date.now()}_${selectedFile.name}`;
+    const filePath = await buildControlledDocumentStoragePath({
+      documentNumber: newDoc.document_number,
+      revision: newDoc.revision,
+      area: "working",
+      fileName: `${Date.now()}_${selectedFile.name}`,
+    });
 
     const { error } = await supabase.storage
       .from("controlled-documents")
@@ -448,14 +472,12 @@ export default function DocumentControlLandingPage() {
 
     if (error) throw new Error(error.message);
 
-    const { data } = supabase.storage
-      .from("controlled-documents")
-      .getPublicUrl(filePath);
+    const fileUrl = await createControlledDocumentSignedUrl(filePath);
 
     return {
       fileName: selectedFile.name,
       filePath,
-      fileUrl: data?.publicUrl || null,
+      fileUrl,
     };
   };
 
