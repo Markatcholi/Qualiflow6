@@ -22,7 +22,8 @@ type WorkspaceItemType =
   | "owned_document"
   | "owned_complaint"
   | "owned_audit"
-  | "owned_oos_oot";
+  | "owned_oos_oot"
+  | "document_review";
 
 type ModuleItem = {
   label: string;
@@ -225,13 +226,23 @@ export default function HomePage() {
         }))
         .filter((task: any) => internalTenant || workItemModuleEnabled(task, entitlementSet));
 
-      const ownedRecordItems = await fetchOwnedRecordItems(userEmail);
+      const [ownedRecordItems, documentReviewItems] = await Promise.all([
+        fetchOwnedRecordItems(userEmail),
+        fetchDocumentReviewItems(userEmail),
+      ]);
       const entitlementFilteredOwnedItems = ownedRecordItems.filter(
+        (item: any) => internalTenant || workItemModuleEnabled(item, entitlementSet)
+      );
+      const entitlementFilteredDocumentReviewItems = documentReviewItems.filter(
         (item: any) => internalTenant || workItemModuleEnabled(item, entitlementSet)
       );
 
       setWorkItems(
-        [...assignedTaskItems, ...entitlementFilteredOwnedItems].sort(compareWorkspaceItems)
+        [
+          ...assignedTaskItems,
+          ...entitlementFilteredOwnedItems,
+          ...entitlementFilteredDocumentReviewItems,
+        ].sort(compareWorkspaceItems)
       );
 
       setAvailableUsers(
@@ -316,7 +327,7 @@ export default function HomePage() {
   const workspaceCounts = useMemo(
     () => ({
       all: workItems.length,
-      tasks: workItems.filter((item) => item.workspace_item_type === "assigned_task").length,
+      tasks: workItems.filter((item) => item.workspace_item_type === "assigned_task" || item.workspace_item_type === "document_review").length,
       approvals: workItems.filter(isApprovalTask).length,
       owned: workItems.filter((item) => item.workspace_item_type !== "assigned_task").length,
       overdue: workItems.filter((item) => getDueStatus(item).category === "overdue").length,
@@ -816,6 +827,39 @@ async function fetchOwnedRecordItems(userEmail: string) {
   return results.flat();
 }
 
+async function fetchDocumentReviewItems(userEmail: string) {
+  const { data, error } = await supabase
+    .from("document_assigned_reviewers")
+    .select("id,document_id,reviewer_type,reviewer_email,decision,review_status,assigned_at,controlled_documents(id,document_number,revision,title,status)")
+    .ilike("reviewer_email", userEmail)
+    .eq("review_status", "pending")
+    .order("assigned_at", { ascending: true });
+
+  if (error) {
+    console.warn("Workspace skipped document review assignments:", error.message);
+    return [];
+  }
+
+  return (data || [])
+    .filter((review: any) => String(review.decision || "pending").trim().toLowerCase() === "pending")
+    .map((review: any) => {
+      const document = Array.isArray(review.controlled_documents)
+        ? review.controlled_documents[0]
+        : review.controlled_documents;
+      return {
+        ...review,
+        entity_type: "document_review",
+        entity_id: review.document_id,
+        document_number: document?.document_number || null,
+        revision: document?.revision || null,
+        title: document?.title || null,
+        status: review.review_status || "pending",
+        created_at: review.assigned_at,
+        workspace_item_type: "document_review" as WorkspaceItemType,
+      };
+    });
+}
+
 async function createWorkspaceNotification(
   recipientEmail: string,
   title: string,
@@ -1014,9 +1058,9 @@ function canReassignItem(item: any) {
 
 function matchesWorkspaceFilter(item: any, filter: WorkspaceFilter) {
   const dueStatus = getDueStatus(item);
-  if (filter === "tasks") return item.workspace_item_type === "assigned_task";
+  if (filter === "tasks") return item.workspace_item_type === "assigned_task" || item.workspace_item_type === "document_review";
   if (filter === "approvals") return isApprovalTask(item);
-  if (filter === "owned") return item.workspace_item_type !== "assigned_task";
+  if (filter === "owned") return item.workspace_item_type !== "assigned_task" && item.workspace_item_type !== "document_review";
   if (filter === "overdue") return dueStatus.category === "overdue";
   if (filter === "today") return dueStatus.category === "today";
   if (filter === "week") return ["today", "soon"].includes(dueStatus.category);
@@ -1056,6 +1100,7 @@ function getTaskUrl(task: any) {
   if (task.workspace_item_type === "owned_complaint") return `/complaints/${task.id}`;
   if (task.workspace_item_type === "owned_audit") return `/audits/${task.id}`;
   if (task.workspace_item_type === "owned_oos_oot") return `/oos-oot/${task.id}`;
+  if (task.workspace_item_type === "document_review") return `/documents/${task.document_id}`;
   if (isCollaborationTask(task)) return getCollaborationTaskUrl(task);
   if (isCapaApprovalTask(task)) {
     const gate = getCapaGateFromTask(task);
@@ -1097,7 +1142,12 @@ function getCollaborationTaskUrl(task: any) {
 
 function getRecordDisplay(task: any) {
   const directRecord = task.capa_number || task.ncmr_number || task.change_number || task.change_control_number || task.scar_number || task.document_number || task.complaint_number || task.audit_number || task.investigation_number || task.review_number || task.record_number || task.entity_number;
-  if (directRecord) return directRecord;
+  if (directRecord) {
+    if (task.workspace_item_type === "document_review" && task.revision) {
+      return `${directRecord} Rev ${task.revision}`;
+    }
+    return directRecord;
+  }
   const title = String(task.task_title || task.title || "");
   const recordMatch = title.match(/\b(CAPA[-\s]?\d+|NCMR[-\s]?\d+|CC[-\s]?\d+|SCAR[-\s]?\d+|AUD[-\s]?\d+|DOC[-\s]?\d+|CMP[-\s]?\d+|MR[-\s]?\d+(?:[-\s]?\d+)?)\b/i);
   if (recordMatch?.[1]) return recordMatch[1].toUpperCase();
@@ -1105,6 +1155,11 @@ function getRecordDisplay(task: any) {
 }
 
 function getTaskName(task: any) {
+  if (task.workspace_item_type === "document_review") {
+    return String(task.reviewer_type || "").trim().toLowerCase() === "formal_review"
+      ? "Formal Review"
+      : "Collaboration Review";
+  }
   if (task.workspace_item_type === "owned_capa") return getOwnedCapaWorkLabel(task);
   if (task.workspace_item_type !== "assigned_task") return getGenericOwnedWorkLabel(task);
   if (isCapaApprovalTask(task)) return getCapaApprovalLabel(task);
