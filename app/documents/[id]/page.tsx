@@ -411,13 +411,64 @@ export default function DocumentWorkflowPage() {
 
     if (!email) return;
 
-    const { data } = await supabase
+    // Preserve QualiSphere Internal's legacy role model first.
+    const { data: legacyRole } = await supabase
       .from("user_roles")
       .select("role")
       .eq("user_email", email)
       .maybeSingle();
 
-    setUserRole(data?.role || "user");
+    if (legacyRole?.role) {
+      setUserRole(legacyRole.role);
+      return;
+    }
+
+    // Customer Company Accounts use tenant-scoped memberships and QMS role assignments.
+    // Company Administrator is equivalent to workflow admin authority; customer-defined
+    // QMS roles are normalized to the workflow engine's established role names.
+    const { data: membership } = await supabase
+      .from("tenant_memberships")
+      .select("tenant_id,membership_role,membership_status")
+      .ilike("user_email", email)
+      .eq("membership_status", "active")
+      .maybeSingle();
+
+    if (!membership?.tenant_id) {
+      setUserRole("user");
+      return;
+    }
+
+    if (String(membership.membership_role || "").toLowerCase() === "company_admin") {
+      setUserRole("admin");
+      return;
+    }
+
+    const { data: roleAssignments } = await supabase
+      .from("tenant_user_role_assignments")
+      .select("role_id,customer_roles(role_name)")
+      .eq("tenant_id", membership.tenant_id)
+      .ilike("user_email", email)
+      .eq("is_active", true);
+
+    const normalizedRoles = (roleAssignments || [])
+      .map((assignment: any) =>
+        String(
+          Array.isArray(assignment.customer_roles)
+            ? assignment.customer_roles[0]?.role_name
+            : assignment.customer_roles?.role_name || ""
+        )
+          .trim()
+          .toLowerCase()
+          .replace(/[\s-]+/g, "_")
+      )
+      .filter(Boolean);
+
+    const workflowRole =
+      normalizedRoles.find((role) =>
+        ["admin", "administrator", "approver", "vp_quality", "document_control", "quality"].includes(role)
+      ) || "user";
+
+    setUserRole(workflowRole === "administrator" ? "admin" : workflowRole);
   };
 
   const fetchData = async () => {
