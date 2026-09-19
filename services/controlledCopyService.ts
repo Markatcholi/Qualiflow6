@@ -1,5 +1,9 @@
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import { supabase } from "../lib/supabaseClient";
+import {
+  buildControlledDocumentStoragePath,
+  createControlledDocumentSignedUrl,
+} from "../lib/controlledDocumentStorage";
 
 type ControlledDocument = {
   id: string;
@@ -277,21 +281,36 @@ export async function generateControlledCopy({
     throw new Error("Controlled copy can only be generated during release.");
   }
 
-  if (!doc.release_pdf_file_url) {
+  if (!doc.release_pdf_file_path && !doc.release_pdf_file_url) {
     throw new Error("A final release PDF is required before generating a controlled copy.");
   }
 
-  if (!isPdfFile(doc.release_pdf_file_name, doc.release_pdf_file_url)) {
+  if (!isPdfFile(doc.release_pdf_file_name, doc.release_pdf_file_path || doc.release_pdf_file_url)) {
     throw new Error("The final release file must be a PDF before it can be stamped as a controlled copy.");
   }
 
-  const sourcePdfBytes = await fetchPdfBytes(doc.release_pdf_file_url);
+  // Tenant-scoped files live in a private bucket. Always mint a fresh signed URL
+  // from the authoritative storage path instead of reusing a stored, expiring URL.
+  const releasePdfUrl = doc.release_pdf_file_path?.startsWith("tenant/")
+    ? await createControlledDocumentSignedUrl(doc.release_pdf_file_path)
+    : doc.release_pdf_file_url;
+
+  if (!releasePdfUrl) {
+    throw new Error("Unable to resolve the final release PDF.");
+  }
+
+  const sourcePdfBytes = await fetchPdfBytes(releasePdfUrl);
   const stampedPdfBytes = await stampPdf({ sourcePdfBytes, doc });
 
   const safeDocNumber = sanitizePathSegment(doc.document_number);
   const safeRevision = sanitizePathSegment(doc.revision);
   const fileName = `${safeDocNumber}_Rev_${safeRevision}_Controlled_Copy.pdf`;
-  const filePath = `controlled-copies/${safeDocNumber}/Rev-${safeRevision}/${fileName}`;
+  const filePath = await buildControlledDocumentStoragePath({
+    documentNumber: doc.document_number,
+    revision: doc.revision,
+    area: "controlled-copies",
+    fileName,
+  });
 
   // Convert pdf-lib Uint8Array output into a BlobPart that satisfies TypeScript/Vercel builds.
   const pdfArrayBuffer = new ArrayBuffer(stampedPdfBytes.byteLength);
@@ -311,11 +330,7 @@ export async function generateControlledCopy({
 
   if (uploadError) throw new Error(uploadError.message);
 
-  const { data: publicUrlData } = supabase.storage
-    .from("controlled-documents")
-    .getPublicUrl(filePath);
-
-  const controlledCopyUrl = publicUrlData?.publicUrl || null;
+  const controlledCopyUrl = await createControlledDocumentSignedUrl(filePath);
 
   const { error: updateError } = await supabase
     .from("controlled_documents")
