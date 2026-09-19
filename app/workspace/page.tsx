@@ -23,7 +23,8 @@ type WorkspaceItemType =
   | "owned_complaint"
   | "owned_audit"
   | "owned_oos_oot"
-  | "document_review";
+  | "document_review"
+  | "training_assignment";
 
 type ModuleItem = {
   label: string;
@@ -226,9 +227,10 @@ export default function HomePage() {
         }))
         .filter((task: any) => internalTenant || workItemModuleEnabled(task, entitlementSet));
 
-      const [ownedRecordItems, documentReviewItems] = await Promise.all([
+      const [ownedRecordItems, documentReviewItems, trainingItems] = await Promise.all([
         fetchOwnedRecordItems(userEmail),
         fetchDocumentReviewItems(userEmail),
+        fetchTrainingItems(userEmail),
       ]);
       const entitlementFilteredOwnedItems = ownedRecordItems.filter(
         (item: any) => internalTenant || workItemModuleEnabled(item, entitlementSet)
@@ -242,6 +244,7 @@ export default function HomePage() {
           ...assignedTaskItems,
           ...entitlementFilteredOwnedItems,
           ...entitlementFilteredDocumentReviewItems,
+          ...trainingItems.filter((item: any) => internalTenant || workItemModuleEnabled(item, entitlementSet)),
         ].sort(compareWorkspaceItems)
       );
 
@@ -860,6 +863,31 @@ async function fetchDocumentReviewItems(userEmail: string) {
     });
 }
 
+async function fetchTrainingItems(userEmail: string) {
+  const { data, error } = await supabase
+    .from("training_assignments")
+    .select("*")
+    .ilike("assigned_to_email", userEmail)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    console.warn("Workspace skipped training assignments:", error.message);
+    return [];
+  }
+
+  const terminal = new Set(["completed", "effectiveness_complete", "waived", "cancelled", "canceled"]);
+
+  return (data || [])
+    .filter((assignment: any) => !terminal.has(String(assignment.status || "").trim().toLowerCase()))
+    .map((assignment: any) => ({
+      ...assignment,
+      entity_type: "training",
+      entity_id: assignment.id,
+      title: assignment.training_title || "Training Assignment",
+      workspace_item_type: "training_assignment" as WorkspaceItemType,
+    }));
+}
+
 async function createWorkspaceNotification(
   recipientEmail: string,
   title: string,
@@ -1058,9 +1086,9 @@ function canReassignItem(item: any) {
 
 function matchesWorkspaceFilter(item: any, filter: WorkspaceFilter) {
   const dueStatus = getDueStatus(item);
-  if (filter === "tasks") return item.workspace_item_type === "assigned_task" || item.workspace_item_type === "document_review";
+  if (filter === "tasks") return item.workspace_item_type === "assigned_task" || item.workspace_item_type === "document_review" || item.workspace_item_type === "training_assignment";
   if (filter === "approvals") return isApprovalTask(item);
-  if (filter === "owned") return item.workspace_item_type !== "assigned_task" && item.workspace_item_type !== "document_review";
+  if (filter === "owned") return item.workspace_item_type !== "assigned_task" && item.workspace_item_type !== "document_review" && item.workspace_item_type !== "training_assignment";
   if (filter === "overdue") return dueStatus.category === "overdue";
   if (filter === "today") return dueStatus.category === "today";
   if (filter === "week") return ["today", "soon"].includes(dueStatus.category);
@@ -1101,6 +1129,7 @@ function getTaskUrl(task: any) {
   if (task.workspace_item_type === "owned_audit") return `/audits/${task.id}`;
   if (task.workspace_item_type === "owned_oos_oot") return `/oos-oot/${task.id}`;
   if (task.workspace_item_type === "document_review") return `/documents/${task.document_id}`;
+  if (task.workspace_item_type === "training_assignment") return `/training/${task.id}`;
   if (isCollaborationTask(task)) return getCollaborationTaskUrl(task);
   if (isCapaApprovalTask(task)) {
     const gate = getCapaGateFromTask(task);
@@ -1155,6 +1184,7 @@ function getRecordDisplay(task: any) {
 }
 
 function getTaskName(task: any) {
+  if (task.workspace_item_type === "training_assignment") return "Complete Training";
   if (task.workspace_item_type === "document_review") {
     return String(task.reviewer_type || "").trim().toLowerCase() === "formal_review"
       ? "Formal Review"
