@@ -165,6 +165,8 @@ export default function DocumentWorkflowPage() {
   const [reviewedFiles, setReviewedFiles] = useState<Record<string, File | null>>({});
 
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
+  const [editingReviewerId, setEditingReviewerId] = useState<string | null>(null);
+  const [editingReviewer, setEditingReviewer] = useState({ reviewer_type: "formal_review", reviewer_email: "", reviewer_role: "", required_reviewer: true });
   const [newReviewer, setNewReviewer] = useState({
     reviewer_type: "formal_review",
     reviewer_email: "",
@@ -1014,9 +1016,51 @@ export default function DocumentWorkflowPage() {
     }
   };
 
+  const reviewerIsPreGate = (reviewer: AssignedReviewer) => {
+    if (!doc || reviewer.review_status !== "pending" || reviewer.reviewed_at) return false;
+    if (reviewer.reviewer_type === "collaboration") return doc.status === "draft" || doc.status === "rejected";
+    if (reviewer.reviewer_type === "formal_review" || reviewer.reviewer_type === "approver") return doc.status !== "formal_review" && doc.status !== "approved" && doc.status !== "release" && doc.status !== "effective";
+    return false;
+  };
+
+  const beginEditReviewer = (reviewer: AssignedReviewer) => {
+    setEditingReviewerId(reviewer.id);
+    setEditingReviewer({
+      reviewer_type: reviewer.reviewer_type,
+      reviewer_email: reviewer.reviewer_email,
+      reviewer_role: reviewer.reviewer_role || "",
+      required_reviewer: reviewer.required_reviewer !== false,
+    });
+  };
+
+  const saveReviewerEdit = async (reviewer: AssignedReviewer) => {
+    if (!canManageWorkflow || !reviewerIsPreGate(reviewer)) {
+      alert("Reviewer configuration can only be edited before the applicable review gate is submitted.");
+      return;
+    }
+    const reviewerEmail = normalizeEmail(editingReviewer.reviewer_email);
+    try { await validateReviewerEmailsForCompany([reviewerEmail]); }
+    catch (error: any) { alert(error.message); return; }
+    setBusy(true);
+    const { error } = await supabase.from("document_assigned_reviewers").update({
+      reviewer_type: editingReviewer.reviewer_type,
+      reviewer_email: reviewerEmail,
+      reviewer_role: editingReviewer.reviewer_role || null,
+      required_reviewer: editingReviewer.required_reviewer,
+    }).eq("id", reviewer.id);
+    setBusy(false);
+    if (error) { alert(error.message); return; }
+    setEditingReviewerId(null);
+    await fetchData();
+  };
+
   const cancelReviewerAssignment = async (reviewer: AssignedReviewer) => {
     if (!canManageWorkflow) {
       alert("Only the document owner, document control, quality, or approvers can cancel a reviewer assignment.");
+      return;
+    }
+    if (reviewerIsPreGate(reviewer)) {
+      alert("This reviewer has not crossed the review gate yet. Use Edit Reviewer instead.");
       return;
     }
     if (reviewer.review_status === "approved") {
@@ -1026,19 +1070,9 @@ export default function DocumentWorkflowPage() {
     if (!confirm(`Cancel reviewer assignment for ${reviewer.reviewer_email}? The assignment will remain in the audit trail as cancelled.`)) return;
     setBusy(true);
     try {
-      const { error } = await supabase.from("document_assigned_reviewers").update({
-        review_status: "cancelled",
-        review_comments: "Reviewer assignment cancelled by authorized workflow user.",
-        reviewed_at: new Date().toISOString(),
-      }).eq("id", reviewer.id);
+      const { error } = await supabase.from("document_assigned_reviewers").update({ review_status: "cancelled", review_comments: "Reviewer assignment cancelled by authorized workflow user.", reviewed_at: new Date().toISOString() }).eq("id", reviewer.id);
       if (error) throw new Error(error.message);
-      await logWorkflowEvent({
-        eventType: "reviewer_assignment_cancelled",
-        fromStatus: doc?.status || null,
-        toStatus: doc?.status || null,
-        comments: `Reviewer assignment cancelled: ${reviewer.reviewer_email}`,
-        metadata: { reviewer_id: reviewer.id, reviewer_email: reviewer.reviewer_email, reviewer_type: reviewer.reviewer_type, cancelled_by: userEmail },
-      });
+      await logWorkflowEvent({ eventType: "reviewer_assignment_cancelled", fromStatus: doc?.status || null, toStatus: doc?.status || null, comments: `Reviewer assignment cancelled: ${reviewer.reviewer_email}`, metadata: { reviewer_id: reviewer.id, reviewer_email: reviewer.reviewer_email, reviewer_type: reviewer.reviewer_type, cancelled_by: userEmail } });
       await fetchData();
     } catch (error: any) { alert(error.message); }
     setBusy(false);
@@ -2654,12 +2688,27 @@ export default function DocumentWorkflowPage() {
                     </div>
                   </div>
 
-                  {canManageWorkflow && reviewer.review_status !== "approved" && reviewer.review_status !== "cancelled" ? (
-                    <div style={buttonRowStyle}>
-                      <button disabled={busy} onClick={() => cancelReviewerAssignment(reviewer)} style={dangerButtonStyle}>
-                        Cancel Reviewer Assignment
-                      </button>
-                    </div>
+                  {canManageWorkflow && reviewerIsPreGate(reviewer) ? (
+                    editingReviewerId === reviewer.id ? (
+                      <div style={{ ...noticeStyle, marginTop: "12px" }}>
+                        <div style={gridStyle}>
+                          <select value={editingReviewer.reviewer_type} onChange={(e) => setEditingReviewer({ ...editingReviewer, reviewer_type: e.target.value })} style={inputStyle}>
+                            {REVIEWER_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}
+                          </select>
+                          <input placeholder="Reviewer Email" value={editingReviewer.reviewer_email} onChange={(e) => setEditingReviewer({ ...editingReviewer, reviewer_email: e.target.value })} style={inputStyle} />
+                          <input placeholder="Reviewer Role" value={editingReviewer.reviewer_role} onChange={(e) => setEditingReviewer({ ...editingReviewer, reviewer_role: e.target.value })} style={inputStyle} />
+                        </div>
+                        <label style={{ display: "block", marginTop: "10px" }}><input type="checkbox" checked={editingReviewer.required_reviewer} onChange={(e) => setEditingReviewer({ ...editingReviewer, required_reviewer: e.target.checked })} />{" "}Required reviewer</label>
+                        <div style={buttonRowStyle}>
+                          <button disabled={busy} onClick={() => saveReviewerEdit(reviewer)} style={primaryButtonStyle}>Save Reviewer</button>
+                          <button disabled={busy} onClick={() => setEditingReviewerId(null)} style={secondaryButtonStyle}>Cancel Edit</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={buttonRowStyle}><button disabled={busy} onClick={() => beginEditReviewer(reviewer)} style={secondaryButtonStyle}>Edit Reviewer</button></div>
+                    )
+                  ) : canManageWorkflow && reviewer.review_status !== "approved" && reviewer.review_status !== "cancelled" ? (
+                    <div style={buttonRowStyle}><button disabled={busy} onClick={() => cancelReviewerAssignment(reviewer)} style={dangerButtonStyle}>Cancel Reviewer Assignment</button></div>
                   ) : null}
 
                   {doc.file_url ? (
