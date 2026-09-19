@@ -26,6 +26,7 @@ import {
 
 type ControlledDocument = {
   id: string;
+  tenant_id?: string | null;
   document_number: string;
   title: string;
   document_type: string | null;
@@ -538,7 +539,7 @@ export default function DocumentWorkflowPage() {
         .order("performed_at", { ascending: false }),
       supabase
         .from("controlled_documents")
-        .select("id, document_number, title, document_type, revision, status, department, process_area, file_name, file_path, file_url, release_pdf_file_name, release_pdf_file_path, release_pdf_file_url, change_summary, approval_comments, owner_email, approver_email, submitted_for_approval_at, submitted_for_approval_by, approved_at, approved_by, effective_date, obsolete_at, obsolete_by, obsolete_reason, read_ack_required, training_required, training_impact, revision_change_description, revision_change_justification, originating_change_control_id, change_required, superseded_by_document_id, superseded_document_id, collaboration_required, formal_review_required, collaboration_completed, formal_review_completed, release_comments, release_approved_by, release_approved_at, controlled_copy_file_name, controlled_copy_file_path, controlled_copy_file_url, controlled_copy_generated_at, controlled_copy_generated_by, created_at, created_by")
+        .select("id, tenant_id, document_number, title, document_type, revision, status, department, process_area, file_name, file_path, file_url, release_pdf_file_name, release_pdf_file_path, release_pdf_file_url, change_summary, approval_comments, owner_email, approver_email, submitted_for_approval_at, submitted_for_approval_by, approved_at, approved_by, effective_date, obsolete_at, obsolete_by, obsolete_reason, read_ack_required, training_required, training_impact, revision_change_description, revision_change_justification, originating_change_control_id, change_required, superseded_by_document_id, superseded_document_id, collaboration_required, formal_review_required, collaboration_completed, formal_review_completed, release_comments, release_approved_by, release_approved_at, controlled_copy_file_name, controlled_copy_file_path, controlled_copy_file_url, controlled_copy_generated_at, controlled_copy_generated_by, created_at, created_by")
         .neq("id", documentId)
         .order("document_number", { ascending: true }),
       supabase
@@ -991,6 +992,50 @@ export default function DocumentWorkflowPage() {
     fetchData();
   };
 
+  const validateReviewerEmailsForCompany = async (emails: string[]) => {
+    if (!doc?.tenant_id) throw new Error("Unable to resolve this document Company Account.");
+    for (const email of emails) {
+      const normalized = normalizeEmail(email);
+      if (!normalized) throw new Error("Enter a valid reviewer email.");
+      const { data, error } = await supabase.rpc("qualisphere_email_belongs_to_tenant", {
+        p_email: normalized,
+        p_tenant_id: doc.tenant_id,
+      });
+      if (error) throw new Error(error.message);
+      if (!data) throw new Error(`Reviewer ${normalized} is not an active user of this Company Account.`);
+    }
+  };
+
+  const cancelReviewerAssignment = async (reviewer: AssignedReviewer) => {
+    if (!canManageWorkflow) {
+      alert("Only the document owner, document control, quality, or approvers can cancel a reviewer assignment.");
+      return;
+    }
+    if (reviewer.review_status === "approved") {
+      alert("An approved review cannot be cancelled. Preserve the completed review in the audit trail.");
+      return;
+    }
+    if (!confirm(`Cancel reviewer assignment for ${reviewer.reviewer_email}? The assignment will remain in the audit trail as cancelled.`)) return;
+    setBusy(true);
+    try {
+      const { error } = await supabase.from("document_assigned_reviewers").update({
+        review_status: "cancelled",
+        review_comments: "Reviewer assignment cancelled by authorized workflow user.",
+        reviewed_at: new Date().toISOString(),
+      }).eq("id", reviewer.id);
+      if (error) throw new Error(error.message);
+      await logWorkflowEvent({
+        eventType: "reviewer_assignment_cancelled",
+        fromStatus: doc?.status || null,
+        toStatus: doc?.status || null,
+        comments: `Reviewer assignment cancelled: ${reviewer.reviewer_email}`,
+        metadata: { reviewer_id: reviewer.id, reviewer_email: reviewer.reviewer_email, reviewer_type: reviewer.reviewer_type, cancelled_by: userEmail },
+      });
+      await fetchData();
+    } catch (error: any) { alert(error.message); }
+    setBusy(false);
+  };
+
   const addCustomReviewer = async () => {
     if (!doc) return;
 
@@ -1003,6 +1048,13 @@ export default function DocumentWorkflowPage() {
 
     if (!reviewerEmail) {
       alert("Enter a valid reviewer email.");
+      return;
+    }
+
+    try {
+      await validateReviewerEmailsForCompany([reviewerEmail]);
+    } catch (error: any) {
+      alert(error.message);
       return;
     }
 
@@ -1056,6 +1108,13 @@ export default function DocumentWorkflowPage() {
       .split(/[,\n;]/)
       .map((email) => normalizeEmail(email))
       .filter(Boolean);
+
+    try {
+      await validateReviewerEmailsForCompany(reviewers);
+    } catch (error: any) {
+      alert(error.message);
+      return;
+    }
 
     setBusy(true);
 
@@ -1122,7 +1181,8 @@ export default function DocumentWorkflowPage() {
       (r) =>
         r.reviewer_type === "collaboration" &&
         r.required_reviewer &&
-        r.review_status !== "approved"
+        r.review_status !== "approved" &&
+        r.review_status !== "cancelled"
     );
 
     if (requiredCollaborationOpen) {
@@ -1176,6 +1236,13 @@ export default function DocumentWorkflowPage() {
       .split(/[,\n;]/)
       .map((email) => normalizeEmail(email))
       .filter(Boolean);
+
+    try {
+      await validateReviewerEmailsForCompany(reviewers);
+    } catch (error: any) {
+      alert(error.message);
+      return;
+    }
 
     const { error } = await supabase
       .from("controlled_documents")
@@ -2579,6 +2646,14 @@ export default function DocumentWorkflowPage() {
                     </div>
                   </div>
 
+                  {canManageWorkflow && reviewer.review_status !== "approved" && reviewer.review_status !== "cancelled" ? (
+                    <div style={buttonRowStyle}>
+                      <button disabled={busy} onClick={() => cancelReviewerAssignment(reviewer)} style={dangerButtonStyle}>
+                        Cancel Reviewer Assignment
+                      </button>
+                    </div>
+                  ) : null}
+
                   {doc.file_url ? (
                     <div style={buttonRowStyle}>
                       <a href={doc.file_url} target="_blank" rel="noreferrer" style={primaryLinkStyle}>
@@ -2596,7 +2671,7 @@ export default function DocumentWorkflowPage() {
                     </div>
                   ) : null}
 
-                  {canCurrentUserReview && reviewer.review_status !== "approved" && reviewer.review_status !== "rejected" ? (
+                  {canCurrentUserReview && reviewer.review_status !== "approved" && reviewer.review_status !== "rejected" && reviewer.review_status !== "cancelled" ? (
                     <>
                       {normalizeEmail(reviewer.reviewer_email) !== normalizeEmail(userEmail) && (canApprove || canManage) ? (
                         <div style={noticeStyle}>
