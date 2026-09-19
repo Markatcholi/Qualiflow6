@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { supabase } from "../../../lib/supabaseClient";
 import ESignatureModal from "../../../components/ESignatureModal";
 import { acknowledgeTraining } from "../../../services/trainingService";
+import { resolveControlledDocumentFileUrl } from "../../../lib/controlledDocumentStorage";
 
 type TrainingAssignment = {
   id: string;
@@ -46,6 +47,7 @@ type ControlledDocument = {
   file_url?: string | null;
   controlled_copy_file_name?: string | null;
   controlled_copy_file_url?: string | null;
+  controlled_copy_file_path?: string | null;
   controlled_copy_generated_at?: string | null;
   effective_date?: string | null;
 };
@@ -117,12 +119,32 @@ export default function TrainingAssignmentDetailPage() {
       assignment.due_date < new Date().toISOString().slice(0, 10)
   );
 
-  const trainingDocumentUrl =
-    documentRecord &&
-    (documentRecord.status === "release" || documentRecord.status === "effective") &&
-    documentRecord.controlled_copy_file_url
-      ? documentRecord.controlled_copy_file_url
-      : documentRecord?.file_url || null;
+  const [trainingDocumentUrl, setTrainingDocumentUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    const resolveTrainingDocument = async () => {
+      if (!documentRecord) {
+        if (active) setTrainingDocumentUrl(null);
+        return;
+      }
+      const isReleased = documentRecord.status === "release" || documentRecord.status === "effective";
+      try {
+        const resolved = isReleased
+          ? await resolveControlledDocumentFileUrl({
+              filePath: documentRecord.controlled_copy_file_path,
+              legacyUrl: documentRecord.controlled_copy_file_url,
+            })
+          : documentRecord.file_url || null;
+        if (active) setTrainingDocumentUrl(resolved);
+      } catch (error: any) {
+        console.warn("Unable to resolve training document URL:", error?.message || error);
+        if (active) setTrainingDocumentUrl(null);
+      }
+    };
+    resolveTrainingDocument();
+    return () => { active = false; };
+  }, [documentRecord]);
 
   const trainingDocumentLabel =
     documentRecord &&
@@ -170,7 +192,7 @@ export default function TrainingAssignmentDetailPage() {
     if (loadedAssignment?.document_id) {
       const docRes = await supabase
         .from("controlled_documents")
-        .select("id, document_number, title, revision, status, document_type, department, process_area, file_name, file_url, controlled_copy_file_name, controlled_copy_file_url, controlled_copy_generated_at, effective_date")
+        .select("id, document_number, title, revision, status, document_type, department, process_area, file_name, file_url, controlled_copy_file_name, controlled_copy_file_url, controlled_copy_file_path, controlled_copy_generated_at, effective_date")
         .eq("id", loadedAssignment.document_id)
         .maybeSingle();
 
