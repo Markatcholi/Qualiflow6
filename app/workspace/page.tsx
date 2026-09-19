@@ -866,7 +866,7 @@ async function fetchDocumentReviewItems(userEmail: string) {
 async function fetchTrainingItems(userEmail: string) {
   const { data, error } = await supabase
     .from("training_assignments")
-    .select("*")
+    .select("*, controlled_documents(document_number, revision, title)")
     .ilike("assigned_to_email", userEmail)
     .order("created_at", { ascending: true });
 
@@ -879,13 +879,20 @@ async function fetchTrainingItems(userEmail: string) {
 
   return (data || [])
     .filter((assignment: any) => !terminal.has(String(assignment.status || "").trim().toLowerCase()))
-    .map((assignment: any) => ({
-      ...assignment,
-      entity_type: "training",
-      entity_id: assignment.id,
-      title: assignment.training_title || "Training Assignment",
-      workspace_item_type: "training_assignment" as WorkspaceItemType,
-    }));
+    .map((assignment: any) => {
+      const document = Array.isArray(assignment.controlled_documents)
+        ? assignment.controlled_documents[0]
+        : assignment.controlled_documents;
+      return {
+        ...assignment,
+        entity_type: "training",
+        entity_id: assignment.id,
+        document_number: document?.document_number || null,
+        revision: document?.revision || null,
+        title: assignment.training_title || document?.title || "Training Assignment",
+        workspace_item_type: "training_assignment" as WorkspaceItemType,
+      };
+    });
 }
 
 async function createWorkspaceNotification(
@@ -1172,7 +1179,7 @@ function getCollaborationTaskUrl(task: any) {
 function getRecordDisplay(task: any) {
   const directRecord = task.capa_number || task.ncmr_number || task.change_number || task.change_control_number || task.scar_number || task.document_number || task.complaint_number || task.audit_number || task.investigation_number || task.review_number || task.record_number || task.entity_number;
   if (directRecord) {
-    if (task.workspace_item_type === "document_review" && task.revision) {
+    if ((task.workspace_item_type === "document_review" || task.workspace_item_type === "training_assignment") && task.revision) {
       return `${directRecord} Rev ${task.revision}`;
     }
     return directRecord;
