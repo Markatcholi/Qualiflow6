@@ -969,17 +969,25 @@ export default function DocumentWorkflowPage() {
       return;
     }
 
-    for (const reviewer of data || []) {
-      await supabase.from("document_assigned_reviewers").insert({
-        document_id: doc.id,
-        reviewer_type: reviewer.reviewer_type,
-        reviewer_email: normalizeEmail(reviewer.reviewer_email),
-        reviewer_role: reviewer.reviewer_role,
-        required_reviewer: reviewer.required_reviewer,
-        review_sequence: reviewer.sequence_order,
-        review_status: "pending",
-        assigned_by: userEmail,
-      });
+    try {
+      await validateReviewerEmailsForCompany((data || []).map((reviewer) => reviewer.reviewer_email));
+      for (const reviewer of data || []) {
+        const { error: insertError } = await supabase.from("document_assigned_reviewers").insert({
+          document_id: doc.id,
+          reviewer_type: reviewer.reviewer_type,
+          reviewer_email: normalizeEmail(reviewer.reviewer_email),
+          reviewer_role: reviewer.reviewer_role,
+          required_reviewer: reviewer.required_reviewer,
+          review_sequence: reviewer.sequence_order,
+          review_status: "pending",
+          assigned_by: userEmail,
+        });
+        if (insertError) throw new Error(insertError.message);
+      }
+    } catch (templateError: any) {
+      alert(templateError.message);
+      setBusy(false);
+      return;
     }
 
     await logWorkflowEvent({
