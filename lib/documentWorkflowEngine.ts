@@ -18,6 +18,7 @@ export type ReviewerStatus =
   | "pending"
   | "approved"
   | "rejected"
+  | "cancelled"
   | "not_required";
 
 export type UserRole =
@@ -131,7 +132,8 @@ export function getRequiredReviewers(
       ? reviewer.reviewer_type === reviewerType
       : true;
 
-    return required && typeMatches;
+    const active = reviewer.review_status !== "cancelled";
+    return required && typeMatches && active;
   });
 }
 
@@ -146,7 +148,7 @@ export function getPendingRequiredReviewers(
 
 export function getNextPendingReviewer(reviewers: WorkflowReviewer[]) {
   return (
-    reviewers.find((reviewer) => reviewer.review_status !== "approved") ||
+    reviewers.find((reviewer) => reviewer.review_status !== "approved" && reviewer.review_status !== "cancelled") ||
     null
   );
 }
@@ -461,6 +463,7 @@ export function isOverdue(dueDate: string | null | undefined) {
 export function getSlaLabel(reviewer: WorkflowReviewer) {
   if (reviewer.review_status === "approved") return "Completed";
   if (reviewer.review_status === "rejected") return "Rejected";
+  if (reviewer.review_status === "cancelled") return "Cancelled";
   if (!reviewer.due_date) return "No due date";
   if (isOverdue(reviewer.due_date)) return "Overdue";
   return "On track";
