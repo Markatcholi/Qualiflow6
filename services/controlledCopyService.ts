@@ -7,6 +7,7 @@ import {
 
 type ControlledDocument = {
   id: string;
+  tenant_id: string;
   document_number: string;
   title: string;
   revision: string;
@@ -20,6 +21,7 @@ type ControlledDocument = {
   controlled_copy_file_name?: string | null;
   controlled_copy_file_path?: string | null;
   controlled_copy_file_url?: string | null;
+  company_name?: string | null;
 };
 
 function sanitizePathSegment(value: string | null | undefined) {
@@ -128,6 +130,7 @@ async function stampPdf({
   const pages = pdfDoc.getPages();
   const totalPages = pages.length;
   const effectiveDate = formatDate(doc.effective_date);
+  const companyLabel = String(doc.company_name || "QualiSphere").trim().toUpperCase();
 
   pages.forEach((page, index) => {
     const { width, height } = page.getSize();
@@ -151,7 +154,7 @@ async function stampPdf({
       color: rgb(0.78, 0.81, 0.86),
     });
 
-    page.drawText("QUALIFLOW ENTERPRISE - RELEASED DOCUMENT", {
+    page.drawText(`${companyLabel} - RELEASED DOCUMENT`, {
       x: 24,
       y: height - 16,
       size: 8.5,
@@ -267,7 +270,7 @@ export async function generateControlledCopy({
   const { data, error } = await supabase
     .from("controlled_documents")
     .select(
-      "id, document_number, title, revision, status, effective_date, file_name, file_url, release_pdf_file_name, release_pdf_file_path, release_pdf_file_url, controlled_copy_file_name, controlled_copy_file_path, controlled_copy_file_url"
+      "id, tenant_id, document_number, title, revision, status, effective_date, file_name, file_url, release_pdf_file_name, release_pdf_file_path, release_pdf_file_url, controlled_copy_file_name, controlled_copy_file_path, controlled_copy_file_url"
     )
     .eq("id", documentId)
     .maybeSingle();
@@ -276,6 +279,15 @@ export async function generateControlledCopy({
   if (!data) throw new Error("Controlled document not found.");
 
   const doc = data as ControlledDocument;
+
+  const { data: tenantData, error: tenantError } = await supabase
+    .from("tenants")
+    .select("company_name")
+    .eq("id", doc.tenant_id)
+    .maybeSingle();
+
+  if (tenantError) throw new Error(tenantError.message);
+  doc.company_name = tenantData?.company_name || "QualiSphere";
 
   if (doc.status !== "approved" && doc.status !== "release") {
     throw new Error("Controlled copy can only be generated during release.");
