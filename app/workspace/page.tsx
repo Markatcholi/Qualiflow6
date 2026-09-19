@@ -330,9 +330,9 @@ export default function HomePage() {
   const workspaceCounts = useMemo(
     () => ({
       all: workItems.length,
-      tasks: workItems.filter((item) => item.workspace_item_type === "assigned_task" || item.workspace_item_type === "document_review").length,
+      tasks: workItems.filter((item) => item.workspace_item_type === "assigned_task" || item.workspace_item_type === "document_review" || item.workspace_item_type === "training_assignment").length,
       approvals: workItems.filter(isApprovalTask).length,
-      owned: workItems.filter((item) => item.workspace_item_type !== "assigned_task").length,
+      owned: workItems.filter((item) => item.workspace_item_type !== "assigned_task" && item.workspace_item_type !== "document_review" && item.workspace_item_type !== "training_assignment").length,
       overdue: workItems.filter((item) => getDueStatus(item).category === "overdue").length,
       today: workItems.filter((item) => getDueStatus(item).category === "today").length,
       week: workItems.filter((item) =>
