@@ -2781,7 +2781,11 @@ export default function DocumentWorkflowPage() {
                     </>
                   ) : (
                     <div style={smallTextStyle}>
-                      {canCurrentUserReview
+                      {reviewer.review_status === "cancelled"
+                        ? "Reviewer assignment cancelled."
+                        : reviewer.review_status === "rejected"
+                        ? "This review was rejected and returned to the owner."
+                        : canCurrentUserReview
                         ? "This review has been completed."
                         : `Waiting for assigned reviewer: ${reviewer.reviewer_email}`}
                     </div>
