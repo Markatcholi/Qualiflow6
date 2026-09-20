@@ -25,6 +25,7 @@ export default function GlobalSupplierDocumentsPage() {
   const [documents, setDocuments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
+  const [editingDocumentId, setEditingDocumentId] = useState("");
   const [search, setSearch] = useState("");
 
   const [supplierId, setSupplierId] = useState("");
@@ -114,6 +115,106 @@ export default function GlobalSupplierDocumentsPage() {
     setSelectedFile(null);
     const input = document.getElementById("global-supplier-document-file") as HTMLInputElement | null;
     if (input) input.value = "";
+    setEditingDocumentId("");
+  };
+
+  const startEditDocument = (doc: any) => {
+    setEditingDocumentId(doc.id);
+    setSupplierId(doc.supplier_id || "");
+    setDocumentName(doc.document_title || "");
+    setDocumentType(doc.document_type || "quality_agreement");
+    setDocumentStatus(doc.document_status || "active");
+    setExpirationDate(doc.expiration_date || "");
+    setExternalUrl(doc.external_url || "");
+    setNotes(doc.notes || "");
+    setSelectedFile(null);
+    setShowAddForm(true);
+
+    const input = document.getElementById("global-supplier-document-file") as HTMLInputElement | null;
+    if (input) input.value = "";
+  };
+
+  const saveDocument = async () => {
+    if (!editingDocumentId) {
+      await addDocument();
+      return;
+    }
+
+    if (!supplierId || !documentName.trim()) {
+      alert("Supplier and document name are required.");
+      return;
+    }
+
+    const existingDocument = documents.find((doc) => doc.id === editingDocumentId);
+    if (!existingDocument) {
+      alert("Supplier document not found.");
+      return;
+    }
+
+    const { data: userData } = await supabase.auth.getUser();
+    const userEmail = userData?.user?.email || "unknown";
+    let uploadedFilePath: string | null = existingDocument.uploaded_file_url || null;
+
+    if (selectedFile) {
+      setUploading(true);
+      const { data: tenantId, error: tenantError } = await supabase.rpc(
+        "qualisphere_resolve_supplier_quality_tenant"
+      );
+      if (tenantError || !tenantId) {
+        alert(tenantError?.message || "Unable to resolve Company Account.");
+        setUploading(false);
+        return;
+      }
+
+      const safeFileName = selectedFile.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      uploadedFilePath = `tenant/${tenantId}/supplier/${supplierId}/${Date.now()}_${safeFileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("supplier-documents")
+        .upload(uploadedFilePath, selectedFile, { upsert: false });
+
+      if (uploadError) {
+        alert(uploadError.message);
+        setUploading(false);
+        return;
+      }
+    }
+
+    const { error } = await supabase
+      .from("supplier_documents")
+      .update({
+        supplier_id: supplierId,
+        document_title: documentName,
+        document_type: documentType,
+        document_status: documentStatus,
+        expiration_date: expirationDate || null,
+        document_url: uploadedFilePath || externalUrl || null,
+        external_url: externalUrl || null,
+        uploaded_file_url: uploadedFilePath,
+        notes: notes || null,
+        updated_by: userEmail,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", editingDocumentId);
+
+    setUploading(false);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    await supabase.rpc("qualisphere_add_audit_log", {
+      p_entity_type: "supplier_document",
+      p_entity_id: editingDocumentId,
+      p_action: "supplier_document_updated",
+      p_details: `Supplier document updated: ${documentName}. Attachment: ${uploadedFilePath ? "Yes" : "No"}.`,
+    });
+
+    alert("Supplier document updated.");
+    resetForm();
+    setShowAddForm(false);
+    fetchData();
   };
 
   const addDocument = async () => {
@@ -242,7 +343,7 @@ export default function GlobalSupplierDocumentsPage() {
         >
           <div>
             <h2 style={{ marginTop: 0 }}>
-              Create Supplier Document
+              {editingDocumentId ? "Edit Supplier Document" : "Create Supplier Document"}
             </h2>
 
             <p style={{ color: "#4b5563", marginTop: 0 }}>
@@ -276,6 +377,7 @@ export default function GlobalSupplierDocumentsPage() {
               <select
                 value={supplierId}
                 onChange={(e) => setSupplierId(e.target.value)}
+                disabled={!!editingDocumentId}
                 style={standardInputStyle}
               >
                 <option value="">Select supplier</option>
@@ -383,8 +485,8 @@ export default function GlobalSupplierDocumentsPage() {
             </FormField>
 
             <div style={{ display: "flex", gap: "8px" }}>
-              <button type="button" onClick={addDocument} disabled={uploading}>
-                {uploading ? "Saving..." : "Save Document"}
+              <button type="button" onClick={saveDocument} disabled={uploading}>
+                {uploading ? "Saving..." : editingDocumentId ? "Save Changes" : "Save Document"}
               </button>
 
               <button
@@ -446,6 +548,7 @@ export default function GlobalSupplierDocumentsPage() {
                 <th style={thStyle}>Status</th>
                 <th style={thStyle}>Expiration</th>
                 <th style={thStyle}>Open</th>
+                <th style={thStyle}>Action</th>
               </tr>
             </thead>
 
@@ -502,6 +605,10 @@ export default function GlobalSupplierDocumentsPage() {
                           Open Document
                         </a>
                       ) : "N/A"}
+                    </td>
+
+                    <td style={tdStyle}>
+                      <button type="button" onClick={() => startEditDocument(doc)}>Edit</button>
                     </td>
                   </tr>
                 );
