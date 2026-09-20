@@ -1,11 +1,13 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { supabase } from "../../../lib/supabaseClient";
 
 export default function NewSupplierPage() {
   const router = useRouter();
+  const submittingRef = useRef(false);
+  const [saving, setSaving] = useState(false);
 
   const [supplierNumber, setSupplierNumber] = useState("");
   const [supplierName, setSupplierName] = useState("");
@@ -24,10 +26,15 @@ export default function NewSupplierPage() {
   const [isoExpirationDate, setIsoExpirationDate] = useState("");
 
   const saveSupplier = async () => {
+    if (submittingRef.current) return;
+
     if (!supplierName.trim()) {
       alert("Supplier name is required.");
       return;
     }
+
+    submittingRef.current = true;
+    setSaving(true);
 
     const { data, error } = await supabase
       .from("suppliers")
@@ -49,6 +56,8 @@ export default function NewSupplierPage() {
       .single();
 
     if (error) {
+      submittingRef.current = false;
+      setSaving(false);
       alert(error.message);
       return;
     }
@@ -120,7 +129,9 @@ export default function NewSupplierPage() {
           <input type="date" value={isoExpirationDate} onChange={(e) => setIsoExpirationDate(e.target.value)} style={inputStyle} />
         </Field>
 
-        <button onClick={saveSupplier}>Create Supplier</button>
+        <button onClick={saveSupplier} disabled={saving}>
+          {saving ? "Creating Supplier..." : "Create Supplier"}
+        </button>
       </div>
     </main>
   );
