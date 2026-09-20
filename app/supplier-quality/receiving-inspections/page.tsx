@@ -159,7 +159,7 @@ export default function GlobalReceivingInspectionsPage() {
         receipt_date: receiptDate || null,
         quantity_received: quantityReceived ? Number(quantityReceived) : null,
         inspection_result: "pending",
-        approval_status: "pending_approval",
+        approval_status: "draft",
         is_locked: false,
         created_by: userEmail,
       })
@@ -197,6 +197,7 @@ export default function GlobalReceivingInspectionsPage() {
     const result = String(inspection.inspection_result || "").toLowerCase();
 
     if (inspection.is_locked || inspection.approval_status === "approved") return false;
+    if (inspection.approval_status !== "pending_approval") return false;
     if (!result || result === "pending") return false;
     if (inspectionRequiresNcmr(inspection) && !inspection.linked_ncmr_id) return false;
 
@@ -484,7 +485,7 @@ export default function GlobalReceivingInspectionsPage() {
             <div class="grid">
               <div class="field">
                 <div class="label">Approval Status</div>
-                <div class="value">${escapeHtml(inspection.approval_status || "pending_approval")}</div>
+                <div class="value">${escapeHtml(inspection.approval_status || "draft")}</div>
               </div>
 
               <div class="field">
@@ -692,7 +693,7 @@ export default function GlobalReceivingInspectionsPage() {
   ).length;
 
   const pendingApprovalInspections = inspections.filter(
-    (inspection) => inspection.approval_status !== "approved"
+    (inspection) => inspection.approval_status === "pending_approval"
   ).length;
 
   const supplierRejectRate =
@@ -1044,7 +1045,7 @@ export default function GlobalReceivingInspectionsPage() {
                       </td>
 
                       <td style={tdStyle}>
-                        <StatusBadge status={inspection.approval_status || "pending_approval"} />
+                        <StatusBadge status={inspection.approval_status || "draft"} />
 
                         {isApproved ? (
                           <div style={{ color: "#6b7280", fontSize: "12px", marginTop: "6px" }}>
