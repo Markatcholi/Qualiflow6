@@ -34,6 +34,8 @@ export default function GlobalSupplierDocumentsPage() {
   const [expirationDate, setExpirationDate] = useState("");
   const [externalUrl, setExternalUrl] = useState("");
   const [notes, setNotes] = useState("");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
 
   const supplierMap = useMemo(() => {
     const map: Record<string, SupplierOption> = {};
@@ -49,7 +51,7 @@ export default function GlobalSupplierDocumentsPage() {
     const supplier = supplierMap[doc.supplier_id];
 
     const haystack = [
-      doc.document_name,
+      doc.document_title,
       doc.document_type,
       doc.document_status,
       supplier?.supplier_name,
@@ -109,6 +111,9 @@ export default function GlobalSupplierDocumentsPage() {
     setExpirationDate("");
     setExternalUrl("");
     setNotes("");
+    setSelectedFile(null);
+    const input = document.getElementById("global-supplier-document-file") as HTMLInputElement | null;
+    if (input) input.value = "";
   };
 
   const addDocument = async () => {
@@ -123,21 +128,64 @@ export default function GlobalSupplierDocumentsPage() {
     }
 
     const { data: userData } = await supabase.auth.getUser();
-
     const userEmail = userData?.user?.email || "unknown";
+
+    let uploadedFilePath: string | null = null;
+    let uploadedFileUrl: string | null = null;
+
+    if (selectedFile) {
+      setUploading(true);
+      const { data: tenantId, error: tenantError } = await supabase.rpc(
+        "qualisphere_resolve_supplier_quality_tenant"
+      );
+      if (tenantError || !tenantId) {
+        alert(tenantError?.message || "Unable to resolve Company Account.");
+        setUploading(false);
+        return;
+      }
+
+      const safeFileName = selectedFile.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      uploadedFilePath = `tenant/${tenantId}/supplier/${supplierId}/${Date.now()}_${safeFileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("supplier-documents")
+        .upload(uploadedFilePath, selectedFile, { upsert: false });
+
+      if (uploadError) {
+        alert(uploadError.message);
+        setUploading(false);
+        return;
+      }
+
+      const { data: signedData, error: signedError } = await supabase.storage
+        .from("supplier-documents")
+        .createSignedUrl(uploadedFilePath, 3600);
+
+      if (signedError) {
+        await supabase.storage.from("supplier-documents").remove([uploadedFilePath]);
+        alert(signedError.message);
+        setUploading(false);
+        return;
+      }
+      uploadedFileUrl = signedData.signedUrl;
+    }
 
     const { error } = await supabase
       .from("supplier_documents")
       .insert({
         supplier_id: supplierId,
-        document_name: documentName,
+        document_title: documentName,
         document_type: documentType,
         document_status: documentStatus,
         expiration_date: expirationDate || null,
-        external_document_url: externalUrl || null,
-        notes,
+        document_url: uploadedFilePath || externalUrl || null,
+        external_url: externalUrl || null,
+        uploaded_file_url: uploadedFilePath,
+        notes: notes || null,
         created_by: userEmail,
       });
+
+    setUploading(false);
 
     if (error) {
       alert(error.message);
@@ -308,6 +356,15 @@ export default function GlobalSupplierDocumentsPage() {
               />
             </FormField>
 
+            <FormField label="Attachment">
+              <input
+                id="global-supplier-document-file"
+                type="file"
+                onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
+              />
+              {selectedFile ? <div style={{ marginTop: "6px", color: "#4b5563" }}>{selectedFile.name}</div> : null}
+            </FormField>
+
             <FormField label="External URL / Storage Link">
               <input
                 value={externalUrl}
@@ -326,8 +383,8 @@ export default function GlobalSupplierDocumentsPage() {
             </FormField>
 
             <div style={{ display: "flex", gap: "8px" }}>
-              <button type="button" onClick={addDocument}>
-                Save Document
+              <button type="button" onClick={addDocument} disabled={uploading}>
+                {uploading ? "Saving..." : "Save Document"}
               </button>
 
               <button
@@ -409,7 +466,7 @@ export default function GlobalSupplierDocumentsPage() {
                     </td>
 
                     <td style={tdStyle}>
-                      {doc.document_name || "N/A"}
+                      {doc.document_title || "N/A"}
                     </td>
 
                     <td style={tdStyle}>
@@ -427,16 +484,24 @@ export default function GlobalSupplierDocumentsPage() {
                     </td>
 
                     <td style={tdStyle}>
-                      {doc.external_document_url ? (
-                        <a
-                          href={doc.external_document_url}
-                          target="_blank"
+                      {doc.uploaded_file_url ? (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const { data, error } = await supabase.storage
+                              .from("supplier-documents")
+                              .createSignedUrl(doc.uploaded_file_url, 3600);
+                            if (error) return alert(error.message);
+                            window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+                          }}
                         >
+                          Open Attachment
+                        </button>
+                      ) : doc.external_url ? (
+                        <a href={doc.external_url} target="_blank" rel="noreferrer">
                           Open Document
                         </a>
-                      ) : (
-                        "N/A"
-                      )}
+                      ) : "N/A"}
                     </td>
                   </tr>
                 );
