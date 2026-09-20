@@ -98,8 +98,17 @@ export default function SupplierDocumentsPage() {
 
     setUploading(true);
 
+    const { data: tenantId, error: tenantError } = await supabase.rpc(
+      "qualisphere_resolve_supplier_quality_tenant"
+    );
+    if (tenantError || !tenantId) {
+      alert(tenantError?.message || "Unable to resolve Company Account.");
+      setUploading(false);
+      return;
+    }
+
     const safeFileName = selectedFile.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-    const filePath = `suppliers/${supplierId}/${Date.now()}_${safeFileName}`;
+    const filePath = `tenant/${tenantId}/supplier/${supplierId}/${Date.now()}_${safeFileName}`;
 
     const { error: uploadError } = await supabase.storage
       .from("supplier-documents")
@@ -111,11 +120,7 @@ export default function SupplierDocumentsPage() {
       return;
     }
 
-    const { data } = supabase.storage
-      .from("supplier-documents")
-      .getPublicUrl(filePath);
-
-    setUploadedFileUrl(data.publicUrl);
+    setUploadedFileUrl(filePath);
     setUploading(false);
     alert("File uploaded. Click Add Document to save the document record.");
   };
@@ -310,9 +315,7 @@ export default function SupplierDocumentsPage() {
               {uploadedFileUrl ? (
                 <p>
                   <strong>Uploaded File:</strong>{" "}
-                  <a href={uploadedFileUrl} target="_blank" rel="noreferrer">
-                    Open Uploaded File
-                  </a>
+                  <span>{selectedFile?.name || "File uploaded"}</span>
                 </p>
               ) : null}
             </div>
@@ -397,8 +400,14 @@ export default function SupplierDocumentsPage() {
                     <td style={tdStyle}>{doc.expiration_date || "N/A"}</td>
                     <td style={tdStyle}>{alertText}</td>
                     <td style={tdStyle}>
-                      {doc.uploaded_file_url || doc.document_url ? (
-                        <a href={doc.uploaded_file_url || doc.document_url} target="_blank" rel="noreferrer">Open</a>
+                      {doc.uploaded_file_url ? (
+                        <button type="button" onClick={async () => {
+                          const { data, error } = await supabase.storage
+                            .from("supplier-documents")
+                            .createSignedUrl(doc.uploaded_file_url, 3600);
+                          if (error) return alert(error.message);
+                          window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+                        }}>Open</button>
                       ) : "N/A"}
                     </td>
                     <td style={tdStyle}>
