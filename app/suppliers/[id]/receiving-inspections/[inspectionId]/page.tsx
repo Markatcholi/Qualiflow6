@@ -32,8 +32,10 @@ export default function SupplierReceivingInspectionDetailPage() {
   const [automaticNcmrRequired, setAutomaticNcmrRequired] = useState(false);
   const [notes, setNotes] = useState("");
 
+  const isSubmitted = inspection?.approval_status === "pending_approval";
   const isLocked =
     inspection?.is_locked === true || inspection?.approval_status === "approved";
+  const isReadOnly = isLocked || isSubmitted;
 
   const fetchData = async () => {
     setLoading(true);
@@ -112,8 +114,12 @@ export default function SupplierReceivingInspectionDetailPage() {
   };
 
   const validateBeforeSave = () => {
-    if (isLocked) {
-      alert("This inspection is approved/locked and cannot be edited.");
+    if (isReadOnly) {
+      alert(
+        isSubmitted
+          ? "This inspection has been submitted for approval and cannot be edited."
+          : "This inspection is approved/locked and cannot be edited."
+      );
       return false;
     }
 
@@ -169,6 +175,69 @@ export default function SupplierReceivingInspectionDetailPage() {
     await addAuditLog("receiving_inspection_saved", "Receiving inspection saved.");
 
     alert("Receiving inspection saved.");
+    fetchData();
+  };
+
+  const submitForApproval = async () => {
+    if (isLocked) {
+      alert("This inspection is already approved/locked.");
+      return;
+    }
+    if (isSubmitted) {
+      alert("This inspection has already been submitted for approval.");
+      return;
+    }
+    if (inspectionResult === "pending") {
+      alert("Complete the inspection result before submitting for approval.");
+      return;
+    }
+    if (!inspectionDate || !quantityInspected || !inspector.trim()) {
+      alert("Inspection Date, Quantity Inspected, and Inspector are required before submission.");
+      return;
+    }
+    if (inspectionResult === "rejected" && Number(quantityRejected || 0) <= 0) {
+      alert("Rejected inspections require a rejected quantity greater than zero.");
+      return;
+    }
+    if (inspectionResult === "rejected" && !defectCategory.trim()) {
+      alert("Rejected inspections require a defect category.");
+      return;
+    }
+
+    const { error: saveError } = await supabase
+      .from("receiving_inspections")
+      .update({
+        part_revision: partRevision || null,
+        part_description: partDescription || null,
+        receiving_inspection_procedure: receivingInspectionProcedure || null,
+        receiving_inspection_procedure_revision: receivingInspectionProcedureRevision || null,
+        inspection_date: inspectionDate,
+        quantity_inspected: Number(quantityInspected),
+        quantity_accepted: quantityAccepted ? Number(quantityAccepted) : null,
+        quantity_rejected: inspectionResult === "accepted" ? 0 : quantityRejected ? Number(quantityRejected) : null,
+        inspection_result: inspectionResult,
+        defect_category: defectCategory || null,
+        defect_description: defectDescription || null,
+        coa_verified: coaVerified,
+        documents_verified: documentsVerified,
+        inspector: inspector.trim(),
+        automatic_ncmr_required:
+          inspectionResult === "rejected" ||
+          Number(quantityRejected || 0) > 0 ||
+          automaticNcmrRequired,
+        notes: notes || null,
+        approval_status: "pending_approval",
+      })
+      .eq("id", inspectionId);
+
+    if (saveError) return alert(saveError.message);
+
+    await addAuditLog(
+      "receiving_inspection_submitted_for_approval",
+      "Receiving inspection completed and submitted for approval."
+    );
+
+    alert("Receiving inspection submitted for approval.");
     fetchData();
   };
 
@@ -410,6 +479,12 @@ export default function SupplierReceivingInspectionDetailPage() {
         </div>
       </div>
 
+      {isSubmitted && !isLocked ? (
+        <div style={submittedBannerStyle}>
+          ⏳ This receiving inspection has been submitted for approval. Editing is disabled while approval is pending.
+        </div>
+      ) : null}
+
       {isLocked ? (
         <div style={lockedBannerStyle}>
           🔒 This receiving inspection is approved and locked. Editing is disabled.
@@ -461,7 +536,7 @@ export default function SupplierReceivingInspectionDetailPage() {
             value={partRevision}
             onChange={(e) => setPartRevision(e.target.value)}
             style={inputStyle}
-            disabled={isLocked}
+            disabled={isReadOnly}
           />
         </FieldInput>
 
@@ -471,7 +546,7 @@ export default function SupplierReceivingInspectionDetailPage() {
             onChange={(e) => setPartDescription(e.target.value)}
             rows={3}
             style={textareaStyle}
-            disabled={isLocked}
+            disabled={isReadOnly}
           />
         </FieldInput>
 
@@ -481,7 +556,7 @@ export default function SupplierReceivingInspectionDetailPage() {
             onChange={(e) => setReceivingInspectionProcedure(e.target.value)}
             placeholder="Example: SOP-QA-014 Receiving Inspection"
             style={inputStyle}
-            disabled={isLocked}
+            disabled={isReadOnly}
           />
         </FieldInput>
 
@@ -491,7 +566,7 @@ export default function SupplierReceivingInspectionDetailPage() {
             onChange={(e) => setReceivingInspectionProcedureRevision(e.target.value)}
             placeholder="Example: Rev 07"
             style={inputStyle}
-            disabled={isLocked}
+            disabled={isReadOnly}
           />
         </FieldInput>
       </section>
@@ -505,7 +580,7 @@ export default function SupplierReceivingInspectionDetailPage() {
             value={inspectionDate}
             onChange={(e) => setInspectionDate(e.target.value)}
             style={inputStyle}
-            disabled={isLocked}
+            disabled={isReadOnly}
           />
         </FieldInput>
 
@@ -515,7 +590,7 @@ export default function SupplierReceivingInspectionDetailPage() {
             value={quantityInspected}
             onChange={(e) => setQuantityInspected(e.target.value)}
             style={inputStyle}
-            disabled={isLocked}
+            disabled={isReadOnly}
           />
         </FieldInput>
 
@@ -525,7 +600,7 @@ export default function SupplierReceivingInspectionDetailPage() {
             value={quantityAccepted}
             onChange={(e) => setQuantityAccepted(e.target.value)}
             style={inputStyle}
-            disabled={isLocked}
+            disabled={isReadOnly}
           />
         </FieldInput>
 
@@ -535,7 +610,7 @@ export default function SupplierReceivingInspectionDetailPage() {
             value={quantityRejected}
             onChange={(e) => setQuantityRejected(e.target.value)}
             style={inputStyle}
-            disabled={isLocked}
+            disabled={isReadOnly}
           />
         </FieldInput>
 
@@ -544,7 +619,7 @@ export default function SupplierReceivingInspectionDetailPage() {
             value={inspectionResult}
             onChange={(e) => setInspectionResult(e.target.value)}
             style={inputStyle}
-            disabled={isLocked}
+            disabled={isReadOnly}
           >
             <option value="pending">Pending</option>
             <option value="accepted">Accepted</option>
@@ -558,7 +633,7 @@ export default function SupplierReceivingInspectionDetailPage() {
             value={defectCategory}
             onChange={(e) => setDefectCategory(e.target.value)}
             style={inputStyle}
-            disabled={isLocked}
+            disabled={isReadOnly}
           />
         </FieldInput>
 
@@ -568,7 +643,7 @@ export default function SupplierReceivingInspectionDetailPage() {
             onChange={(e) => setDefectDescription(e.target.value)}
             rows={4}
             style={textareaStyle}
-            disabled={isLocked}
+            disabled={isReadOnly}
           />
         </FieldInput>
 
@@ -577,7 +652,7 @@ export default function SupplierReceivingInspectionDetailPage() {
             type="checkbox"
             checked={coaVerified}
             onChange={(e) => setCoaVerified(e.target.checked)}
-            disabled={isLocked}
+            disabled={isReadOnly}
           />{" "}
           COA Verified
         </label>
@@ -588,7 +663,7 @@ export default function SupplierReceivingInspectionDetailPage() {
             type="checkbox"
             checked={documentsVerified}
             onChange={(e) => setDocumentsVerified(e.target.checked)}
-            disabled={isLocked}
+            disabled={isReadOnly}
           />{" "}
           Documents Verified
         </label>
@@ -599,7 +674,7 @@ export default function SupplierReceivingInspectionDetailPage() {
             type="checkbox"
             checked={automaticNcmrRequired}
             onChange={(e) => setAutomaticNcmrRequired(e.target.checked)}
-            disabled={isLocked}
+            disabled={isReadOnly}
           />{" "}
           NCMR Required
         </label>
@@ -609,7 +684,7 @@ export default function SupplierReceivingInspectionDetailPage() {
             value={inspector}
             onChange={(e) => setInspector(e.target.value)}
             style={inputStyle}
-            disabled={isLocked}
+            disabled={isReadOnly}
           />
         </FieldInput>
 
@@ -619,19 +694,28 @@ export default function SupplierReceivingInspectionDetailPage() {
             onChange={(e) => setNotes(e.target.value)}
             rows={4}
             style={textareaStyle}
-            disabled={isLocked}
+            disabled={isReadOnly}
           />
         </FieldInput>
 
         <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-          <button onClick={saveInspection} disabled={isLocked} style={buttonDisabledStyle(isLocked)}>
+          <button onClick={saveInspection} disabled={isReadOnly} style={buttonDisabledStyle(isReadOnly)}>
             Save Inspection
           </button>
 
           <button
+            type="button"
+            onClick={submitForApproval}
+            disabled={isReadOnly}
+            style={buttonDisabledStyle(isReadOnly)}
+          >
+            {isSubmitted ? "Submitted for Approval" : "Submit for Approval"}
+          </button>
+
+          <button
             onClick={createNcmrFromInspection}
-            disabled={isLocked || Boolean(inspection.linked_ncmr_id)}
-            style={buttonDisabledStyle(isLocked || Boolean(inspection.linked_ncmr_id))}
+            disabled={isReadOnly || Boolean(inspection.linked_ncmr_id)}
+            style={buttonDisabledStyle(isReadOnly || Boolean(inspection.linked_ncmr_id))}
           >
             Create NCMR from Inspection
           </button>
@@ -723,6 +807,16 @@ const eyebrowStyle: React.CSSProperties = {
   fontSize: "12px",
   letterSpacing: "0.08em",
   color: "#6b7280",
+  fontWeight: 800,
+};
+
+const submittedBannerStyle: React.CSSProperties = {
+  padding: "14px",
+  background: "#fffbeb",
+  border: "1px solid #f59e0b",
+  borderRadius: "12px",
+  marginBottom: "20px",
+  color: "#92400e",
   fontWeight: 800,
 };
 
