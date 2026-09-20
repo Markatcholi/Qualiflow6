@@ -1187,6 +1187,12 @@ function getRecordDisplay(task: any) {
   const title = String(task.task_title || task.title || "");
   const recordMatch = title.match(/\b(CAPA[-\s]?\d+|NCMR[-\s]?\d+|CC[-\s]?\d+|SCAR[-\s]?\d+|AUD[-\s]?\d+|DOC[-\s]?\d+|CMP[-\s]?\d+|MR[-\s]?\d+(?:[-\s]?\d+)?)\b/i);
   if (recordMatch?.[1]) return recordMatch[1].toUpperCase();
+
+  // SCAR currently has no populated scar_number. Show its meaningful title in
+  // Workspace instead of exposing the database UUID used for routing.
+  const entityType = String(task.entity_type || task.workspace_item_type || "").trim().toLowerCase();
+  if (entityType.includes("scar") && title.trim()) return title.trim();
+
   return task.entity_id || task.id || "Record";
 }
 
