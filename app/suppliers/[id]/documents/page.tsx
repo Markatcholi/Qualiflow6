@@ -25,6 +25,7 @@ export default function SupplierDocumentsPage() {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
+  const [editingDocumentId, setEditingDocumentId] = useState("");
 
   const [documentTitle, setDocumentTitle] = useState("");
   const [documentType, setDocumentType] = useState("quality_agreement");
@@ -88,6 +89,24 @@ export default function SupplierDocumentsPage() {
     if (fileInput) fileInput.value = "";
 
     setShowAddForm(false);
+    setEditingDocumentId("");
+  };
+
+  const startEditDocument = (doc: any) => {
+    setEditingDocumentId(doc.id);
+    setDocumentTitle(doc.document_title || "");
+    setDocumentType(doc.document_type || "quality_agreement");
+    setDocumentStatus(doc.document_status || "active");
+    setEffectiveDate(doc.effective_date || "");
+    setExpirationDate(doc.expiration_date || "");
+    setDocumentUrl(doc.external_url || "");
+    setUploadedFileUrl(doc.uploaded_file_url || "");
+    setSelectedFile(null);
+    setNotes(doc.notes || "");
+    setShowAddForm(true);
+
+    const fileInput = document.getElementById("supplier-document-file") as HTMLInputElement | null;
+    if (fileInput) fileInput.value = "";
   };
 
   const uploadFile = async () => {
@@ -122,7 +141,62 @@ export default function SupplierDocumentsPage() {
 
     setUploadedFileUrl(filePath);
     setUploading(false);
-    alert("File uploaded. Click Add Document to save the document record.");
+    alert(editingDocumentId ? "File uploaded. Click Save Changes to update the document record." : "File uploaded. Click Save Document to save the document record.");
+  };
+
+  const saveDocument = async () => {
+    if (!documentTitle.trim()) {
+      alert("Document title is required.");
+      return;
+    }
+
+    if (!documentUrl.trim() && !uploadedFileUrl.trim()) {
+      alert("Please provide an external URL, upload a file, or both.");
+      return;
+    }
+
+    const finalDocumentUrl = uploadedFileUrl || documentUrl;
+    const { data: userData } = await supabase.auth.getUser();
+    const userEmail = userData?.user?.email || "unknown";
+
+    if (editingDocumentId) {
+      const { error } = await supabase
+        .from("supplier_documents")
+        .update({
+          document_title: documentTitle,
+          document_type: documentType,
+          document_status: documentStatus,
+          effective_date: effectiveDate || null,
+          expiration_date: expirationDate || null,
+          document_url: finalDocumentUrl,
+          external_url: documentUrl || null,
+          uploaded_file_url: uploadedFileUrl || null,
+          notes: notes || null,
+          updated_by: userEmail,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", editingDocumentId)
+        .eq("supplier_id", supplierId);
+
+      if (error) {
+        alert(error.message);
+        return;
+      }
+
+      await supabase.rpc("qualisphere_add_audit_log", {
+        p_entity_type: "supplier_document",
+        p_entity_id: editingDocumentId,
+        p_action: "supplier_document_updated",
+        p_details: `Supplier document updated: ${documentTitle}. Uploaded file: ${uploadedFileUrl ? "Yes" : "No"}. External URL: ${documentUrl ? "Yes" : "No"}.`,
+      });
+
+      alert("Supplier document updated.");
+      resetForm();
+      fetchData();
+      return;
+    }
+
+    await addDocument();
   };
 
   const addDocument = async () => {
@@ -251,7 +325,7 @@ export default function SupplierDocumentsPage() {
               marginTop: "12px",
             }}
           >
-            <h3 style={{ marginTop: 0 }}>New Supplier Document</h3>
+            <h3 style={{ marginTop: 0 }}>{editingDocumentId ? "Edit Supplier Document" : "New Supplier Document"}</h3>
 
             <FormField label="Document Title">
               <input value={documentTitle} onChange={(e) => setDocumentTitle(e.target.value)} style={standardInputStyle} />
@@ -344,9 +418,9 @@ export default function SupplierDocumentsPage() {
             </FormField>
 
             <SaveCancelActions
-              onSave={addDocument}
+              onSave={saveDocument}
               onCancel={resetForm}
-              saveLabel="Save Document"
+              saveLabel={editingDocumentId ? "Save Changes" : "Save Document"}
               cancelLabel="Cancel"
             />
           </div>
@@ -416,9 +490,12 @@ export default function SupplierDocumentsPage() {
                       ) : "N/A"}
                     </td>
                     <td style={tdStyle}>
-                      {doc.document_status !== "retired" ? (
-                        <button type="button" onClick={() => retireDocument(doc.id)}>Retire</button>
-                      ) : "Retired"}
+                      <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                        <button type="button" onClick={() => startEditDocument(doc)}>Edit</button>
+                        {doc.document_status !== "retired" ? (
+                          <button type="button" onClick={() => retireDocument(doc.id)}>Retire</button>
+                        ) : <span>Retired</span>}
+                      </div>
                     </td>
                   </tr>
                 );
