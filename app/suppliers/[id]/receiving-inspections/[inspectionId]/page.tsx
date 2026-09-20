@@ -396,7 +396,7 @@ export default function SupplierReceivingInspectionDetailPage() {
           <h2>Approval / Lock Evidence</h2>
           <div class="approval">
             <div class="grid">
-              ${printField("Approval Status", inspection?.approval_status || "pending_approval")}
+              ${printField("Approval Status", inspection?.approval_status || "draft")}
               ${printField("Record Locked", inspection?.is_locked ? "Yes" : "No")}
               ${printField("Approved By", inspection?.approved_by)}
               ${printField("Approved At", inspection?.approved_at)}
