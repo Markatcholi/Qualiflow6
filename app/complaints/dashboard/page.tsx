@@ -61,6 +61,7 @@ type KpiTile = {
 export default function ComplaintIntelligenceDashboardPage() {
   const [complaints, setComplaints] = useState<Complaint[]>([]);
   const [loading, setLoading] = useState(true);
+  const [executiveDashboardEnabled, setExecutiveDashboardEnabled] = useState(false);
 
   const fetchComplaints = async () => {
     setLoading(true);
@@ -82,6 +83,29 @@ export default function ComplaintIntelligenceDashboardPage() {
 
   useEffect(() => {
     fetchComplaints();
+
+    const loadModuleEntitlement = async () => {
+      const { data: tenantId, error: tenantError } = await supabase.rpc(
+        "qualisphere_resolve_complaint_tenant"
+      );
+
+      if (tenantError || !tenantId) {
+        setExecutiveDashboardEnabled(false);
+        return;
+      }
+
+      const { data: enabled, error: entitlementError } = await supabase.rpc(
+        "qualisphere_tenant_module_enabled",
+        {
+          p_tenant_id: tenantId,
+          p_module_code: "executive_dashboard",
+        }
+      );
+
+      setExecutiveDashboardEnabled(!entitlementError && enabled === true);
+    };
+
+    loadModuleEntitlement();
   }, []);
 
   const daysBetween = (start?: string | null, end?: string | null) => {
@@ -480,9 +504,11 @@ export default function ComplaintIntelligenceDashboardPage() {
             Complaint Registry
           </Link>
 
-          <Link href="/dashboard" style={darkLinkStyle}>
-            Executive Dashboard
-          </Link>
+          {executiveDashboardEnabled ? (
+            <Link href="/dashboard" style={darkLinkStyle}>
+              Executive Dashboard
+            </Link>
+          ) : null}
         </div>
       </header>
 
