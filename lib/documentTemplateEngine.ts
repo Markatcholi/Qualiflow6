@@ -1,7 +1,4 @@
-import {
-  calculateDueDate,
-  normalizeEmail,
-} from "./documentWorkflowEngine";
+import { normalizeEmail } from "./documentWorkflowEngine";
 
 export type ApprovalMatrixTemplate = {
   id: string;
@@ -143,10 +140,7 @@ export function buildReviewerAssignments(
     ) {
       continue;
     }
-
-    const slaDays = Number(reviewer.sla_days || 5);
-
-    assignments.push({
+assignments.push({
       document_id: documentId,
       reviewer_type: reviewer.reviewer_type,
       reviewer_email: reviewerEmail,
@@ -158,13 +152,7 @@ export function buildReviewerAssignments(
       review_status: "pending",
       assigned_by: assignedBy,
       assigned_at: now,
-      sla_days: slaDays,
-      due_date: calculateDueDate(now, slaDays),
-      escalation_role:
-        reviewer.escalation_role || null,
-      escalation_email:
-        reviewer.escalation_email || null,
-    });
+});
   }
 
   return assignments;
