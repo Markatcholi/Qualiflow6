@@ -247,9 +247,6 @@ export default function ComplaintsPage() {
             Complaint Dashboard
           </Link>
 
-          <Link href="/dashboard" style={darkLinkStyle}>
-            Dashboard
-          </Link>
         </div>
       </header>
 
