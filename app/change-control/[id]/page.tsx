@@ -1865,9 +1865,6 @@ export default function ChangeControlWorkflowPage() {
           <a href="/change-control" style={secondaryLinkStyle}>
             Back to Change Control
           </a>
-          <a href="/dashboard" style={darkButtonStyle}>
-            Dashboard
-          </a>
         </div>
       </header>
 
