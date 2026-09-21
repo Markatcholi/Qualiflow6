@@ -443,7 +443,6 @@ export default function ComplaintDetailPage() {
 
         <div style={buttonRowStyle}>
           <Link href="/complaints" style={secondaryLinkStyle}>Back to Complaints</Link>
-          <Link href="/dashboard" style={darkLinkStyle}>Dashboard</Link>
         </div>
       </header>
 
