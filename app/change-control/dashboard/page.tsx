@@ -397,9 +397,6 @@ export default function ChangeControlDashboardPage() {
           <a href="/change-control" style={darkButtonStyle}>
             Back to Change Register
           </a>
-          <a href="/dashboard" style={secondaryButtonStyle}>
-            Enterprise Dashboard
-          </a>
         </div>
       </header>
 
