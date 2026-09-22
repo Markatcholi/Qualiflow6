@@ -2736,9 +2736,8 @@ export default function ChangeControlWorkflowPage() {
                         {change.status === "pending_approval" &&
                         reviewer.review_status !== "approved" &&
                         reviewer.review_status !== "rejected" &&
-                        currentApprovalTask &&
                         normalizeEmail(reviewer.reviewer_email || "") ===
-                          normalizeEmail(currentApprovalTask.assigned_to_email || "") ? (
+                          normalizeEmail(userEmail) ? (
                           <div style={buttonRowStyle}>
                             <input
                               placeholder="Comments"
