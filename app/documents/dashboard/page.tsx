@@ -455,9 +455,6 @@ export default function DocumentControlIntelligenceDashboardPage() {
           <Link href="/dashboard/workflow" style={secondaryButtonStyle}>
             Workflow Dashboard
           </Link>
-          <Link href="/dashboard" style={secondaryButtonStyle}>
-            Enterprise Dashboard
-          </Link>
         </div>
       </header>
 
