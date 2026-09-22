@@ -175,7 +175,6 @@ export default function WorkflowDashboardPage() {
         </div>
 
         <div style={buttonRowStyle}>
-          <a href="/dashboard" style={darkButtonStyle}>Main Dashboard</a>
           <a href="/documents" style={darkButtonStyle}>Documents</a>
         </div>
       </header>
