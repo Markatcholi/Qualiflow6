@@ -2695,89 +2695,88 @@ export default function ChangeControlWorkflowPage() {
           </div>
         ) : null}
 
-        <div style={subCardStyle}>
-          <h3 style={{ marginTop: 0 }}>Assigned Reviewers</h3>
-          {reviewers.length === 0 ? (
-            <p style={subtleText}>No reviewers assigned yet.</p>
-          ) : (
-            <div style={{ overflowX: "auto" }}>
-              <table style={tableStyle}>
-                <thead>
-                  <tr>
-                    <th style={thStyle}>Seq</th>
-                    <th style={thStyle}>Phase</th>
-                    <th style={thStyle}>Role</th>
-                    <th style={thStyle}>Email</th>
-                    <th style={thStyle}>Required</th>
-                    <th style={thStyle}>Status</th>
-                    <th style={thStyle}>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {reviewers.map((reviewer) => (
-                    <tr key={reviewer.id}>
-                      <td style={tdStyle}>{reviewer.sequence_order || 1}</td>
-                      <td style={tdStyle}>
-                        {getReviewerTypeLabel(reviewer.reviewer_type)}
-                      </td>
-                      <td style={tdStyle}>{reviewer.reviewer_role || "N/A"}</td>
-                      <td style={tdStyle}>
-                        {reviewer.reviewer_email || "Role-based"}
-                      </td>
-                      <td style={tdStyle}>
-                        {reviewer.required_reviewer ? "Yes" : "No"}
-                      </td>
-                      <td style={tdStyle}>
-                        <StatusBadge
-                          status={reviewer.review_status || "pending"}
-                        />
-                      </td>
-                      <td style={tdStyle}>
-                        {change.status === "pending_approval" &&
-                        reviewer.review_status !== "approved" &&
-                        reviewer.review_status !== "rejected" &&
-                        normalizeEmail(reviewer.reviewer_email || "") ===
-                          normalizeEmail(userEmail) ? (
-                          <div style={buttonRowStyle}>
-                            <input
-                              placeholder="Comments"
-                              value={approvalComments[reviewer.id] || ""}
-                              onChange={(e) =>
-                                setApprovalComments({
-                                  ...approvalComments,
-                                  [reviewer.id]: e.target.value,
-                                })
-                              }
-                              style={inputStyle}
-                            />
-                            <button
-                              onClick={() =>
-                                reviewerDecision(reviewer, "approved")
-                              }
-                              style={primaryButtonStyle}
-                            >
-                              Approve
-                            </button>
-                            <button
-                              onClick={() =>
-                                reviewerDecision(reviewer, "rejected")
-                              }
-                              style={dangerButtonStyle}
-                            >
-                              Reject
-                            </button>
-                          </div>
-                        ) : (
-                          "—"
-                        )}
-                      </td>
+        {change.status === "pending_approval" ? (
+          (() => {
+            const assignedReviewer = reviewers.find(
+              (reviewer) =>
+                reviewer.review_status !== "approved" &&
+                reviewer.review_status !== "rejected" &&
+                normalizeEmail(reviewer.reviewer_email || "") ===
+                  normalizeEmail(userEmail)
+            );
+
+            if (!assignedReviewer) return null;
+
+            return (
+              <div style={subCardStyle}>
+                <div style={{ ...buttonRowStyle, marginBottom: 12 }}>
+                  <button
+                    onClick={() => reviewerDecision(assignedReviewer, "approved")}
+                    style={primaryButtonStyle}
+                  >
+                    Approve
+                  </button>
+                  <button
+                    onClick={() => reviewerDecision(assignedReviewer, "rejected")}
+                    style={dangerButtonStyle}
+                  >
+                    Reject
+                  </button>
+                </div>
+                <Field label="Rejection Comments">
+                  <textarea
+                    placeholder="Enter rejection comments when rejecting this change."
+                    value={approvalComments[assignedReviewer.id] || ""}
+                    onChange={(e) =>
+                      setApprovalComments({
+                        ...approvalComments,
+                        [assignedReviewer.id]: e.target.value,
+                      })
+                    }
+                    rows={4}
+                    style={textareaStyle}
+                  />
+                </Field>
+              </div>
+            );
+          })()
+        ) : (
+          <div style={subCardStyle}>
+            <h3 style={{ marginTop: 0 }}>Assigned Reviewers</h3>
+            {reviewers.length === 0 ? (
+              <p style={subtleText}>No reviewers assigned yet.</p>
+            ) : (
+              <div style={{ overflowX: "auto" }}>
+                <table style={tableStyle}>
+                  <thead>
+                    <tr>
+                      <th style={thStyle}>Seq</th>
+                      <th style={thStyle}>Phase</th>
+                      <th style={thStyle}>Role</th>
+                      <th style={thStyle}>Email</th>
+                      <th style={thStyle}>Required</th>
+                      <th style={thStyle}>Status</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+                  </thead>
+                  <tbody>
+                    {reviewers.map((reviewer) => (
+                      <tr key={reviewer.id}>
+                        <td style={tdStyle}>{reviewer.sequence_order || 1}</td>
+                        <td style={tdStyle}>{getReviewerTypeLabel(reviewer.reviewer_type)}</td>
+                        <td style={tdStyle}>{reviewer.reviewer_role || "N/A"}</td>
+                        <td style={tdStyle}>{reviewer.reviewer_email || "Role-based"}</td>
+                        <td style={tdStyle}>{reviewer.required_reviewer ? "Yes" : "No"}</td>
+                        <td style={tdStyle}>
+                          <StatusBadge status={reviewer.review_status || "pending"} />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
 
         {change.status === "draft" || change.status === "rejected" ? (
           <div style={subCardStyle}>
