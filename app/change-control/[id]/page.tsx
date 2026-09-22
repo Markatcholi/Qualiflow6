@@ -1977,7 +1977,15 @@ export default function ChangeControlWorkflowPage() {
         </div>
       </section>
 
-      <section style={cardStyle}>
+      {change.status === "pending_approval" &&
+      reviewers.some(
+        (reviewer) =>
+          reviewer.review_status !== "approved" &&
+          reviewer.review_status !== "rejected" &&
+          normalizeEmail(reviewer.reviewer_email || "") ===
+            normalizeEmail(userEmail)
+      ) ? null : (
+        <section style={cardStyle}>
         <h2 style={{ marginTop: 0 }}>Workflow Actions</h2>
         <div style={buttonRowStyle}>
           {change.status === "draft" || change.status === "rejected" ? (
@@ -2082,6 +2090,7 @@ export default function ChangeControlWorkflowPage() {
           <StatusBadge status={change.status || "draft"} />
         </div>
       </section>
+      )}
 
       <section style={cardStyle}>
         <h2 style={{ marginTop: 0 }}>1. Initiation</h2>
