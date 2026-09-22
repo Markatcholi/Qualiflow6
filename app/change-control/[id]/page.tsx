@@ -2651,9 +2651,7 @@ export default function ChangeControlWorkflowPage() {
 
       <section style={cardStyle}>
         <h2 style={{ marginTop: 0 }}>5. Approval Matrix & Review</h2>
-        {change.status === "draft" ||
-        change.status === "rejected" ||
-        change.status === "pending_approval" ? (
+        {change.status === "draft" || change.status === "rejected" ? (
           <div style={gridStyle}>
             <Field label="Approval Matrix Template">
               <select
