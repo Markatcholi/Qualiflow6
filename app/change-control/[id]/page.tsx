@@ -274,8 +274,7 @@ export default function ChangeControlWorkflowPage() {
   const canEditPlanning = Boolean(
     change &&
     (change.status === "draft" ||
-      change.status === "rejected" ||
-      change.status === "pending_approval"),
+      change.status === "rejected"),
   );
 
   const canImplement = Boolean(
@@ -773,10 +772,8 @@ export default function ChangeControlWorkflowPage() {
     const currentUser = normalizeEmail(userEmail);
     const assignedUser = normalizeEmail(reviewer.reviewer_email || "");
 
-    if (assignedUser && currentUser !== assignedUser && !canApprove) {
-      return alert(
-        "Only the assigned reviewer or an authorized approver can complete this review.",
-      );
+    if (!assignedUser || currentUser !== assignedUser) {
+      return alert("Only the assigned reviewer can complete this review.");
     }
 
     if (decision === "rejected" && !comments.trim())
@@ -819,6 +816,23 @@ export default function ChangeControlWorkflowPage() {
           : "Rejected change control review."),
     });
 
+    await supabase
+      .from("approval_tasks")
+      .update({
+        status: decision,
+        approver_comment: comments || null,
+        signature_meaning:
+          decision === "approved"
+            ? "Approve Change Control review"
+            : "Reject Change Control review",
+        signed_by: userEmail || "unknown",
+        signed_at: new Date().toISOString(),
+      })
+      .eq("entity_type", "change_control")
+      .eq("entity_id", change.id)
+      .eq("assigned_to_email", assignedUser)
+      .eq("status", "pending");
+
     if (decision === "rejected") {
       await supabase
         .from("change_controls")
@@ -828,6 +842,26 @@ export default function ChangeControlWorkflowPage() {
           updated_at: new Date().toISOString(),
         })
         .eq("id", change.id);
+    } else {
+      const remainingRequired = reviewers.filter(
+        (item) =>
+          item.required_reviewer &&
+          item.id !== reviewer.id &&
+          item.review_status !== "approved",
+      );
+
+      if (remainingRequired.length === 0) {
+        await supabase
+          .from("change_controls")
+          .update({
+            status: "approved",
+            approved_at: new Date().toISOString(),
+            approved_by: userEmail || "unknown",
+            approval_comments: "All required Change Control reviewers approved.",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", change.id);
+      }
     }
 
     setApprovalComments({ ...approvalComments, [reviewer.id]: "" });
@@ -983,6 +1017,50 @@ export default function ChangeControlWorkflowPage() {
       .update(payload)
       .eq("id", change.id);
     if (error) return alert(error.message);
+
+    if (status === "pending_approval") {
+      const assignedReviewers = reviewers.filter(
+        (reviewer) =>
+          reviewer.required_reviewer &&
+          normalizeEmail(reviewer.reviewer_email || ""),
+      );
+
+      for (const reviewer of assignedReviewers) {
+        const reviewerEmail = normalizeEmail(reviewer.reviewer_email || "");
+        const { data: existingTask } = await supabase
+          .from("approval_tasks")
+          .select("id")
+          .eq("entity_type", "change_control")
+          .eq("entity_id", change.id)
+          .eq("assigned_to_email", reviewerEmail)
+          .eq("status", "pending")
+          .maybeSingle();
+
+        if (!existingTask) {
+          const { error: taskError } = await supabase
+            .from("approval_tasks")
+            .insert({
+              entity_type: "change_control",
+              entity_id: change.id,
+              task_type: "change_control_approval",
+              required_function: reviewer.reviewer_role || "Change Control Approver",
+              assigned_to_email: reviewerEmail,
+              assigned_by_email: userEmail || null,
+              status: "pending",
+              task_title: `Change Control Approval — ${change.change_number}`,
+              task_instructions:
+                "Review the submitted Change Control package and approve or reject it.",
+              record_number: change.change_number,
+              required: true,
+            });
+
+          if (taskError) {
+            alert(`Change submitted, but approval task creation failed: ${taskError.message}`);
+          }
+        }
+      }
+    }
+
     fetchData();
   };
 
@@ -1906,15 +1984,6 @@ export default function ChangeControlWorkflowPage() {
           ) : null}
           {change.status === "pending_approval" ? (
             <button
-              onClick={() => updateStatus("approved")}
-              disabled={busy}
-              style={primaryButtonStyle}
-            >
-              Finalize Approval
-            </button>
-          ) : null}
-          {change.status === "pending_approval" ? (
-            <button
               onClick={returnToCreation}
               disabled={busy}
               style={secondaryLinkStyle}
@@ -2652,7 +2721,9 @@ export default function ChangeControlWorkflowPage() {
                       <td style={tdStyle}>
                         {change.status === "pending_approval" &&
                         reviewer.review_status !== "approved" &&
-                        reviewer.review_status !== "rejected" ? (
+                        reviewer.review_status !== "rejected" &&
+                        normalizeEmail(reviewer.reviewer_email || "") ===
+                          normalizeEmail(userEmail) ? (
                           <div style={buttonRowStyle}>
                             <input
                               placeholder="Comments"
