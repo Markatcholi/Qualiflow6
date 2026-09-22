@@ -128,6 +128,16 @@ export default function MyApprovalTasksPage() {
     );
   };
 
+  const isChangeControlApprovalTask = (task: any) => {
+    return (
+      String(task.entity_type || "").trim().toLowerCase() === "change_control" &&
+      String(task.task_type || "").trim().toLowerCase() === "change_control_approval"
+    );
+  };
+
+  const getChangeControlReviewUrl = (task: any) =>
+    `/change-control/${task.entity_id}`;
+
   const getManagementReviewUrl = (task: any) =>
     `/management-review/${task.entity_id}/approval-review?taskId=${task.id}`;
 
@@ -489,8 +499,12 @@ export default function MyApprovalTasksPage() {
             const capaApproval = isCapaApprovalTask(task);
             const ncmrMrbApproval = isNcmrMrbApprovalTask(task);
             const managementReviewApproval = isManagementReviewApprovalTask(task);
+            const changeControlApproval = isChangeControlApprovalTask(task);
             const centralizedApproval =
-              capaApproval || ncmrMrbApproval || managementReviewApproval;
+              capaApproval ||
+              ncmrMrbApproval ||
+              managementReviewApproval ||
+              changeControlApproval;
             const ownedCapaWork =
               task.workspace_item_type === "owned_capa";
             const dueStatus = getDueStatus(task);
@@ -559,6 +573,10 @@ export default function MyApprovalTasksPage() {
                   ) : managementReviewApproval ? (
                     <a href={getManagementReviewUrl(task)} style={primaryLinkStyle}>
                       Open Management Review Report Package
+                    </a>
+                  ) : changeControlApproval ? (
+                    <a href={getChangeControlReviewUrl(task)} style={primaryLinkStyle}>
+                      Open Change Control Review Package
                     </a>
                   ) : null}
                 </div>
