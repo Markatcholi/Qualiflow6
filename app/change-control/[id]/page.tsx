@@ -278,13 +278,20 @@ export default function ChangeControlWorkflowPage() {
       change.status === "rejected"),
   );
 
+  const isChangeOwner = Boolean(
+    change &&
+      normalizeEmail(change.owner_email || "") === normalizeEmail(userEmail),
+  );
+
   const canImplement = Boolean(
     change &&
-    (change.status === "approved" || change.status === "implementation"),
+      isChangeOwner &&
+      (change.status === "approved" || change.status === "implementation"),
   );
   const canVerify = Boolean(
     change &&
-    (change.status === "implementation" || change.status === "verification"),
+      isChangeOwner &&
+      (change.status === "implementation" || change.status === "verification"),
   );
   const canClosureApprove = Boolean(
     change && change.status === "closure_approval" && canApprove,
