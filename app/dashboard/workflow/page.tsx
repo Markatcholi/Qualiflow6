@@ -26,7 +26,6 @@ type AssignedReviewer = {
   required_reviewer: boolean | null;
   review_sequence: number | null;
   review_status: string | null;
-  due_date: string | null;
   sla_days: number | null;
 };
 
@@ -87,9 +86,8 @@ export default function WorkflowDashboardPage() {
         supabase
           .from("document_assigned_reviewers")
           .select(
-            "id, document_id, reviewer_type, reviewer_email, reviewer_role, required_reviewer, review_sequence, review_status, due_date, sla_days"
-          )
-          .order("due_date", { ascending: true }),
+            "id, document_id, reviewer_type, reviewer_email, reviewer_role, required_reviewer, review_sequence, review_status, sla_days"
+          ),
 
         supabase
           .from("document_training_assignments")
@@ -131,7 +129,7 @@ export default function WorkflowDashboardPage() {
   }, [documents]);
 
   const openReviews = reviewers.filter((r) => r.review_status !== "approved");
-  const overdueReviews = openReviews.filter((r) => isOverdue(r.due_date));
+  const overdueReviews: AssignedReviewer[] = [];
 
   const openTraining = training.filter((t) => t.status !== "completed");
   const overdueTraining = openTraining.filter((t) => isOverdue(t.due_date || null));
@@ -228,7 +226,7 @@ export default function WorkflowDashboardPage() {
                       </td>
                       <td style={tdStyle}>{review.reviewer_email}</td>
                       <td style={tdStyle}>{review.reviewer_type}</td>
-                      <td style={tdStyle}>{formatDate(review.due_date)}</td>
+                      <td style={tdStyle}>N/A</td>
                       <td style={tdStyle}>
                         <StatusBadge status={review.review_status || "pending"} />
                       </td>
@@ -274,8 +272,8 @@ export default function WorkflowDashboardPage() {
                       <td style={tdStyle}>{review.reviewer_email}</td>
                       <td style={tdStyle}>{review.reviewer_role || review.reviewer_type}</td>
                       <td style={tdStyle}>{review.sla_days || "N/A"}</td>
-                      <td style={isOverdue(review.due_date) ? overdueCellStyle : tdStyle}>
-                        {formatDate(review.due_date)}
+                      <td style={tdStyle}>
+                        N/A
                       </td>
                     </tr>
                   );
