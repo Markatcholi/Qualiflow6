@@ -147,6 +147,7 @@ export default function ChangeControlWorkflowPage() {
   const [trainingAssignments, setTrainingAssignments] = useState<any[]>([]);
   const [templates, setTemplates] = useState<ApprovalMatrixTemplate[]>([]);
   const [reviewers, setReviewers] = useState<ChangeReviewer[]>([]);
+  const [currentApprovalTask, setCurrentApprovalTask] = useState<any | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -294,7 +295,7 @@ export default function ChangeControlWorkflowPage() {
     const email = userData?.user?.email || "";
     setUserEmail(email);
 
-    if (!email) return;
+    if (!email) return "";
 
     const { data } = await supabase
       .from("user_roles")
@@ -303,12 +304,13 @@ export default function ChangeControlWorkflowPage() {
       .maybeSingle();
 
     setUserRole(data?.role || "user");
+    return email;
   };
 
   const fetchData = async () => {
     if (!changeId) return;
     setLoading(true);
-    await fetchUser();
+    const authenticatedEmail = await fetchUser();
 
     const [
       changeRes,
@@ -377,6 +379,20 @@ export default function ChangeControlWorkflowPage() {
     }
     if (!reviewerRes.error)
       setReviewers((reviewerRes.data as ChangeReviewer[]) || []);
+
+    if (authenticatedEmail) {
+      const { data: approvalTask } = await supabase
+        .from("approval_tasks")
+        .select("id, assigned_to_email, status")
+        .eq("entity_type", "change_control")
+        .eq("entity_id", changeId)
+        .eq("assigned_to_email", authenticatedEmail.trim().toLowerCase())
+        .eq("status", "pending")
+        .maybeSingle();
+      setCurrentApprovalTask(approvalTask || null);
+    } else {
+      setCurrentApprovalTask(null);
+    }
 
     setLoading(false);
   };
@@ -2650,7 +2666,7 @@ export default function ChangeControlWorkflowPage() {
       </section>
 
       <section style={cardStyle}>
-        <h2 style={{ marginTop: 0 }}>5. Approval Matrix & Review</h2>
+        <h2 style={{ marginTop: 0 }}>5. Approval</h2>
         {change.status === "draft" || change.status === "rejected" ? (
           <div style={gridStyle}>
             <Field label="Approval Matrix Template">
@@ -2720,8 +2736,9 @@ export default function ChangeControlWorkflowPage() {
                         {change.status === "pending_approval" &&
                         reviewer.review_status !== "approved" &&
                         reviewer.review_status !== "rejected" &&
+                        currentApprovalTask &&
                         normalizeEmail(reviewer.reviewer_email || "") ===
-                          normalizeEmail(userEmail) ? (
+                          normalizeEmail(currentApprovalTask.assigned_to_email || "") ? (
                           <div style={buttonRowStyle}>
                             <input
                               placeholder="Comments"
