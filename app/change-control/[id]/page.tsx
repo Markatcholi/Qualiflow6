@@ -266,6 +266,14 @@ export default function ChangeControlWorkflowPage() {
     >
   >({});
 
+  const normalizeEmail = (value: string) => {
+    const text = String(value || "")
+      .trim()
+      .toLowerCase();
+    if (!text || !text.includes("@")) return "";
+    return text;
+  };
+
   const canApprove =
     userRole === "admin" ||
     userRole === "approver" ||
@@ -465,14 +473,6 @@ export default function ChangeControlWorkflowPage() {
       closure_decision_reason: change.closure_decision_reason || "",
     });
   }, [change?.id]);
-
-  const normalizeEmail = (value: string) => {
-    const text = String(value || "")
-      .trim()
-      .toLowerCase();
-    if (!text || !text.includes("@")) return "";
-    return text;
-  };
 
   const getImpactSummaryMissing = () => {
     const impactFields = [
