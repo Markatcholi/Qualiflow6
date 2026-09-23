@@ -364,20 +364,18 @@ export default function EnterpriseCapaWorkflowPage() {
 
     if (!email) return;
 
-    const normalizedEmail = email.trim().toLowerCase();
-    const [{ data: legacyRole }, { data: assignedRoles }] = await Promise.all([
-      supabase
-        .from("user_roles")
-        .select("role")
-        .eq("user_email", normalizedEmail)
-        .maybeSingle(),
-      supabase
-        .from("user_security_roles")
-        .select("role_code")
-        .eq("user_email", normalizedEmail),
-    ]);
+    const { data: assignedRoles, error: roleError } = await supabase.rpc(
+      "qualisphere_current_capa_role_codes",
+    );
 
-    setUserRole(legacyRole?.role || "");
+    if (roleError) {
+      console.warn("Unable to load tenant-scoped CAPA roles:", roleError.message);
+      setUserRole("");
+      setUserSecurityRoles([]);
+      return;
+    }
+
+    setUserRole("");
     setUserSecurityRoles(
       (assignedRoles || []).map((item: any) => String(item.role_code || "")),
     );
@@ -455,65 +453,30 @@ export default function EnterpriseCapaWorkflowPage() {
   };
 
   const fetchAvailableOwnerUsers = async () => {
-    const [directoryRes, accessRes] = await Promise.all([
-      supabase
-        .from("user_roles")
-        .select("user_email,role,account_status")
-        .order("user_email", { ascending: true }),
-      supabase
-        .from("user_security_roles")
-        .select("user_email,role_code")
-        .in("role_code", [
-          "capa_user",
-          "capa_coordinator",
-          "capa_administrator",
-          "administrator",
-          "vp_quality",
-        ]),
-    ]);
+    const { data, error } = await supabase.rpc(
+      "qualisphere_capa_authorized_users",
+      { p_purpose: "owner" },
+    );
 
-    if (directoryRes.error || accessRes.error) {
-      console.warn(
-        "Unable to load CAPA-enabled users:",
-        directoryRes.error?.message || accessRes.error?.message,
-      );
+    if (error) {
+      console.warn("Unable to load tenant-scoped CAPA-enabled users:", error.message);
       setAvailableOwnerUsers([]);
       return;
     }
 
-    const accessEmails = new Set(
-      (accessRes.data || []).map((item: any) =>
-        String(item.user_email || "")
-          .trim()
-          .toLowerCase(),
+    setAvailableOwnerUsers(
+      Array.from(
+        new Set(
+          (data || [])
+            .map((item: any) =>
+              String(item.user_email || "")
+                .trim()
+                .toLowerCase(),
+            )
+            .filter(Boolean),
+        ),
       ),
     );
-
-    const eligibleUsers = (directoryRes.data || [])
-      .filter((item: any) => {
-        const email = String(item.user_email || "")
-          .trim()
-          .toLowerCase();
-        const primaryRole = String(item.role || "")
-          .trim()
-          .toLowerCase();
-        const status = String(item.account_status || "active")
-          .trim()
-          .toLowerCase();
-        return (
-          status !== "inactive" &&
-          (accessEmails.has(email) ||
-            ["admin", "administrator", "vp_quality"].includes(primaryRole))
-        );
-      })
-      .map((item: any) =>
-        String(item.user_email || "")
-          .trim()
-          .toLowerCase(),
-      )
-      .filter(Boolean);
-
-    setAvailableOwnerUsers(Array.from(new Set(eligibleUsers)));
   };
 
   const fetchApprovalMatrixTemplates = async () => {
@@ -848,16 +811,12 @@ export default function EnterpriseCapaWorkflowPage() {
     );
 
     if (normalizedEmails.length === 0) {
-      return {
-        valid: false,
-        message: "At least one approver email is required.",
-      };
+      return { valid: false, message: "At least one approver email is required." };
     }
 
     const invalidFormatEmails = normalizedEmails.filter(
       (email) => !isValidEmailFormat(email),
     );
-
     if (invalidFormatEmails.length > 0) {
       return {
         valid: false,
@@ -865,62 +824,21 @@ export default function EnterpriseCapaWorkflowPage() {
       };
     }
 
-    const [directoryRes, accessRes] = await Promise.all([
-      supabase
-        .from("user_roles")
-        .select("user_email,role,account_status")
-        .in("user_email", normalizedEmails),
-      supabase
-        .from("user_security_roles")
-        .select("user_email,role_code")
-        .in("user_email", normalizedEmails)
-        .in("role_code", [
-          "capa_user",
-          "capa_coordinator",
-          "capa_administrator",
-          "approver",
-          "administrator",
-          "vp_quality",
-        ]),
-    ]);
-
-    const data = directoryRes.data;
-    const error = directoryRes.error || accessRes.error;
+    const { data, error } = await supabase.rpc(
+      "qualisphere_capa_authorized_users",
+      { p_purpose: "approver" },
+    );
 
     if (error) {
       return {
         valid: false,
-        message: `Unable to validate approver emails against system users: ${error.message}`,
+        message: `Unable to validate approver emails against this Company Account: ${error.message}`,
       };
     }
 
-    const accessEmails = new Set(
-      (accessRes.data || []).map((item: any) =>
-        normalizeApproverEmail(item.user_email),
-      ),
-    );
-
     const validSystemUsers = new Set(
-      (data || [])
-        .filter((item: any) => {
-          const email = normalizeApproverEmail(item.user_email);
-          const primaryRole = String(item.role || "")
-            .trim()
-            .toLowerCase();
-          const status = String(item.account_status || "active")
-            .trim()
-            .toLowerCase();
-          return (
-            status !== "inactive" &&
-            (accessEmails.has(email) ||
-              ["approver", "admin", "administrator", "vp_quality"].includes(
-                primaryRole,
-              ))
-          );
-        })
-        .map((item: any) => normalizeApproverEmail(item.user_email)),
+      (data || []).map((item: any) => normalizeApproverEmail(item.user_email)),
     );
-
     const unknownUsers = normalizedEmails.filter(
       (email) => !validSystemUsers.has(email),
     );
@@ -928,7 +846,7 @@ export default function EnterpriseCapaWorkflowPage() {
     if (unknownUsers.length > 0) {
       return {
         valid: false,
-        message: `The following approver email(s) do not have active CAPA module access:\n\n${unknownUsers.join("\n")}\n\nAssign CAPA User, CAPA Coordinator, CAPA Administrator, Approver, Administrator, or VP Quality access before submitting.`,
+        message: `The following approver email(s) do not have active CAPA access in this Company Account:\n\n${unknownUsers.join("\n")}\n\nAssign an appropriate CAPA/approval role in Company Administration before submitting.`,
       };
     }
 
