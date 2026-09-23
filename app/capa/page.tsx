@@ -440,13 +440,6 @@ export default function CapaPage() {
           >
             Intelligence Dashboard
           </a>
-
-          <a
-            href="/dashboard"
-            style={backButtonStyle}
-          >
-            Dashboard
-          </a>
         </div>
       </div>
 
