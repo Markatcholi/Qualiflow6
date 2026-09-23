@@ -227,10 +227,10 @@ export default function CapaApprovalReviewPage() {
     const confirmed = window.confirm(
       `Electronic Signature\n\nApprove ${gateLabels[gate]}?`
     );
-
     if (!confirmed) return;
 
     const now = new Date().toISOString();
+    const taskType = gateTaskTypes[gate];
 
     const { error } = await supabase
       .from("approval_tasks")
@@ -240,10 +240,49 @@ export default function CapaApprovalReviewPage() {
         signed_by: userEmail,
         signed_at: now,
       })
-      .eq("id", task.id);
+      .eq("id", task.id)
+      .eq("status", "pending");
 
     if (error) {
       alert(error.message);
+      return;
+    }
+
+    await supabase
+      .from("capa_gate_approvers")
+      .update({ approval_status: "approved", updated_at: now })
+      .eq("capa_id", id)
+      .eq("approval_gate", gate)
+      .eq("approver_email", String(task.assigned_to_email || "").toLowerCase());
+
+    const { data: gateTasks, error: gateTasksError } = await supabase
+      .from("approval_tasks")
+      .select("id,status,required,assigned_to_email")
+      .eq("entity_type", "capa")
+      .eq("entity_id", id)
+      .eq("task_type", taskType);
+
+    if (gateTasksError) {
+      alert(gateTasksError.message);
+      return;
+    }
+
+    const requiredTasks = (gateTasks || []).filter(
+      (item: any) => item.required !== false,
+    );
+    const allRequiredApproved =
+      requiredTasks.length > 0 &&
+      requiredTasks.every(
+        (item: any) => String(item.status || "").toLowerCase() === "approved",
+      );
+
+    if (!allRequiredApproved) {
+      await addAuditLog(
+        "approval_task_approved",
+        `${gateLabels[gate]} approved by ${userEmail}. Other required approvers remain pending.`,
+      );
+      alert("Your approval is complete. This approval gate remains pending until all required approvers approve.");
+      window.location.href = "/my-approval-tasks";
       return;
     }
 
@@ -273,8 +312,11 @@ export default function CapaApprovalReviewPage() {
       return;
     }
 
-    await addAuditLog("approval_task_approved", `${gateLabels[gate]} approved.`);
-    alert("Approval completed.");
+    await addAuditLog(
+      "approval_gate_completed",
+      `${gateLabels[gate]} completed after all required approvers approved.`,
+    );
+    alert("Approval completed. All required approvers have approved this gate.");
     window.location.href = "/my-approval-tasks";
   };
 
@@ -297,10 +339,10 @@ export default function CapaApprovalReviewPage() {
     const confirmed = window.confirm(
       `Reject ${gateLabels[gate]} and return it to the CAPA owner?`
     );
-
     if (!confirmed) return;
 
     const now = new Date().toISOString();
+    const taskType = gateTaskTypes[gate];
 
     const { error } = await supabase
       .from("approval_tasks")
@@ -310,12 +352,31 @@ export default function CapaApprovalReviewPage() {
         signed_by: userEmail,
         signed_at: now,
       })
-      .eq("id", task.id);
+      .eq("id", task.id)
+      .eq("status", "pending");
 
     if (error) {
       alert(error.message);
       return;
     }
+
+    await supabase
+      .from("capa_gate_approvers")
+      .update({ approval_status: "rejected", updated_at: now })
+      .eq("capa_id", id)
+      .eq("approval_gate", gate)
+      .eq("approver_email", String(task.assigned_to_email || "").toLowerCase());
+
+    await supabase
+      .from("approval_tasks")
+      .update({
+        status: "cancelled",
+        approver_comment: "Cancelled because another required approver rejected this approval gate.",
+      })
+      .eq("entity_type", "capa")
+      .eq("entity_id", id)
+      .eq("task_type", taskType)
+      .eq("status", "pending");
 
     const fields = gateStatusFields[gate];
     const { error: capaUpdateError } = await supabase
@@ -336,10 +397,10 @@ export default function CapaApprovalReviewPage() {
 
     await addAuditLog(
       "approval_task_rejected",
-      `${gateLabels[gate]} rejected. Comments: ${comments}`
+      `${gateLabels[gate]} rejected by ${userEmail}. Comments: ${comments}`,
     );
 
-    alert("Approval package rejected.");
+    alert("Approval package rejected and returned to the CAPA owner.");
     window.location.href = "/my-approval-tasks";
   };
 
