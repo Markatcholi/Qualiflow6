@@ -6806,11 +6806,11 @@ function formatCapaApprovalDateTime(value: any) {
   const date = new Date(String(value));
   if (Number.isNaN(date.getTime())) return String(value);
 
-  const datePart = date.toLocaleDateString("en-US", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  }).replace(/,/g, "").replace(/ /g, "-");
+  const months = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+  ];
+  const datePart = `${String(date.getDate()).padStart(2, "0")}-${months[date.getMonth()]}-${date.getFullYear()}`;
 
   const timePart = date.toLocaleTimeString("en-US", {
     hour: "2-digit",
