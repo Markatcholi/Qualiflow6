@@ -35,7 +35,6 @@ type AssignedReviewer = {
   required_reviewer: boolean | null;
   review_sequence: number | null;
   review_status: string | null;
-  due_date?: string | null;
   sla_days?: number | null;
 };
 
@@ -66,9 +65,8 @@ export default function DocumentControlIntelligenceDashboardPage() {
       supabase
         .from("document_assigned_reviewers")
         .select(
-          "id, document_id, reviewer_type, reviewer_email, reviewer_role, required_reviewer, review_sequence, review_status, due_date, sla_days",
-        )
-        .order("due_date", { ascending: true }),
+          "id, document_id, reviewer_type, reviewer_email, reviewer_role, required_reviewer, review_sequence, review_status, sla_days",
+        ),
     ]);
 
     if (docRes.error) {
@@ -205,9 +203,7 @@ export default function DocumentControlIntelligenceDashboardPage() {
         reviewer.review_status !== "rejected",
     );
 
-    const overdueReviews = openReviews.filter((reviewer) =>
-      isPastDue(reviewer.due_date || null),
-    );
+    // Reviewer assignments have SLA metadata but no persisted due_date column.\n    const overdueReviews: AssignedReviewer[] = [];
 
     const workflowSla = percentage(openReviews.length - overdueReviews.length, openReviews.length);
     const workflowStatus = getSlaStatus(workflowSla);
@@ -415,16 +411,7 @@ export default function DocumentControlIntelligenceDashboardPage() {
     }));
   }, [documents]);
 
-  const overdueReviewAssignments = useMemo(() => {
-    return reviewers
-      .filter(
-        (reviewer) =>
-          reviewer.review_status !== "approved" &&
-          reviewer.review_status !== "rejected" &&
-          isPastDue(reviewer.due_date || null),
-      )
-      .slice(0, 10);
-  }, [reviewers]);
+  // No reviewer due-date field exists in the current schema, so do not infer overdue assignments.\n  const overdueReviewAssignments: AssignedReviewer[] = [];
 
   const pendingApprovalDocuments = metrics.formalReview;
   const awaitingReleaseDocuments = metrics.awaitingRelease;
@@ -653,7 +640,7 @@ export default function DocumentControlIntelligenceDashboardPage() {
                       </td>
                       <td style={tdStyle}>{reviewer.reviewer_email}</td>
                       <td style={tdStyle}>{reviewer.reviewer_role || reviewer.reviewer_type}</td>
-                      <td style={overdueCellStyle}>{formatDate(reviewer.due_date)}</td>
+                      <td style={overdueCellStyle}>N/A</td>
                       <td style={tdStyle}>
                         <Link href={`/documents/${reviewer.document_id}`} style={primaryLinkStyle}>
                           Open Workflow
@@ -804,7 +791,7 @@ function ReviewerEscalationCard({
                 <div style={smallTextStyle}>
                   Reviewer: {reviewer.reviewer_email} | Role:{" "}
                   {reviewer.reviewer_role || reviewer.reviewer_type} | Due:{" "}
-                  {formatDate(reviewer.due_date)}
+                  N/A
                 </div>
               </div>
             );
