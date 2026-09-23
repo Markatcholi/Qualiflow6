@@ -35,7 +35,6 @@ type AssignedReviewer = {
   required_reviewer: boolean | null;
   review_sequence: number | null;
   review_status: string | null;
-  sla_days?: number | null;
 };
 
 type KpiTile = {
@@ -65,7 +64,7 @@ export default function DocumentControlIntelligenceDashboardPage() {
       supabase
         .from("document_assigned_reviewers")
         .select(
-          "id, document_id, reviewer_type, reviewer_email, reviewer_role, required_reviewer, review_sequence, review_status, sla_days",
+          "id, document_id, reviewer_type, reviewer_email, reviewer_role, required_reviewer, review_sequence, review_status",
         ),
     ]);
 
