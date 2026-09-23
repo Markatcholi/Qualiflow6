@@ -385,7 +385,7 @@ export default function CapaApprovalReviewPage() {
           <Summary label="Assigned To" value={task?.assigned_to_email || "N/A"} />
           <Summary label="Function" value={task?.approver_function || "N/A"} />
           <Summary label="Job Title" value={task?.approver_job_title || task?.required_function || "N/A"} />
-          <Summary label="Approval Due Date" value={task?.due_date || "N/A"} />
+          <Summary label="Approval Due Date" value={formatDate(task?.due_date)} />
           <Summary label="Task Status" value={taskStatus} />
         </div>
 
@@ -526,7 +526,7 @@ function InitiationSection({ record }: { record: any }) {
           ["Process Impact", record.process_impact],
           ["Patient Safety Impact", record.patient_impact],
           ["Owner", record.owner],
-          ["Due Date", record.due_date],
+          ["Due Date", formatDate(record.due_date)],
         ]}
       />
 
@@ -607,7 +607,7 @@ function ActionPlanSection({ record }: { record: any }) {
         rows={[
           [actionPlanLabel, record.corrective_action_plan],
           ["Action Owner", record.action_owner],
-          ["Action Due Date", record.action_due_date],
+          ["Action Due Date", formatDate(record.action_due_date)],
           ["Verification Method", record.verification_method],
           ["Required Resources", record.required_resources],
           ["Required Evidence", record.required_evidence],
@@ -702,7 +702,7 @@ function TaskCompletionCards({ tasks }: { tasks: any[] }) {
               <ReadOnlyGrid
                 rows={[
                   ["Owner", task.owner_email || task.owner],
-                  ["Due Date", task.due_date],
+                  ["Due Date", formatDate(task.due_date)],
                   ["Status", task.status],
                   ["Completed By", task.completed_by],
                 ]}
@@ -747,7 +747,7 @@ function EffectivenessPlanSection({ record }: { record: any }) {
           ["Data to Collect", record.effectiveness_data_to_collect],
           ["Sample Size", record.effectiveness_sample_size],
           ["Verification Owner", record.verification_owner],
-          ["Verification Due Date", record.verification_due_date],
+          ["Verification Due Date", formatDate(record.verification_due_date)],
           ["Required Objective Evidence", record.required_objective_evidence],
         ]}
       />
@@ -1006,7 +1006,20 @@ function formatValue(value: any) {
 
 function formatDate(value: any) {
   if (!value) return "N/A";
-  return String(value);
+
+  const raw = String(value).trim();
+  const datePart = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!datePart) return raw;
+
+  const [, year, month, day] = datePart;
+  const months = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+  ];
+  const monthIndex = Number(month) - 1;
+  if (monthIndex < 0 || monthIndex > 11) return raw;
+
+  return `${day}-${months[monthIndex]}-${year}`;
 }
 
 const pageStyle: React.CSSProperties = {
