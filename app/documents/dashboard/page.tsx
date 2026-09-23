@@ -203,7 +203,8 @@ export default function DocumentControlIntelligenceDashboardPage() {
         reviewer.review_status !== "rejected",
     );
 
-    // Reviewer assignments have SLA metadata but no persisted due_date column.\n    const overdueReviews: AssignedReviewer[] = [];
+    // Reviewer assignments have SLA metadata but no persisted due_date column.
+    const overdueReviews: AssignedReviewer[] = [];
 
     const workflowSla = percentage(openReviews.length - overdueReviews.length, openReviews.length);
     const workflowStatus = getSlaStatus(workflowSla);
@@ -411,7 +412,8 @@ export default function DocumentControlIntelligenceDashboardPage() {
     }));
   }, [documents]);
 
-  // No reviewer due-date field exists in the current schema, so do not infer overdue assignments.\n  const overdueReviewAssignments: AssignedReviewer[] = [];
+  // No reviewer due-date field exists in the current schema, so do not infer overdue assignments.
+  const overdueReviewAssignments: AssignedReviewer[] = [];
 
   const pendingApprovalDocuments = metrics.formalReview;
   const awaitingReleaseDocuments = metrics.awaitingRelease;
