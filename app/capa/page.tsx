@@ -61,20 +61,32 @@ export default function CapaPage() {
 
   const fetchUserRole = async () => {
     const { data: userData } = await supabase.auth.getUser();
-
     const email = userData?.user?.email || "";
-
     setUserEmail(email);
-
     if (!email) return;
 
-    const { data } = await supabase
-      .from("user_roles")
-      .select("role")
-      .eq("user_email", email)
-      .maybeSingle();
+    const { data, error } = await supabase.rpc(
+      "qualisphere_current_capa_role_codes",
+    );
 
-    setUserRole(data?.role || "");
+    if (error) {
+      console.warn("Unable to load tenant-scoped CAPA roles:", error.message);
+      setUserRole("");
+      return;
+    }
+
+    const roleCodes = (data || []).map((item: any) =>
+      String(item.role_code || "").trim().toLowerCase(),
+    );
+    setUserRole(
+      roleCodes.includes("vp_quality")
+        ? "vp_quality"
+        : roleCodes.includes("approver") || roleCodes.includes("capa_approver")
+          ? "approver"
+          : roleCodes.includes("capa_administrator")
+            ? "capa_administrator"
+            : roleCodes[0] || "",
+    );
   };
 
   const fetchData = async () => {
@@ -123,20 +135,25 @@ export default function CapaPage() {
       return;
     }
 
-    const { data: ownerUser, error: ownerValidationError } = await supabase
-      .from("user_roles")
-      .select("user_email")
-      .eq("user_email", normalizedOwner)
-      .maybeSingle();
+    const { data: ownerUsers, error: ownerValidationError } = await supabase.rpc(
+      "qualisphere_capa_authorized_users",
+      { p_purpose: "owner" },
+    );
 
     if (ownerValidationError) {
       alert(ownerValidationError.message);
       return;
     }
 
-    if (!ownerUser?.user_email) {
+    const validOwnerEmails = new Set(
+      (ownerUsers || []).map((item: any) =>
+        String(item.user_email || "").trim().toLowerCase(),
+      ),
+    );
+
+    if (!validOwnerEmails.has(normalizedOwner)) {
       alert(
-        "The selected CAPA owner is not a valid QualiSphere user. Please select a valid user before creating this CAPA."
+        "The selected CAPA owner does not have active CAPA access in this Company Account. Assign CAPA access in Company Administration before creating this CAPA."
       );
       return;
     }
