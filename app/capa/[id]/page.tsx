@@ -6231,89 +6231,150 @@ function ApprovalInlinePanel({
         task,
       ]),
     );
+    const gateName = title
+      .replace("Approvers / Submit ", "")
+      .replace(" for Approval", "")
+      .trim();
+
+    if (isPending) {
+      return (
+        <div
+          id={sectionKey}
+          style={{
+            border: "1px solid #bfdbfe",
+            borderRadius: "14px",
+            background: "#eff6ff",
+            padding: "20px",
+            marginTop: "18px",
+          }}
+        >
+          <h3 style={{ margin: "0 0 8px 0", color: "#1e3a8a" }}>
+            {gateName} Approval Pending
+          </h3>
+          <p style={{ margin: "0 0 18px 0", color: "#1e3a8a" }}>
+            The {gateName} package has been submitted. Required reviewers will
+            complete their decisions from My Workspace.
+          </p>
+
+          <div
+            style={{
+              border: "1px solid #bfdbfe",
+              borderRadius: "12px",
+              overflow: "hidden",
+              background: "#ffffff",
+            }}
+          >
+            <div
+              style={{
+                padding: "12px 16px",
+                background: "#dbeafe",
+                color: "#1e3a8a",
+                fontWeight: 800,
+                fontSize: "16px",
+              }}
+            >
+              Reviewer Approval Status
+            </div>
+
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "14px" }}>
+                <thead>
+                  <tr>
+                    <th style={tableHeaderStyle}>Function</th>
+                    <th style={tableHeaderStyle}>Reviewer</th>
+                    <th style={tableHeaderStyle}>Status</th>
+                    <th style={tableHeaderStyle}>Decision Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {configuredApprovers.map((approver) => {
+                    const task = normalizedTaskByEmail.get(
+                      String(approver.approver_email || "").trim().toLowerCase(),
+                    );
+                    const taskStatus = String(task?.status || "pending").toLowerCase();
+                    const displayStatus =
+                      taskStatus === "approved"
+                        ? "Approved"
+                        : taskStatus === "rejected"
+                          ? "Rejected"
+                          : taskStatus === "cancelled"
+                            ? "Cancelled"
+                            : "Pending";
+
+                    return (
+                      <tr key={approver.id}>
+                        <td style={tableCellStyle}>
+                          {[approver.approver_function, approver.approver_job_title || approver.approver_role]
+                            .filter(Boolean)
+                            .join(" - ") || "N/A"}
+                        </td>
+                        <td style={tableCellStyle}>{approver.approver_email}</td>
+                        <td style={tableCellStyle}>
+                          <strong>{displayStatus}</strong>
+                        </td>
+                        <td style={tableCellStyle}>
+                          {task?.signed_at ? formatCapaApprovalDateTime(task.signed_at) : "—"}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    const approvedRows = configuredApprovers.map((approver) => {
+      const task = normalizedTaskByEmail.get(
+        String(approver.approver_email || "").trim().toLowerCase(),
+      );
+      return { approver, task };
+    });
 
     return (
       <div
         id={sectionKey}
         style={{
-          borderTop: "1px solid #e5e7eb",
+          border: "1px solid #d1d5db",
+          borderRadius: "12px",
+          background: "#ffffff",
           marginTop: "18px",
-          paddingTop: "18px",
+          overflow: "hidden",
         }}
       >
-        <h3 style={{ marginTop: 0 }}>{title.replace("Approvers / Submit ", "")}</h3>
-        <p style={{ ...subtleText, marginTop: 0 }}>
-          {isApproved
-            ? "All required approvers have approved this gate. The approval roster is retained as part of the CAPA record."
-            : "This gate is pending approval. The roster below shows each required approver and the current decision status."}
-        </p>
-
-        <div style={formGridStyle}>
-          <SummaryCard label="Gate Status" value={isApproved ? "Approved" : "Pending Approval"} />
-          <SummaryCard label="Submitted By" value={submittedBy || "N/A"} />
-          <SummaryCard label="Submitted On" value={formatCapaDisplayDate(submittedAt)} />
-          {isApproved ? (
-            <SummaryCard label="Completed On" value={formatCapaDisplayDate(approvedAt)} />
-          ) : null}
+        <div style={{ padding: "16px 18px 8px" }}>
+          <h3 style={{ margin: 0 }}>{gateName} Approval</h3>
         </div>
 
-        <div style={{ overflowX: "auto", marginTop: "12px" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
-            <thead>
-              <tr>
-                <th style={tableHeaderStyle}>Order</th>
-                <th style={tableHeaderStyle}>Function</th>
-                <th style={tableHeaderStyle}>Job Title</th>
-                <th style={tableHeaderStyle}>Approver</th>
-                <th style={tableHeaderStyle}>Due Date</th>
-                <th style={tableHeaderStyle}>Status</th>
-                <th style={tableHeaderStyle}>Decision Date</th>
-                <th style={tableHeaderStyle}>Comment</th>
-              </tr>
-            </thead>
-            <tbody>
-              {configuredApprovers.map((approver) => {
-                const task = normalizedTaskByEmail.get(
-                  String(approver.approver_email || "").trim().toLowerCase(),
-                );
-                const taskStatus = String(task?.status || "pending").toLowerCase();
-                const displayStatus =
-                  taskStatus === "approved"
-                    ? "Approved"
-                    : taskStatus === "rejected"
-                      ? "Rejected"
-                      : taskStatus === "cancelled"
-                        ? "Cancelled"
-                        : "Pending";
-
-                return (
-                  <tr key={approver.id}>
-                    <td style={tableCellStyle}>{approver.approval_order || "-"}</td>
-                    <td style={tableCellStyle}>{approver.approver_function || "N/A"}</td>
-                    <td style={tableCellStyle}>
-                      {approver.approver_job_title || approver.approver_role || "N/A"}
-                    </td>
-                    <td style={tableCellStyle}>{approver.approver_email}</td>
-                    <td style={tableCellStyle}>
-                      {formatCapaDisplayDate(approver.approver_due_date)}
-                    </td>
-                    <td style={tableCellStyle}>
-                      <strong>{displayStatus}</strong>
-                    </td>
-                    <td style={tableCellStyle}>
-                      {task?.signed_at ? formatCapaDisplayDate(task.signed_at) : "—"}
-                    </td>
-                    <td style={tableCellStyle}>{task?.approver_comment || "—"}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-
-        {configuredApprovers.length === 0 ? (
-          <p style={subtleText}>No approval roster is available for this gate.</p>
-        ) : null}
+        {approvedRows.map(({ approver, task }, index) => (
+          <div
+            key={approver.id}
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+              gap: "18px",
+              padding: "14px 18px",
+              borderTop: index === 0 ? "none" : "1px solid #e5e7eb",
+            }}
+          >
+            <div>
+              <strong>Final Status:</strong>{" "}
+              {String(task?.status || "").toLowerCase() === "approved"
+                ? "Approved"
+                : "Approved"}
+            </div>
+            <div>
+              <strong>Final Approved By:</strong>{" "}
+              {task?.signed_by || approver.approver_email}
+            </div>
+            <div>
+              <strong>Final Approved At:</strong>{" "}
+              {formatCapaApprovalDateTime(task?.signed_at || approvedAt)}
+            </div>
+          </div>
+        ))}
       </div>
     );
   }
@@ -6738,6 +6799,27 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
       <div style={{ marginTop: "6px" }}>{children}</div>
     </div>
   );
+}
+
+function formatCapaApprovalDateTime(value: any) {
+  if (!value) return "N/A";
+  const date = new Date(String(value));
+  if (Number.isNaN(date.getTime())) return String(value);
+
+  const datePart = date.toLocaleDateString("en-US", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).replace(/,/g, "").replace(/ /g, "-");
+
+  const timePart = date.toLocaleTimeString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true,
+  });
+
+  return `${datePart} ${timePart}`;
 }
 
 function formatCapaDisplayDate(value: any) {
