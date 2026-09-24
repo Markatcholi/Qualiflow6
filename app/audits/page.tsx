@@ -5,6 +5,7 @@ import { supabase } from "../../lib/supabaseClient";
 
 type Audit = {
   id: string;
+  tenant_id: string;
   audit_number: string | null;
   audit_title: string | null;
   audit_type: string | null;
@@ -17,6 +18,7 @@ type Audit = {
 
 type AuditFinding = {
   id: string;
+  tenant_id: string;
   audit_id: string | null;
   finding_title: string | null;
   finding_description: string | null;
@@ -31,6 +33,7 @@ type AuditFinding = {
 
 export default function AuditsPage() {
   const [audits, setAudits] = useState<Audit[]>([]);
+  const [activeTenantId, setActiveTenantId] = useState("");
   const [findings, setFindings] = useState<AuditFinding[]>([]);
 
   const [auditTitle, setAuditTitle] = useState("");
@@ -51,15 +54,30 @@ export default function AuditsPage() {
   const [auditStatusFilter, setAuditStatusFilter] = useState("");
   const [auditTypeFilter, setAuditTypeFilter] = useState("");
 
+  const resolveActiveTenantId = () => {
+    if (typeof window === "undefined") return "";
+    return window.localStorage.getItem("qualisphere_active_tenant_id") || "";
+  };
+
   const fetchData = async () => {
+    const tenantId = resolveActiveTenantId();
+    setActiveTenantId(tenantId);
+    if (!tenantId) {
+      setAudits([]);
+      setFindings([]);
+      return;
+    }
+
     const auditRes = await supabase
       .from("audits")
       .select("*")
+      .eq("tenant_id", tenantId)
       .order("created_at", { ascending: false });
 
     const findingRes = await supabase
       .from("audit_findings")
       .select("*")
+      .eq("tenant_id", tenantId)
       .order("created_at", { ascending: false });
 
     if (auditRes.error) {
@@ -95,6 +113,8 @@ export default function AuditsPage() {
   };
 
   const createAudit = async () => {
+    const tenantId = resolveActiveTenantId();
+    if (!tenantId) return alert("Select a Company Account before creating an audit.");
     if (!auditTitle) {
       alert("Audit title is required.");
       return;
@@ -103,6 +123,7 @@ export default function AuditsPage() {
     const { data, error } = await supabase
       .from("audits")
       .insert({
+        tenant_id: tenantId,
         audit_title: auditTitle,
         audit_type: auditType,
         audit_scope: auditScope,
@@ -135,6 +156,8 @@ export default function AuditsPage() {
   };
 
   const createFinding = async () => {
+    const tenantId = resolveActiveTenantId();
+    if (!tenantId) return alert("Select a Company Account before creating an audit finding.");
     if (!selectedAuditId) {
       alert("Select an audit first.");
       return;
@@ -153,6 +176,7 @@ export default function AuditsPage() {
       const { data: capaData, error: capaError } = await supabase
         .from("capas")
         .insert({
+          tenant_id: tenantId,
           title: `CAPA for audit finding: ${findingTitle}`,
           status: "open",
           source_type: "audit",
@@ -178,6 +202,7 @@ export default function AuditsPage() {
     const { data, error } = await supabase
       .from("audit_findings")
       .insert({
+        tenant_id: tenantId,
         audit_id: selectedAuditId,
         finding_title: findingTitle,
         finding_description: findingDescription,
@@ -235,7 +260,8 @@ export default function AuditsPage() {
         signature_email_entered: null,
         signature_meaning: null,
       })
-      .eq("id", audit.id);
+      .eq("id", audit.id)
+      .eq("tenant_id", activeTenantId);
 
     if (error) {
       alert(error.message);
@@ -259,7 +285,8 @@ export default function AuditsPage() {
         finding_status: "closed",
         closed_at: new Date().toISOString(),
       })
-      .eq("id", finding.id);
+      .eq("id", finding.id)
+      .eq("tenant_id", activeTenantId);
 
     if (error) {
       alert(error.message);
