@@ -21,16 +21,27 @@ export default function AuditDetailPage() {
   const [escalationJustifications, setEscalationJustifications] = useState<Record<string, string>>({});
 
   const fetchData = async () => {
+    const tenantId = typeof window !== "undefined"
+      ? window.localStorage.getItem("qualisphere_active_tenant_id") || ""
+      : "";
+    if (!tenantId) {
+      setAudit(null);
+      setFindings([]);
+      return;
+    }
+
     const auditRes = await supabase
       .from("audits")
       .select("*")
       .eq("id", id)
+      .eq("tenant_id", tenantId)
       .maybeSingle();
 
     const findingsRes = await supabase
       .from("audit_findings")
       .select("*")
       .eq("audit_id", id)
+      .eq("tenant_id", tenantId)
       .order("created_at", { ascending: true });
 
     if (auditRes.error) alert(auditRes.error.message);
@@ -92,6 +103,7 @@ export default function AuditDetailPage() {
     const { data: scarData, error: scarError } = await supabase
       .from("scars")
       .insert({
+        tenant_id: audit.tenant_id,
         title: scarTitle,
         scar_title: scarTitle,
         status: "open",
@@ -180,6 +192,7 @@ export default function AuditDetailPage() {
     const { data: capaData, error: capaError } = await supabase
       .from("capas")
       .insert({
+        tenant_id: audit.tenant_id,
         title: capaTitle,
         description,
         status: "open",
