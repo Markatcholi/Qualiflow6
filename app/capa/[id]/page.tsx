@@ -3106,7 +3106,7 @@ This approval becomes part of the official electronic quality record.`,
     if (!confirmed) return;
 
     const now = new Date().toISOString();
-    const signatureDateDisplay = new Date(now).toLocaleString();
+    const signatureDateDisplay = formatCapaApprovalDateTime(now);
     const workflowReturnSignatureMeaning = `I authorize this controlled CAPA workflow return and understand that downstream approvals and pending work will be invalidated as applicable. Electronically signed by ${currentUserEmail} on ${signatureDateDisplay}.`;
 
     const targetConfiguration: Record<string, any> = {
@@ -5946,7 +5946,7 @@ This approval becomes part of the official electronic quality record.`,
                       </strong>
                       <span style={{ color: "#64748b", fontSize: 13 }}>
                         {entry.created_at
-                          ? new Date(entry.created_at).toLocaleString()
+                          ? formatCapaApprovalDateTime(entry.created_at)
                           : "Date not available"}
                       </span>
                     </div>
@@ -6799,7 +6799,7 @@ function TaskCard({
           </p>
           <p style={{ marginBottom: 0 }}>
             Completed by {task.completed_by || "N/A"} at{" "}
-            {task.completed_at || "N/A"}
+            {task.completed_at ? formatCapaApprovalDateTime(task.completed_at) : "N/A"}
           </p>
           <p style={{ marginBottom: 0 }}>
             Evidence: {task.completion_evidence || "N/A"}
