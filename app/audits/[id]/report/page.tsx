@@ -15,16 +15,26 @@ export default function AuditReportPage() {
 
   useEffect(() => {
     const fetchReport = async () => {
+      const tenantId = typeof window !== "undefined"
+        ? window.localStorage.getItem("qualisphere_active_tenant_id") || ""
+        : "";
+      if (!tenantId) {
+        setLoading(false);
+        return;
+      }
+
       const auditRes = await supabase
         .from("audits")
         .select("*")
         .eq("id", id)
+        .eq("tenant_id", tenantId)
         .maybeSingle();
 
       const findingRes = await supabase
         .from("audit_findings")
         .select("*")
         .eq("audit_id", id)
+        .eq("tenant_id", tenantId)
         .order("created_at", { ascending: true });
 
       if (auditRes.error) {
