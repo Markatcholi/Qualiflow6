@@ -50,15 +50,26 @@ export default function AuditIntelligenceDashboardPage() {
 
   const fetchData = async () => {
     setLoading(true);
+    const tenantId = typeof window !== "undefined"
+      ? window.localStorage.getItem("qualisphere_active_tenant_id") || ""
+      : "";
+    if (!tenantId) {
+      setAudits([]);
+      setFindings([]);
+      setLoading(false);
+      return;
+    }
 
     const auditRes = await supabase
       .from("audits")
       .select("*")
+      .eq("tenant_id", tenantId)
       .order("created_at", { ascending: false });
 
     const findingRes = await supabase
       .from("audit_findings")
       .select("*")
+      .eq("tenant_id", tenantId)
       .order("created_at", { ascending: false });
 
     if (auditRes.error) {
