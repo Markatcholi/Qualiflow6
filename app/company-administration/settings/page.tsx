@@ -8,6 +8,7 @@ type CompanySettings = {
   id?: string;
   tenant_id: string;
   company_name: string;
+  timezone: string;
   enable_notifications: boolean;
   enable_overdue_scan: boolean;
   enable_task_sla_dashboard: boolean;
@@ -52,6 +53,7 @@ type CustomKpi = {
 };
 
 const DEFAULTS: Omit<CompanySettings, "tenant_id" | "company_name"> = {
+  timezone: "America/Chicago",
   enable_notifications: true,
   enable_overdue_scan: true,
   enable_task_sla_dashboard: true,
@@ -269,6 +271,7 @@ export default function CompanyAdministrationSettingsPage() {
       const payload = {
         tenant_id: tenantId,
         company_name: companyName,
+        timezone: settings.timezone || "America/Chicago",
         enable_notifications: settings.enable_notifications,
         enable_overdue_scan: settings.enable_overdue_scan,
         enable_task_sla_dashboard: settings.enable_task_sla_dashboard,
@@ -466,9 +469,33 @@ export default function CompanyAdministrationSettingsPage() {
 
       <section style={cardStyle}>
         <h2>Company Profile</h2>
-        <label style={labelStyle}>Company Name</label>
-        <input value={companyName} readOnly style={inputStyle} />
-        <p style={helpStyle}>Company Account identity is controlled by QualiSphere Platform Administration.</p>
+        <div style={gridStyle}>
+          <div>
+            <label style={labelStyle}>Company Name</label>
+            <input value={companyName} readOnly style={inputStyle} />
+            <p style={helpStyle}>Company Account identity is controlled by QualiSphere Platform Administration.</p>
+          </div>
+          <div>
+            <label style={labelStyle}>Company Time Zone</label>
+            <select
+              value={settings.timezone || "America/Chicago"}
+              onChange={(e) => update("timezone", e.target.value)}
+              style={inputStyle}
+            >
+              <option value="America/New_York">Eastern Time — America/New_York</option>
+              <option value="America/Chicago">Central Time — America/Chicago</option>
+              <option value="America/Denver">Mountain Time — America/Denver</option>
+              <option value="America/Los_Angeles">Pacific Time — America/Los_Angeles</option>
+              <option value="America/Phoenix">Arizona — America/Phoenix</option>
+              <option value="America/Anchorage">Alaska — America/Anchorage</option>
+              <option value="Pacific/Honolulu">Hawaii — Pacific/Honolulu</option>
+              <option value="UTC">UTC</option>
+            </select>
+            <p style={helpStyle}>
+              QualiSphere stores canonical timestamps in UTC and displays workflow, approval, task, audit, and report times in this company time zone.
+            </p>
+          </div>
+        </div>
       </section>
 
       <section style={cardStyle}>
