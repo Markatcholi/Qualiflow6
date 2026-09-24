@@ -313,7 +313,6 @@ export default function AuditIntelligenceDashboardPage() {
 
         <div style={buttonRowStyle}>
           <Link href="/audits" style={secondaryLinkStyle}>Audit Registry</Link>
-          <Link href="/dashboard" style={darkLinkStyle}>Executive Dashboard</Link>
         </div>
       </header>
 
