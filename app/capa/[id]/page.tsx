@@ -6326,55 +6326,87 @@ function ApprovalInlinePanel({
       );
     }
 
-    const approvedRows = configuredApprovers.map((approver) => {
-      const task = normalizedTaskByEmail.get(
-        String(approver.approver_email || "").trim().toLowerCase(),
-      );
-      return { approver, task };
-    });
-
     return (
       <div
         id={sectionKey}
         style={{
-          border: "1px solid #d1d5db",
-          borderRadius: "12px",
-          background: "#ffffff",
+          border: "1px solid #bfdbfe",
+          borderRadius: "14px",
+          background: "#eff6ff",
+          padding: "20px",
           marginTop: "18px",
-          overflow: "hidden",
         }}
       >
-        <div style={{ padding: "16px 18px 8px" }}>
-          <h3 style={{ margin: 0 }}>{gateName} Approval</h3>
-        </div>
+        <h3 style={{ margin: "0 0 18px 0", color: "#1e3a8a" }}>
+          {gateName} Approval Status
+        </h3>
 
-        {approvedRows.map(({ approver, task }, index) => (
+        <div
+          style={{
+            border: "1px solid #bfdbfe",
+            borderRadius: "12px",
+            overflow: "hidden",
+            background: "#ffffff",
+          }}
+        >
           <div
-            key={approver.id}
             style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-              gap: "18px",
-              padding: "14px 18px",
-              borderTop: index === 0 ? "none" : "1px solid #e5e7eb",
+              padding: "12px 16px",
+              background: "#dbeafe",
+              color: "#1e3a8a",
+              fontWeight: 800,
+              fontSize: "16px",
             }}
           >
-            <div>
-              <strong>Final Status:</strong>{" "}
-              {String(task?.status || "").toLowerCase() === "approved"
-                ? "Approved"
-                : "Approved"}
-            </div>
-            <div>
-              <strong>Final Approved By:</strong>{" "}
-              {task?.signed_by || approver.approver_email}
-            </div>
-            <div>
-              <strong>Final Approved At:</strong>{" "}
-              {formatCapaApprovalDateTime(task?.signed_at || approvedAt)}
-            </div>
+            Reviewer Approval Status
           </div>
-        ))}
+
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "14px" }}>
+              <thead>
+                <tr>
+                  <th style={tableHeaderStyle}>Function</th>
+                  <th style={tableHeaderStyle}>Reviewer</th>
+                  <th style={tableHeaderStyle}>Status</th>
+                  <th style={tableHeaderStyle}>Decision Date</th>
+                </tr>
+              </thead>
+              <tbody>
+                {configuredApprovers.map((approver) => {
+                  const task = normalizedTaskByEmail.get(
+                    String(approver.approver_email || "").trim().toLowerCase(),
+                  );
+                  const taskStatus = String(task?.status || "approved").toLowerCase();
+                  const displayStatus =
+                    taskStatus === "approved"
+                      ? "Approved"
+                      : taskStatus === "rejected"
+                        ? "Rejected"
+                        : taskStatus === "cancelled"
+                          ? "Cancelled"
+                          : "Pending";
+
+                  return (
+                    <tr key={approver.id}>
+                      <td style={tableCellStyle}>
+                        {[approver.approver_function, approver.approver_job_title || approver.approver_role]
+                          .filter(Boolean)
+                          .join(" - ") || "N/A"}
+                      </td>
+                      <td style={tableCellStyle}>{approver.approver_email}</td>
+                      <td style={tableCellStyle}>
+                        <strong>{displayStatus}</strong>
+                      </td>
+                      <td style={tableCellStyle}>
+                        {task?.signed_at ? formatCapaApprovalDateTime(task.signed_at) : "—"}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
     );
   }
