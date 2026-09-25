@@ -6,7 +6,7 @@ alter table public.management_review_actions add column if not exists tenant_id 
 do $$
 declare v_internal uuid;
 begin
-  select id into v_internal from public.tenants where is_internal=true and is_active=true order by created_at limit 1;
+  select id into v_internal from public.tenants where is_internal=true and status='active' order by created_at limit 1;
   if v_internal is null then raise exception 'Active QualiSphere Internal tenant not found'; end if;
 
   update public.management_reviews set tenant_id=v_internal where tenant_id is null;
@@ -32,7 +32,7 @@ returns uuid language sql stable security definer set search_path=public as $$
   from public.tenant_memberships tm
   join public.tenants t on t.id=tm.tenant_id
   where lower(tm.user_email)=lower(coalesce(auth.jwt()->>'email',''))
-    and tm.is_active=true and t.is_active=true
+    and tm.membership_status='active' and t.status='active'
     and public.qualisphere_tenant_module_enabled(tm.tenant_id,'management_review')
   order by t.is_internal desc, tm.created_at
   limit 1
