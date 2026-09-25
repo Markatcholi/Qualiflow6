@@ -48,6 +48,8 @@ type KpiDisplayValue = {
 };
 
 export default function DashboardPage() {
+  const getActiveTenantId = () =>
+    typeof window !== "undefined" ? localStorage.getItem("qualisphere_active_tenant_id") : null;
   const [ncmrOpen, setNcmrOpen] = useState(0);
   const [ncmrInvestigation, setNcmrInvestigation] = useState(0);
   const [capaOpen, setCapaOpen] = useState(0);
@@ -281,10 +283,12 @@ export default function DashboardPage() {
   const fetchConfiguredChangeKpis = async () => {
     const companySettings = await getCompanySettings();
     const companyName = companySettings?.company_name || "Default Company";
+    const tenantId = getActiveTenantId();
 
     const { data: configData, error: configError } = await supabase
       .from("company_dashboard_kpi_configuration")
       .select("kpi_key, display_order")
+      .eq("tenant_id", tenantId)
       .eq("company_name", companyName)
       .eq("module_name", "change_control")
       .eq("executive_dashboard", true)
@@ -298,7 +302,7 @@ export default function DashboardPage() {
 
     let configRows = configData || [];
 
-    if (configRows.length === 0 && companyName !== "Default Company") {
+    if (configRows.length === 0 && companyName !== "Default Company" && !tenantId) {
       const { data: fallbackConfigData } = await supabase
         .from("company_dashboard_kpi_configuration")
         .select("kpi_key, display_order")
@@ -409,6 +413,21 @@ export default function DashboardPage() {
 
 
   const fetchDocumentWorkflowMetrics = async () => {
+    const tenantId = getActiveTenantId();
+    if (!tenantId) return;
+
+    const { data: tenantDocuments, error: tenantDocumentError } = await supabase
+      .from("controlled_documents")
+      .select("id, document_number, revision, status")
+      .eq("tenant_id", tenantId);
+
+    if (tenantDocumentError) {
+      console.warn(tenantDocumentError.message);
+      return;
+    }
+
+    const documentIds = (tenantDocuments || []).map((doc: any) => doc.id);
+
     const [
       documentRes,
       reviewerRes,
@@ -416,21 +435,15 @@ export default function DashboardPage() {
       notificationRes,
       workflowEventRes,
     ] = await Promise.all([
-      supabase
-        .from("controlled_documents")
-        .select("id, document_number, revision, status"),
-      supabase
-        .from("document_assigned_reviewers")
-        .select("id, document_id, reviewer_email, reviewer_type, reviewer_role, due_date, review_status"),
-      supabase
-        .from("training_assignments")
-        .select("id, document_id, assigned_to_email, status, due_date, retraining_assignment, signature_id, acknowledged_at"),
-      supabase
-        .from("notifications")
-        .select("id, severity, read_status, related_module"),
-      supabase
-        .from("document_workflow_events")
-        .select("id"),
+      Promise.resolve({ data: tenantDocuments || [], error: null }),
+      documentIds.length
+        ? supabase.from("document_assigned_reviewers").select("id, document_id, reviewer_email, reviewer_type, reviewer_role, due_date, review_status").in("document_id", documentIds)
+        : Promise.resolve({ data: [], error: null }),
+      supabase.from("training_assignments").select("id, document_id, assigned_to_email, status, due_date, retraining_assignment, signature_id, acknowledged_at").eq("tenant_id", tenantId),
+      Promise.resolve({ data: [], error: null }),
+      documentIds.length
+        ? supabase.from("document_workflow_events").select("id, document_id").in("document_id", documentIds)
+        : Promise.resolve({ data: [], error: null }),
     ]);
 
     const allDocuments = documentRes.error ? [] : documentRes.data || [];
@@ -698,9 +711,13 @@ export default function DashboardPage() {
   };
 
   const fetchData = async () => {
+    const tenantId = getActiveTenantId();
+    if (!tenantId) return;
+
     const { data: ncmrAllData, error: ncmrAllError } = await supabase
       .from("ncmrs")
-      .select("*");
+      .select("*")
+      .eq("tenant_id", tenantId);
 
     if (ncmrAllError) {
       alert(ncmrAllError.message);
@@ -772,7 +789,8 @@ export default function DashboardPage() {
 
     const { data: capaAllData, error: capaAllError } = await supabase
       .from("capas")
-      .select("*");
+      .select("*")
+      .eq("tenant_id", tenantId);
 
     if (capaAllError) {
       alert(capaAllError.message);
@@ -878,7 +896,8 @@ export default function DashboardPage() {
 
     const { data: scarData, error: scarError } = await supabase
       .from("scars")
-      .select("*");
+      .select("*")
+      .eq("tenant_id", tenantId);
 
     if (scarError) {
       alert(scarError.message);
@@ -915,7 +934,8 @@ export default function DashboardPage() {
 
     const { data: oosData, error: oosError } = await supabase
       .from("oos_oot_investigations")
-      .select("*");
+      .select("*")
+      .eq("tenant_id", tenantId);
 
     if (oosError) {
       alert(oosError.message);
@@ -934,7 +954,8 @@ export default function DashboardPage() {
 
     const { data: auditData, error: auditError } = await supabase
       .from("audits")
-      .select("*");
+      .select("*")
+      .eq("tenant_id", tenantId);
 
     if (auditError) {
       alert(auditError.message);
@@ -943,7 +964,8 @@ export default function DashboardPage() {
 
     const { data: findingData, error: findingError } = await supabase
       .from("audit_findings")
-      .select("*");
+      .select("*")
+      .eq("tenant_id", tenantId);
 
     if (findingError) {
       alert(findingError.message);
@@ -988,7 +1010,8 @@ export default function DashboardPage() {
 
     const { data: changeData, error: changeError } = await supabase
       .from("change_controls")
-      .select("*");
+      .select("*")
+      .eq("tenant_id", tenantId);
 
     if (!changeError) {
       setChangeKpiValues((prev) => ({ ...prev, ...calculateChangeControlKpis(changeData || []) }));
