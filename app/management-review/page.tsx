@@ -68,6 +68,8 @@ type ReportConfig = {
 };
 
 export default function ManagementReviewPage() {
+  const getActiveTenantId = () =>
+    typeof window !== "undefined" ? localStorage.getItem("qualisphere_active_tenant_id") : null;
   const [reportConfig, setReportConfig] = useState<ReportConfig>({
     executiveSummary: true,
     ncmrPerformance: true,
@@ -398,10 +400,12 @@ export default function ManagementReviewPage() {
   const fetchConfiguredChangeKpis = async () => {
     const companySettings = await getCompanySettings();
     const companyName = companySettings?.company_name || "Default Company";
+    const tenantId = getActiveTenantId();
 
     const { data: configData, error: configError } = await supabase
       .from("company_dashboard_kpi_configuration")
       .select("kpi_key, display_order")
+      .eq("tenant_id", tenantId)
       .eq("company_name", companyName)
       .eq("module_name", "change_control")
       .eq("management_review", true)
@@ -415,7 +419,7 @@ export default function ManagementReviewPage() {
 
     let configRows = configData || [];
 
-    if (configRows.length === 0 && companyName !== "Default Company") {
+    if (configRows.length === 0 && companyName !== "Default Company" && !tenantId) {
       const { data: fallbackConfigData } = await supabase
         .from("company_dashboard_kpi_configuration")
         .select("kpi_key, display_order")
@@ -668,9 +672,12 @@ export default function ManagementReviewPage() {
   };
 
   const fetchManagementReviews = async () => {
+    const tenantId = getActiveTenantId();
+    if (!tenantId) return;
     const { data, error } = await supabase
       .from("management_reviews")
       .select("*, management_review_approvers(*)")
+      .eq("tenant_id", tenantId)
       .order("created_at", { ascending: false })
       .limit(10);
 
@@ -683,9 +690,12 @@ export default function ManagementReviewPage() {
   };
 
   const fetchManagementReviewActions = async () => {
+    const tenantId = getActiveTenantId();
+    if (!tenantId) return;
     const { data, error } = await supabase
       .from("management_review_actions")
       .select("*")
+      .eq("tenant_id", tenantId)
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -703,9 +713,12 @@ export default function ManagementReviewPage() {
   };
 
   const fetchData = async () => {
+    const tenantId = getActiveTenantId();
+    if (!tenantId) return;
     const { data: ncmrAllData, error: ncmrAllError } = await supabase
       .from("ncmrs")
-      .select("*");
+      .select("*")
+      .eq("tenant_id", tenantId);
 
     if (ncmrAllError) {
       alert(ncmrAllError.message);
@@ -777,7 +790,8 @@ export default function ManagementReviewPage() {
 
     const { data: capaAllData, error: capaAllError } = await supabase
       .from("capas")
-      .select("*");
+      .select("*")
+      .eq("tenant_id", tenantId);
 
     if (capaAllError) {
       alert(capaAllError.message);
@@ -883,7 +897,8 @@ export default function ManagementReviewPage() {
 
     const { data: scarData, error: scarError } = await supabase
       .from("scars")
-      .select("*");
+      .select("*")
+      .eq("tenant_id", tenantId);
 
     if (scarError) {
       alert(scarError.message);
@@ -920,7 +935,8 @@ export default function ManagementReviewPage() {
 
     const { data: oosData, error: oosError } = await supabase
       .from("oos_oot_investigations")
-      .select("*");
+      .select("*")
+      .eq("tenant_id", tenantId);
 
     if (oosError) {
       alert(oosError.message);
@@ -939,7 +955,8 @@ export default function ManagementReviewPage() {
 
     const { data: complaintData, error: complaintError } = await supabase
       .from("complaints")
-      .select("*");
+      .select("*")
+      .eq("tenant_id", tenantId);
 
     if (!complaintError) {
       const allComplaints = filterByReviewPeriod(complaintData || [], ["created_at", "date_received"]);
@@ -974,7 +991,8 @@ export default function ManagementReviewPage() {
 
     const { data: documentData, error: documentError } = await supabase
       .from("controlled_documents")
-      .select("*");
+      .select("*")
+      .eq("tenant_id", tenantId);
 
     if (!documentError) {
       const allDocuments = filterByReviewPeriod(documentData || [], ["created_at", "effective_date"]);
@@ -1005,7 +1023,8 @@ export default function ManagementReviewPage() {
 
     const { data: trainingData, error: trainingError } = await supabase
       .from("training_assignments")
-      .select("*");
+      .select("*")
+      .eq("tenant_id", tenantId);
 
     if (!trainingError) {
       const allTraining = filterByReviewPeriod(trainingData || [], ["assigned_at", "created_at"]);
@@ -1036,11 +1055,11 @@ export default function ManagementReviewPage() {
     }
 
     const [equipmentResult, equipmentScheduleResult, equipmentCalibrationResult, equipmentMaintenanceResult, equipmentOosLinkResult] = await Promise.all([
-      supabase.from("equipment").select("id,use_status,calibration_required,preventive_maintenance_required"),
-      supabase.from("equipment_current_schedule_status").select("equipment_id,activity_type,schedule_status,nominal_due_date,scheduled_service_date,hard_due_date,use_status,lifecycle_status"),
-      supabase.from("equipment_calibration_events").select("equipment_id,performed_date,result,status,created_at"),
-      supabase.from("equipment_maintenance_events").select("equipment_id,maintenance_type,performed_date,result,status,created_at"),
-      supabase.from("equipment_oos_oot_links").select("equipment_id,linked_at"),
+      supabase.from("equipment").select("id,use_status,calibration_required,preventive_maintenance_required").eq("tenant_id", tenantId),
+      supabase.from("equipment_current_schedule_status").select("equipment_id,activity_type,schedule_status,nominal_due_date,scheduled_service_date,hard_due_date,use_status,lifecycle_status").eq("tenant_id", tenantId),
+      supabase.from("equipment_calibration_events").select("equipment_id,performed_date,result,status,created_at").eq("tenant_id", tenantId),
+      supabase.from("equipment_maintenance_events").select("equipment_id,maintenance_type,performed_date,result,status,created_at").eq("tenant_id", tenantId),
+      supabase.from("equipment_oos_oot_links").select("equipment_id,linked_at").eq("tenant_id", tenantId),
     ]);
 
     if (!equipmentResult.error) {
@@ -1086,7 +1105,8 @@ export default function ManagementReviewPage() {
 
     const { data: auditData, error: auditError } = await supabase
       .from("audits")
-      .select("*");
+      .select("*")
+      .eq("tenant_id", tenantId);
 
     if (auditError) {
       alert(auditError.message);
@@ -1095,7 +1115,8 @@ export default function ManagementReviewPage() {
 
     const { data: findingData, error: findingError } = await supabase
       .from("audit_findings")
-      .select("*");
+      .select("*")
+      .eq("tenant_id", tenantId);
 
     if (findingError) {
       alert(findingError.message);
@@ -1140,7 +1161,8 @@ export default function ManagementReviewPage() {
 
     const { data: changeData, error: changeError } = await supabase
       .from("change_controls")
-      .select("*");
+      .select("*")
+      .eq("tenant_id", tenantId);
 
     if (!changeError) {
       setChangeKpiValues((prev) => ({ ...prev, ...calculateChangeControlKpis(filterByReviewPeriod(changeData || [], ["created_at", "requested_date"])) }));
@@ -1410,6 +1432,7 @@ export default function ManagementReviewPage() {
     const { data: insertedApprover, error: approverError } = await supabase
       .from("management_review_approvers")
       .insert({
+        tenant_id: getActiveTenantId(),
         management_review_id: selectedReviewId,
         approver_name: approverName.trim(),
         approver_email: normalizedApproverEmail,
@@ -1908,6 +1931,7 @@ Review and approve only the generated read-only Management Review report snapsho
     const userEmail = userData?.user?.email || "unknown";
 
     const { error } = await supabase.from("management_review_actions").insert({
+      tenant_id: getActiveTenantId(),
       management_review_id: selectedReviewId,
       action_title: actionTitle,
       action_description: actionDescription || null,
@@ -2369,6 +2393,7 @@ Review and approve only the generated read-only Management Review report snapsho
     const { data: reviewData, error } = await supabase
       .from("management_reviews")
       .insert({
+        tenant_id: getActiveTenantId(),
         review_number: reviewNumber,
         review_title: reviewTitle,
         review_period_start: reviewPeriodStart || null,
