@@ -1089,7 +1089,7 @@ export default function DashboardPage() {
             marginBottom: "6px",
           }}
         >
-          QUALIFLOW ENTERPRISE
+          QUALISPHERE ENTERPRISE
         </div>
 
         <h1 style={{ marginBottom: "4px" }}>Executive Quality Dashboard</h1>
