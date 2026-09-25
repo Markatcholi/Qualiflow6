@@ -1099,7 +1099,7 @@ export default function DashboardPage() {
 
         <div style={{ marginTop: "16px", display: "flex", gap: "10px", flexWrap: "wrap" }}>
           <button
-            onClick={() => window.open("/management-review/print", "_blank")}
+            onClick={() => window.location.href = "/management-review"}
             style={{
               padding: "10px 14px",
               background: "#2563eb",
@@ -1110,7 +1110,7 @@ export default function DashboardPage() {
               fontWeight: 700,
             }}
           >
-            Generate Management Review Report
+            Management Review
           </button>
 
           <a
