@@ -3428,6 +3428,32 @@ export default function EquipmentMasterPage() {
               ))}
             </div>
           </div>
+          {releaseRequest ? <div style={{border:"1px solid #dbe3ee",borderRadius:10,padding:12,marginBottom:12}}>
+            <div style={{fontWeight:800,marginBottom:8}}>Reviewer Approval Status</div>
+            <div style={{overflowX:"auto"}}>
+              <table style={{width:"100%",borderCollapse:"collapse"}}>
+                <thead>
+                  <tr>
+                    <th style={thMini}>Function / Role</th>
+                    <th style={thMini}>Reviewer</th>
+                    <th style={thMini}>Status</th>
+                    <th style={thMini}>Decision Date</th>
+                    <th style={thMini}>Comment</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td style={tdMini}>{[releaseRequest.approver_department,releaseRequest.approver_job_title].filter(Boolean).join(" / ")||"Equipment Approver"}</td>
+                    <td style={tdMini}>{releaseRequest.approver_email||"—"}</td>
+                    <td style={tdMini}>{releaseRequest.status==="approved"?"Approved / Released":releaseRequest.status==="rejected"?"Rejected / Returned":"Pending"}</td>
+                    <td style={tdMini}>{formatDateTime(releaseRequest.decision_at)}</td>
+                    <td style={tdMini}>{releaseRequest.decision_comment||"—"}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div> : null}
+
           {pendingRelease ? <div style={{border:"1px solid #fde68a",background:"#fffbeb",borderRadius:10,padding:12,marginBottom:12}}>
             <strong>Pending Equipment Record Release</strong>
             <div style={{marginTop:5,fontSize:13,lineHeight:1.6}}>
