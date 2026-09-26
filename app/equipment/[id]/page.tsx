@@ -348,7 +348,9 @@ export default function EquipmentMasterPage() {
     provider_name:"",
     performed_by:"",
     comments:"",
-    next_due_date:""
+    next_due_date:"",
+    next_hard_due_date:"",
+    schedule_override_reason:""
   });
   const [editingCalibrationEventId,setEditingCalibrationEventId]=useState<string | null>(null);
   const [existingCalibrationAttachments,setExistingCalibrationAttachments]=useState<any[]>([]);
@@ -878,7 +880,7 @@ export default function EquipmentMasterPage() {
   };
 
   const resetCalibrationEventForm=()=>{
-    setCalibrationEvent({event_source:"manual",performed_date:"",result:"pass",certificate_number:"",provider_type:"",provider_name:"",performed_by:"",comments:"",next_due_date:""});
+    setCalibrationEvent({event_source:"manual",performed_date:"",result:"pass",certificate_number:"",provider_type:"",provider_name:"",performed_by:"",comments:"",next_due_date:"",next_hard_due_date:"",schedule_override_reason:""});
     setCalibrationFiles([]);
     setExistingCalibrationAttachments([]);
     setRemovedCalibrationAttachments([]);
@@ -897,7 +899,9 @@ export default function EquipmentMasterPage() {
       provider_name:row.provider_name||"",
       performed_by:row.performed_by||"",
       comments:row.comments||"",
-      next_due_date:row.next_nominal_due_date||""
+      next_due_date:row.next_nominal_due_date||"",
+      next_hard_due_date:"",
+      schedule_override_reason:""
     });
     setExistingCalibrationAttachments(Array.isArray(row.certificate_attachments)?row.certificate_attachments:[]);
     setRemovedCalibrationAttachments([]);
@@ -944,10 +948,74 @@ export default function EquipmentMasterPage() {
     return nextHard.toISOString().slice(0,10);
   };
 
+  const calculateRecurringDueDate=(performedDate:string,schedule:Schedule|null)=>{
+    if(!performedDate||!schedule?.frequency_value||!schedule.frequency_unit)return "";
+    const parts=performedDate.split("-").map(Number);
+    if(parts.length!==3||parts.some(Number.isNaN))return "";
+    const [year,month,day]=parts;
+    const value=Number(schedule.frequency_value);
+    if(!Number.isFinite(value)||value<=0)return "";
+
+    if(schedule.frequency_unit==="months"||schedule.frequency_unit==="years"){
+      const monthsToAdd=schedule.frequency_unit==="years"?value*12:value;
+      const totalMonths=year*12+(month-1)+monthsToAdd;
+      const targetYear=Math.floor(totalMonths/12);
+      const targetMonth=totalMonths%12;
+      const lastDay=new Date(Date.UTC(targetYear,targetMonth+1,0)).getUTCDate();
+      return new Date(Date.UTC(targetYear,targetMonth,Math.min(day,lastDay))).toISOString().slice(0,10);
+    }
+
+    const date=new Date(Date.UTC(year,month-1,day));
+    date.setUTCDate(date.getUTCDate()+value*(schedule.frequency_unit==="weeks"?7:1));
+    return date.toISOString().slice(0,10);
+  };
+
+  const getAutomaticCalibrationDates=(performedDate:string)=>{
+    if(!calibrationSchedule)return {nextDue:"",nextHardDue:""};
+    const nextDue=calculateRecurringDueDate(performedDate,calibrationSchedule);
+    const nextHardDue=getNextHardDueDate(
+      calibrationSchedule.nominal_due_date,
+      calibrationSchedule.hard_due_date,
+      nextDue
+    )||"";
+    return {nextDue,nextHardDue};
+  };
+
+  const applyScheduledCalibrationDates=(eventSource:string,performedDate:string)=>{
+    if(eventSource!=="scheduled"||!performedDate){
+      setCalibrationEvent(current=>({...current,event_source:eventSource,performed_date:performedDate}));
+      return;
+    }
+    const automatic=getAutomaticCalibrationDates(performedDate);
+    setCalibrationEvent(current=>({
+      ...current,
+      event_source:eventSource,
+      performed_date:performedDate,
+      next_due_date:automatic.nextDue,
+      next_hard_due_date:automatic.nextHardDue,
+      schedule_override_reason:""
+    }));
+  };
+
   const saveCalibrationEvent=async()=>{
     if(!record)return;
     setCalibrationEventMessage("");
-    if(!calibrationEvent.performed_date){setCalibrationEventMessage("Performed Date is required.");return;}
+    if(!calibrationEvent.performed_date){setCalibrationEventMessage("Calibration Date is required.");return;}
+    const automaticCalibrationDates=calibrationEvent.event_source==="scheduled"
+      ? getAutomaticCalibrationDates(calibrationEvent.performed_date)
+      : {nextDue:"",nextHardDue:""};
+    if(calibrationEvent.event_source==="scheduled"&&!calibrationSchedule){
+      setCalibrationEventMessage("A calibration schedule must be configured before completing a Scheduled calibration.");
+      return;
+    }
+    const scheduleWasOverridden=calibrationEvent.event_source==="scheduled"&&(
+      calibrationEvent.next_due_date!==automaticCalibrationDates.nextDue||
+      calibrationEvent.next_hard_due_date!==automaticCalibrationDates.nextHardDue
+    );
+    if(scheduleWasOverridden&&!calibrationEvent.schedule_override_reason.trim()){
+      setCalibrationEventMessage("Override Reason / Justification is required when changing an automatically calculated calibration due date.");
+      return;
+    }
     setSavingCalibrationEvent(true);
     try{
       const {data:userData}=await supabase.auth.getUser();
@@ -1024,11 +1092,13 @@ export default function EquipmentMasterPage() {
       }
 
       if(calibrationEvent.next_due_date&&calibrationSchedule?.id){
-        const nextHardDue=getNextHardDueDate(
-          calibrationSchedule.nominal_due_date,
-          calibrationSchedule.hard_due_date,
-          calibrationEvent.next_due_date
-        );
+        const nextHardDue=calibrationEvent.event_source==="scheduled"&&calibrationEvent.next_hard_due_date
+          ? calibrationEvent.next_hard_due_date
+          : getNextHardDueDate(
+              calibrationSchedule.nominal_due_date,
+              calibrationSchedule.hard_due_date,
+              calibrationEvent.next_due_date
+            );
         const {error:scheduleAdvanceError}=await supabase
           .from("equipment_schedule_configurations")
           .update({
@@ -1042,7 +1112,7 @@ export default function EquipmentMasterPage() {
 
       await addAudit(
         editingCalibrationEventId?"calibration_event_updated":"calibration_event_recorded",
-        `Calibration ${calibrationNumber} ${editingCalibrationEventId?"updated":"recorded"}. Result: ${calibrationEvent.result}. Attachments: ${attachments.length}.`
+        `Calibration ${calibrationNumber} ${editingCalibrationEventId?"updated":"recorded"}. Result: ${calibrationEvent.result}. Attachments: ${attachments.length}.${calibrationEvent.event_source==="scheduled"?` Automatic next due: ${automaticCalibrationDates.nextDue||"N/A"}; automatic hard due: ${automaticCalibrationDates.nextHardDue||"N/A"}; final next due: ${calibrationEvent.next_due_date||"N/A"}; final hard due: ${calibrationEvent.next_hard_due_date||"N/A"}${scheduleWasOverridden?`; override reason: ${calibrationEvent.schedule_override_reason.trim()}`:""}.`:""}`
       );
 
       setShowCalibrationEvent(false);
@@ -2580,8 +2650,8 @@ export default function EquipmentMasterPage() {
             <h3 style={{margin:"0 0 5px"}}>{editingCalibrationEventId?"Update Calibration Record":"Add Calibration Record"}</h3>
             <p style={{margin:"0 0 14px",color:"#64748b",fontSize:13}}>{editingCalibrationEventId?"Update the calibration event, comments, and supporting records.":"Record a calibration event and attach one or more supporting calibration records."}</p>
             <div style={formGridStyle}>
-              <EditField label="Event Source"><select value={calibrationEvent.event_source} onChange={e=>setCalibrationEvent({...calibrationEvent,event_source:e.target.value})} style={input}><option value="manual">Manual / Historical</option><option value="scheduled">Scheduled</option><option value="post_maintenance">Post Maintenance</option><option value="other">Other</option></select></EditField>
-              <EditField label="Calibration Date"><input type="date" value={calibrationEvent.performed_date} onChange={e=>setCalibrationEvent({...calibrationEvent,performed_date:e.target.value})} style={input}/></EditField>
+              <EditField label="Event Source"><select value={calibrationEvent.event_source} onChange={e=>applyScheduledCalibrationDates(e.target.value,calibrationEvent.performed_date)} style={input}><option value="manual">Manual / Historical</option><option value="scheduled">Scheduled</option><option value="post_maintenance">Post Maintenance</option><option value="other">Other</option></select></EditField>
+              <EditField label="Calibration Date"><input type="date" value={calibrationEvent.performed_date} onChange={e=>applyScheduledCalibrationDates(calibrationEvent.event_source,e.target.value)} style={input}/></EditField>
               <EditField label="Result"><select value={calibrationEvent.result} onChange={e=>setCalibrationEvent({...calibrationEvent,result:e.target.value})} style={input}><option value="pass">Pass</option><option value="oot">OOT</option><option value="oos">OOS</option></select></EditField>
               <EditField label="Certificate / Record Number"><input value={calibrationEvent.certificate_number} onChange={e=>setCalibrationEvent({...calibrationEvent,certificate_number:e.target.value})} style={input}/></EditField>
               <EditField label="Provider Type"><select value={calibrationEvent.provider_type} onChange={e=>setCalibrationEvent({...calibrationEvent,provider_type:e.target.value})} style={input}><option value="">Not Specified</option><option value="internal">Internal</option><option value="external">External</option></select></EditField>
@@ -2589,11 +2659,17 @@ export default function EquipmentMasterPage() {
               <EditField label="Performed By"><input value={calibrationEvent.performed_by} onChange={e=>setCalibrationEvent({...calibrationEvent,performed_by:e.target.value})} style={input}/></EditField>
             </div>
             <div style={{marginTop:14}}><EditField label="Comments"><textarea rows={3} value={calibrationEvent.comments} onChange={e=>setCalibrationEvent({...calibrationEvent,comments:e.target.value})} style={{...input,resize:"vertical"}}/></EditField></div>
-            <div style={{marginTop:14,maxWidth:360}}>
-              <EditField label="Next Calibration Due Date">
-                <input type="date" value={calibrationEvent.next_due_date} onChange={e=>setCalibrationEvent({...calibrationEvent,next_due_date:e.target.value})} style={input}/>
-              </EditField>
-              <div style={{color:"#64748b",fontSize:12,marginTop:5}}>Optional. When entered, QualiSphere advances the recurring calibration schedule to this date.</div>
+            <div style={{marginTop:14,maxWidth:760}}>
+              <div style={formGridStyle}>
+                <EditField label="Next Calibration Due Date">
+                  <input type="date" value={calibrationEvent.next_due_date} onChange={e=>{const next=e.target.value;setCalibrationEvent(current=>({...current,next_due_date:next,next_hard_due_date:current.event_source==="scheduled"?(getNextHardDueDate(calibrationSchedule?.nominal_due_date,calibrationSchedule?.hard_due_date,next)||""):current.next_hard_due_date}));}} style={input}/>
+                </EditField>
+                {calibrationEvent.event_source==="scheduled"?<EditField label="Hard Due Date">
+                  <input type="date" value={calibrationEvent.next_hard_due_date} onChange={e=>setCalibrationEvent({...calibrationEvent,next_hard_due_date:e.target.value})} style={input}/>
+                </EditField>:null}
+              </div>
+              <div style={{color:"#64748b",fontSize:12,marginTop:5}}>{calibrationEvent.event_source==="scheduled"?"Automatically calculated from the Calibration Date and configured frequency. You may override the dates when justified.":"Optional. When entered, QualiSphere advances the recurring calibration schedule to this date."}</div>
+              {calibrationEvent.event_source==="scheduled"&&calibrationEvent.performed_date&&(()=>{const automatic=getAutomaticCalibrationDates(calibrationEvent.performed_date);const overridden=calibrationEvent.next_due_date!==automatic.nextDue||calibrationEvent.next_hard_due_date!==automatic.nextHardDue;return overridden?<div style={{marginTop:12}}><EditField label="Override Reason / Justification"><textarea rows={3} value={calibrationEvent.schedule_override_reason} onChange={e=>setCalibrationEvent({...calibrationEvent,schedule_override_reason:e.target.value})} placeholder="Required because the automatically calculated calibration schedule was changed." style={{...input,resize:"vertical"}}/></EditField><div style={{color:"#64748b",fontSize:12,marginTop:5}}>Calculated schedule: Next Due {formatDate(automatic.nextDue)} · Hard Due {formatDate(automatic.nextHardDue)}. The calculated dates, final dates, justification, user, and timestamp are retained in the audit trail.</div></div>:null;})()}
             </div>
             <div style={{marginTop:18}}>
               <div style={fieldLabel}>Calibration Record Attachments</div>
