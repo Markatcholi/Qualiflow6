@@ -332,19 +332,6 @@ export default function OosOotPage() {
             OOS/OOT Intelligence Dashboard
           </a>
 
-          <a
-            href="/dashboard"
-            style={{
-              background: "#2563eb",
-              color: "white",
-              padding: "10px 16px",
-              borderRadius: "8px",
-              textDecoration: "none",
-              fontWeight: 700,
-            }}
-          >
-            Executive Dashboard
-          </a>
         </div>
       </div>
 
