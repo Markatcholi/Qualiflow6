@@ -45,7 +45,7 @@ export default function AuditsPage() {
   const [selectedAuditId, setSelectedAuditId] = useState("");
   const [findingTitle, setFindingTitle] = useState("");
   const [findingDescription, setFindingDescription] = useState("");
-  const [findingSeverity, setFindingSeverity] = useState("minor");
+  const [findingSeverity, setFindingSeverity] = useState("observation");
   const [clauseReference, setClauseReference] = useState("");
   const [evidence, setEvidence] = useState("");
   const [capaRequired, setCapaRequired] = useState("no");
@@ -242,7 +242,7 @@ export default function AuditsPage() {
     setSelectedAuditId("");
     setFindingTitle("");
     setFindingDescription("");
-    setFindingSeverity("minor");
+    setFindingSeverity("observation");
     setClauseReference("");
     setEvidence("");
     setCapaRequired("no");
@@ -490,7 +490,7 @@ export default function AuditsPage() {
         </div>
 
         <div style={rowStyle}>
-          <label>Finding Severity</label>
+          <label>Finding Classification</label>
           <br />
           <select
             value={findingSeverity}
