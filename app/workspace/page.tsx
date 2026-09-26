@@ -1154,6 +1154,7 @@ function getTaskUrl(task: any) {
   if (task.entity_type === "audit") return `/audits/${task.entity_id}`;
   if (task.entity_type === "training") return `/training`;
   if (task.entity_type === "management_review") return `/management-review/${task.entity_id}/approval-review?taskId=${task.id}`;
+  if (task.entity_type === "equipment") return `/equipment/${task.entity_id}`;
   return "/";
 }
 
@@ -1185,7 +1186,7 @@ function getRecordDisplay(task: any) {
     return directRecord;
   }
   const title = String(task.task_title || task.title || "");
-  const recordMatch = title.match(/\b(CAPA[-\s]?\d+|NCMR[-\s]?\d+|CC[-\s]?\d+|SCAR[-\s]?\d+|AUD[-\s]?\d+|DOC[-\s]?\d+|CMP[-\s]?\d+|MR[-\s]?\d+(?:[-\s]?\d+)?)\b/i);
+  const recordMatch = title.match(/\b(CAPA[-\s]?\d+|NCMR[-\s]?\d+|CC[-\s]?\d+|SCAR[-\s]?\d+|AUD[-\s]?\d+|DOC[-\s]?\d+|CMP[-\s]?\d+|MR[-\s]?\d+(?:[-\s]?\d+)?|EF[-\s]?\d+)\b/i);
   if (recordMatch?.[1]) return recordMatch[1].toUpperCase();
 
   // SCAR currently has no populated scar_number. Show its meaningful title in
@@ -1318,6 +1319,7 @@ function getModuleLabel(task: any) {
   if (type.includes("audit")) return "Audit";
   if (type.includes("oos") || type.includes("oot")) return "OOS/OOT";
   if (type.includes("management_review")) return "Management Review";
+  if (type.includes("equipment")) return "Equipment";
   return "Quality";
 }
 
@@ -1333,6 +1335,7 @@ function getModuleIcon(task: any) {
   if (label === "Audit") return "🔎";
   if (label === "OOS/OOT") return "🧪";
   if (label === "Management Review") return "📊";
+  if (label === "Equipment") return "⚙️";
   return "📌";
 }
 
