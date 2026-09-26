@@ -2700,7 +2700,7 @@ export default function EquipmentMasterPage() {
           <h3 style={{margin:"0 0 10px"}}>Calibration History</h3>
           {calibrations.length===0?<div style={emptyPanelStyle}>No calibration events recorded.</div>:<div style={{overflowX:"auto"}}>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:13,minWidth:1100}}>
-              <thead><tr>{["Event","Calibration Date","Result","Certificate / Record","Provider","Comments","Hard Due Date","Attachments","Status","Action"].map(h=><th key={h} style={{textAlign:"left",padding:"9px 10px",borderBottom:"1px solid #cbd5e1"}}>{h}</th>)}</tr></thead>
+              <thead><tr>{["Event","Calibration Date","Result","Certificate / Record","Provider","Procedure / Revision","Comments","Hard Due Date","Attachments","Status","Action"].map(h=><th key={h} style={{textAlign:"left",padding:"9px 10px",borderBottom:"1px solid #cbd5e1"}}>{h}</th>)}</tr></thead>
               <tbody>{calibrations.map(row=>{
                 const a=Array.isArray(row.certificate_attachments)?row.certificate_attachments:[];
                 return <tr key={row.id}>
@@ -2709,8 +2709,9 @@ export default function EquipmentMasterPage() {
                   <td style={tdMini}>{formatLabel(row.result)}</td>
                   <td style={tdMini}>{row.certificate_number||"Not Recorded"}</td>
                   <td style={tdMini}>{row.provider_name||"Not Recorded"}</td>
+                  <td style={tdMini}>{[row.procedure_document_number,row.procedure_revision].filter(Boolean).join(" / ")||"Not Recorded"}</td>
                   <td style={{...tdMini,maxWidth:260,whiteSpace:"pre-wrap"}}>{row.comments||"Not Recorded"}</td>
-                  <td style={tdMini}>{formatDate(row.next_nominal_due_date)}</td>
+                  <td style={tdMini}>{formatDate(row.hard_due_date||getMonthEndDate(row.performed_date))}</td>
                   <td style={tdMini}>{a.length===0?"None":<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{a.map((x:any,i:number)=><button key={`${x?.path||x?.name||i}`} type="button" style={attachmentButton} onClick={()=>openCalibrationAttachment(x)}>{x?.name||`Attachment ${i+1}`}</button>)}</div>}</td>
                   <td style={tdMini}>{formatLabel(row.status)}</td>
                   <td style={tdMini}><button type="button" style={secondaryButton} onClick={()=>editCalibrationEvent(row)}>Edit</button></td>
