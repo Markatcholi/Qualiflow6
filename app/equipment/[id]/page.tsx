@@ -957,7 +957,7 @@ export default function EquipmentMasterPage() {
 
       for(const file of calibrationFiles){
         const safe=file.name.trim().replace(/[^a-zA-Z0-9._-]+/g,"_").replace(/_+/g,"_");
-        const path=`equipment/${record.id}/calibration/${folder}/${Date.now()}-${safe}`;
+        const path=`tenant/${record.tenant_id}/equipment/${record.id}/calibration/${folder}/${Date.now()}-${safe}`;
         const {error}=await supabase.storage.from("controlled-documents").upload(path,file,{cacheControl:"3600",upsert:false,contentType:file.type||undefined});
         if(error)throw new Error(error.message);
         newAttachments.push({name:file.name,path,size:file.size,type:file.type||null,uploaded_by:email,uploaded_at:new Date().toISOString()});
@@ -1387,7 +1387,7 @@ export default function EquipmentMasterPage() {
           .replace(/[^a-zA-Z0-9._-]+/g,"_")
           .replace(/_+/g,"_");
 
-        const path=`equipment/${record.id}/maintenance/${folder}/${Date.now()}-${safe}`;
+        const path=`tenant/${record.tenant_id}/equipment/${record.id}/maintenance/${folder}/${Date.now()}-${safe}`;
 
         const {error}=await supabase.storage
           .from("controlled-documents")
@@ -1755,7 +1755,7 @@ export default function EquipmentMasterPage() {
     const uploaded:any[]=[];
     for(const file of files){
       const safe=file.name.trim().replace(/[^a-zA-Z0-9._-]+/g,"_").replace(/_+/g,"_");
-      const path=`equipment/${record.id}/qualification/${folder}/${Date.now()}-${safe}`;
+      const path=`tenant/${record.tenant_id}/equipment/${record.id}/qualification/${folder}/${Date.now()}-${safe}`;
       const {error}=await supabase.storage
         .from("controlled-documents")
         .upload(path,file,{cacheControl:"3600",upsert:false,contentType:file.type||undefined});
