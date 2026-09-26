@@ -829,10 +829,8 @@ export default function EquipmentMasterPage() {
 
     const frequencyValue = Number(calibrationConfig.frequency_value);
     if (!Number.isFinite(frequencyValue) || frequencyValue <= 0) { setCalibrationConfigMessage("Calibration Frequency must be greater than zero."); return; }
-    if (!calibrationConfig.nominal_due_date) { setCalibrationConfigMessage("Next Due Date is required."); return; }
-    if (calibrationConfig.schedule_mode === "flexible" && !calibrationConfig.hard_due_date) { setCalibrationConfigMessage("Hard Due Date is required for Flexible scheduling."); return; }
-
-    const hardDueDate = calibrationConfig.schedule_mode === "fixed" ? (calibrationConfig.hard_due_date || calibrationConfig.nominal_due_date) : calibrationConfig.hard_due_date;
+    const existingNominalDueDate = calibrationSchedule?.nominal_due_date || null;
+    const existingHardDueDate = calibrationSchedule?.hard_due_date || null;
 
     setSavingCalibrationConfig(true);
     try {
@@ -841,7 +839,7 @@ export default function EquipmentMasterPage() {
       const payload = {
         tenant_id: record.tenant_id, equipment_id: record.id, activity_type: "calibration", is_active: true,
         frequency_value: frequencyValue, frequency_unit: calibrationConfig.frequency_unit, schedule_mode: calibrationConfig.schedule_mode,
-        nominal_due_date: calibrationConfig.nominal_due_date, scheduled_service_date: null, hard_due_date: hardDueDate,
+        nominal_due_date: existingNominalDueDate, scheduled_service_date: null, hard_due_date: existingHardDueDate,
         early_window_days: Math.max(0,Number(calibrationConfig.early_window_days)||0),
         late_window_days: Math.max(0,Number(calibrationConfig.late_window_days)||0),
         equipment_family: calibrationConfig.equipment_family.trim() || null,
@@ -871,7 +869,7 @@ export default function EquipmentMasterPage() {
         if (error) throw new Error(error.message);
       }
 
-      await addAudit(calibrationSchedule ? "calibration_schedule_updated" : "calibration_schedule_configured", `${calibrationSchedule ? "Updated" : "Configured"} calibration: every ${frequencyValue} ${calibrationConfig.frequency_unit}; ${calibrationConfig.schedule_mode}; nominal ${calibrationConfig.nominal_due_date}; hard due ${hardDueDate}; reminders ${calibrationReminderDays.join(", ")}.`);
+      await addAudit(calibrationSchedule ? "calibration_schedule_updated" : "calibration_schedule_configured", `${calibrationSchedule ? "Updated" : "Configured"} calibration rules: every ${frequencyValue} ${calibrationConfig.frequency_unit}; ${calibrationConfig.schedule_mode}; reminders ${calibrationReminderDays.join(", ")}.`);
       setCalibrationConfigMessage("Calibration configuration saved.");
       setShowCalibrationConfig(false);
       await load();
@@ -2616,9 +2614,6 @@ export default function EquipmentMasterPage() {
             <div style={formGridStyle}>
               <EditField label="Frequency"><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}><input type="number" min="1" value={calibrationConfig.frequency_value} onChange={e=>setCalibrationConfig({...calibrationConfig,frequency_value:e.target.value})} style={input}/><select value={calibrationConfig.frequency_unit} onChange={e=>setCalibrationConfig({...calibrationConfig,frequency_unit:e.target.value})} style={input}><option value="days">Days</option><option value="weeks">Weeks</option><option value="months">Months</option><option value="years">Years</option></select></div></EditField>
               <EditField label="Schedule Type"><select value={calibrationConfig.schedule_mode} onChange={e=>setCalibrationConfig({...calibrationConfig,schedule_mode:e.target.value})} style={input}><option value="fixed">Fixed</option><option value="flexible">Flexible</option></select></EditField>
-              <EditField label="Next Due Date"><input type="date" value={calibrationConfig.nominal_due_date} onChange={e=>setCalibrationConfig({...calibrationConfig,nominal_due_date:e.target.value})} style={input}/></EditField>
-              
-              <EditField label="Hard Due Date"><input type="date" value={calibrationConfig.hard_due_date} onChange={e=>setCalibrationConfig({...calibrationConfig,hard_due_date:e.target.value})} style={input}/></EditField>
               <EditField label="Overdue Use Action"><select value={calibrationConfig.overdue_use_action} onChange={e=>setCalibrationConfig({...calibrationConfig,overdue_use_action:e.target.value})} style={input}><option value="notification_only">Notification Only</option><option value="restricted">Restricted</option><option value="out_of_service">Out of Service</option></select></EditField>
 
               {calibrationConfig.schedule_mode==="flexible" ? <>
