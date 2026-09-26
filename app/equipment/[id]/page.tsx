@@ -827,7 +827,7 @@ export default function EquipmentMasterPage() {
 
     const frequencyValue = Number(calibrationConfig.frequency_value);
     if (!Number.isFinite(frequencyValue) || frequencyValue <= 0) { setCalibrationConfigMessage("Calibration Frequency must be greater than zero."); return; }
-    if (!calibrationConfig.nominal_due_date) { setCalibrationConfigMessage("Nominal Due Date is required."); return; }
+    if (!calibrationConfig.nominal_due_date) { setCalibrationConfigMessage("Next Due Date is required."); return; }
     if (calibrationConfig.schedule_mode === "flexible" && !calibrationConfig.hard_due_date) { setCalibrationConfigMessage("Hard Due Date is required for Flexible scheduling."); return; }
 
     const hardDueDate = calibrationConfig.schedule_mode === "fixed" ? (calibrationConfig.hard_due_date || calibrationConfig.nominal_due_date) : calibrationConfig.hard_due_date;
@@ -1079,7 +1079,7 @@ export default function EquipmentMasterPage() {
       return;
     }
     if(!pmConfig.nominal_due_date){
-      setPmConfigMessage("Nominal Due Date is required.");
+      setPmConfigMessage("Next Due Date is required.");
       return;
     }
     if(pmConfig.schedule_mode==="flexible"&&!pmConfig.hard_due_date){
@@ -2546,7 +2546,7 @@ export default function EquipmentMasterPage() {
             <div style={formGridStyle}>
               <EditField label="Frequency"><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}><input type="number" min="1" value={calibrationConfig.frequency_value} onChange={e=>setCalibrationConfig({...calibrationConfig,frequency_value:e.target.value})} style={input}/><select value={calibrationConfig.frequency_unit} onChange={e=>setCalibrationConfig({...calibrationConfig,frequency_unit:e.target.value})} style={input}><option value="days">Days</option><option value="weeks">Weeks</option><option value="months">Months</option><option value="years">Years</option></select></div></EditField>
               <EditField label="Schedule Type"><select value={calibrationConfig.schedule_mode} onChange={e=>setCalibrationConfig({...calibrationConfig,schedule_mode:e.target.value})} style={input}><option value="fixed">Fixed</option><option value="flexible">Flexible</option></select></EditField>
-              <EditField label="Nominal Due Date"><input type="date" value={calibrationConfig.nominal_due_date} onChange={e=>setCalibrationConfig({...calibrationConfig,nominal_due_date:e.target.value})} style={input}/></EditField>
+              <EditField label="Next Due Date"><input type="date" value={calibrationConfig.nominal_due_date} onChange={e=>setCalibrationConfig({...calibrationConfig,nominal_due_date:e.target.value})} style={input}/></EditField>
               
               <EditField label="Hard Due Date"><input type="date" value={calibrationConfig.hard_due_date} onChange={e=>setCalibrationConfig({...calibrationConfig,hard_due_date:e.target.value})} style={input}/></EditField>
               <EditField label="Overdue Use Action"><select value={calibrationConfig.overdue_use_action} onChange={e=>setCalibrationConfig({...calibrationConfig,overdue_use_action:e.target.value})} style={input}><option value="notification_only">Notification Only</option><option value="restricted">Restricted</option><option value="out_of_service">Out of Service</option></select></EditField>
@@ -2581,7 +2581,7 @@ export default function EquipmentMasterPage() {
             <p style={{margin:"0 0 14px",color:"#64748b",fontSize:13}}>{editingCalibrationEventId?"Update the calibration event, comments, and supporting records.":"Record a calibration event and attach one or more supporting calibration records."}</p>
             <div style={formGridStyle}>
               <EditField label="Event Source"><select value={calibrationEvent.event_source} onChange={e=>setCalibrationEvent({...calibrationEvent,event_source:e.target.value})} style={input}><option value="manual">Manual / Historical</option><option value="scheduled">Scheduled</option><option value="post_maintenance">Post Maintenance</option><option value="other">Other</option></select></EditField>
-              <EditField label="Performed Date"><input type="date" value={calibrationEvent.performed_date} onChange={e=>setCalibrationEvent({...calibrationEvent,performed_date:e.target.value})} style={input}/></EditField>
+              <EditField label="Calibration Date"><input type="date" value={calibrationEvent.performed_date} onChange={e=>setCalibrationEvent({...calibrationEvent,performed_date:e.target.value})} style={input}/></EditField>
               <EditField label="Result"><select value={calibrationEvent.result} onChange={e=>setCalibrationEvent({...calibrationEvent,result:e.target.value})} style={input}><option value="pass">Pass</option><option value="oot">OOT</option><option value="oos">OOS</option></select></EditField>
               <EditField label="Certificate / Record Number"><input value={calibrationEvent.certificate_number} onChange={e=>setCalibrationEvent({...calibrationEvent,certificate_number:e.target.value})} style={input}/></EditField>
               <EditField label="Provider Type"><select value={calibrationEvent.provider_type} onChange={e=>setCalibrationEvent({...calibrationEvent,provider_type:e.target.value})} style={input}><option value="">Not Specified</option><option value="internal">Internal</option><option value="external">External</option></select></EditField>
@@ -2611,13 +2611,14 @@ export default function EquipmentMasterPage() {
           required={record.calibration_required}
           schedule={calibrationSchedule}
           emptyText="No calibration schedule configured."
+          dueDateLabel="Next Calibration Due Date"
         />
 
         <div style={{marginTop:18}}>
           <h3 style={{margin:"0 0 10px"}}>Calibration History</h3>
           {calibrations.length===0?<div style={emptyPanelStyle}>No calibration events recorded.</div>:<div style={{overflowX:"auto"}}>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:13,minWidth:1100}}>
-              <thead><tr>{["Event","Performed","Result","Certificate / Record","Provider","Comments","Hard Due Date","Attachments","Status","Action"].map(h=><th key={h} style={{textAlign:"left",padding:"9px 10px",borderBottom:"1px solid #cbd5e1"}}>{h}</th>)}</tr></thead>
+              <thead><tr>{["Event","Calibration Date","Result","Certificate / Record","Provider","Comments","Hard Due Date","Attachments","Status","Action"].map(h=><th key={h} style={{textAlign:"left",padding:"9px 10px",borderBottom:"1px solid #cbd5e1"}}>{h}</th>)}</tr></thead>
               <tbody>{calibrations.map(row=>{
                 const a=Array.isArray(row.certificate_attachments)?row.certificate_attachments:[];
                 return <tr key={row.id}>
@@ -2702,7 +2703,7 @@ export default function EquipmentMasterPage() {
                 </select>
               </EditField>
 
-              <EditField label="Nominal Due Date">
+              <EditField label="Next Due Date">
                 <input type="date" value={pmConfig.nominal_due_date} onChange={e=>setPmConfig({...pmConfig,nominal_due_date:e.target.value})} style={input}/>
               </EditField>
 
@@ -2941,7 +2942,7 @@ export default function EquipmentMasterPage() {
             </div>
 
             <div style={{marginTop:14,maxWidth:360}}>
-              <EditField label="Next Preventive Maintenance Due Date">
+              <EditField label="Next Maintenance Due Date">
                 <input type="date" value={maintenanceEvent.next_due_date} onChange={e=>setMaintenanceEvent({...maintenanceEvent,next_due_date:e.target.value})} style={input}/>
               </EditField>
               <div style={{color:"#64748b",fontSize:12,marginTop:5}}>Optional. When entered, QualiSphere advances the recurring Preventive Maintenance schedule to this date.</div>
@@ -2997,6 +2998,7 @@ export default function EquipmentMasterPage() {
           required={record.preventive_maintenance_required}
           schedule={pmSchedule}
           emptyText="No preventive-maintenance schedule configured."
+          dueDateLabel="Next Maintenance Due Date"
         />
 
         <div style={{marginTop:18}}>
@@ -3008,7 +3010,7 @@ export default function EquipmentMasterPage() {
               <table style={{width:"100%",borderCollapse:"collapse",fontSize:13,minWidth:1200}}>
                 <thead>
                   <tr>
-                    {["Event","Type","Performed","Result","Provider","Issue / Work","Product Impact","Comments","Hard Due Date","Attachments","Status","Action"].map(header=>(
+                    {["Event","Type","Maintenance Date","Result","Provider","Issue / Work","Product Impact","Comments","Hard Due Date","Attachments","Status","Action"].map(header=>(
                       <th key={header} style={{textAlign:"left",padding:"9px 10px",borderBottom:"1px solid #cbd5e1"}}>{header}</th>
                     ))}
                   </tr>
@@ -4001,10 +4003,12 @@ function ScheduleSummary({
   required,
   schedule,
   emptyText,
+  dueDateLabel = "Next Due Date",
 }: {
   required: boolean;
   schedule?: Schedule;
   emptyText: string;
+  dueDateLabel?: string;
 }) {
   if (!required) {
     return (
@@ -4027,7 +4031,7 @@ function ScheduleSummary({
         value={`${schedule.frequency_value} ${formatLabel(schedule.frequency_unit)}`}
       />
       <Detail label="Schedule Mode" value={formatLabel(schedule.schedule_mode)} />
-      <Detail label="Nominal Due Date" value={formatDate(schedule.nominal_due_date)} />
+      <Detail label={dueDateLabel} value={formatDate(schedule.nominal_due_date)} />
       <Detail label="Hard Due Date" value={formatDate(schedule.hard_due_date)} />
       <Detail
         label="Provider"
