@@ -1099,8 +1099,8 @@ export default function EquipmentMasterPage() {
       }
 
       if(calibrationEvent.next_due_date&&calibrationSchedule?.id){
-        const nextHardDue=calibrationEvent.event_source==="scheduled"&&calibrationEvent.next_hard_due_date
-          ? calibrationEvent.next_hard_due_date
+        const nextHardDue=calibrationEvent.event_source==="scheduled"
+          ? (calibrationEvent.next_hard_due_date||getMonthEndDate(calibrationEvent.next_due_date))
           : getNextHardDueDate(
               calibrationSchedule.nominal_due_date,
               calibrationSchedule.hard_due_date,
