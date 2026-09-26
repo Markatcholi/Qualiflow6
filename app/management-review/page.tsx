@@ -3666,7 +3666,49 @@ Review and approve only the generated read-only Management Review report snapsho
               </>
             ) : null}
 
-            <h3>Approvers</h3>
+            <h3>Approval Status</h3>
+
+            {selectedApprovers.length === 0 ? (
+              <p>No approvers added yet.</p>
+            ) : (
+              <div style={{ border: "1px solid #bfdbfe", borderRadius: "12px", overflow: "hidden", background: "#eff6ff", marginBottom: "18px" }}>
+                <div style={{ padding: "12px 16px", fontWeight: 700, color: "#475569", background: "#dbeafe" }}>
+                  Reviewer Approval Status
+                </div>
+                <table style={{ width: "100%", borderCollapse: "collapse", background: "#ffffff" }}>
+                  <thead>
+                    <tr>
+                      <th style={thStyle}>Function</th>
+                      <th style={thStyle}>Reviewer</th>
+                      <th style={thStyle}>Status</th>
+                      <th style={thStyle}>Decision Date</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {selectedApprovers.map((approver: any) => {
+                      const status = String(approver.approval_status || "configured").trim().toLowerCase();
+                      const displayStatus =
+                        status === "approved" ? "Approved" :
+                        status === "pending" ? "Pending Approval" :
+                        status === "rejected" ? "Rejected" :
+                        "Configured";
+                      return (
+                        <tr key={`approval-status-${approver.id}`}>
+                          <td style={tdStyle}>{approver.approver_role || "Approver"}</td>
+                          <td style={tdStyle}>{approver.approver_name || approver.approver_email || "N/A"}</td>
+                          <td style={{ ...tdStyle, fontWeight: 700 }}>{displayStatus}</td>
+                          <td style={tdStyle}>
+                            {approver.signed_at ? new Date(approver.signed_at).toLocaleString() : "—"}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <h3>Approver Configuration</h3>
 
             {selectedApprovers.length === 0 ? (
               <p>No approvers added yet.</p>
@@ -3805,45 +3847,9 @@ Review and approve only the generated read-only Management Review report snapsho
                     </div>
                   </td>
                   <td style={tdStyle}>
-                    <div style={{ display: "grid", gap: "8px" }}>
-                      <button type="button" onClick={() => setSelectedReviewId(review.id)}>
-                        Manage Approvals
-                      </button>
-                      {Array.isArray(review.management_review_approvers) && review.management_review_approvers.length > 0 ? (
-                        <div style={{ display: "grid", gap: "6px", fontSize: "12px" }}>
-                          {review.management_review_approvers.map((approver: any) => {
-                            const status = String(approver.approval_status || "configured").trim().toLowerCase();
-                            const approved = status === "approved";
-                            const pending = status === "pending";
-                            return (
-                              <div
-                                key={approver.id}
-                                style={{
-                                  border: "1px solid #d1d5db",
-                                  borderRadius: "8px",
-                                  padding: "7px 9px",
-                                  background: approved ? "#f0fdf4" : pending ? "#fffbeb" : "#f8fafc",
-                                }}
-                              >
-                                <div style={{ fontWeight: 700 }}>
-                                  {approver.approver_name || approver.approver_email || "Approver"} — {approved ? "Approved" : pending ? "Pending Approval" : approver.approval_status || "Configured"}
-                                </div>
-                                <div>{approver.approver_role || "Approver"}{approver.approver_email ? ` · ${approver.approver_email}` : ""}</div>
-                                {approver.approver_due_date ? <div>Due: {approver.approver_due_date}</div> : null}
-                                {approved ? (
-                                  <div>
-                                    Signed by: {approver.signed_by || approver.approver_email || "N/A"}
-                                    {approver.signed_at ? ` · ${new Date(approver.signed_at).toLocaleString()}` : ""}
-                                  </div>
-                                ) : null}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        <div style={{ color: "#64748b", fontSize: "12px" }}>No approvers configured</div>
-                      )}
-                    </div>
+                    <button type="button" onClick={() => setSelectedReviewId(review.id)}>
+                      Manage Approvals
+                    </button>
                   </td>
                 </tr>
               ))}
