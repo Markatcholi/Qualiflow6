@@ -78,6 +78,8 @@ type Calibration = {
   provider_type: string | null;
   provider_name: string | null;
   performed_by: string | null;
+  procedure_document_number: string | null;
+  procedure_revision: string | null;
   comments: string | null;
   next_nominal_due_date: string | null;
   status: string;
@@ -347,6 +349,8 @@ export default function EquipmentMasterPage() {
     provider_type:"",
     provider_name:"",
     performed_by:"",
+    procedure_document_number:"",
+    procedure_revision:"",
     comments:"",
     next_due_date:"",
     next_hard_due_date:"",
@@ -588,7 +592,7 @@ export default function EquipmentMasterPage() {
           .order("activity_type"),
         supabase
           .from("equipment_calibration_events")
-          .select("id,calibration_number,event_source,scheduled_date,hard_due_date,performed_date,result,certificate_number,certificate_attachments,provider_type,provider_name,performed_by,comments,next_nominal_due_date,status,created_at")
+          .select("id,calibration_number,event_source,scheduled_date,hard_due_date,performed_date,result,certificate_number,certificate_attachments,provider_type,provider_name,performed_by,procedure_document_number,procedure_revision,comments,next_nominal_due_date,status,created_at")
           .eq("equipment_id", equipmentId)
           .order("created_at", { ascending: false }),
         supabase
@@ -846,8 +850,7 @@ export default function EquipmentMasterPage() {
         max_events_per_day: calibrationConfig.max_events_per_day ? Number(calibrationConfig.max_events_per_day) : null,
         max_events_per_week: calibrationConfig.max_events_per_week ? Number(calibrationConfig.max_events_per_week) : null,
         provider_type: calibrationConfig.provider_type || null, provider_name: calibrationConfig.provider_name.trim() || null,
-        procedure_document_number: calibrationConfig.procedure_document_number.trim() || null,
-        procedure_revision: calibrationConfig.procedure_revision.trim() || null, overdue_use_action: calibrationConfig.overdue_use_action,
+        overdue_use_action: calibrationConfig.overdue_use_action,
         created_by: email,
       };
 
@@ -878,7 +881,7 @@ export default function EquipmentMasterPage() {
   };
 
   const resetCalibrationEventForm=()=>{
-    setCalibrationEvent({event_source:"manual",performed_date:"",result:"pass",certificate_number:"",provider_type:"",provider_name:"",performed_by:"",comments:"",next_due_date:"",next_hard_due_date:"",schedule_override_reason:""});
+    setCalibrationEvent({event_source:"manual",performed_date:"",result:"pass",certificate_number:"",provider_type:"",provider_name:"",performed_by:"",procedure_document_number:"",procedure_revision:"",comments:"",next_due_date:"",next_hard_due_date:"",schedule_override_reason:""});
     setCalibrationFiles([]);
     setExistingCalibrationAttachments([]);
     setRemovedCalibrationAttachments([]);
@@ -896,6 +899,8 @@ export default function EquipmentMasterPage() {
       provider_type:row.provider_type||"",
       provider_name:row.provider_name||"",
       performed_by:row.performed_by||"",
+      procedure_document_number:row.procedure_document_number||"",
+      procedure_revision:row.procedure_revision||"",
       comments:row.comments||"",
       next_due_date:row.next_nominal_due_date||"",
       next_hard_due_date:"",
@@ -968,14 +973,18 @@ export default function EquipmentMasterPage() {
     return date.toISOString().slice(0,10);
   };
 
+  const getMonthEndDate=(dateValue?:string|null)=>{
+    if(!dateValue)return "";
+    const parts=dateValue.split("-").map(Number);
+    if(parts.length!==3||parts.some(Number.isNaN))return "";
+    const [year,month]=parts;
+    return new Date(Date.UTC(year,month,0)).toISOString().slice(0,10);
+  };
+
   const getAutomaticCalibrationDates=(performedDate:string)=>{
     if(!calibrationSchedule)return {nextDue:"",nextHardDue:""};
     const nextDue=calculateRecurringDueDate(performedDate,calibrationSchedule);
-    const nextHardDue=getNextHardDueDate(
-      calibrationSchedule.nominal_due_date,
-      calibrationSchedule.hard_due_date,
-      nextDue
-    )||"";
+    const nextHardDue=getMonthEndDate(nextDue);
     return {nextDue,nextHardDue};
   };
 
@@ -1038,6 +1047,8 @@ export default function EquipmentMasterPage() {
         performed_by:calibrationEvent.performed_by.trim()||email,
         certificate_number:calibrationEvent.certificate_number.trim()||null,
         certificate_attachments:attachments,
+        procedure_document_number:calibrationEvent.procedure_document_number.trim()||null,
+        procedure_revision:calibrationEvent.procedure_revision.trim()||null,
         comments:calibrationEvent.comments.trim()||null,
         next_nominal_due_date:calibrationEvent.next_due_date||null,
         result:calibrationEvent.result,
@@ -1063,9 +1074,7 @@ export default function EquipmentMasterPage() {
           schedule_configuration_id:calibrationSchedule?.id||null,
           nominal_due_date:calibrationSchedule?.nominal_due_date||null,
           scheduled_date:null,
-          hard_due_date:calibrationSchedule?.hard_due_date||null,
-          procedure_document_number:calibrationSchedule?.procedure_document_number||null,
-          procedure_revision:calibrationSchedule?.procedure_revision||null,
+          hard_due_date:calibrationSchedule?.hard_due_date||getMonthEndDate(calibrationEvent.performed_date)||null,
           review_requirement:"optional",
           review_status:"not_required",
           created_by:email
@@ -2576,16 +2585,6 @@ export default function EquipmentMasterPage() {
                 <>
                   <button
                     type="button"
-                    style={secondaryButton}
-                    onClick={()=>{
-                      resetCalibrationEventForm();
-                      setShowCalibrationEvent(v=>!v);
-                    }}
-                  >
-                    {showCalibrationEvent ? "Close Calibration Record" : "Add Calibration Record"}
-                  </button>
-                  <button
-                    type="button"
                     style={primaryButton}
                     onClick={()=>{
                       setCalibrationConfigMessage("");
@@ -2597,6 +2596,16 @@ export default function EquipmentMasterPage() {
                       : calibrationSchedule
                       ? "Edit Calibration Configuration"
                       : "Configure Calibration"}
+                  </button>
+                  <button
+                    type="button"
+                    style={secondaryButton}
+                    onClick={()=>{
+                      resetCalibrationEventForm();
+                      setShowCalibrationEvent(v=>!v);
+                    }}
+                  >
+                    {showCalibrationEvent ? "Close Calibration Record" : "Add Calibration Record"}
                   </button>
                 </>
               ) : (
@@ -2626,8 +2635,6 @@ export default function EquipmentMasterPage() {
 
               <EditField label="Provider Type"><select value={calibrationConfig.provider_type} onChange={e=>setCalibrationConfig({...calibrationConfig,provider_type:e.target.value})} style={input}><option value="">Not Specified</option><option value="internal">Internal</option><option value="external">External</option></select></EditField>
               <EditField label="Calibration Provider"><input value={calibrationConfig.provider_name} onChange={e=>setCalibrationConfig({...calibrationConfig,provider_name:e.target.value})} placeholder="Internal group or external provider" style={input}/></EditField>
-              <EditField label="Calibration Procedure Number"><input value={calibrationConfig.procedure_document_number} onChange={e=>setCalibrationConfig({...calibrationConfig,procedure_document_number:e.target.value})} placeholder="Controlled document number" style={input}/></EditField>
-              <EditField label="Procedure Revision"><input value={calibrationConfig.procedure_revision} onChange={e=>setCalibrationConfig({...calibrationConfig,procedure_revision:e.target.value})} placeholder="Revision" style={input}/></EditField>
             </div>
 
             {calibrationConfig.schedule_mode==="flexible" ? <div style={{marginTop:14,border:"1px solid #bfdbfe",background:"#eff6ff",borderRadius:10,padding:12,color:"#1e3a8a",fontSize:13,lineHeight:1.5}}><strong>Flexible Scheduling:</strong> QualiSphere stores the allowable window, equipment family, and capacity rules so future fleet-balancing logic can distribute equivalent equipment without exceeding the Hard Due Date.</div> : null}
@@ -2652,12 +2659,14 @@ export default function EquipmentMasterPage() {
               <EditField label="Provider Type"><select value={calibrationEvent.provider_type} onChange={e=>setCalibrationEvent({...calibrationEvent,provider_type:e.target.value})} style={input}><option value="">Not Specified</option><option value="internal">Internal</option><option value="external">External</option></select></EditField>
               <EditField label="Calibration Provider"><input value={calibrationEvent.provider_name} onChange={e=>setCalibrationEvent({...calibrationEvent,provider_name:e.target.value})} style={input}/></EditField>
               <EditField label="Performed By"><input value={calibrationEvent.performed_by} onChange={e=>setCalibrationEvent({...calibrationEvent,performed_by:e.target.value})} style={input}/></EditField>
+              <EditField label="Calibration Procedure Number"><input value={calibrationEvent.procedure_document_number} onChange={e=>setCalibrationEvent({...calibrationEvent,procedure_document_number:e.target.value})} placeholder="Controlled document number" style={input}/></EditField>
+              <EditField label="Procedure Revision"><input value={calibrationEvent.procedure_revision} onChange={e=>setCalibrationEvent({...calibrationEvent,procedure_revision:e.target.value})} placeholder="Revision used for this calibration" style={input}/></EditField>
             </div>
             <div style={{marginTop:14}}><EditField label="Comments"><textarea rows={3} value={calibrationEvent.comments} onChange={e=>setCalibrationEvent({...calibrationEvent,comments:e.target.value})} style={{...input,resize:"vertical"}}/></EditField></div>
             <div style={{marginTop:14,maxWidth:760}}>
               <div style={formGridStyle}>
                 <EditField label="Next Calibration Due Date">
-                  <input type="date" value={calibrationEvent.next_due_date} onChange={e=>{const next=e.target.value;setCalibrationEvent(current=>({...current,next_due_date:next,next_hard_due_date:current.event_source==="scheduled"?(getNextHardDueDate(calibrationSchedule?.nominal_due_date,calibrationSchedule?.hard_due_date,next)||""):current.next_hard_due_date}));}} style={input}/>
+                  <input type="date" value={calibrationEvent.next_due_date} onChange={e=>{const next=e.target.value;setCalibrationEvent(current=>({...current,next_due_date:next,next_hard_due_date:current.event_source==="scheduled"?getMonthEndDate(next):current.next_hard_due_date}));}} style={input}/>
                 </EditField>
                 {calibrationEvent.event_source==="scheduled"?<EditField label="Hard Due Date">
                   <input type="date" value={calibrationEvent.next_hard_due_date} onChange={e=>setCalibrationEvent({...calibrationEvent,next_hard_due_date:e.target.value})} style={input}/>
@@ -4112,21 +4121,13 @@ function ScheduleSummary({
       <Detail label="Schedule Mode" value={formatLabel(schedule.schedule_mode)} />
       {lastPerformedLabel ? <Detail label={lastPerformedLabel} value={formatDate(lastPerformedDate)} /> : null}
       <Detail label={dueDateLabel} value={formatDate(schedule.nominal_due_date)} />
-      <Detail label="Hard Due Date" value={formatDate(schedule.hard_due_date)} />
+      <Detail label="Next Hard Due Date" value={formatDate(schedule.hard_due_date)} />
       <Detail
         label="Provider"
         value={
           [formatLabel(schedule.provider_type), schedule.provider_name]
             .filter((x) => x && x !== "Not Recorded")
             .join(" — ") || "Not Recorded"
-        }
-      />
-      <Detail
-        label="Procedure"
-        value={
-          [schedule.procedure_document_number, schedule.procedure_revision]
-            .filter(Boolean)
-            .join(" / ") || "Not Recorded"
         }
       />
       <Detail
