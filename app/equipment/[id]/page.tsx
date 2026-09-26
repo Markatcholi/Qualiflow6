@@ -2617,7 +2617,7 @@ export default function EquipmentMasterPage() {
           <h3 style={{margin:"0 0 10px"}}>Calibration History</h3>
           {calibrations.length===0?<div style={emptyPanelStyle}>No calibration events recorded.</div>:<div style={{overflowX:"auto"}}>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:13,minWidth:1100}}>
-              <thead><tr>{["Event","Performed","Result","Certificate / Record","Provider","Comments","Next Due","Attachments","Status","Action"].map(h=><th key={h} style={{textAlign:"left",padding:"9px 10px",borderBottom:"1px solid #cbd5e1"}}>{h}</th>)}</tr></thead>
+              <thead><tr>{["Event","Performed","Result","Certificate / Record","Provider","Comments","Hard Due Date","Attachments","Status","Action"].map(h=><th key={h} style={{textAlign:"left",padding:"9px 10px",borderBottom:"1px solid #cbd5e1"}}>{h}</th>)}</tr></thead>
               <tbody>{calibrations.map(row=>{
                 const a=Array.isArray(row.certificate_attachments)?row.certificate_attachments:[];
                 return <tr key={row.id}>
@@ -3008,7 +3008,7 @@ export default function EquipmentMasterPage() {
               <table style={{width:"100%",borderCollapse:"collapse",fontSize:13,minWidth:1200}}>
                 <thead>
                   <tr>
-                    {["Event","Type","Performed","Result","Provider","Issue / Work","Product Impact","Comments","Next PM Due","Attachments","Status","Action"].map(header=>(
+                    {["Event","Type","Performed","Result","Provider","Issue / Work","Product Impact","Comments","Hard Due Date","Attachments","Status","Action"].map(header=>(
                       <th key={header} style={{textAlign:"left",padding:"9px 10px",borderBottom:"1px solid #cbd5e1"}}>{header}</th>
                     ))}
                   </tr>
@@ -3412,7 +3412,7 @@ export default function EquipmentMasterPage() {
             <Detail label="Record Status" value={formatLabel(record.record_status||"draft")} />
             <Detail label="Operational Authorization" value={recordIsReleased?"Authorized for Use":"Not Released / Use Restricted"} />
             <Detail label="Your Equipment Role" value={canMaintain?"Coordinator / Owner":"Viewer / Read Only"} />
-            <Detail label="Release Approval Authority" value={enterpriseApprovalAuthority==="admin"?"Admin":enterpriseApprovalAuthority==="equipment_approver"?"Equipment Approver":enterpriseApprovalAuthority==="quality_approver"?"Quality Approver (Legacy)":"None"} />
+            <Detail label="Release Approval Authority" value={releaseRequest?.status==="approved"?(releaseRequest.approver_job_title||releaseRequest.approver_department||"Equipment Approver"):(pendingRelease?(releaseRequest?.approver_job_title||releaseRequest?.approver_department||"Pending Approval"):"Not Yet Approved")} />
             <Detail label="Released By" value={record.released_by} />
             <Detail label="Released At" value={formatDateTime(record.released_at)} />
           </div>
