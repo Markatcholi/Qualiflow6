@@ -170,19 +170,21 @@ type ControlledDocumentReference = {
   file_url: string | null;
 };
 
-type ChangeLink = {
-  id: string;
-  change_control_id: string;
-  relationship_note: string | null;
-  linked_at: string;
-};
-
 type OosLink = {
   id: string;
   oos_oot_id: string;
   source_type: string;
   source_record_id: string | null;
   linked_at: string;
+};
+
+type OosReference = {
+  id: string;
+  investigation_number: string | null;
+  event_type: string | null;
+  test_name: string | null;
+  status: string | null;
+  created_at: string | null;
 };
 
 type EquipmentReleaseRequest = {
@@ -280,8 +282,14 @@ export default function EquipmentMasterPage() {
   const [documentRelationshipType, setDocumentRelationshipType] = useState("operating_procedure");
   const [documentLinkMessage, setDocumentLinkMessage] = useState("");
   const [savingDocumentLink, setSavingDocumentLink] = useState(false);
-  const [changes, setChanges] = useState<ChangeLink[]>([]);
   const [oosLinks, setOosLinks] = useState<OosLink[]>([]);
+  const [oosModuleEnabled, setOosModuleEnabled] = useState(false);
+  const [oosRecords, setOosRecords] = useState<OosReference[]>([]);
+  const [showOosLinkForm, setShowOosLinkForm] = useState(false);
+  const [selectedOosId, setSelectedOosId] = useState("");
+  const [oosSearch, setOosSearch] = useState("");
+  const [oosLinkMessage, setOosLinkMessage] = useState("");
+  const [savingOosLink, setSavingOosLink] = useState(false);
   const [auditRows, setAuditRows] = useState<AuditRow[]>([]);
   const [currentUserEmail,setCurrentUserEmail]=useState("");
   const [governanceRole,setGovernanceRole]=useState<"viewer"|"coordinator"|"quality_approver"|"admin">("viewer");
@@ -567,7 +575,6 @@ export default function EquipmentMasterPage() {
         qualificationRes,
         documentsRes,
         controlledDocumentsRes,
-        changesRes,
         oosRes,
         auditRes,
       ] = await Promise.all([
@@ -601,11 +608,6 @@ export default function EquipmentMasterPage() {
           .order("document_number", { ascending: true })
           .order("revision", { ascending: false }),
         supabase
-          .from("equipment_change_control_links")
-          .select("id,change_control_id,relationship_note,linked_at")
-          .eq("equipment_id", equipmentId)
-          .order("linked_at", { ascending: false }),
-        supabase
           .from("equipment_oos_oot_links")
           .select("id,oos_oot_id,source_type,source_record_id,linked_at")
           .eq("equipment_id", equipmentId)
@@ -629,7 +631,9 @@ export default function EquipmentMasterPage() {
         {data:releaseRow},
         {data:releaseApprovers,error:releaseApproversError},
         {data:departmentRows,error:departmentRowsError},
-        {data:userProfileRows,error:userProfileRowsError}
+        {data:userProfileRows,error:userProfileRowsError},
+        {data:oosModuleRow,error:oosModuleError},
+        {data:oosReferenceRows,error:oosReferenceError}
       ]=await Promise.all([
         supabase.from("equipment_governance_members").select("role")
           .eq("tenant_id",eq.tenant_id).ilike("user_email",userEmail).eq("is_active",true).eq("role","coordinator").maybeSingle(),
@@ -639,12 +643,21 @@ export default function EquipmentMasterPage() {
           .eq("equipment_id",eq.id).order("submitted_at",{ascending:false}).limit(1).maybeSingle(),
         supabase.rpc("list_equipment_release_approvers"),
         supabase.from("md_departments").select("name").order("name",{ascending:true}),
-        supabase.from("user_roles").select("job_title,account_status").eq("account_status","active")
+        supabase.from("user_roles").select("job_title,account_status").eq("account_status","active"),
+        supabase.from("tenant_module_access").select("is_enabled").eq("tenant_id",eq.tenant_id).eq("module_code","oos_oot").maybeSingle(),
+        supabase.from("oos_oot_investigations")
+          .select("id,investigation_number,event_type,test_name,status,created_at")
+          .eq("tenant_id",eq.tenant_id)
+          .order("created_at",{ascending:false})
       ]);
       if(enterpriseAuthorityError)throw new Error(enterpriseAuthorityError.message);
       if(releaseApproversError)throw new Error(releaseApproversError.message);
       if(departmentRowsError)console.warn(departmentRowsError.message);
       if(userProfileRowsError)console.warn(userProfileRowsError.message);
+      if(oosModuleError)console.warn(oosModuleError.message);
+      if(oosReferenceError)console.warn(oosReferenceError.message);
+      setOosModuleEnabled(oosModuleRow?.is_enabled===true);
+      setOosRecords(oosModuleRow?.is_enabled===true ? ((oosReferenceRows||[]) as OosReference[]) : []);
       const fallbackCoordinator=[eq.owner_email,eq.created_by].filter(Boolean)
         .map((v:any)=>String(v).toLowerCase()).includes(userEmail);
       const centralCoordinator=!!enterpriseAuthority?.is_equipment_coordinator;
@@ -695,7 +708,6 @@ export default function EquipmentMasterPage() {
       setQualifications((qualificationRes.data || []) as Qualification[]);
       setDocuments((documentsRes.data || []) as DocumentLink[]);
       setControlledDocuments((controlledDocumentsRes.data || []) as ControlledDocumentReference[]);
-      setChanges((changesRes.data || []) as ChangeLink[]);
       setOosLinks((oosRes.data || []) as OosLink[]);
       setAuditRows((auditRes.data || []) as AuditRow[]);
 
@@ -705,7 +717,6 @@ export default function EquipmentMasterPage() {
         maintenanceRes,
         qualificationRes,
         documentsRes,
-        changesRes,
         oosRes,
         auditRes,
       ].forEach((result: any) => {
@@ -1999,6 +2010,54 @@ export default function EquipmentMasterPage() {
     }
   };
 
+  const linkedOosIds = new Set(oosLinks.map(row=>row.oos_oot_id));
+  const filteredOosRecords = oosRecords.filter(row=>{
+    if(linkedOosIds.has(row.id))return false;
+    const q=oosSearch.trim().toLowerCase();
+    if(!q)return true;
+    return [row.investigation_number,row.event_type,row.test_name,row.status]
+      .filter(Boolean).some(value=>String(value).toLowerCase().includes(q));
+  });
+  const oosRecordById=(id:string)=>oosRecords.find(row=>row.id===id)||null;
+
+  const linkOosOot=async()=>{
+    if(!record||!canMaintain||!oosModuleEnabled||!selectedOosId)return;
+    setSavingOosLink(true); setOosLinkMessage("");
+    try{
+      const {error}=await supabase.from("equipment_oos_oot_links").insert({
+        tenant_id:record.tenant_id,
+        equipment_id:record.id,
+        oos_oot_id:selectedOosId,
+        source_type:"equipment",
+        source_record_id:record.id,
+        linked_by:currentUserEmail||null
+      });
+      if(error)throw new Error(error.message);
+      const selected=oosRecordById(selectedOosId);
+      await addAudit("oos_oot_linked",`OOS/OOT ${selected?.investigation_number||selectedOosId} linked to Equipment.`);
+      setSelectedOosId(""); setOosSearch(""); setShowOosLinkForm(false);
+      setOosLinkMessage("OOS/OOT investigation linked successfully.");
+      await load();
+    }catch(e:any){setOosLinkMessage(e?.message||"Unable to link OOS/OOT investigation.");}
+    finally{setSavingOosLink(false);}
+  };
+
+  const unlinkOosOot=async(link:OosLink)=>{
+    if(!record||!canMaintain||!oosModuleEnabled)return;
+    const selected=oosRecordById(link.oos_oot_id);
+    if(!window.confirm(`Remove the Equipment link to ${selected?.investigation_number||"this OOS/OOT investigation"}? The OOS/OOT record itself will not be changed.`))return;
+    setSavingOosLink(true); setOosLinkMessage("");
+    try{
+      const {error}=await supabase.from("equipment_oos_oot_links")
+        .delete().eq("id",link.id).eq("equipment_id",record.id).eq("tenant_id",record.tenant_id);
+      if(error)throw new Error(error.message);
+      await addAudit("oos_oot_unlinked",`OOS/OOT ${selected?.investigation_number||link.oos_oot_id} link removed from Equipment.`);
+      setOosLinkMessage("OOS/OOT link removed. The investigation record remains unchanged.");
+      await load();
+    }catch(e:any){setOosLinkMessage(e?.message||"Unable to remove OOS/OOT link.");}
+    finally{setSavingOosLink(false);}
+  };
+
   const lifecycleReadiness = useMemo(() => {
     if (!record) return [];
 
@@ -3214,7 +3273,7 @@ export default function EquipmentMasterPage() {
             </div>
 
             <div style={{marginTop:16,border:"1px solid #dbeafe",background:"#eff6ff",borderRadius:10,padding:12,color:"#1e3a8a",fontSize:13,lineHeight:1.5}}>
-              <strong>Governance:</strong> Qualification status and evidence support Equipment Record Release. Related Controlled Documents, Change Control, and OOS/OOT links are optional and never required merely because the relationship section is empty.
+              <strong>Governance:</strong> Qualification status and evidence support Equipment Record Release. Related Controlled Documents and OOS/OOT links are optional and never required merely because the relationship section is empty.
             </div>
 
             {qualificationMessage ? <div style={{marginTop:14,border:"1px solid #fecaca",background:"#fef2f2",color:"#991b1b",borderRadius:10,padding:10}}>{qualificationMessage}</div> : null}
@@ -3694,40 +3753,72 @@ export default function EquipmentMasterPage() {
         ) : null}
       </section>
 
-      <section style={{ ...card, marginBottom: 16 }}>
-        <SectionHeader
-          title="9. Change Control — Optional"
-          subtitle="Equipment may reference applicable Change Control records without QualiSphere dictating when a change is required."
-          action={<button disabled style={disabledButton}>Link Change Control — Next Phase</button>}
-        />
-        <HistoryTable
-          emptyText="No Change Control records linked."
-          headers={["Change Control ID", "Relationship Note", "Linked At"]}
-          rows={changes.map((row) => [
-            row.change_control_id,
-            row.relationship_note || "Not Recorded",
-            formatDateTime(row.linked_at),
-          ])}
-        />
-      </section>
+      {oosModuleEnabled ? (
+        <section style={{ ...card, marginBottom: 16 }}>
+          <SectionHeader
+            title="9. OOS / OOT — Optional"
+            subtitle="Link an existing OOS/OOT investigation when an equipment-related exception requires formal investigation. This relationship is optional and does not block Equipment Record Release."
+            action={canMaintain ? (
+              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                <Link href="/oos-oot" style={secondaryButton}>Open OOS/OOT Module</Link>
+                <button type="button" style={showOosLinkForm?secondaryButton:primaryButton} onClick={()=>{setShowOosLinkForm(v=>!v);setOosLinkMessage("");setSelectedOosId("");setOosSearch("");}}>
+                  {showOosLinkForm?"Close":"Link OOS/OOT"}
+                </button>
+              </div>
+            ) : <Link href="/oos-oot" style={secondaryButton}>Open OOS/OOT Module</Link>}
+          />
 
-      <section style={{ ...card, marginBottom: 16 }}>
-        <SectionHeader
-          title="10. OOS / OOT — Optional"
-          subtitle="Optional link to the existing OOS/OOT module when an applicable equipment-related exception exists."
-          action={<button disabled style={disabledButton}>Link OOS/OOT — Next Phase</button>}
-        />
-        <HistoryTable
-          emptyText="No OOS/OOT records linked."
-          headers={["OOS/OOT ID", "Source", "Source Record", "Linked At"]}
-          rows={oosLinks.map((row) => [
-            row.oos_oot_id,
-            formatLabel(row.source_type),
-            row.source_record_id || "Not Recorded",
-            formatDateTime(row.linked_at),
-          ])}
-        />
-      </section>
+          {showOosLinkForm && canMaintain ? (
+            <div style={{border:"1px solid #bfdbfe",background:"#f8fbff",borderRadius:12,padding:16,marginBottom:16}}>
+              <h3 style={{margin:"0 0 5px"}}>Link Existing OOS/OOT Investigation</h3>
+              <p style={{margin:"0 0 12px",color:"#64748b",fontSize:13,lineHeight:1.5}}>
+                Select an investigation from this Company Account. Creating or managing the investigation remains within the OOS/OOT module.
+              </p>
+              <EditField label="Search OOS/OOT">
+                <input value={oosSearch} onChange={e=>setOosSearch(e.target.value)} placeholder="Investigation number, event type, test name, or status" style={input}/>
+              </EditField>
+              <div style={{display:"grid",gap:8,marginTop:12,maxHeight:280,overflowY:"auto"}}>
+                {filteredOosRecords.length===0 ? <div style={emptyPanelStyle}>No unlinked OOS/OOT investigations match this search.</div> :
+                  filteredOosRecords.map(row=>(
+                    <button key={row.id} type="button" onClick={()=>setSelectedOosId(row.id)} style={{textAlign:"left",border:selectedOosId===row.id?"2px solid #2563eb":"1px solid #cbd5e1",background:selectedOosId===row.id?"#eff6ff":"#fff",borderRadius:10,padding:"10px 12px",cursor:"pointer"}}>
+                      <strong>{row.investigation_number||"Number Pending"}</strong>
+                      <div style={{fontSize:13,marginTop:3}}>{row.test_name||formatLabel(row.event_type)||"OOS/OOT Investigation"}</div>
+                      <div style={{fontSize:12,color:"#64748b",marginTop:3}}>{formatLabel(row.event_type)} · {formatLabel(row.status)}</div>
+                    </button>
+                  ))
+                }
+              </div>
+              <div style={{display:"flex",justifyContent:"flex-end",gap:10,marginTop:14}}>
+                <button type="button" style={secondaryButton} onClick={()=>{setShowOosLinkForm(false);setSelectedOosId("");setOosSearch("");}}>Cancel</button>
+                <button type="button" style={{...primaryButton,opacity:(!selectedOosId||savingOosLink)?0.55:1}} disabled={!selectedOosId||savingOosLink} onClick={linkOosOot}>
+                  {savingOosLink?"Linking...":"Link OOS/OOT"}
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          {oosLinkMessage ? <div style={{marginBottom:14,border:"1px solid #bfdbfe",background:"#eff6ff",color:"#1e3a8a",borderRadius:10,padding:10}}>{oosLinkMessage}</div> : null}
+
+          {oosLinks.length===0 ? <div style={emptyPanelStyle}>No OOS/OOT investigations linked.</div> : (
+            <div style={{overflowX:"auto"}}>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:13,minWidth:900}}>
+                <thead><tr>{["Investigation","Event Type","Test / Subject","Status","Linked At","Actions"].map(h=><th key={h} style={{textAlign:"left",padding:"9px 10px",borderBottom:"1px solid #cbd5e1"}}>{h}</th>)}</tr></thead>
+                <tbody>{oosLinks.map(link=>{const row=oosRecordById(link.oos_oot_id);return <tr key={link.id}>
+                  <td style={tdMini}><strong>{row?.investigation_number||link.oos_oot_id}</strong></td>
+                  <td style={tdMini}>{formatLabel(row?.event_type)}</td>
+                  <td style={tdMini}>{row?.test_name||"Not Recorded"}</td>
+                  <td style={tdMini}>{formatLabel(row?.status)}</td>
+                  <td style={tdMini}>{formatDateTime(link.linked_at)}</td>
+                  <td style={tdMini}><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                    <Link href={`/oos-oot/${link.oos_oot_id}`} style={secondaryButton}>Open Investigation</Link>
+                    {canMaintain?<button type="button" style={secondaryButton} disabled={savingOosLink} onClick={()=>unlinkOosOot(link)}>Remove Link</button>:null}
+                  </div></td>
+                </tr>})}</tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      ) : null}
 
       <section style={card}>
         <SectionHeader
