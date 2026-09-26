@@ -3434,11 +3434,11 @@ export default function EquipmentMasterPage() {
               <table style={{width:"100%",borderCollapse:"collapse"}}>
                 <thead>
                   <tr>
-                    <th style={thMini}>Function / Role</th>
-                    <th style={thMini}>Reviewer</th>
-                    <th style={thMini}>Status</th>
-                    <th style={thMini}>Decision Date</th>
-                    <th style={thMini}>Comment</th>
+                    <th style={{...tdMini,fontWeight:800,textAlign:"left",background:"#f8fafc"}}>Function / Role</th>
+                    <th style={{...tdMini,fontWeight:800,textAlign:"left",background:"#f8fafc"}}>Reviewer</th>
+                    <th style={{...tdMini,fontWeight:800,textAlign:"left",background:"#f8fafc"}}>Status</th>
+                    <th style={{...tdMini,fontWeight:800,textAlign:"left",background:"#f8fafc"}}>Decision Date</th>
+                    <th style={{...tdMini,fontWeight:800,textAlign:"left",background:"#f8fafc"}}>Comment</th>
                   </tr>
                 </thead>
                 <tbody>
