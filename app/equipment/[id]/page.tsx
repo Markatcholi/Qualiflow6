@@ -2612,6 +2612,8 @@ export default function EquipmentMasterPage() {
           schedule={calibrationSchedule}
           emptyText="No calibration schedule configured."
           dueDateLabel="Next Calibration Due Date"
+          lastPerformedLabel="Calibration Date"
+          lastPerformedDate={calibrations.filter(row=>row.status==="completed"&&row.performed_date).sort((a,b)=>String(b.performed_date).localeCompare(String(a.performed_date)))[0]?.performed_date||null}
         />
 
         <div style={{marginTop:18}}>
@@ -2999,6 +3001,8 @@ export default function EquipmentMasterPage() {
           schedule={pmSchedule}
           emptyText="No preventive-maintenance schedule configured."
           dueDateLabel="Next Maintenance Due Date"
+          lastPerformedLabel="Maintenance Date"
+          lastPerformedDate={maintenance.filter(row=>row.maintenance_type==="preventive"&&row.status==="completed"&&row.performed_date).sort((a,b)=>String(b.performed_date).localeCompare(String(a.performed_date)))[0]?.performed_date||null}
         />
 
         <div style={{marginTop:18}}>
@@ -4004,11 +4008,15 @@ function ScheduleSummary({
   schedule,
   emptyText,
   dueDateLabel = "Next Due Date",
+  lastPerformedLabel,
+  lastPerformedDate,
 }: {
   required: boolean;
   schedule?: Schedule;
   emptyText: string;
   dueDateLabel?: string;
+  lastPerformedLabel?: string;
+  lastPerformedDate?: string | null;
 }) {
   if (!required) {
     return (
@@ -4031,6 +4039,7 @@ function ScheduleSummary({
         value={`${schedule.frequency_value} ${formatLabel(schedule.frequency_unit)}`}
       />
       <Detail label="Schedule Mode" value={formatLabel(schedule.schedule_mode)} />
+      {lastPerformedLabel ? <Detail label={lastPerformedLabel} value={formatDate(lastPerformedDate)} /> : null}
       <Detail label={dueDateLabel} value={formatDate(schedule.nominal_due_date)} />
       <Detail label="Hard Due Date" value={formatDate(schedule.hard_due_date)} />
       <Detail
