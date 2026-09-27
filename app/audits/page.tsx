@@ -40,6 +40,7 @@ export default function AuditsPage() {
   const [auditType, setAuditType] = useState("internal_audit");
   const [auditObjectives, setAuditObjectives] = useState("");
   const [auditScope, setAuditScope] = useState("");
+  const [auditor, setAuditor] = useState("");
   const [auditDate, setAuditDate] = useState("");
 
   const [selectedAuditId, setSelectedAuditId] = useState("");
@@ -120,12 +121,15 @@ export default function AuditsPage() {
       return;
     }
 
+    if (!auditObjectives.trim()) { alert("Audit objectives are required."); return; }
+
     const { data, error } = await supabase
       .from("audits")
       .insert({
         tenant_id: tenantId,
         audit_title: auditTitle,
         audit_type: auditType,
+        audit_objectives: auditObjectives,
         audit_scope: auditScope,
         auditor,
         audit_date: auditDate || null,
@@ -148,6 +152,7 @@ export default function AuditsPage() {
 
     setAuditTitle("");
     setAuditType("internal_audit");
+    setAuditObjectives("");
     setAuditScope("");
     setAuditor("");
     setAuditDate("");
