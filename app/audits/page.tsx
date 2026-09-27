@@ -38,7 +38,7 @@ export default function AuditsPage() {
 
   const [auditTitle, setAuditTitle] = useState("");
   const [auditType, setAuditType] = useState("internal_audit");
-  const [auditScope, setAuditScope] = useState("");
+  const [auditObjectives, setAuditObjectives] = useState("");\n  const [auditScope, setAuditScope] = useState("");
   const [auditor, setAuditor] = useState("");
   const [auditDate, setAuditDate] = useState("");
 
@@ -408,6 +408,18 @@ export default function AuditsPage() {
             <option value="qms_audit">QMS Audit</option>
             <option value="regulatory_audit">Regulatory Audit</option>
           </select>
+        </div>
+
+        <div style={rowStyle}>
+          <label>Audit Objectives</label>
+          <br />
+          <textarea
+            value={auditObjectives}
+            onChange={(e) => setAuditObjectives(e.target.value)}
+            placeholder="Purpose and intended outcomes of the audit"
+            rows={3}
+            style={textAreaStyle}
+          />
         </div>
 
         <div style={rowStyle}>
