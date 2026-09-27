@@ -32,6 +32,9 @@ export default function AuditDetailPage() {
   const [responseMessages, setResponseMessages] = useState<Record<string, string>>({});
   const [verificationNotes, setVerificationNotes] = useState<Record<string, string>>({});
   const [verificationMessages, setVerificationMessages] = useState<Record<string, string>>({});
+  const [closureApproverEmail, setClosureApproverEmail] = useState("");
+  const [closureMessage, setClosureMessage] = useState("");
+  const [closureTasks, setClosureTasks] = useState<any[]>([]);
 
   const fetchData = async () => {
     const tenantId = typeof window !== "undefined"
@@ -61,7 +64,12 @@ export default function AuditDetailPage() {
     if (findingsRes.error) alert(findingsRes.error.message);
 
     setAudit(auditRes.data);
+    setClosureApproverEmail(auditRes.data?.closure_approver_email || "");
     setFindings(findingsRes.data || []);
+    const closureTaskRes = await supabase.from("approval_tasks").select("*")
+      .eq("entity_type","audit").eq("entity_id",id).eq("task_type","audit_closure_approval")
+      .order("created_at",{ascending:false});
+    setClosureTasks(closureTaskRes.data || []);
 
     const map: Record<string, string> = {};
     (findingsRes.data || []).forEach((finding: any) => {
@@ -469,98 +477,41 @@ export default function AuditDetailPage() {
     fetchData();
   };
 
-  const closeAudit = async () => {
+  const submitAuditClosureApproval = async () => {
     if (isLocked) return alert("This audit is already closed and locked.");
+    if (findings.some((finding:any)=>finding.finding_status !== "closed")) return setClosureMessage("All findings must be verified and closed before closure approval.");
+    const approver = closureApproverEmail.trim().toLowerCase();
+    if (!approver) return setClosureMessage("Closure Approver Email is required.");
+    const {data:userData}=await supabase.auth.getUser();
+    const ownerEmail=(userData?.user?.email||"").toLowerCase();
+    if (!ownerEmail) return setClosureMessage("Unable to identify the logged-in audit owner.");
+    if (approver === ownerEmail) return setClosureMessage("Closure approver must be different from the submitting audit owner.");
 
-    const openFindings = findings.filter(
-      (finding: any) => finding.finding_status !== "closed"
-    );
+    const pending = closureTasks.find((t:any)=>t.status==="pending");
+    if (pending) return setClosureMessage("A closure approval is already pending.");
 
-    if (openFindings.length > 0) {
-      alert("Cannot close audit while findings remain open.");
-      return;
-    }
-
-    const { data: userData } = await supabase.auth.getUser();
-    const email = userData?.user?.email || "";
-
-    if (!email) {
-      alert("Unable to verify the logged-in user.");
-      return;
-    }
-
-    const enteredEmail = window.prompt(
-      "Electronic Signature Required\\n\\nRe-enter your email to close this audit:"
-    );
-
-    if (!enteredEmail) {
-      alert("Audit closure cancelled. Email re-entry is required.");
-      return;
-    }
-
-    if (enteredEmail.trim().toLowerCase() !== email.trim().toLowerCase()) {
-      alert("Electronic signature email does not match logged-in user.");
-      return;
-    }
-
-    const confirmed = window.confirm(
-      "Electronic Signature:\\n\\nI confirm this audit has been reviewed, findings have been addressed or appropriately documented, and the audit is approved for closure."
-    );
-
-    if (!confirmed) return;
-
-    const now = new Date().toISOString();
-    const meaning =
-      "I confirm this audit has been reviewed, findings have been addressed or appropriately documented, and the audit is approved for closure.";
-
-    const { error } = await supabase
-      .from("audits")
-      .update({
-        status: "closed",
-        closed_at: now,
-        closed_by: email,
-        signed_by: email,
-        signed_at: now,
-        signature_email_entered: enteredEmail,
-        signature_meaning: meaning,
-        is_locked: true,
-        locked_at: now,
-        locked_by: email,
-      })
-      .eq("id", id);
-
-    if (error) {
-      alert(error.message);
-      return;
-    }
-
-    const { error: auditLogError } = await supabase.rpc(
-      "qualisphere_add_audit_log",
-      {
-        p_entity_type: "audit",
-        p_entity_id: id,
-        p_action: "audit_closed_signature",
-        p_details: `Audit closed with e-signature. Meaning: ${meaning}`,
-      }
-    );
-
-    if (auditLogError) {
-      console.warn("Audit closure audit log failed:", auditLogError.message);
-    }
-
-    alert("Audit closed and locked successfully.");
+    const {error:taskError}=await supabase.from("approval_tasks").insert({
+      entity_type:"audit", entity_id:id, task_type:"audit_closure_approval",
+      required_function:"Audit Closure Approver", assigned_to_email:approver,
+      assigned_by_email:ownerEmail, status:"pending", record_number:audit.audit_number,
+      task_title:`Audit Closure Approval — ${audit.audit_number || audit.audit_title}`,
+      task_instructions:"Review the complete audit record, verified findings, responses, corrective actions, and escalation decisions. Approve or reject audit closure."
+    });
+    if(taskError) return setClosureMessage(taskError.message);
+    const now=new Date().toISOString();
+    const {error:auditError}=await supabase.from("audits").update({
+      closure_approval_status:"pending",closure_approver_email:approver,
+      closure_submitted_by:ownerEmail,closure_submitted_at:now,status:"pending_closure_approval"
+    }).eq("id",id).eq("tenant_id",audit.tenant_id);
+    if(auditError) return setClosureMessage(auditError.message);
+    await supabase.rpc("qualisphere_add_audit_log",{p_entity_type:"audit",p_entity_id:id,p_action:"audit_closure_submitted_for_approval",p_details:`Audit closure submitted to ${approver}.`});
+    setClosureMessage("Audit closure submitted to My Workspace.");
     await fetchData();
   };
 
   return (
     <main style={{ padding: 30, fontFamily: "Arial, sans-serif" }}>
       <div style={{ marginBottom: "16px", display: "flex", gap: "10px", flexWrap: "wrap" }}>
-        {!isLocked && (
-          <button type="button" onClick={closeAudit} style={primaryButtonStyle}>
-            Close Audit
-          </button>
-        )}
-
         <button onClick={() => window.open(`/audits/${id}/report`, "_blank")} style={primaryButtonStyle}>
           Audit Report
         </button>
@@ -811,7 +762,28 @@ export default function AuditDetailPage() {
             </div>
           ))
         )}
+      </section>      <section style={sectionStyle}>
+        <h2 style={{marginTop:0}}>6. Audit Closure Approval</h2>
+        <p><strong>Closure Approval Status:</strong> <StatusBadge status={audit.closure_approval_status || "not_submitted"} /></p>
+        <p><strong>Submitted By:</strong> {audit.closure_submitted_by || "N/A"}</p>
+        <p><strong>Submitted At:</strong> {audit.closure_submitted_at || "N/A"}</p>
+        <p><strong>Closure Approver:</strong> {audit.closure_approver_email || "N/A"}</p>
+        {closureTasks.length > 0 && (
+          <div style={{marginBottom:"12px"}}>
+            <h3>Reviewer Approval Status</h3>
+            {closureTasks.map((task:any)=><p key={task.id}><strong>{task.assigned_to_email}</strong> — <StatusBadge status={task.status}/>{task.signed_at ? ` — ${task.signed_at}` : ""}{task.approver_comment ? ` — ${task.approver_comment}` : ""}</p>)}
+          </div>
+        )}
+        {!isLocked && audit.closure_approval_status !== "pending" && audit.closure_approval_status !== "approved" && (
+          <>
+            <FormField label="Closure Approver Email"><input type="email" value={closureApproverEmail} onChange={(e)=>setClosureApproverEmail(e.target.value)} style={inputStyle}/></FormField>
+            <button type="button" onClick={submitAuditClosureApproval} style={primaryButtonStyle}>Submit Audit for Closure Approval</button>
+          </>
+        )}
+        {closureMessage && <p style={{fontWeight:600}}>{closureMessage}</p>}
       </section>
+
+
     </main>
   );
 }
