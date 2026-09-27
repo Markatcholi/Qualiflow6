@@ -128,6 +128,9 @@ export default function MyApprovalTasksPage() {
     );
   };
 
+  const isAuditClosureApprovalTask = (task: any) => String(task.entity_type || "").toLowerCase() === "audit" && String(task.task_type || "").toLowerCase() === "audit_closure_approval";
+  const getAuditReviewUrl = (task:any) => `/audits/${task.entity_id}`;
+
   const isChangeControlApprovalTask = (task: any) => {
     return (
       String(task.entity_type || "").trim().toLowerCase() === "change_control" &&
@@ -326,6 +329,23 @@ export default function MyApprovalTasksPage() {
   };
 
   const signTask = async (task: any, status: "approved" | "rejected") => {
+    if (isAuditClosureApprovalTask(task)) {
+      const comment=approverCommentByTask[task.id] || "";
+      if(status==="rejected" && !comment.trim()) return alert("Rejection comment is required.");
+      if(!signatureEmail || signatureEmail.trim().toLowerCase()!==userEmail.trim().toLowerCase()) return alert("Electronic signature email does not match the logged-in user.");
+      if(!window.confirm(`Electronic Signature:\n\nI ${status==="approved"?"approve":"reject"} closure of this audit.`)) return;
+      const now=new Date().toISOString();
+      const {error:te}=await supabase.from("approval_tasks").update({status,approver_comment:comment,signature_meaning:`I ${status==="approved"?"approve":"reject"} closure of this audit.`,signed_by:userEmail,signed_at:now}).eq("id",task.id);
+      if(te) return alert(te.message);
+      const au=status==="approved"
+        ? {closure_approval_status:"approved",closure_decision_comment:comment,status:"closed",closed_at:now,closed_by:userEmail,signed_by:userEmail,signed_at:now,signature_meaning:"Audit closure approved through My Workspace.",signature_email_entered:userEmail,is_locked:true,locked_at:now,locked_by:userEmail}
+        : {closure_approval_status:"rejected",closure_decision_comment:comment,status:"execution_complete"};
+      const {error:ae}=await supabase.from("audits").update(au).eq("id",task.entity_id);
+      if(ae) return alert(ae.message);
+      await supabase.rpc("qualisphere_add_audit_log",{p_entity_type:"audit",p_entity_id:task.entity_id,p_action:`audit_closure_${status}`,p_details:`Audit closure ${status} by ${userEmail}. Comment: ${comment || "N/A"}`});
+      alert(`Audit closure ${status}.`); fetchTasks(); return;
+    }
+
     if (isCapaApprovalTask(task)) {
       window.location.href = getCapaReviewUrl(task);
       return;
@@ -500,11 +520,12 @@ export default function MyApprovalTasksPage() {
             const ncmrMrbApproval = isNcmrMrbApprovalTask(task);
             const managementReviewApproval = isManagementReviewApprovalTask(task);
             const changeControlApproval = isChangeControlApprovalTask(task);
+            const auditClosureApproval = isAuditClosureApprovalTask(task);
             const centralizedApproval =
               capaApproval ||
               ncmrMrbApproval ||
               managementReviewApproval ||
-              changeControlApproval;
+              changeControlApproval ||\n              auditClosureApproval;
             const ownedCapaWork =
               task.workspace_item_type === "owned_capa";
             const dueStatus = getDueStatus(task);
@@ -574,6 +595,8 @@ export default function MyApprovalTasksPage() {
                     <a href={getManagementReviewUrl(task)} style={primaryLinkStyle}>
                       Open Management Review Report Package
                     </a>
+                  ) : auditClosureApproval ? (
+                    <a href={getAuditReviewUrl(task)} style={primaryLinkStyle}>Open Audit Review Package</a>
                   ) : changeControlApproval ? (
                     <a href={getChangeControlReviewUrl(task)} style={primaryLinkStyle}>
                       Open Change Control Review Package
