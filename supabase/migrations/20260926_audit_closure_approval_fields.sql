@@ -1,0 +1,3 @@
+alter table public.audits add column if not exists closure_approval_status text default 'not_submitted', add column if not exists closure_approver_email text, add column if not exists closure_submitted_by text, add column if not exists closure_submitted_at timestamptz, add column if not exists closure_decision_comment text;
+alter table public.audits drop constraint if exists audits_closure_approval_status_check;
+alter table public.audits add constraint audits_closure_approval_status_check check (closure_approval_status in ('not_submitted','pending','approved','rejected'));
