@@ -64,6 +64,24 @@ export default function AuditDetailPage() {
     if (findingsRes.error) alert(findingsRes.error.message);
 
     setAudit(auditRes.data);
+    if (auditRes.data) {
+      setPlanning({
+        audit_title: auditRes.data.audit_title || "",
+        audit_type: auditRes.data.audit_type || "internal_audit",
+        audit_objectives: auditRes.data.audit_objectives || "",
+        audit_scope: auditRes.data.audit_scope || "",
+        audit_criteria: auditRes.data.audit_criteria || "",
+        lead_auditor: auditRes.data.lead_auditor || auditRes.data.auditor || "",
+        audit_team: auditRes.data.audit_team || "",
+        scheduled_start_date: auditRes.data.scheduled_start_date || auditRes.data.audit_date || "",
+        scheduled_end_date: auditRes.data.scheduled_end_date || "",
+      });
+      setExecution({
+        actual_start_date: auditRes.data.actual_start_date || "",
+        actual_end_date: auditRes.data.actual_end_date || "",
+        execution_notes: auditRes.data.execution_notes || "",
+      });
+    }
     setClosureApproverEmail(auditRes.data?.closure_approver_email || "");
     setFindings(findingsRes.data || []);
     const closureTaskRes = await supabase.from("approval_tasks").select("*")
