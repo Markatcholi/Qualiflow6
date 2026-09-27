@@ -30,6 +30,8 @@ export default function AuditDetailPage() {
   const [findingMessage, setFindingMessage] = useState("");
   const [findingResponses, setFindingResponses] = useState<Record<string, any>>({});
   const [responseMessages, setResponseMessages] = useState<Record<string, string>>({});
+  const [verificationNotes, setVerificationNotes] = useState<Record<string, string>>({});
+  const [verificationMessages, setVerificationMessages] = useState<Record<string, string>>({});
 
   const fetchData = async () => {
     const tenantId = typeof window !== "undefined"
@@ -75,6 +77,11 @@ export default function AuditDetailPage() {
       };
     });
     setFindingResponses(responseMap);
+    const verificationMap: Record<string, string> = {};
+    (findingsRes.data || []).forEach((finding: any) => {
+      verificationMap[finding.id] = finding.verification_notes || "";
+    });
+    setVerificationNotes(verificationMap);
   };
 
   useEffect(() => {
@@ -226,6 +233,38 @@ export default function AuditDetailPage() {
       p_details:"Auditee response, correction, and corrective action were submitted for verification."
     });
     setResponseMessages({...responseMessages, [finding.id]:"Response submitted for verification."});
+    await fetchData();
+  };
+
+  const verifyFinding = async (finding: any, decision: "accept" | "return") => {
+    if (isLocked) return alert("This audit is locked and cannot be edited.");
+    if (finding.finding_status !== "response_submitted") {
+      return setVerificationMessages({...verificationMessages,[finding.id]:"A response must be submitted before verification."});
+    }
+    const notes = String(verificationNotes[finding.id] || "").trim();
+    if (!notes) return setVerificationMessages({...verificationMessages,[finding.id]:"Verification Notes are required."});
+
+    const { data:userData } = await supabase.auth.getUser();
+    const email = userData?.user?.email || "";
+    if (!email) return setVerificationMessages({...verificationMessages,[finding.id]:"Unable to verify the logged-in reviewer."});
+
+    const now = new Date().toISOString();
+    const update = decision === "accept"
+      ? { verification_notes:notes, verified_by:email, verified_at:now, finding_status:"closed", closed_at:now }
+      : { verification_notes:notes, verified_by:null, verified_at:null, finding_status:"returned_for_action", closed_at:null };
+
+    const { error } = await supabase.from("audit_findings").update(update)
+      .eq("id",finding.id).eq("tenant_id",audit.tenant_id);
+    if (error) return setVerificationMessages({...verificationMessages,[finding.id]:error.message});
+
+    await supabase.rpc("qualisphere_add_audit_log", {
+      p_entity_type:"audit_finding", p_entity_id:finding.id,
+      p_action:decision === "accept" ? "audit_finding_verified_closed" : "audit_finding_returned_for_action",
+      p_details:decision === "accept"
+        ? `Finding verified and closed by ${email}. Verification: ${notes}`
+        : `Finding returned for additional action by ${email}. Verification: ${notes}`
+    });
+    setVerificationMessages({...verificationMessages,[finding.id]:decision === "accept" ? "Finding verified and closed." : "Finding returned for additional action."});
     await fetchData();
   };
 
@@ -712,6 +751,31 @@ export default function AuditDetailPage() {
                 </FormField>
                 {!isLocked && f.finding_status !== "closed" && <button type="button" onClick={()=>saveFindingResponse(f)} style={primaryButtonStyle}>Submit Response for Verification</button>}
                 {responseMessages[f.id] && <p style={{fontWeight:600}}>{responseMessages[f.id]}</p>}
+              </div>
+
+              <div style={{ borderTop:"1px solid #e5e7eb", paddingTop:"12px", marginTop:"12px" }}>
+                <h4 style={{marginTop:0}}>5. Finding Verification</h4>
+                {f.finding_status === "closed" ? (
+                  <>
+                    <p><strong>Verification:</strong> <StatusBadge status="Verified / Closed" /></p>
+                    <p><strong>Verification Notes:</strong> {f.verification_notes || "N/A"}</p>
+                    <p><strong>Verified By:</strong> {f.verified_by || "N/A"}</p>
+                    <p><strong>Verified At:</strong> {f.verified_at || "N/A"}</p>
+                  </>
+                ) : (
+                  <>
+                    <FormField label="Verification Notes">
+                      <textarea value={verificationNotes[f.id] || ""} onChange={(e)=>setVerificationNotes({...verificationNotes,[f.id]:e.target.value})} disabled={isLocked || f.finding_status !== "response_submitted"} rows={4} style={standardTextareaStyle}/>
+                    </FormField>
+                    {f.finding_status === "response_submitted" ? (
+                      <div style={{display:"flex",gap:"8px",flexWrap:"wrap"}}>
+                        <button type="button" onClick={()=>verifyFinding(f,"accept")} disabled={isLocked} style={primaryButtonStyle}>Accept & Close Finding</button>
+                        <button type="button" onClick={()=>verifyFinding(f,"return")} disabled={isLocked}>Return for Additional Action</button>
+                      </div>
+                    ) : <p><StatusBadge status={f.finding_status || "open"} /> Submit the finding response before verification.</p>}
+                    {verificationMessages[f.id] && <p style={{fontWeight:600}}>{verificationMessages[f.id]}</p>}
+                  </>
+                )}
               </div>
 
               <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: "12px", marginTop: "12px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
