@@ -38,8 +38,8 @@ export default function AuditsPage() {
 
   const [auditTitle, setAuditTitle] = useState("");
   const [auditType, setAuditType] = useState("internal_audit");
-  const [auditObjectives, setAuditObjectives] = useState("");\n  const [auditScope, setAuditScope] = useState("");
-  const [auditor, setAuditor] = useState("");
+  const [auditObjectives, setAuditObjectives] = useState("");
+  const [auditScope, setAuditScope] = useState("");
   const [auditDate, setAuditDate] = useState("");
 
   const [selectedAuditId, setSelectedAuditId] = useState("");
