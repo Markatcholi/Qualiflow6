@@ -23,6 +23,11 @@ export default function AuditDetailPage() {
   const [planningMessage, setPlanningMessage] = useState("");
   const [execution, setExecution] = useState<any>(null);
   const [executionMessage, setExecutionMessage] = useState("");
+  const [newFinding, setNewFinding] = useState({
+    finding_title: "", finding_description: "", finding_severity: "observation",
+    clause_reference: "", evidence: "", finding_owner: "", response_due_date: ""
+  });
+  const [findingMessage, setFindingMessage] = useState("");
 
   const fetchData = async () => {
     const tenantId = typeof window !== "undefined"
@@ -147,6 +152,38 @@ export default function AuditDetailPage() {
         : "Audit execution started or updated.",
     });
     setExecutionMessage(execution.actual_end_date ? "Audit Execution completed." : "Audit Execution saved as In Progress.");
+    await fetchData();
+  };
+
+  const addAuditFinding = async () => {
+    if (isLocked) return alert("This audit is locked and cannot be edited.");
+    if (!newFinding.finding_title.trim()) return setFindingMessage("Finding Title is required.");
+    if (!newFinding.finding_description.trim()) return setFindingMessage("Finding Description is required.");
+    if (!newFinding.clause_reference.trim()) return setFindingMessage("Requirement / Clause Reference is required.");
+    if (!newFinding.evidence.trim()) return setFindingMessage("Objective Evidence is required.");
+    if (!newFinding.finding_owner.trim()) return setFindingMessage("Finding Owner is required.");
+    if (!newFinding.response_due_date) return setFindingMessage("Response Due Date is required.");
+
+    setFindingMessage("");
+    const { data: inserted, error } = await supabase.from("audit_findings").insert({
+      tenant_id: audit.tenant_id, audit_id: id,
+      finding_title: newFinding.finding_title.trim(),
+      finding_description: newFinding.finding_description.trim(),
+      finding_severity: newFinding.finding_severity,
+      clause_reference: newFinding.clause_reference.trim(),
+      evidence: newFinding.evidence.trim(),
+      finding_owner: newFinding.finding_owner.trim(),
+      response_due_date: newFinding.response_due_date,
+      finding_status: "open",
+    }).select().single();
+    if (error) return setFindingMessage(error.message);
+
+    await supabase.rpc("qualisphere_add_audit_log", {
+      p_entity_type:"audit_finding", p_entity_id:inserted.id, p_action:"audit_finding_created",
+      p_details:`Audit finding created in ${audit.audit_number || id}. Classification: ${newFinding.finding_severity}.`
+    });
+    setNewFinding({ finding_title:"", finding_description:"", finding_severity:"observation", clause_reference:"", evidence:"", finding_owner:"", response_due_date:"" });
+    setFindingMessage("Finding added.");
     await fetchData();
   };
 
@@ -553,6 +590,26 @@ export default function AuditDetailPage() {
 
       <section style={sectionStyle}>
         <h2 style={{ marginTop: 0 }}>3. Findings</h2>
+        {!isLocked && (
+          <div style={{ border:"1px solid #d1d5db", borderRadius:"10px", padding:"14px", marginBottom:"18px", background:"#f9fafb" }}>
+            <h3 style={{marginTop:0}}>Add Audit Finding</h3>
+            <FormField label="Finding Title"><input value={newFinding.finding_title} onChange={(e)=>setNewFinding({...newFinding,finding_title:e.target.value})} style={inputStyle}/></FormField>
+            <FormField label="Finding Classification">
+              <select value={newFinding.finding_severity} onChange={(e)=>setNewFinding({...newFinding,finding_severity:e.target.value})} style={inputStyle}>
+                <option value="observation">Observation</option><option value="minor">Minor Finding</option><option value="major">Major Finding</option>
+              </select>
+            </FormField>
+            <FormField label="Finding Description"><textarea value={newFinding.finding_description} onChange={(e)=>setNewFinding({...newFinding,finding_description:e.target.value})} rows={4} style={standardTextareaStyle}/></FormField>
+            <FormField label="Requirement / Clause Reference"><input value={newFinding.clause_reference} onChange={(e)=>setNewFinding({...newFinding,clause_reference:e.target.value})} style={inputStyle}/></FormField>
+            <FormField label="Objective Evidence"><textarea value={newFinding.evidence} onChange={(e)=>setNewFinding({...newFinding,evidence:e.target.value})} rows={4} style={standardTextareaStyle}/></FormField>
+            <div style={twoColumnStyle}>
+              <FormField label="Finding Owner"><input value={newFinding.finding_owner} onChange={(e)=>setNewFinding({...newFinding,finding_owner:e.target.value})} style={inputStyle}/></FormField>
+              <FormField label="Response Due Date"><input type="date" value={newFinding.response_due_date} onChange={(e)=>setNewFinding({...newFinding,response_due_date:e.target.value})} style={inputStyle}/></FormField>
+            </div>
+            <button type="button" onClick={addAuditFinding} style={primaryButtonStyle}>Add Finding</button>
+            {findingMessage && <p style={{fontWeight:600}}>{findingMessage}</p>}
+          </div>
+        )}
 
         {findings.length === 0 ? (
           <EmptyStateCard
@@ -566,7 +623,11 @@ export default function AuditDetailPage() {
                 <div>
                   <h3 style={{ marginTop: 0 }}>{f.finding_title}</h3>
                   <p><strong>Description:</strong> {f.finding_description}</p>
-                  <p><strong>Severity:</strong> <StatusBadge status={f.finding_severity || "not set"} /></p>
+                  <p><strong>Classification:</strong> <StatusBadge status={f.finding_severity === "observation" ? "Observation" : f.finding_severity === "minor" ? "Minor Finding" : f.finding_severity === "major" ? "Major Finding" : f.finding_severity || "not set"} /></p>
+                  <p><strong>Requirement / Clause:</strong> {f.clause_reference || "N/A"}</p>
+                  <p><strong>Objective Evidence:</strong> {f.evidence || "N/A"}</p>
+                  <p><strong>Finding Owner:</strong> {f.finding_owner || "N/A"}</p>
+                  <p><strong>Response Due Date:</strong> {f.response_due_date || "N/A"}</p>
                   <p><strong>Status:</strong> <StatusBadge status={f.finding_status || "open"} /></p>
                 </div>
 
