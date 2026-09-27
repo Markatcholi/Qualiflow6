@@ -21,6 +21,8 @@ export default function AuditDetailPage() {
   const [escalationJustifications, setEscalationJustifications] = useState<Record<string, string>>({});
   const [planning, setPlanning] = useState<any>(null);
   const [planningMessage, setPlanningMessage] = useState("");
+  const [execution, setExecution] = useState<any>(null);
+  const [executionMessage, setExecutionMessage] = useState("");
 
   const fetchData = async () => {
     const tenantId = typeof window !== "undefined"
@@ -114,6 +116,37 @@ export default function AuditDetailPage() {
       p_details: "Audit planning completed or updated.",
     });
     setPlanningMessage("Audit Planning saved.");
+    await fetchData();
+  };
+
+  const saveAuditExecution = async () => {
+    if (isLocked) return alert("This audit is locked and cannot be edited.");
+    if (!execution?.actual_start_date) return setExecutionMessage("Actual Start Date is required.");
+    if (!execution?.execution_notes?.trim()) return setExecutionMessage("Audit Execution Notes are required.");
+    if (execution?.actual_end_date && execution.actual_end_date < execution.actual_start_date) {
+      return setExecutionMessage("Actual End Date cannot be before Actual Start Date.");
+    }
+
+    setExecutionMessage("");
+    const nextStatus = execution.actual_end_date ? "execution_complete" : "in_progress";
+    const { error } = await supabase.from("audits").update({
+      actual_start_date: execution.actual_start_date,
+      actual_end_date: execution.actual_end_date || null,
+      execution_notes: execution.execution_notes.trim(),
+      status: audit.status === "closed" ? "closed" : nextStatus,
+    }).eq("id", id).eq("tenant_id", audit.tenant_id);
+
+    if (error) return setExecutionMessage(error.message);
+
+    await supabase.rpc("qualisphere_add_audit_log", {
+      p_entity_type: "audit",
+      p_entity_id: id,
+      p_action: "audit_execution_saved",
+      p_details: execution.actual_end_date
+        ? "Audit execution completed and documented."
+        : "Audit execution started or updated.",
+    });
+    setExecutionMessage(execution.actual_end_date ? "Audit Execution completed." : "Audit Execution saved as In Progress.");
     await fetchData();
   };
 
@@ -488,7 +521,38 @@ export default function AuditDetailPage() {
       </section>
 
       <section style={sectionStyle}>
-        <h2 style={{ marginTop: 0 }}>2. Findings</h2>
+        <h2 style={{ marginTop: 0 }}>2. Audit Execution</h2>
+        <p style={{ color:"#4b5563" }}>
+          Document the actual audit activity and the objective evidence reviewed. Findings are recorded in the next section.
+        </p>
+        {execution && (
+          <>
+            <div style={twoColumnStyle}>
+              <FormField label="Actual Start Date">
+                <input type="date" value={execution.actual_start_date} onChange={(e) => setExecution({...execution, actual_start_date:e.target.value})} disabled={isLocked} style={inputStyle} />
+              </FormField>
+              <FormField label="Actual End Date">
+                <input type="date" value={execution.actual_end_date} onChange={(e) => setExecution({...execution, actual_end_date:e.target.value})} disabled={isLocked} style={inputStyle} />
+              </FormField>
+            </div>
+            <FormField label="Audit Execution Notes / Evidence Reviewed">
+              <textarea
+                value={execution.execution_notes}
+                onChange={(e) => setExecution({...execution, execution_notes:e.target.value})}
+                disabled={isLocked}
+                rows={7}
+                placeholder="Document activities performed, areas/processes assessed, records sampled, interviews conducted, and objective evidence reviewed."
+                style={standardTextareaStyle}
+              />
+            </FormField>
+            {!isLocked && <button type="button" onClick={saveAuditExecution} style={primaryButtonStyle}>Save Audit Execution</button>}
+            {executionMessage && <p style={{fontWeight:600}}>{executionMessage}</p>}
+          </>
+        )}
+      </section>
+
+      <section style={sectionStyle}>
+        <h2 style={{ marginTop: 0 }}>3. Findings</h2>
 
         {findings.length === 0 ? (
           <EmptyStateCard
