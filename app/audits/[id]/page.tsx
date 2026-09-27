@@ -28,6 +28,8 @@ export default function AuditDetailPage() {
     clause_reference: "", evidence: "", finding_owner: "", response_due_date: ""
   });
   const [findingMessage, setFindingMessage] = useState("");
+  const [findingResponses, setFindingResponses] = useState<Record<string, any>>({});
+  const [responseMessages, setResponseMessages] = useState<Record<string, string>>({});
 
   const fetchData = async () => {
     const tenantId = typeof window !== "undefined"
@@ -64,6 +66,15 @@ export default function AuditDetailPage() {
       map[finding.id] = finding.escalation_justification || "";
     });
     setEscalationJustifications(map);
+    const responseMap: Record<string, any> = {};
+    (findingsRes.data || []).forEach((finding: any) => {
+      responseMap[finding.id] = {
+        auditee_response: finding.auditee_response || "",
+        correction: finding.correction || "",
+        corrective_action: finding.corrective_action || "",
+      };
+    });
+    setFindingResponses(responseMap);
   };
 
   useEffect(() => {
@@ -184,6 +195,37 @@ export default function AuditDetailPage() {
     });
     setNewFinding({ finding_title:"", finding_description:"", finding_severity:"observation", clause_reference:"", evidence:"", finding_owner:"", response_due_date:"" });
     setFindingMessage("Finding added.");
+    await fetchData();
+  };
+
+  const saveFindingResponse = async (finding: any) => {
+    if (isLocked) return alert("This audit is locked and cannot be edited.");
+    if (finding.finding_status === "closed") return alert("This finding is already closed.");
+    const response = findingResponses[finding.id] || {};
+    if (!String(response.auditee_response || "").trim()) {
+      return setResponseMessages({...responseMessages, [finding.id]:"Auditee Response is required."});
+    }
+    if (!String(response.correction || "").trim()) {
+      return setResponseMessages({...responseMessages, [finding.id]:"Correction / Immediate Action is required."});
+    }
+    if (finding.finding_severity !== "observation" && !String(response.corrective_action || "").trim()) {
+      return setResponseMessages({...responseMessages, [finding.id]:"Corrective Action is required for Minor and Major Findings."});
+    }
+
+    const { error } = await supabase.from("audit_findings").update({
+      auditee_response: String(response.auditee_response).trim(),
+      correction: String(response.correction).trim(),
+      corrective_action: String(response.corrective_action || "").trim() || null,
+      finding_status: "response_submitted",
+    }).eq("id", finding.id).eq("tenant_id", audit.tenant_id);
+    if (error) return setResponseMessages({...responseMessages, [finding.id]:error.message});
+
+    await supabase.rpc("qualisphere_add_audit_log", {
+      p_entity_type:"audit_finding", p_entity_id:finding.id,
+      p_action:"audit_finding_response_submitted",
+      p_details:"Auditee response, correction, and corrective action were submitted for verification."
+    });
+    setResponseMessages({...responseMessages, [finding.id]:"Response submitted for verification."});
     await fetchData();
   };
 
@@ -655,6 +697,21 @@ export default function AuditDetailPage() {
                     )}
                   </p>
                 </div>
+              </div>
+
+              <div style={{ borderTop:"1px solid #e5e7eb", paddingTop:"12px", marginTop:"12px" }}>
+                <h4 style={{marginTop:0}}>4. Finding Response / Corrective Action</h4>
+                <FormField label="Auditee Response">
+                  <textarea value={findingResponses[f.id]?.auditee_response || ""} onChange={(e)=>setFindingResponses({...findingResponses,[f.id]:{...(findingResponses[f.id]||{}),auditee_response:e.target.value}})} disabled={isLocked || f.finding_status === "closed"} rows={4} style={standardTextareaStyle}/>
+                </FormField>
+                <FormField label="Correction / Immediate Action">
+                  <textarea value={findingResponses[f.id]?.correction || ""} onChange={(e)=>setFindingResponses({...findingResponses,[f.id]:{...(findingResponses[f.id]||{}),correction:e.target.value}})} disabled={isLocked || f.finding_status === "closed"} rows={4} style={standardTextareaStyle}/>
+                </FormField>
+                <FormField label={f.finding_severity === "observation" ? "Corrective Action (Optional for Observation)" : "Corrective Action"}>
+                  <textarea value={findingResponses[f.id]?.corrective_action || ""} onChange={(e)=>setFindingResponses({...findingResponses,[f.id]:{...(findingResponses[f.id]||{}),corrective_action:e.target.value}})} disabled={isLocked || f.finding_status === "closed"} rows={4} style={standardTextareaStyle}/>
+                </FormField>
+                {!isLocked && f.finding_status !== "closed" && <button type="button" onClick={()=>saveFindingResponse(f)} style={primaryButtonStyle}>Submit Response for Verification</button>}
+                {responseMessages[f.id] && <p style={{fontWeight:600}}>{responseMessages[f.id]}</p>}
               </div>
 
               <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: "12px", marginTop: "12px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
