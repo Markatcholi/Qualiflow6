@@ -19,6 +19,8 @@ export default function AuditDetailPage() {
   const [audit, setAudit] = useState<any>(null);
   const [findings, setFindings] = useState<any[]>([]);
   const [escalationJustifications, setEscalationJustifications] = useState<Record<string, string>>({});
+  const [planning, setPlanning] = useState<any>(null);
+  const [planningMessage, setPlanningMessage] = useState("");
 
   const fetchData = async () => {
     const tenantId = typeof window !== "undefined"
@@ -73,6 +75,46 @@ export default function AuditDetailPage() {
       severity.includes("high") ||
       severity.includes("systemic")
     );
+  };
+
+  const saveAuditPlanning = async () => {
+    if (isLocked) return alert("This audit is locked and cannot be edited.");
+    if (!planning?.audit_title?.trim()) return setPlanningMessage("Audit Title is required.");
+    if (!planning?.audit_scope?.trim()) return setPlanningMessage("Audit Scope is required.");
+    if (!planning?.audit_objectives?.trim()) return setPlanningMessage("Audit Objectives are required.");
+    if (!planning?.audit_criteria?.trim()) return setPlanningMessage("Audit Criteria / Requirements are required.");
+    if (!planning?.lead_auditor?.trim()) return setPlanningMessage("Lead Auditor is required.");
+    if (!planning?.scheduled_start_date) return setPlanningMessage("Planned Start Date is required.");
+    if (planning?.scheduled_end_date && planning.scheduled_end_date < planning.scheduled_start_date) {
+      return setPlanningMessage("Planned End Date cannot be before Planned Start Date.");
+    }
+
+    setPlanningMessage("");
+    const { error } = await supabase.from("audits").update({
+      audit_title: planning.audit_title.trim(),
+      audit_type: planning.audit_type,
+      audit_objectives: planning.audit_objectives.trim(),
+      audit_scope: planning.audit_scope.trim(),
+      audit_criteria: planning.audit_criteria.trim(),
+      lead_auditor: planning.lead_auditor.trim(),
+      auditor: planning.lead_auditor.trim(),
+      audit_team: planning.audit_team.trim() || null,
+      scheduled_start_date: planning.scheduled_start_date,
+      scheduled_end_date: planning.scheduled_end_date || null,
+      audit_date: planning.scheduled_start_date,
+      status: audit.status === "open" ? "planned" : audit.status,
+    }).eq("id", id).eq("tenant_id", audit.tenant_id);
+
+    if (error) return setPlanningMessage(error.message);
+
+    await supabase.rpc("qualisphere_add_audit_log", {
+      p_entity_type: "audit",
+      p_entity_id: id,
+      p_action: "audit_planning_saved",
+      p_details: "Audit planning completed or updated.",
+    });
+    setPlanningMessage("Audit Planning saved.");
+    await fetchData();
   };
 
   const createScarFromFinding = async (finding: any) => {
@@ -398,18 +440,55 @@ export default function AuditDetailPage() {
       )}
 
       <section style={sectionStyle}>
-        <h2 style={{ marginTop: 0 }}>Audit Summary</h2>
+        <h2 style={{ marginTop: 0 }}>1. Audit Planning</h2>
         <p><strong>Audit Number:</strong> {audit.audit_number}</p>
-        <p><strong>Title:</strong> {audit.audit_title}</p>
-        <p><strong>Type:</strong> {audit.audit_type}</p>
-        <p><strong>Scope:</strong> {audit.audit_scope}</p>
-        <p><strong>Auditor:</strong> {audit.auditor}</p>
-        <p><strong>Date:</strong> {audit.audit_date}</p>
         <p><strong>Status:</strong> <StatusBadge status={audit.status || "open"} /></p>
+
+        {planning && (
+          <>
+            <FormField label="Audit Title">
+              <input value={planning.audit_title} onChange={(e) => setPlanning({...planning, audit_title:e.target.value})} disabled={isLocked} style={inputStyle} />
+            </FormField>
+            <FormField label="Audit Type">
+              <select value={planning.audit_type} onChange={(e) => setPlanning({...planning, audit_type:e.target.value})} disabled={isLocked} style={inputStyle}>
+                <option value="internal_audit">Internal Audit</option>
+                <option value="supplier_audit">Supplier Audit</option>
+                <option value="process_audit">Process Audit</option>
+                <option value="qms_audit">QMS Audit</option>
+                <option value="regulatory_audit">Regulatory Audit</option>
+              </select>
+            </FormField>
+            <FormField label="Audit Objectives">
+              <textarea value={planning.audit_objectives} onChange={(e) => setPlanning({...planning, audit_objectives:e.target.value})} disabled={isLocked} rows={3} style={standardTextareaStyle} />
+            </FormField>
+            <FormField label="Audit Scope">
+              <textarea value={planning.audit_scope} onChange={(e) => setPlanning({...planning, audit_scope:e.target.value})} disabled={isLocked} rows={3} style={standardTextareaStyle} />
+            </FormField>
+            <FormField label="Audit Criteria / Requirements">
+              <textarea value={planning.audit_criteria} onChange={(e) => setPlanning({...planning, audit_criteria:e.target.value})} disabled={isLocked} rows={3} style={standardTextareaStyle} />
+            </FormField>
+            <div style={twoColumnStyle}>
+              <FormField label="Lead Auditor">
+                <input value={planning.lead_auditor} onChange={(e) => setPlanning({...planning, lead_auditor:e.target.value})} disabled={isLocked} style={inputStyle} />
+              </FormField>
+              <FormField label="Audit Team">
+                <input value={planning.audit_team} onChange={(e) => setPlanning({...planning, audit_team:e.target.value})} disabled={isLocked} placeholder="Names or functions" style={inputStyle} />
+              </FormField>
+              <FormField label="Planned Start Date">
+                <input type="date" value={planning.scheduled_start_date} onChange={(e) => setPlanning({...planning, scheduled_start_date:e.target.value})} disabled={isLocked} style={inputStyle} />
+              </FormField>
+              <FormField label="Planned End Date">
+                <input type="date" value={planning.scheduled_end_date} onChange={(e) => setPlanning({...planning, scheduled_end_date:e.target.value})} disabled={isLocked} style={inputStyle} />
+              </FormField>
+            </div>
+            {!isLocked && <button type="button" onClick={saveAuditPlanning} style={primaryButtonStyle}>Save Audit Planning</button>}
+            {planningMessage && <p style={{fontWeight:600}}>{planningMessage}</p>}
+          </>
+        )}
       </section>
 
       <section style={sectionStyle}>
-        <h2 style={{ marginTop: 0 }}>Findings</h2>
+        <h2 style={{ marginTop: 0 }}>2. Findings</h2>
 
         {findings.length === 0 ? (
           <EmptyStateCard
@@ -498,3 +577,6 @@ const sectionStyle: React.CSSProperties = {
   marginBottom: "20px",
   background: "white",
 };
+
+const inputStyle: React.CSSProperties = { width:"100%", maxWidth:"720px", padding:"8px", marginTop:"4px" };
+const twoColumnStyle: React.CSSProperties = { display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(260px, 1fr))", gap:"12px" };
