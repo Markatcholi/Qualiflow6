@@ -525,7 +525,8 @@ export default function MyApprovalTasksPage() {
               capaApproval ||
               ncmrMrbApproval ||
               managementReviewApproval ||
-              changeControlApproval ||\n              auditClosureApproval;
+              changeControlApproval ||
+              auditClosureApproval;
             const ownedCapaWork =
               task.workspace_item_type === "owned_capa";
             const dueStatus = getDueStatus(task);
