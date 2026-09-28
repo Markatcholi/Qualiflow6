@@ -605,7 +605,24 @@ export default function MyApprovalTasksPage() {
                   ) : null}
                 </div>
 
-                {!centralizedApproval && !ownedCapaWork ? (
+                {auditClosureApproval && !ownedCapaWork && task.status === "pending" ? (
+                  <>
+                    <div style={{ marginTop: "14px", marginBottom: "12px" }}>
+                      <label style={labelStyle}>Reviewer Comment</label>
+                      <textarea
+                        value={approverCommentByTask[task.id] ?? task.approver_comment ?? ""}
+                        onChange={(e) => updateApproverComment(task.id, e.target.value)}
+                        placeholder="Add closure approval comment. A comment is required if rejecting."
+                        rows={4}
+                        style={textareaStyle}
+                      />
+                    </div>
+                    <div style={buttonRowStyle}>
+                      <button onClick={() => signTask(task, "approved")}>Approve Audit Closure</button>
+                      <button onClick={() => signTask(task, "rejected")}>Reject Audit Closure</button>
+                    </div>
+                  </>
+                ) :                 {!centralizedApproval && !ownedCapaWork ? (
                   <>
                     <div style={{ marginTop: "14px", marginBottom: "12px" }}>
                       <label style={labelStyle}>Review Instructions</label>
