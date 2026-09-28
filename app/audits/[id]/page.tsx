@@ -36,6 +36,9 @@ export default function AuditDetailPage() {
   const [closureDueDate, setClosureDueDate] = useState("");
   const [closureMessage, setClosureMessage] = useState("");
   const [closureTasks, setClosureTasks] = useState<any[]>([]);
+  const [currentUserEmail, setCurrentUserEmail] = useState("");
+  const [reviewerComment, setReviewerComment] = useState("");
+  const [reviewerSignatureEmail, setReviewerSignatureEmail] = useState("");
 
   const fetchData = async () => {
     const tenantId = typeof window !== "undefined"
@@ -113,6 +116,7 @@ export default function AuditDetailPage() {
 
   useEffect(() => {
     if (id) fetchData();
+    supabase.auth.getUser().then(({data}) => setCurrentUserEmail((data?.user?.email || "").toLowerCase()));
   }, [id]);
 
   if (!audit) return <main style={{ padding: 20 }}>Loading audit...</main>;
@@ -530,6 +534,34 @@ export default function AuditDetailPage() {
     await fetchData();
   };
 
+  const decideAuditClosure = async (decision: "approved" | "rejected") => {
+    const task = closureTasks.find((t:any) => t.status === "pending");
+    if (!task) return setClosureMessage("No pending Audit Closure Approval task was found.");
+    if ((task.assigned_to_email || "").toLowerCase() !== currentUserEmail) return setClosureMessage("Only the assigned closure approver can make this decision.");
+    if (reviewerSignatureEmail.trim().toLowerCase() !== currentUserEmail) return setClosureMessage("Electronic signature email must match the logged-in reviewer.");
+    if (decision === "rejected" && !reviewerComment.trim()) return setClosureMessage("Reviewer comment is required when rejecting audit closure.");
+    if (!window.confirm(`Electronic Signature:\n\nI ${decision === "approved" ? "approve" : "reject"} closure of this audit.`)) return;
+    const now = new Date().toISOString();
+    const { error: taskError } = await supabase.from("approval_tasks").update({
+      status: decision,
+      approver_comment: reviewerComment,
+      signature_meaning: `I ${decision === "approved" ? "approve" : "reject"} closure of this audit.`,
+      signed_by: currentUserEmail,
+      signed_at: now,
+    }).eq("id", task.id).eq("assigned_to_email", task.assigned_to_email);
+    if (taskError) return setClosureMessage(taskError.message);
+    const auditUpdate = decision === "approved"
+      ? { closure_approval_status:"approved", closure_decision_comment:reviewerComment, status:"closed", closed_at:now, closed_by:currentUserEmail, signed_by:currentUserEmail, signed_at:now, signature_meaning:"Audit closure approved through Audit Review Package.", signature_email_entered:currentUserEmail, is_locked:true, locked_at:now, locked_by:currentUserEmail }
+      : { closure_approval_status:"rejected", closure_decision_comment:reviewerComment, status:"execution_complete" };
+    const { error: auditError } = await supabase.from("audits").update(auditUpdate).eq("id", id).eq("tenant_id", audit.tenant_id);
+    if (auditError) return setClosureMessage(auditError.message);
+    await supabase.rpc("qualisphere_add_audit_log",{p_entity_type:"audit",p_entity_id:id,p_action:`audit_closure_${decision}`,p_details:`Audit closure ${decision} by ${currentUserEmail}. Comment: ${reviewerComment || "N/A"}`});
+    setClosureMessage(`Audit closure ${decision}.`);
+    setReviewerComment("");
+    setReviewerSignatureEmail("");
+    await fetchData();
+  };
+
   return (
     <main style={{ padding: 30, fontFamily: "Arial, sans-serif" }}>
       <div style={{ marginBottom: "16px", display: "flex", gap: "10px", flexWrap: "wrap" }}>
@@ -808,7 +840,23 @@ export default function AuditDetailPage() {
             <button type="button" onClick={submitAuditClosureApproval} style={primaryButtonStyle}>Submit Audit for Closure Approval</button>
           </>
         )}
-        {closureMessage && <p style={{fontWeight:600}}>{closureMessage}</p>}
+        {audit.closure_approval_status === "pending" && closureTasks.some((t:any) => t.status === "pending" && (t.assigned_to_email || "").toLowerCase() === currentUserEmail) && (
+          <div style={{marginTop:"18px",padding:"16px",border:"2px solid #2563eb",borderRadius:"10px",background:"#eff6ff"}}>
+            <h3 style={{marginTop:0}}>Reviewer Decision</h3>
+            <p>Review the complete read-only audit package above, then approve or reject closure.</p>
+            <FormField label="Reviewer Comment">
+              <textarea value={reviewerComment} onChange={(e)=>setReviewerComment(e.target.value)} rows={4} style={standardTextareaStyle} placeholder="Enter approval comment or rejection rationale. Required for rejection." />
+            </FormField>
+            <FormField label="Re-enter Your Email for E-Signature">
+              <input type="email" value={reviewerSignatureEmail} onChange={(e)=>setReviewerSignatureEmail(e.target.value)} style={inputStyle} />
+            </FormField>
+            <div style={{display:"flex",gap:"10px",flexWrap:"wrap"}}>
+              <button type="button" onClick={()=>decideAuditClosure("approved")} style={primaryButtonStyle}>Approve Audit Closure</button>
+              <button type="button" onClick={()=>decideAuditClosure("rejected")}>Reject Audit Closure</button>
+            </div>
+          </div>
+        )}
+        {closureMessage && <p style={{fontWeight:600}}>{closureMessage}</p>
       </section>
 
 
