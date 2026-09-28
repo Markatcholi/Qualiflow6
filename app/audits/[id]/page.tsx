@@ -33,6 +33,7 @@ export default function AuditDetailPage() {
   const [verificationNotes, setVerificationNotes] = useState<Record<string, string>>({});
   const [verificationMessages, setVerificationMessages] = useState<Record<string, string>>({});
   const [closureApproverEmail, setClosureApproverEmail] = useState("");
+  const [closureDueDate, setClosureDueDate] = useState("");
   const [closureMessage, setClosureMessage] = useState("");
   const [closureTasks, setClosureTasks] = useState<any[]>([]);
 
@@ -116,7 +117,8 @@ export default function AuditDetailPage() {
 
   if (!audit) return <main style={{ padding: 20 }}>Loading audit...</main>;
 
-  const isLocked = audit?.is_locked === true;
+  const isPendingClosureApproval = audit?.closure_approval_status === "pending";
+  const isLocked = audit?.is_locked === true || isPendingClosureApproval;
 
   const requiresEscalation = (finding: any) => {
     const severity = String(finding.finding_severity || "").toLowerCase();
@@ -500,6 +502,7 @@ export default function AuditDetailPage() {
     if (findings.some((finding:any)=>finding.finding_status !== "closed")) return setClosureMessage("All findings must be verified and closed before closure approval.");
     const approver = closureApproverEmail.trim().toLowerCase();
     if (!approver) return setClosureMessage("Closure Approver Email is required.");
+    if (!closureDueDate) return setClosureMessage("Closure Approval Due Date is required.");
     const {data:userData}=await supabase.auth.getUser();
     const ownerEmail=(userData?.user?.email||"").toLowerCase();
     if (!ownerEmail) return setClosureMessage("Unable to identify the logged-in audit owner.");
@@ -511,7 +514,7 @@ export default function AuditDetailPage() {
     const {error:taskError}=await supabase.from("approval_tasks").insert({
       entity_type:"audit", entity_id:id, task_type:"audit_closure_approval",
       required_function:"Audit Closure Approver", assigned_to_email:approver,
-      assigned_by_email:ownerEmail, status:"pending", record_number:audit.audit_number,
+      assigned_by_email:ownerEmail, status:"pending", due_date:closureDueDate, record_number:audit.audit_number,
       task_title:`Audit Closure Approval — ${audit.audit_number || audit.audit_title}`,
       task_instructions:"Review the complete audit record, verified findings, responses, corrective actions, and escalation decisions. Approve or reject audit closure."
     });
@@ -538,6 +541,12 @@ export default function AuditDetailPage() {
       </div>
 
       <h1>Audit Workflow</h1>
+
+      {isPendingClosureApproval && (
+        <div style={{padding:"12px",background:"#fffbeb",border:"1px solid #f59e0b",borderRadius:"8px",marginBottom:"16px",fontWeight:600}}>
+          🔒 Closure approval is pending. This submitted audit package is read-only until the reviewer approves or rejects it.
+        </div>
+      )}
 
       {isLocked && (
         <div
@@ -795,6 +804,7 @@ export default function AuditDetailPage() {
         {!isLocked && audit.closure_approval_status !== "pending" && audit.closure_approval_status !== "approved" && (
           <>
             <FormField label="Closure Approver Email"><input type="email" value={closureApproverEmail} onChange={(e)=>setClosureApproverEmail(e.target.value)} style={inputStyle}/></FormField>
+            <FormField label="Closure Approval Due Date"><input type="date" value={closureDueDate} onChange={(e)=>setClosureDueDate(e.target.value)} style={inputStyle}/></FormField>
             <button type="button" onClick={submitAuditClosureApproval} style={primaryButtonStyle}>Submit Audit for Closure Approval</button>
           </>
         )}
