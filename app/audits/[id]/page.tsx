@@ -856,7 +856,7 @@ export default function AuditDetailPage() {
             </div>
           </div>
         )}
-        {closureMessage && <p style={{fontWeight:600}}>{closureMessage}</p>
+        {closureMessage && <p style={{fontWeight:600}}>{closureMessage}</p>}
       </section>
 
 
