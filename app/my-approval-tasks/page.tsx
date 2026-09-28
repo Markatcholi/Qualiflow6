@@ -622,7 +622,7 @@ export default function MyApprovalTasksPage() {
                       <button onClick={() => signTask(task, "rejected")}>Reject Audit Closure</button>
                     </div>
                   </>
-                ) :                 {!centralizedApproval && !ownedCapaWork ? (
+                ) : !centralizedApproval && !ownedCapaWork ? (
                   <>
                     <div style={{ marginTop: "14px", marginBottom: "12px" }}>
                       <label style={labelStyle}>Review Instructions</label>
