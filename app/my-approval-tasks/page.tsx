@@ -626,7 +626,7 @@ export default function MyApprovalTasksPage() {
                       </button>
                     </div>
                   ) : auditFindingTask && task.parent_audit_id ? (
-                    <a href={`/audits/${task.parent_audit_id}`} style={primaryLinkStyle}>Open Audit Finding</a>
+                    <a href={`/audits/${task.parent_audit_id}/findings/${task.entity_id}/task?taskId=${task.id}`} style={primaryLinkStyle}>Open Audit Finding</a>
                   ) : capaApproval ? (
                     <a href={getCapaReviewUrl(task)} style={primaryLinkStyle}>
                       Open CAPA Review Package
