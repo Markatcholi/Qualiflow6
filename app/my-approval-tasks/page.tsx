@@ -58,6 +58,24 @@ export default function MyApprovalTasksPage() {
       return;
     }
 
+    const activeTenantId = typeof window !== "undefined" ? window.localStorage.getItem("qualisphere_active_tenant_id") || "" : "";
+    let ownedAuditData:any[] = [];
+    if (activeTenantId) {
+      const { data: auditOwnerData, error: ownedAuditError } = await supabase
+        .from("audits")
+        .select("*")
+        .eq("tenant_id", activeTenantId)
+        .eq("owner_email", normalizedEmail)
+        .not("status", "in", '("closed","cancelled")')
+        .order("created_at", { ascending: true });
+      if (ownedAuditError) {
+        alert(ownedAuditError.message);
+        setLoading(false);
+        return;
+      }
+      ownedAuditData = auditOwnerData || [];
+    }
+
     const assignedTaskItems = (data || []).map((task: any) => ({
       ...task,
       workspace_item_type: "assigned_task",
@@ -70,8 +88,10 @@ export default function MyApprovalTasksPage() {
         workspace_item_type: "owned_capa",
       }));
 
+    const ownedAuditItems = ownedAuditData.map((audit:any) => ({ ...audit, workspace_item_type:"owned_audit" }));
+
     setTasks(
-      [...assignedTaskItems, ...ownedCapaItems].sort((a: any, b: any) =>
+      [...assignedTaskItems, ...ownedCapaItems, ...ownedAuditItems].sort((a: any, b: any) =>
         String(a.created_at || "").localeCompare(String(b.created_at || ""))
       )
     );
@@ -182,6 +202,7 @@ export default function MyApprovalTasksPage() {
     if (task.workspace_item_type === "owned_capa") {
       return task.capa_number || task.id || "CAPA";
     }
+    if (task.workspace_item_type === "owned_audit") return task.audit_number || task.id || "Audit";
 
     return task.record_number || task.capa_number || task.entity_number || task.entity_id || "Record";
   };
@@ -190,6 +211,7 @@ export default function MyApprovalTasksPage() {
     if (task.workspace_item_type === "owned_capa") {
       return `${getRecordDisplay(task)} — ${getOwnedCapaWorkLabel(task)}`;
     }
+    if (task.workspace_item_type === "owned_audit") return `${getRecordDisplay(task)} — Continue Audit — ${String(task.status || "Planning").replaceAll("_"," ")}`;
 
     if (isCapaApprovalTask(task)) {
       const jobTitle =
@@ -211,6 +233,8 @@ export default function MyApprovalTasksPage() {
     const dueDateValue =
       task.workspace_item_type === "owned_capa"
         ? task.due_date || task.action_due_date || task.effectiveness_due_date
+        : task.workspace_item_type === "owned_audit"
+        ? task.scheduled_end_date || task.audit_date
         : task.due_date || task.approver_due_date;
 
     if (!dueDateValue) {
@@ -529,8 +553,9 @@ export default function MyApprovalTasksPage() {
               auditClosureApproval;
             const ownedCapaWork =
               task.workspace_item_type === "owned_capa";
+            const ownedAuditWork = task.workspace_item_type === "owned_audit";
             const dueStatus = getDueStatus(task);
-            const pending = task.status === "pending";
+            const pending = ownedAuditWork || task.status === "pending";
 
             return (
               <section
@@ -571,7 +596,9 @@ export default function MyApprovalTasksPage() {
                     </div>
                   </div>
 
-                  {ownedCapaWork ? (
+                  {ownedAuditWork ? (
+                    <div style={buttonRowStyle}><a href={`/audits/${task.id}`} style={primaryLinkStyle}>Open Audit</a></div>
+                  ) : ownedCapaWork ? (
                     <div style={buttonRowStyle}>
                       <a href={`/capa/${task.id}`} style={primaryLinkStyle}>
                         Open CAPA
@@ -605,7 +632,7 @@ export default function MyApprovalTasksPage() {
                   ) : null}
                 </div>
 
-                {auditClosureApproval && !ownedCapaWork && task.status === "pending" ? (
+                {ownedAuditWork ? null : auditClosureApproval && !ownedCapaWork && task.status === "pending" ? (
                   <>
                     <div style={{ marginTop: "14px", marginBottom: "12px" }}>
                       <label style={labelStyle}>Reviewer Comment</label>
