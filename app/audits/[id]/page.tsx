@@ -76,6 +76,7 @@ export default function AuditDetailPage() {
         audit_scope: auditRes.data.audit_scope || "",
         audit_criteria: auditRes.data.audit_criteria || "",
         lead_auditor: auditRes.data.lead_auditor || auditRes.data.auditor || "",
+        lead_auditor_email: auditRes.data.lead_auditor_email || "",
         audit_team: auditRes.data.audit_team || "",
         scheduled_start_date: auditRes.data.scheduled_start_date || auditRes.data.audit_date || "",
         scheduled_end_date: auditRes.data.scheduled_end_date || "",
@@ -259,6 +260,20 @@ export default function AuditDetailPage() {
     }).eq("id", finding.id).eq("tenant_id", audit.tenant_id);
     if (error) return setResponseMessages({...responseMessages, [finding.id]:error.message});
 
+    const verifierEmail = String(audit.lead_auditor_email || "").trim().toLowerCase();
+    if (!verifierEmail) return setResponseMessages({...responseMessages,[finding.id]:"Lead Auditor Email must be configured in Audit Planning before the response can be routed for verification."});
+    const { data:existingVerification } = await supabase.from("approval_tasks").select("id,status").eq("entity_type","audit_finding").eq("entity_id",finding.id).eq("task_type","audit_finding_verification").eq("status","pending").maybeSingle();
+    if (!existingVerification) {
+      const { error: verificationTaskError } = await supabase.from("approval_tasks").insert({
+        entity_type:"audit_finding", entity_id:finding.id, task_type:"audit_finding_verification",
+        required_function:"Lead Auditor", assigned_to_email:verifierEmail, assigned_by_email:currentUserEmail || null,
+        status:"pending", due_date:finding.response_due_date || null, record_number:audit.audit_number,
+        task_title:`Audit Finding Verification — ${audit.audit_number || audit.audit_title}`,
+        task_instructions:`Review the submitted response, correction, corrective action, and escalation evaluation for finding: ${finding.finding_title}. Accept and close or return for additional action.`
+      });
+      if (verificationTaskError) return setResponseMessages({...responseMessages,[finding.id]:verificationTaskError.message});
+    }
+
     await supabase.rpc("qualisphere_add_audit_log", {
       p_entity_type:"audit_finding", p_entity_id:finding.id,
       p_action:"audit_finding_response_submitted",
@@ -272,6 +287,14 @@ export default function AuditDetailPage() {
     if (isLocked) return alert("This audit is locked and cannot be edited.");
     if (finding.finding_status !== "response_submitted") {
       return setVerificationMessages({...verificationMessages,[finding.id]:"A response must be submitted before verification."});
+    }
+    const { data:verificationTask } = await supabase.from("approval_tasks").select("*").eq("entity_type","audit_finding").eq("entity_id",finding.id).eq("task_type","audit_finding_verification").eq("status","pending").maybeSingle();
+    if (!verificationTask || String(verificationTask.assigned_to_email || "").toLowerCase() !== currentUserEmail) {
+      return setVerificationMessages({...verificationMessages,[finding.id]:"Only the assigned Lead Auditor can verify this finding from the routed My Workspace task."});
+    }
+    const escalationComplete = !!finding.linked_scar_id || !!finding.linked_capa_id || !!String(finding.escalation_justification || "").trim();
+    if (finding.finding_severity === "major" && !escalationComplete) {
+      return setVerificationMessages({...verificationMessages,[finding.id]:"Major Finding requires CAPA/SCAR linkage or a saved risk-based justification before verification can be completed."});
     }
     const notes = String(verificationNotes[finding.id] || "").trim();
     if (!notes) return setVerificationMessages({...verificationMessages,[finding.id]:"Verification Notes are required."});
@@ -288,6 +311,14 @@ export default function AuditDetailPage() {
     const { error } = await supabase.from("audit_findings").update(update)
       .eq("id",finding.id).eq("tenant_id",audit.tenant_id);
     if (error) return setVerificationMessages({...verificationMessages,[finding.id]:error.message});
+
+    await supabase.from("approval_tasks").update({
+      status: decision === "accept" ? "completed" : "rejected",
+      approver_comment: notes,
+      signed_by: email,
+      signed_at: now,
+      signature_meaning: decision === "accept" ? "Audit finding response verified and accepted." : "Audit finding response returned for additional action."
+    }).eq("id",verificationTask.id);
 
     await supabase.rpc("qualisphere_add_audit_log", {
       p_entity_type:"audit_finding", p_entity_id:finding.id,
@@ -821,7 +852,7 @@ export default function AuditDetailPage() {
                 )}
               </div>
 
-              <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: "12px", marginTop: "12px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
+              <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: "12px", marginTop: "12px" }}><h4 style={{marginTop:0}}>Escalation Evaluation — Complete Before Finding Verification</h4><div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
                 <button type="button" onClick={() => createScarFromFinding(f)} disabled={isLocked || !!f.linked_scar_id}>
                   Create Linked SCAR
                 </button>
@@ -829,7 +860,7 @@ export default function AuditDetailPage() {
                 <button type="button" onClick={() => createCapaFromFinding(f)} disabled={isLocked || !!f.linked_capa_id}>
                   Create Linked CAPA
                 </button>
-              </div>
+              </div></div>
 
               <div style={{ marginTop: "12px" }}>
                 <FormField label="Risk-Based Justification if SCAR/CAPA is Not Opened">
