@@ -230,6 +230,20 @@ export default function AuditDetailPage() {
     }).select().single();
     if (error) return setFindingMessage(error.message);
 
+    const findingOwnerEmail = String(newFinding.finding_owner || "").trim().toLowerCase();
+    const { error: responseTaskError } = await supabase.from("approval_tasks").insert({
+      entity_type:"audit_finding", entity_id:inserted.id, task_type:"audit_finding_response",
+      required_function:"Finding Owner", assigned_to_email:findingOwnerEmail,
+      assigned_by_email:currentUserEmail || audit.owner_email || null, status:"pending",
+      due_date:newFinding.response_due_date || null, record_number:audit.audit_number,
+      task_title:`Audit Finding Response — ${audit.audit_number || audit.audit_title}`,
+      task_instructions:`Provide the auditee response, correction/immediate action, and corrective action for finding: ${newFinding.finding_title}.`
+    });
+    if (responseTaskError) {
+      await supabase.from("audit_findings").delete().eq("id", inserted.id).eq("tenant_id", audit.tenant_id);
+      return setFindingMessage(`Finding assignment failed: ${responseTaskError.message}`);
+    }
+
     await supabase.rpc("qualisphere_add_audit_log", {
       p_entity_type:"audit_finding", p_entity_id:inserted.id, p_action:"audit_finding_created",
       p_details:`Audit finding created in ${audit.audit_number || id}. Classification: ${newFinding.finding_severity}.`
@@ -241,6 +255,9 @@ export default function AuditDetailPage() {
 
   const saveFindingResponse = async (finding: any) => {
     if (isLocked) return alert("This audit is locked and cannot be edited.");
+    if (String(finding.finding_owner || "").trim().toLowerCase() !== currentUserEmail) {
+      return setResponseMessages({...responseMessages,[finding.id]:"Only the assigned Finding Owner can submit this response from My Workspace."});
+    }
     if (finding.finding_status === "closed") return alert("This finding is already closed.");
     const response = findingResponses[finding.id] || {};
     if (!String(response.auditee_response || "").trim()) {
@@ -260,6 +277,14 @@ export default function AuditDetailPage() {
       finding_status: "response_submitted",
     }).eq("id", finding.id).eq("tenant_id", audit.tenant_id);
     if (error) return setResponseMessages({...responseMessages, [finding.id]:error.message});
+
+    const now = new Date().toISOString();
+    await supabase.from("approval_tasks").update({
+      status:"completed", completed_by:currentUserEmail, completed_at:now,
+      completion_comment:"Finding response submitted for Lead Auditor verification."
+    }).eq("entity_type","audit_finding").eq("entity_id",finding.id)
+      .eq("task_type","audit_finding_response").eq("status","pending")
+      .eq("assigned_to_email",currentUserEmail);
 
     const verifierEmail = String(audit.lead_auditor_email || "").trim().toLowerCase();
     if (!verifierEmail) return setResponseMessages({...responseMessages,[finding.id]:"Lead Auditor Email must be configured in Audit Planning before the response can be routed for verification."});
@@ -824,16 +849,19 @@ export default function AuditDetailPage() {
 
               <div style={{ borderTop:"1px solid #e5e7eb", paddingTop:"12px", marginTop:"12px" }}>
                 <h4 style={{marginTop:0}}>4. Finding Response / Corrective Action</h4>
+                {String(f.finding_owner || "").trim().toLowerCase() !== currentUserEmail && f.finding_status !== "closed" && (
+                  <p><StatusBadge status={f.finding_status || "open"} /> Response is assigned to <strong>{f.finding_owner}</strong> through My Workspace.</p>
+                )}
                 <FormField label="Auditee Response">
-                  <textarea value={findingResponses[f.id]?.auditee_response || ""} onChange={(e)=>setFindingResponses({...findingResponses,[f.id]:{...(findingResponses[f.id]||{}),auditee_response:e.target.value}})} disabled={isLocked || f.finding_status === "closed"} rows={4} style={standardTextareaStyle}/>
+                  <textarea value={findingResponses[f.id]?.auditee_response || ""} onChange={(e)=>setFindingResponses({...findingResponses,[f.id]:{...(findingResponses[f.id]||{}),auditee_response:e.target.value}})} disabled={isLocked || f.finding_status === "closed" || String(f.finding_owner || "").trim().toLowerCase() !== currentUserEmail} rows={4} style={standardTextareaStyle}/>
                 </FormField>
                 <FormField label="Correction / Immediate Action">
-                  <textarea value={findingResponses[f.id]?.correction || ""} onChange={(e)=>setFindingResponses({...findingResponses,[f.id]:{...(findingResponses[f.id]||{}),correction:e.target.value}})} disabled={isLocked || f.finding_status === "closed"} rows={4} style={standardTextareaStyle}/>
+                  <textarea value={findingResponses[f.id]?.correction || ""} onChange={(e)=>setFindingResponses({...findingResponses,[f.id]:{...(findingResponses[f.id]||{}),correction:e.target.value}})} disabled={isLocked || f.finding_status === "closed" || String(f.finding_owner || "").trim().toLowerCase() !== currentUserEmail} rows={4} style={standardTextareaStyle}/>
                 </FormField>
                 <FormField label={f.finding_severity === "observation" ? "Corrective Action (Optional for Observation)" : "Corrective Action"}>
-                  <textarea value={findingResponses[f.id]?.corrective_action || ""} onChange={(e)=>setFindingResponses({...findingResponses,[f.id]:{...(findingResponses[f.id]||{}),corrective_action:e.target.value}})} disabled={isLocked || f.finding_status === "closed"} rows={4} style={standardTextareaStyle}/>
+                  <textarea value={findingResponses[f.id]?.corrective_action || ""} onChange={(e)=>setFindingResponses({...findingResponses,[f.id]:{...(findingResponses[f.id]||{}),corrective_action:e.target.value}})} disabled={isLocked || f.finding_status === "closed" || String(f.finding_owner || "").trim().toLowerCase() !== currentUserEmail} rows={4} style={standardTextareaStyle}/>
                 </FormField>
-                {!isLocked && f.finding_status !== "closed" && <button type="button" onClick={()=>saveFindingResponse(f)} style={primaryButtonStyle}>Submit Response for Verification</button>}
+                {!isLocked && f.finding_status !== "closed" && String(f.finding_owner || "").trim().toLowerCase() === currentUserEmail && <button type="button" onClick={()=>saveFindingResponse(f)} style={primaryButtonStyle}>Submit Response for Verification</button>}
                 {responseMessages[f.id] && <p style={{fontWeight:600}}>{responseMessages[f.id]}</p>}
               </div>
 
