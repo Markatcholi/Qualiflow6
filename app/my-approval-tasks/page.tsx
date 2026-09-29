@@ -76,9 +76,21 @@ export default function MyApprovalTasksPage() {
       ownedAuditData = auditOwnerData || [];
     }
 
+    const auditFindingTaskIds = (data || [])
+      .filter((task:any) => String(task.entity_type || "").toLowerCase() === "audit_finding")
+      .map((task:any) => task.entity_id)
+      .filter(Boolean);
+    let auditFindingParents:Record<string,string> = {};
+    if (auditFindingTaskIds.length > 0) {
+      const { data:findingRows } = await supabase.from("audit_findings")
+        .select("id,audit_id").in("id", auditFindingTaskIds);
+      (findingRows || []).forEach((row:any) => { auditFindingParents[row.id] = row.audit_id; });
+    }
+
     const assignedTaskItems = (data || []).map((task: any) => ({
       ...task,
       workspace_item_type: "assigned_task",
+      parent_audit_id: String(task.entity_type || "").toLowerCase() === "audit_finding" ? auditFindingParents[task.entity_id] : undefined,
     }));
 
     const ownedCapaItems = (ownedCapaData || [])
@@ -149,6 +161,7 @@ export default function MyApprovalTasksPage() {
   };
 
   const isAuditClosureApprovalTask = (task: any) => String(task.entity_type || "").toLowerCase() === "audit" && String(task.task_type || "").toLowerCase() === "audit_closure_approval";
+  const isAuditFindingTask = (task:any) => String(task.entity_type || "").toLowerCase() === "audit_finding" && ["audit_finding_response","audit_finding_verification"].includes(String(task.task_type || "").toLowerCase());
   const getAuditReviewUrl = (task:any) => `/audits/${task.entity_id}`;
 
   const isChangeControlApprovalTask = (task: any) => {
@@ -545,6 +558,7 @@ export default function MyApprovalTasksPage() {
             const managementReviewApproval = isManagementReviewApprovalTask(task);
             const changeControlApproval = isChangeControlApprovalTask(task);
             const auditClosureApproval = isAuditClosureApprovalTask(task);
+            const auditFindingTask = isAuditFindingTask(task);
             const centralizedApproval =
               capaApproval ||
               ncmrMrbApproval ||
@@ -611,6 +625,8 @@ export default function MyApprovalTasksPage() {
                         Reassign
                       </button>
                     </div>
+                  ) : auditFindingTask && task.parent_audit_id ? (
+                    <a href={`/audits/${task.parent_audit_id}`} style={primaryLinkStyle}>Open Audit Finding</a>
                   ) : capaApproval ? (
                     <a href={getCapaReviewUrl(task)} style={primaryLinkStyle}>
                       Open CAPA Review Package
