@@ -220,10 +220,30 @@ export default function HomePage() {
         throw new Error(taskResponse.error.message);
       }
 
-      const assignedTaskItems = (taskResponse.data || [])
+      const rawAssignedTasks = taskResponse.data || [];
+      const auditFindingIds = rawAssignedTasks
+        .filter((task: any) => String(task.entity_type || "").trim().toLowerCase() === "audit_finding")
+        .map((task: any) => task.entity_id)
+        .filter(Boolean);
+      const auditFindingParentMap: Record<string, string> = {};
+      if (auditFindingIds.length > 0) {
+        const { data: findingParents } = await supabase
+          .from("audit_findings")
+          .select("id,audit_id")
+          .in("id", auditFindingIds);
+        (findingParents || []).forEach((row: any) => {
+          auditFindingParentMap[String(row.id)] = String(row.audit_id);
+        });
+      }
+
+      const assignedTaskItems = rawAssignedTasks
         .map((task: any) => ({
           ...task,
           workspace_item_type: "assigned_task" as WorkspaceItemType,
+          parent_audit_id:
+            String(task.entity_type || "").trim().toLowerCase() === "audit_finding"
+              ? auditFindingParentMap[String(task.entity_id)] || ""
+              : undefined,
         }))
         .filter((task: any) => internalTenant || workItemModuleEnabled(task, entitlementSet));
 
@@ -1145,6 +1165,10 @@ function getTaskUrl(task: any) {
   if (isNcmrMrbApprovalTask(task)) return `/ncmrs/${task.entity_id}/approval-review?taskId=${task.id}`;
   if (isNcmrImplementationTask(task)) return `/ncmrs/${task.entity_id}/implementation?taskId=${task.id}`;
   if (isNcmrReworkTask(task)) return `/ncmrs/${task.entity_id}/rework?taskId=${task.id}`;
+  if (String(task.entity_type || "").trim().toLowerCase() === "audit_finding" && ["audit_finding_response","audit_finding_verification"].includes(String(task.task_type || "").trim().toLowerCase())) {
+    const parentAuditId = String(task.parent_audit_id || "").trim();
+    if (parentAuditId) return `/audits/${parentAuditId}/findings/${task.entity_id}/task?taskId=${task.id}`;
+  }
   if (task.entity_type === "ncmr") return `/ncmrs/${task.entity_id}`;
   if (task.entity_type === "capa") return `/capa/${task.entity_id}`;
   if (task.entity_type === "change_control") return `/change-control/${task.entity_id}`;
