@@ -598,6 +598,15 @@ export default function AuditDetailPage() {
       : { closure_approval_status:"rejected", closure_decision_comment:reviewerComment, status:"execution_complete" };
     const { error: auditError } = await supabase.from("audits").update(auditUpdate).eq("id", id).eq("tenant_id", audit.tenant_id);
     if (auditError) return setClosureMessage(auditError.message);
+    if (decision === "approved") {
+      const { error: staleReturnError } = await supabase.from("approval_tasks").update({
+        status: "completed",
+        completion_comment: "Superseded by final Audit closure approval.",
+        completed_by: currentUserEmail,
+        completed_at: now,
+      }).eq("entity_type", "audit").eq("entity_id", id).eq("task_type", "audit_closure_rework").eq("status", "pending");
+      if (staleReturnError) return setClosureMessage(`Audit closure approved, but owner return-task cleanup failed: ${staleReturnError.message}`);
+    }
     if (decision === "rejected") {
       const returnOwner = String(audit.closure_submitted_by || task.assigned_by_email || "").trim().toLowerCase();
       if (!returnOwner) return setClosureMessage("Audit closure was rejected, but the original submitter could not be identified for return.");
