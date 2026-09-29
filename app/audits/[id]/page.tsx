@@ -512,8 +512,20 @@ export default function AuditDetailPage() {
     if (!ownerEmail) return setClosureMessage("Unable to identify the logged-in audit owner.");
     if (approver === ownerEmail) return setClosureMessage("Closure approver must be different from the submitting audit owner.");
 
-    const pending = closureTasks.find((t:any)=>t.status==="pending");
+    const pending = closureTasks.find((t:any)=>t.task_type==="audit_closure_approval" && t.status==="pending");
     if (pending) return setClosureMessage("A closure approval is already pending.");
+
+    const ownerReturnTasks = closureTasks.filter((t:any)=>t.task_type==="audit_closure_rework" && t.status==="pending" && (t.assigned_to_email || "").toLowerCase()===ownerEmail);
+    if (ownerReturnTasks.length > 0) {
+      const now = new Date().toISOString();
+      const { error: returnCompleteError } = await supabase.from("approval_tasks").update({
+        status: "completed",
+        completion_comment: "Audit closure rejection addressed and resubmitted for approval.",
+        completed_by: ownerEmail,
+        completed_at: now,
+      }).in("id", ownerReturnTasks.map((t:any)=>t.id));
+      if (returnCompleteError) return setClosureMessage(returnCompleteError.message);
+    }
 
     const {error:taskError}=await supabase.from("approval_tasks").insert({
       entity_type:"audit", entity_id:id, task_type:"audit_closure_approval",
@@ -555,6 +567,27 @@ export default function AuditDetailPage() {
       : { closure_approval_status:"rejected", closure_decision_comment:reviewerComment, status:"execution_complete" };
     const { error: auditError } = await supabase.from("audits").update(auditUpdate).eq("id", id).eq("tenant_id", audit.tenant_id);
     if (auditError) return setClosureMessage(auditError.message);
+    if (decision === "rejected") {
+      const returnOwner = String(audit.closure_submitted_by || task.assigned_by_email || "").trim().toLowerCase();
+      if (!returnOwner) return setClosureMessage("Audit closure was rejected, but the original submitter could not be identified for return.");
+      const existingReturn = closureTasks.find((t:any) => t.task_type === "audit_closure_rework" && t.status === "pending");
+      if (!existingReturn) {
+        const { error: returnTaskError } = await supabase.from("approval_tasks").insert({
+          entity_type: "audit",
+          entity_id: id,
+          task_type: "audit_closure_rework",
+          required_function: "Audit Owner",
+          assigned_to_email: returnOwner,
+          assigned_by_email: currentUserEmail,
+          status: "pending",
+          record_number: audit.audit_number,
+          task_title: `Audit Closure Rejected — Action Required — ${audit.audit_number || audit.audit_title}`,
+          task_instructions: `Audit closure was rejected by ${currentUserEmail}. Reviewer comment: ${reviewerComment}. Review the audit, address the rejection, and resubmit closure approval.`,
+          comments: reviewerComment,
+        });
+        if (returnTaskError) return setClosureMessage(`Audit closure was rejected, but the return-to-owner task could not be created: ${returnTaskError.message}`);
+      }
+    }
     await supabase.rpc("qualisphere_add_audit_log",{p_entity_type:"audit",p_entity_id:id,p_action:`audit_closure_${decision}`,p_details:`Audit closure ${decision} by ${currentUserEmail}. Comment: ${reviewerComment || "N/A"}`});
     setClosureMessage(`Audit closure ${decision}.`);
     setReviewerComment("");
