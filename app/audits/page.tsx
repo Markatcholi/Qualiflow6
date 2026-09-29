@@ -116,10 +116,15 @@ export default function AuditsPage() {
 
     if (!auditObjectives.trim()) { alert("Audit objectives are required."); return; }
 
+    const { data: userData } = await supabase.auth.getUser();
+    const ownerEmail = String(userData?.user?.email || "").trim().toLowerCase();
+    if (!ownerEmail) return alert("You must be signed in to create an audit.");
+
     const { data, error } = await supabase
       .from("audits")
       .insert({
         tenant_id: tenantId,
+        owner_email: ownerEmail,
         audit_title: auditTitle,
         audit_type: auditType,
         audit_objectives: auditObjectives,
