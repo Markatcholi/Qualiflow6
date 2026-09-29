@@ -565,7 +565,8 @@ export default function MyApprovalTasksPage() {
               ncmrMrbApproval ||
               managementReviewApproval ||
               changeControlApproval ||
-              auditClosureApproval;
+              auditClosureApproval ||
+              auditFindingTask;
             const ownedCapaWork =
               task.workspace_item_type === "owned_capa";
             const ownedAuditWork = task.workspace_item_type === "owned_audit";
