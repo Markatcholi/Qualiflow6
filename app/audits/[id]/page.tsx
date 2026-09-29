@@ -860,12 +860,39 @@ export default function AuditDetailPage() {
         <p><strong>Submitted By:</strong> {audit.closure_submitted_by || "N/A"}</p>
         <p><strong>Submitted At:</strong> {audit.closure_submitted_at || "N/A"}</p>
         <p><strong>Closure Approver:</strong> {audit.closure_approver_email || "N/A"}</p>
-        {closureTasks.length > 0 && (
-          <div style={{marginBottom:"12px"}}>
-            <h3>Reviewer Approval Status</h3>
-            {closureTasks.map((task:any)=><p key={task.id}><strong>{task.assigned_to_email}</strong> — <StatusBadge status={task.status}/>{task.signed_at ? ` — ${task.signed_at}` : ""}{task.approver_comment ? ` — ${task.approver_comment}` : ""}</p>)}
-          </div>
-        )}
+        {(() => {
+          const currentClosureTask = closureTasks
+            .filter((task:any) => task.task_type === "audit_closure_approval")
+            .sort((a:any,b:any) => String(b.created_at || "").localeCompare(String(a.created_at || "")))[0];
+          if (!currentClosureTask) return null;
+          return (
+            <div style={{marginBottom:"12px"}}>
+              <h3>Reviewer Approval Status</h3>
+              <div style={{overflowX:"auto"}}>
+                <table style={{width:"100%",borderCollapse:"collapse",border:"1px solid #dbe3ee"}}>
+                  <thead>
+                    <tr>
+                      <th style={{padding:"9px",textAlign:"left",background:"#f8fafc",borderBottom:"1px solid #dbe3ee"}}>Function</th>
+                      <th style={{padding:"9px",textAlign:"left",background:"#f8fafc",borderBottom:"1px solid #dbe3ee"}}>Approver</th>
+                      <th style={{padding:"9px",textAlign:"left",background:"#f8fafc",borderBottom:"1px solid #dbe3ee"}}>Email</th>
+                      <th style={{padding:"9px",textAlign:"left",background:"#f8fafc",borderBottom:"1px solid #dbe3ee"}}>Status</th>
+                      <th style={{padding:"9px",textAlign:"left",background:"#f8fafc",borderBottom:"1px solid #dbe3ee"}}>Decision Date</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td style={{padding:"9px"}}>{currentClosureTask.required_function || "Audit Closure Approver"}</td>
+                      <td style={{padding:"9px"}}>{currentClosureTask.assigned_to_name || currentClosureTask.assigned_to_email?.split("@")[0] || "—"}</td>
+                      <td style={{padding:"9px"}}>{currentClosureTask.assigned_to_email || "—"}</td>
+                      <td style={{padding:"9px"}}><StatusBadge status={currentClosureTask.status}/></td>
+                      <td style={{padding:"9px"}}>{currentClosureTask.signed_at ? new Date(currentClosureTask.signed_at).toLocaleString() : "—"}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          );
+        })()}
         {!isLocked && audit.closure_approval_status !== "pending" && audit.closure_approval_status !== "approved" && (
           <>
             <FormField label="Closure Approver Email"><input type="email" value={closureApproverEmail} onChange={(e)=>setClosureApproverEmail(e.target.value)} style={inputStyle}/></FormField>
