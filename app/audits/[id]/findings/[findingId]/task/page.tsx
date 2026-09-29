@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
-import { supabase } from "../../../../../lib/supabaseClient";
+import { supabase } from "../../../../../../lib/supabaseClient";
 
 export default function AuditFindingTaskPage() {
   const params = useParams<{ id: string; findingId: string }>();
