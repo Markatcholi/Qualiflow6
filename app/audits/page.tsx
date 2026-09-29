@@ -41,6 +41,7 @@ export default function AuditsPage() {
   const [auditObjectives, setAuditObjectives] = useState("");
   const [auditScope, setAuditScope] = useState("");
   const [auditor, setAuditor] = useState("");
+  const [auditUsers, setAuditUsers] = useState<string[]>([]);
   const [auditDate, setAuditDate] = useState("");
 
 
@@ -86,6 +87,14 @@ export default function AuditsPage() {
 
     setAudits((auditRes.data as Audit[]) || []);
     setFindings((findingRes.data as AuditFinding[]) || []);
+
+    const membershipRes = await supabase
+      .from("tenant_memberships")
+      .select("user_email")
+      .eq("tenant_id", tenantId)
+      .eq("membership_status", "active")
+      .order("user_email", { ascending: true });
+    if (!membershipRes.error) setAuditUsers((membershipRes.data || []).map((u:any) => String(u.user_email || "").toLowerCase()).filter(Boolean));
   };
 
   const addAuditLog = async (
@@ -115,10 +124,8 @@ export default function AuditsPage() {
     }
 
     if (!auditObjectives.trim()) { alert("Audit objectives are required."); return; }
-
-    const { data: userData } = await supabase.auth.getUser();
-    const ownerEmail = String(userData?.user?.email || "").trim().toLowerCase();
-    if (!ownerEmail) return alert("You must be signed in to create an audit.");
+    const ownerEmail = String(auditor || "").trim().toLowerCase();
+    if (!ownerEmail) return alert("Audit Owner / Lead Auditor is required.");
 
     const { data, error } = await supabase
       .from("audits")
@@ -129,7 +136,9 @@ export default function AuditsPage() {
         audit_type: auditType,
         audit_objectives: auditObjectives,
         audit_scope: auditScope,
-        auditor,
+        auditor: ownerEmail,
+        lead_auditor: ownerEmail,
+        lead_auditor_email: ownerEmail,
         audit_date: auditDate || null,
         status: "open",
       })
@@ -343,14 +352,12 @@ export default function AuditsPage() {
         </div>
 
         <div style={rowStyle}>
-          <label>Auditor</label>
+          <label>Audit Owner / Lead Auditor</label>
           <br />
-          <input
-            value={auditor}
-            onChange={(e) => setAuditor(e.target.value)}
-            placeholder="Auditor name"
-            style={fieldStyle}
-          />
+          <select value={auditor} onChange={(e) => setAuditor(e.target.value)} style={fieldStyle}>
+            <option value="">Select responsible user</option>
+            {auditUsers.map((email) => <option key={email} value={email}>{email}</option>)}
+          </select>
         </div>
 
         <div style={rowStyle}>
