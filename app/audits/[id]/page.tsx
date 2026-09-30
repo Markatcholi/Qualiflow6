@@ -294,7 +294,7 @@ export default function AuditDetailPage() {
         entity_type:"audit_finding", entity_id:finding.id, task_type:"audit_finding_verification",
         required_function:"Lead Auditor", assigned_to_email:verifierEmail, assigned_by_email:currentUserEmail || null,
         status:"pending", due_date:finding.response_due_date || null, record_number:audit.audit_number,
-        task_title:`Audit Finding Verification — ${audit.audit_number || audit.audit_title}`,
+        task_title:`Audit Finding Response Verification — ${audit.audit_number || audit.audit_title}`,
         task_instructions:`Review the submitted response, correction, corrective action, and escalation evaluation for finding: ${finding.finding_title}. Accept and close or return for additional action.`
       });
       if (verificationTaskError) return setResponseMessages({...responseMessages,[finding.id]:verificationTaskError.message});
@@ -338,22 +338,42 @@ export default function AuditDetailPage() {
       .eq("id",finding.id).eq("tenant_id",audit.tenant_id);
     if (error) return setVerificationMessages({...verificationMessages,[finding.id]:error.message});
 
-    await supabase.from("approval_tasks").update({
+    const { error:verificationTaskUpdateError } = await supabase.from("approval_tasks").update({
       status: decision === "accept" ? "completed" : "rejected",
       approver_comment: notes,
       signed_by: email,
       signed_at: now,
       signature_meaning: decision === "accept" ? "Audit finding response verified and accepted." : "Audit finding response returned for additional action."
     }).eq("id",verificationTask.id);
+    if (verificationTaskUpdateError) return setVerificationMessages({...verificationMessages,[finding.id]:verificationTaskUpdateError.message});
+
+    if (decision === "return") {
+      const findingOwner = String(finding.finding_owner || "").trim().toLowerCase();
+      if (!findingOwner) return setVerificationMessages({...verificationMessages,[finding.id]:"Finding was returned, but Finding Owner email is missing."});
+      const { data:existingResponseTask, error:existingResponseTaskError } = await supabase.from("approval_tasks")
+        .select("id").eq("entity_type","audit_finding").eq("entity_id",finding.id)
+        .eq("task_type","audit_finding_response").eq("status","pending").maybeSingle();
+      if (existingResponseTaskError) return setVerificationMessages({...verificationMessages,[finding.id]:`Finding was returned, but QualiSphere could not check the Finding Owner task: ${existingResponseTaskError.message}`});
+      if (!existingResponseTask) {
+        const { error:returnTaskError } = await supabase.from("approval_tasks").insert({
+          entity_type:"audit_finding", entity_id:finding.id, task_type:"audit_finding_response",
+          required_function:"Finding Owner", assigned_to_email:findingOwner, assigned_by_email:email,
+          status:"pending", due_date:finding.response_due_date || null, record_number:audit.audit_number,
+          task_title:`Audit Finding Response — ${audit.audit_number || audit.audit_title}`,
+          task_instructions:`Finding returned by Lead Auditor for additional action. Response Verification Notes: ${notes}`
+        });
+        if (returnTaskError) return setVerificationMessages({...verificationMessages,[finding.id]:`Finding was returned, but the Finding Owner Workspace task could not be created: ${returnTaskError.message}`});
+      }
+    }
 
     await supabase.rpc("qualisphere_add_audit_log", {
       p_entity_type:"audit_finding", p_entity_id:finding.id,
       p_action:decision === "accept" ? "audit_finding_verified_closed" : "audit_finding_returned_for_action",
       p_details:decision === "accept"
-        ? `Finding verified and closed by ${email}. Verification: ${notes}`
+        ? `Finding response verified and finding closed by ${email}. Verification: ${notes}`
         : `Finding returned for additional action by ${email}. Verification: ${notes}`
     });
-    setVerificationMessages({...verificationMessages,[finding.id]:decision === "accept" ? "Finding verified and closed." : "Finding returned for additional action."});
+    setVerificationMessages({...verificationMessages,[finding.id]:decision === "accept" ? "Finding response verified and finding closed." : "Finding returned for additional action."});
     await fetchData();
   };
 
@@ -866,7 +886,7 @@ export default function AuditDetailPage() {
               </div>
 
               <div style={{ borderTop:"1px solid #e5e7eb", paddingTop:"12px", marginTop:"12px" }}>
-                <h4 style={{marginTop:0}}>5. Finding Verification</h4>
+                <h4 style={{marginTop:0}}>5. Response Verification</h4>
                 {f.finding_status === "closed" ? (
                   <>
                     <p><strong>Verification:</strong> <StatusBadge status="Verified / Closed" /></p>
@@ -890,7 +910,7 @@ export default function AuditDetailPage() {
                 )}
               </div>
 
-              <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: "12px", marginTop: "12px" }}><h4 style={{marginTop:0}}>Escalation Evaluation — Complete Before Finding Verification</h4><div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+              <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: "12px", marginTop: "12px" }}><h4 style={{marginTop:0}}>Escalation Evaluation — Complete Before Response Verification</h4><div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
                 <button type="button" onClick={() => createScarFromFinding(f)} disabled={isLocked || !!f.linked_scar_id}>
                   Create Linked SCAR
                 </button>
