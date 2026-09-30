@@ -823,6 +823,7 @@ export default function AuditDetailPage() {
                 style={standardTextareaStyle}
               />
             </FormField>
+            <div style={{marginBottom:14}}><strong>Audit Execution Evidence Attachments</strong>{attachmentList(audit.execution_attachments)}{!isLocked&&<input type="file" multiple onChange={e=>void uploadAuditFiles(e.target.files,"execution")}/>}</div>
             {!isLocked && <button type="button" onClick={saveAuditExecution} style={primaryButtonStyle}>Save Audit Execution</button>}
             {executionMessage && <p style={{fontWeight:600}}>{executionMessage}</p>}
           </>
@@ -866,7 +867,7 @@ export default function AuditDetailPage() {
                   <p><strong>Description:</strong> {f.finding_description}</p>
                   <p><strong>Classification:</strong> <StatusBadge status={f.finding_severity === "observation" ? "Observation" : f.finding_severity === "minor" ? "Minor Finding" : f.finding_severity === "major" ? "Major Finding" : f.finding_severity || "not set"} /></p>
                   <p><strong>Requirement / Clause:</strong> {f.clause_reference || "N/A"}</p>
-                  <p><strong>Objective Evidence:</strong> {f.evidence || "N/A"}</p>
+                  <p><strong>Objective Evidence:</strong> {f.evidence || "N/A"}</p><div style={{marginBottom:12}}><strong>Objective Evidence Attachments:</strong>{attachmentList(f.finding_attachments)}{!isLocked&&<input type="file" multiple onChange={e=>void uploadAuditFiles(e.target.files,"finding",f.id)}/>}</div>
                   <p><strong>Finding Owner:</strong> {f.finding_owner || "N/A"}</p>
                   <p><strong>Response Due Date:</strong> {f.response_due_date || "N/A"}</p>
                   <p><strong>Status:</strong> <StatusBadge status={f.finding_status || "open"} /></p>
