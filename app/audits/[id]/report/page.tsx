@@ -86,6 +86,31 @@ export default function AuditReportPage() {
     if (id) fetchReport();
   }, [id]);
 
+  const timezone = tenant?.default_timezone || "UTC";
+  const formatDate = (value: any) => {
+    if (!value) return "N/A";
+    const raw = String(value);
+    const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(raw);
+    const d = dateOnly ? new Date(raw + "T12:00:00Z") : new Date(raw);
+    if (Number.isNaN(d.getTime())) return raw;
+    const parts = new Intl.DateTimeFormat("en-US", { timeZone: dateOnly ? "UTC" : timezone, day:"2-digit", month:"short", year:"numeric" }).formatToParts(d);
+    const get = (type:string) => parts.find(p=>p.type===type)?.value || "";
+    return get("day") + "-" + get("month") + "-" + get("year");
+  };
+  const formatDateTime = (value: any) => {
+    if (!value) return "N/A";
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return String(value);
+    const date = formatDate(value);
+    const time = new Intl.DateTimeFormat("en-US", { timeZone: timezone, hour:"numeric", minute:"2-digit", timeZoneName:"short" }).format(d);
+    return date + " " + time;
+  };
+  const workflowLabel = (value:any) => {
+    const v=String(value||"");
+    const labels:Record<string,string>={internal_audit:"Internal Audit",supplier_audit:"Supplier Audit",process_audit:"Process Audit",qms_audit:"QMS Audit",regulatory_audit:"Regulatory Audit",completed:"Accepted",rejected:"Returned for Additional Action",observation:"Observation",minor:"Minor",major:"Major",closed:"Closed",approved:"Approved",pending:"Pending"};
+    return labels[v] || v.replace(/_/g," ").replace(/\b\w/g,m=>m.toUpperCase());
+  };
+
   if (loading) return <main style={{ padding: "20px" }}>Loading audit report...</main>;
   if (!audit) return <main style={{ padding: "20px" }}>Audit record not found.</main>;
 
@@ -108,7 +133,7 @@ export default function AuditReportPage() {
           <div><strong>Status:</strong> {displayValue(audit.status)}</div>
         </div>
         <div style={{ textAlign: "right" }}>
-          <div><strong>Generated:</strong> {new Date().toISOString()}</div>
+          <div><strong>Generated:</strong> {formatDateTime(new Date().toISOString())}</div>
           <div><strong>QMS Record Type:</strong> Audit Report</div>
           <div><strong>Print Use:</strong> Audit / controlled record review</div>
         </div>
@@ -119,14 +144,14 @@ export default function AuditReportPage() {
         <div style={gridStyle}>
           <Field label="Audit Number" value={audit.audit_number} />
           <Field label="Audit Title" value={audit.audit_title} />
-          <Field label="Audit Type" value={audit.audit_type} />
+          <Field label="Audit Type" value={workflowLabel(audit.audit_type)} />
           <Field label="Audit Owner / Lead Auditor" value={audit.lead_auditor || audit.owner_email || audit.auditor} />
           <Field label="Lead Auditor Email" value={audit.lead_auditor_email || audit.owner_email} />
           <Field label="Audit Team" value={audit.audit_team} />
-          <Field label="Planned Start" value={audit.scheduled_start_date || audit.audit_date} />
-          <Field label="Planned End" value={audit.scheduled_end_date} />
-          <Field label="Status" value={audit.status} />
-          <Field label="Created At" value={audit.created_at} />
+          <Field label="Planned Start" value={formatDate(audit.scheduled_start_date || audit.audit_date)} />
+          <Field label="Planned End" value={formatDate(audit.scheduled_end_date)} />
+          <Field label="Status" value={workflowLabel(audit.status)} />
+          <Field label="Created At" value={formatDateTime(audit.created_at)} />
         </div>
         <Field label="Audit Objectives" value={audit.audit_objectives} />
         <Field label="Audit Scope" value={audit.audit_scope} />
@@ -135,7 +160,7 @@ export default function AuditReportPage() {
 
       <section style={sectionStyle}>
         <h2>2. Audit Execution</h2>
-        <div style={gridStyle}><Field label="Actual Start" value={audit.actual_start_date} /><Field label="Actual End" value={audit.actual_end_date} /></div>
+        <div style={gridStyle}><Field label="Actual Start" value={formatDate(audit.actual_start_date)} /><Field label="Actual End" value={formatDate(audit.actual_end_date)} /></div>
         <Field label="Execution Notes / Evidence Reviewed" value={audit.execution_notes} />
       </section>
 
@@ -160,11 +185,11 @@ export default function AuditReportPage() {
             <section key={finding.id} style={{ ...sectionStyle, marginTop: "10px" }}>
               <h3>Finding {index + 1}: {finding.finding_title}</h3>
               <Field label="Finding Description" value={finding.finding_description} />
-              <Field label="Severity" value={finding.finding_severity} />
+              <Field label="Classification" value={workflowLabel(finding.finding_severity)} />
               <Field label="Clause / Requirement Reference" value={finding.clause_reference} />
               <Field label="Evidence" value={finding.evidence} />
               <Field label="Finding Owner" value={finding.finding_owner} />
-              <Field label="Response Due Date" value={finding.response_due_date} />
+              <Field label="Response Due Date" value={formatDate(finding.response_due_date)} />
               <Field label="Auditee Response" value={finding.auditee_response} />
               <Field label="Correction / Immediate Action" value={finding.correction} />
               <Field label="Corrective Action" value={finding.corrective_action} />
@@ -172,13 +197,13 @@ export default function AuditReportPage() {
               <Field label="Linked SCAR" value={finding.linked_scar_id} />
               <Field label="Risk-Based Escalation Justification" value={finding.escalation_justification} />
               <h4>Response Verification History</h4>
-              {tasks.filter((t:any)=>t.entity_type==="audit_finding"&&t.entity_id===finding.id&&t.task_type==="audit_finding_verification").map((t:any,n:number)=><div key={t.id} style={signatureStyle}><strong>Verification Cycle {n+1}</strong><Field label="Lead Auditor" value={t.assigned_to_email}/><Field label="Decision" value={t.status}/><Field label="Decision Date" value={t.signed_at || t.completed_at}/><Field label="Verification Notes" value={t.approver_comment}/><Field label="Signature Meaning" value={t.signature_meaning}/></div>)}
+              {tasks.filter((t:any)=>t.entity_type==="audit_finding"&&t.entity_id===finding.id&&t.task_type==="audit_finding_verification").map((t:any,n:number)=><div key={t.id} style={signatureStyle}><strong>Verification Cycle {n+1}</strong><Field label="Lead Auditor" value={t.assigned_to_email}/><Field label="Decision" value={workflowLabel(t.status)}/><Field label="Decision Date" value={formatDateTime(t.signed_at || t.completed_at)}/><Field label="Verification Notes" value={t.approver_comment}/><Field label="Signature Meaning" value={t.signature_meaning}/></div>)}
               <Field label="Final Verification Notes" value={finding.verification_notes} />
               <Field label="Final Verified By" value={finding.verified_by} />
-              <Field label="Final Verified At" value={finding.verified_at} />
+              <Field label="Final Verified At" value={formatDateTime(finding.verified_at)} />
               <Field label="Finding Status" value={finding.finding_status} />
-              <Field label="Closed At" value={finding.closed_at} />
-              <Field label="Created At" value={finding.created_at} />
+              <Field label="Closed At" value={formatDateTime(finding.closed_at)} />
+              <Field label="Created At" value={formatDateTime(finding.created_at)} />
             </section>
           ))
         )}
@@ -187,14 +212,14 @@ export default function AuditReportPage() {
       <section style={sectionStyle}>
         <h2>5. Audit Closure Approval / Electronic Signature</h2>
         <div style={signatureStyle}>
-          <Field label="Closure Approval Status" value={audit.closure_approval_status} />
+          <Field label="Closure Approval Status" value={workflowLabel(audit.closure_approval_status)} />
           <Field label="Closure Submitted By" value={audit.closure_submitted_by} />
-          <Field label="Closure Submitted At" value={audit.closure_submitted_at} />
+          <Field label="Closure Submitted At" value={formatDateTime(audit.closure_submitted_at)} />
           <Field label="Closure Approver" value={audit.closure_approver_email} />
           <Field label="Closed By" value={audit.closed_by} />
-          <Field label="Closed At" value={audit.closed_at} />
+          <Field label="Closed At" value={formatDateTime(audit.closed_at)} />
           <Field label="Signed By" value={audit.signed_by} />
-          <Field label="Signed At" value={audit.signed_at} />
+          <Field label="Signed At" value={formatDateTime(audit.signed_at)} />
           <Field label="Signature Email Entered" value={audit.signature_email_entered} />
           <Field label="Signature Meaning" value={audit.signature_meaning} />
           <Field label="Authentication Method" value="Active authenticated session with email re-entry confirmation" />
@@ -208,7 +233,7 @@ export default function AuditReportPage() {
         ) : (
           auditLogs.map((log) => (
             <div key={log.id} style={{ borderTop: "1px solid #ddd", paddingTop: "8px", marginTop: "8px" }}>
-              <Field label="Date / Time" value={log.created_at} />
+              <Field label="Date / Time" value={formatDateTime(log.created_at)} />
               <Field label="User" value={log.user_email} />
               <Field label="Action" value={log.action} />
               <Field label="Details" value={log.details} />
@@ -218,7 +243,7 @@ export default function AuditReportPage() {
       </section>
 
       <footer className="print-footer">
-        Audit Controlled Record | {audit.audit_number || audit.id} | Generated {new Date().toISOString()}
+        Audit Controlled Record | {audit.audit_number || audit.id} | Generated {formatDateTime(new Date().toISOString())}
       </footer>
 
       <style jsx global>{`
