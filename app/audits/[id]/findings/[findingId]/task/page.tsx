@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { supabase } from "../../../../../../lib/supabaseClient";
 
 export default function AuditFindingTaskPage() {
@@ -86,10 +87,10 @@ export default function AuditFindingTaskPage() {
   if(!task||!finding||!audit)return <main style={page}><h1>Audit Finding Task</h1><p>{message||"Loading assigned finding..."}</p></main>;
   const responseTask=task.task_type==="audit_finding_response";
   return <main style={page}>
-    <a href="/my-approval-tasks">← Back to My Workspace</a>
+    <Link href="/workspace">← Back to My Workspace</Link>
     <h1>Audit Finding Task</h1>
     <section style={card}><h2>{audit.audit_number} — {audit.audit_title}</h2><p><b>Audit Type:</b> {audit.audit_type||"N/A"}</p><p><b>Audit Scope:</b> {audit.audit_scope||"N/A"}</p><p><b>Audit Criteria:</b> {audit.audit_criteria||"N/A"}</p><p><b>Lead Auditor:</b> {audit.lead_auditor||"N/A"}</p></section>
-    <section style={card}><h2>{finding.finding_title}</h2><p><b>Classification:</b> {finding.finding_severity}</p><p><b>Requirement / Clause:</b> {finding.clause_reference}</p><p><b>Objective Evidence:</b> {finding.evidence}</p><p><b>Finding:</b> {finding.finding_description}</p><p><b>Finding Owner:</b> {finding.finding_owner}</p><p><b>Response Due:</b> {finding.response_due_date||"N/A"}</p></section>
+    <section style={card}><h2>{finding.finding_title}</h2><p><b>Classification:</b> {finding.finding_severity}</p><p><b>Requirement / Clause:</b> {finding.clause_reference}</p><p><b>Objective Evidence:</b> {finding.evidence}</p><p><b>Finding:</b> {finding.finding_description}</p><p><b>Finding Owner:</b> {finding.finding_owner}</p><p><b>Response Due:</b> {finding.response_due_date||"N/A"}</p>{task.task_instructions&&<><p><b>Task Instructions:</b></p><div style={instructionBox}>{task.task_instructions}</div></>}</section>
     {responseTask?<section style={card}><h2>Finding Response / Corrective Action</h2><label>Auditee Response</label><textarea style={field} rows={4} disabled={task.status!=="pending"} value={response.auditee_response} onChange={e=>setResponse({...response,auditee_response:e.target.value})}/><label>Correction / Immediate Action</label><textarea style={field} rows={4} disabled={task.status!=="pending"} value={response.correction} onChange={e=>setResponse({...response,correction:e.target.value})}/><label>Corrective Action{finding.finding_severity==="observation"?" (Optional for Observation)":""}</label><textarea style={field} rows={4} disabled={task.status!=="pending"} value={response.corrective_action} onChange={e=>setResponse({...response,corrective_action:e.target.value})}/>{task.status==="pending"?<button onClick={submit} style={button}>Submit Response for Verification</button>:<p><b>Status:</b> {task.status}</p>}</section>:<><section style={card}><h2>Submitted Finding Response</h2><p><b>Auditee Response:</b> {finding.auditee_response||"N/A"}</p><p><b>Correction / Immediate Action:</b> {finding.correction||"N/A"}</p><p><b>Corrective Action:</b> {finding.corrective_action||"N/A"}</p></section><section style={card}><h2>Escalation Evaluation</h2><p><b>Linked SCAR:</b> {finding.linked_scar_id||"Not opened"}</p><p><b>Linked CAPA:</b> {finding.linked_capa_id||"Not opened"}</p><label>Risk-Based Justification if SCAR/CAPA is Not Opened</label><textarea style={field} rows={4} disabled={task.status!=="pending"} value={escalationJustification} onChange={e=>setEscalationJustification(e.target.value)}/>{task.status==="pending"&&<button onClick={saveEscalationJustification}>Save Escalation Justification</button>}<p style={{fontSize:13,color:"#475569"}}>Major Findings require linked CAPA/SCAR or saved risk-based justification before response verification. CAPA/SCAR initiation remains available from the owned Audit workflow.</p></section><section style={card}><h2>Response Verification</h2><label>Verification Notes</label><textarea style={field} rows={4} disabled={task.status!=="pending"} value={verificationNotes} onChange={e=>setVerificationNotes(e.target.value)}/>{task.status==="pending"?<div style={{display:"flex",gap:8,flexWrap:"wrap"}}><button onClick={()=>verify("accept")} style={button}>Accept & Close Finding</button><button onClick={()=>verify("return")}>Return for Additional Action</button></div>:<p><b>Status:</b> {task.status}</p>}</section></>}
     {message&&<p><b>{message}</b></p>}
   </main>;
@@ -97,4 +98,5 @@ export default function AuditFindingTaskPage() {
 const page:React.CSSProperties={maxWidth:1000,margin:"0 auto",padding:24,fontFamily:"Arial, sans-serif"};
 const card:React.CSSProperties={border:"1px solid #dbe3ee",borderRadius:12,padding:18,marginTop:16,background:"#fff"};
 const field:React.CSSProperties={display:"block",width:"100%",boxSizing:"border-box",padding:10,margin:"6px 0 14px",border:"1px solid #cbd5e1",borderRadius:8};
+const instructionBox:React.CSSProperties={whiteSpace:"pre-wrap",background:"#f8fafc",border:"1px solid #cbd5e1",borderRadius:8,padding:12,marginTop:6,marginBottom:8};
 const button:React.CSSProperties={background:"#2563eb",color:"#fff",border:0,borderRadius:8,padding:"10px 14px",fontWeight:800,cursor:"pointer"};
