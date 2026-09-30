@@ -226,6 +226,34 @@ export default function AuditsPage() {
     fetchData();
   }, []);
 
+  const formatDate = (value: string | null) => {
+    if (!value) return "N/A";
+    const raw = String(value);
+    const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(raw);
+    const d = dateOnly ? new Date(raw + "T12:00:00Z") : new Date(raw);
+    if (Number.isNaN(d.getTime())) return raw;
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: dateOnly ? "UTC" : undefined,
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    }).formatToParts(d);
+    const get = (type: string) => parts.find((p) => p.type === type)?.value || "";
+    return `${get("day")}-${get("month")}-${get("year")}`;
+  };
+
+  const workflowLabel = (value: string | null) => {
+    const v = String(value || "");
+    const labels: Record<string,string> = {
+      internal_audit:"Internal Audit", supplier_audit:"Supplier Audit",
+      process_audit:"Process Audit", qms_audit:"QMS Audit",
+      regulatory_audit:"Regulatory Audit", in_progress:"In Progress",
+      open:"Open", closed:"Closed", planned:"Planned",
+      execution_complete:"Execution Complete"
+    };
+    return labels[v] || v.replace(/_/g," ").replace(/\b\w/g,(m)=>m.toUpperCase());
+  };
+
   const findingsForAudit = (auditId: string) => {
     return findings.filter((f) => f.audit_id === auditId);
   };
@@ -478,10 +506,10 @@ export default function AuditsPage() {
 
                     <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
                       <span style={{ ...badgeStyle, background: auditStatusColor(audit.status) }}>
-                        {audit.status || "unknown"}
+                        {workflowLabel(audit.status) || "Unknown"}
                       </span>
                       <span style={{ ...badgeStyle, background: "#2563eb" }}>
-                        {audit.audit_type || "type_not_set"}
+                        {workflowLabel(audit.audit_type) || "Type Not Set"}
                       </span>
                       {openFindings.length > 0 ? (
                         <span style={{ ...badgeStyle, background: "#f59e0b" }}>
@@ -506,7 +534,7 @@ export default function AuditsPage() {
                     }}
                   >
                     <div><strong>Auditor:</strong> {audit.auditor || "N/A"}</div>
-                    <div><strong>Audit Date:</strong> {audit.audit_date || "N/A"}</div>
+                    <div><strong>Audit Date:</strong> {formatDate(audit.audit_date)}</div>
                     <div><strong>Total Findings:</strong> {auditFindings.length}</div>
                     <div><strong>Open Findings:</strong> {openFindings.length}</div>
                   </div>
