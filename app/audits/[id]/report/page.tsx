@@ -105,6 +105,16 @@ export default function AuditReportPage() {
     const time = new Intl.DateTimeFormat("en-US", { timeZone: timezone, hour:"numeric", minute:"2-digit", timeZoneName:"short" }).format(d);
     return date + " " + time;
   };
+  const openAttachment = async (a:any) => {
+    const {data,error}=await supabase.storage.from("audit-evidence").createSignedUrl(a.storage_path,300);
+    if(error) return alert(error.message);
+    window.open(data.signedUrl,"_blank","noopener,noreferrer");
+  };
+  const AttachmentList=({items}:{items:any})=>{
+    const rows=Array.isArray(items)?items:[];
+    if(!rows.length)return <p>N/A</p>;
+    return <div>{rows.map((a:any,i:number)=><div key={i} style={{marginBottom:6}}><button className="no-print" onClick={()=>void openAttachment(a)}>{a.file_name||"Open attachment"}</button><span className="print-only">{a.file_name||a.storage_path}</span>{a.uploaded_by&&<span> — uploaded by {a.uploaded_by} {a.uploaded_at?formatDateTime(a.uploaded_at):""}</span>}</div>)}</div>;
+  };
   const workflowLabel = (value:any) => {
     const v=String(value||"");
     const labels:Record<string,string>={internal_audit:"Internal Audit",supplier_audit:"Supplier Audit",process_audit:"Process Audit",qms_audit:"QMS Audit",regulatory_audit:"Regulatory Audit",completed:"Accepted",rejected:"Returned for Additional Action",observation:"Observation",minor:"Minor",major:"Major",closed:"Closed",approved:"Approved",pending:"Pending"};
@@ -162,6 +172,7 @@ export default function AuditReportPage() {
         <h2>2. Audit Execution</h2>
         <div style={gridStyle}><Field label="Actual Start" value={formatDate(audit.actual_start_date)} /><Field label="Actual End" value={formatDate(audit.actual_end_date)} /></div>
         <Field label="Execution Notes / Evidence Reviewed" value={audit.execution_notes} />
+        <h3>Audit Execution Evidence Attachments</h3><AttachmentList items={audit.execution_attachments}/>
       </section>
 
       <section style={sectionStyle}>
@@ -187,12 +198,14 @@ export default function AuditReportPage() {
               <Field label="Finding Description" value={finding.finding_description} />
               <Field label="Classification" value={workflowLabel(finding.finding_severity)} />
               <Field label="Clause / Requirement Reference" value={finding.clause_reference} />
-              <Field label="Evidence" value={finding.evidence} />
+              <Field label="Objective Evidence" value={finding.evidence} />
+              <h4>Finding Objective Evidence Attachments</h4><AttachmentList items={finding.finding_attachments}/>
               <Field label="Finding Owner" value={finding.finding_owner} />
               <Field label="Response Due Date" value={formatDate(finding.response_due_date)} />
               <Field label="Auditee Response" value={finding.auditee_response} />
               <Field label="Correction / Immediate Action" value={finding.correction} />
               <Field label="Corrective Action" value={finding.corrective_action} />
+              <h4>Finding Response / Corrective Action Evidence</h4><AttachmentList items={finding.response_attachments}/>
               <Field label="Linked CAPA" value={finding.linked_capa_id} />
               <Field label="Linked SCAR" value={finding.linked_scar_id} />
               <Field label="Risk-Based Escalation Justification" value={finding.escalation_justification} />
@@ -247,10 +260,10 @@ export default function AuditReportPage() {
       </footer>
 
       <style jsx global>{`
+        .print-only { display: none; }
         @media print {
-          .no-print {
-            display: none !important;
-          }
+          .no-print { display: none !important; }
+          .print-only { display: inline !important; }
 
           body {
             color: black;
