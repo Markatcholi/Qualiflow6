@@ -55,7 +55,8 @@ export default function AuditFindingTaskPage() {
     const {error}=await supabase.from("audit_findings").update({escalation_justification:escalationJustification.trim()||null}).eq("id",finding.id).eq("tenant_id",finding.tenant_id);
     if(error)return setMessage(error.message);
     await supabase.rpc("qualisphere_add_audit_log",{p_entity_type:"audit_finding",p_entity_id:finding.id,p_action:"audit_finding_escalation_evaluation_updated",p_details:`Escalation evaluation updated by assigned Lead Auditor ${email}.`});
-    setFinding((current:any)=>current?{...current,escalation_justification:escalationJustification.trim()||null}:current);\n    setMessage("Escalation evaluation saved.");
+    setFinding((current:any)=>current?{...current,escalation_justification:escalationJustification.trim()||null}:current);
+    setMessage("Escalation evaluation saved.");
   };
 
   const verify=async(decision:"accept"|"return")=>{
