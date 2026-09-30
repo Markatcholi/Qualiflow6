@@ -39,6 +39,37 @@ export default function AuditDetailPage() {
   const [currentUserEmail, setCurrentUserEmail] = useState("");
   const [reviewerComment, setReviewerComment] = useState("");
   const [reviewerSignatureEmail, setReviewerSignatureEmail] = useState("");
+  const [uploadMessage,setUploadMessage]=useState("");
+
+  const uploadAuditFiles=async(files:FileList|null,kind:"execution"|"finding",findingId?:string)=>{
+    if(!files?.length||!audit||isLocked)return;
+    setUploadMessage("Uploading evidence...");
+    try{
+      const row=kind==="execution"?audit:findings.find((x:any)=>x.id===findingId);
+      const column=kind==="execution"?"execution_attachments":"finding_attachments";
+      const existing=Array.isArray(row?.[column])?row[column]:[];
+      const added:any[]=[];
+      for(const file of Array.from(files)){
+        const safe=file.name.replace(/[^a-zA-Z0-9._-]/g,"_");
+        const folder=kind==="execution"?`audits/${id}/execution`:`audits/${id}/findings/${findingId}/objective`;
+        const path=`tenant/${audit.tenant_id}/${folder}/${Date.now()}-${safe}`;
+        const {error:ue}=await supabase.storage.from("audit-evidence").upload(path,file,{upsert:false});
+        if(ue)throw ue;
+        added.push({file_name:file.name,storage_path:path,uploaded_by:currentUserEmail,uploaded_at:new Date().toISOString(),category:kind==="execution"?"audit_execution":"finding_objective"});
+      }
+      const next=[...existing,...added];
+      const query=kind==="execution"?supabase.from("audits").update({execution_attachments:next}).eq("id",id).eq("tenant_id",audit.tenant_id):supabase.from("audit_findings").update({finding_attachments:next}).eq("id",findingId!).eq("tenant_id",audit.tenant_id);
+      const {error}=await query;if(error)throw error;
+      await supabase.rpc("qualisphere_add_audit_log",{p_entity_type:kind==="execution"?"audit":"audit_finding",p_entity_id:kind==="execution"?id:findingId!,p_action:kind==="execution"?"audit_execution_evidence_uploaded":"audit_finding_evidence_uploaded",p_details:`${added.length} controlled evidence attachment(s) uploaded by ${currentUserEmail}.`});
+      setUploadMessage(`${added.length} evidence attachment(s) uploaded.`);await fetchData();
+    }catch(e:any){setUploadMessage(e?.message||"Evidence upload failed.");}
+  };
+  const openAuditAttachment=async(a:any)=>{
+    const {data,error}=await supabase.storage.from("audit-evidence").createSignedUrl(a.storage_path,300);
+    if(error)return setUploadMessage(error.message);
+    window.open(data.signedUrl,"_blank","noopener,noreferrer");
+  };
+  const attachmentList=(items:any)=>Array.isArray(items)&&items.length?items.map((a:any,i:number)=><div key={i}><button type="button" onClick={()=>void openAuditAttachment(a)}>{a.file_name||"Open attachment"}</button></div>):<p>No attachments.</p>;
 
   const fetchData = async () => {
     const tenantId = typeof window !== "undefined"
@@ -811,7 +842,7 @@ export default function AuditDetailPage() {
             </FormField>
             <FormField label="Finding Description"><textarea value={newFinding.finding_description} onChange={(e)=>setNewFinding({...newFinding,finding_description:e.target.value})} rows={4} style={standardTextareaStyle}/></FormField>
             <FormField label="Requirement / Clause Reference"><input value={newFinding.clause_reference} onChange={(e)=>setNewFinding({...newFinding,clause_reference:e.target.value})} style={inputStyle}/></FormField>
-            <FormField label="Objective Evidence"><textarea value={newFinding.evidence} onChange={(e)=>setNewFinding({...newFinding,evidence:e.target.value})} rows={4} style={standardTextareaStyle}/></FormField>
+            <FormField label="Objective Evidence"><textarea value={newFinding.evidence} onChange={(e)=>setNewFinding({...newFinding,evidence:e.target.value})} rows={4} style={standardTextareaStyle}/></FormField><div style={{marginTop:12}}><strong>Finding Objective Evidence Attachments</strong><p style={{fontSize:13}}>Attach files after creating the finding from the finding record below.</p></div>
             <div style={twoColumnStyle}>
               <FormField label="Finding Owner"><input value={newFinding.finding_owner} onChange={(e)=>setNewFinding({...newFinding,finding_owner:e.target.value})} style={inputStyle}/></FormField>
               <FormField label="Response Due Date"><input type="date" value={newFinding.response_due_date} onChange={(e)=>setNewFinding({...newFinding,response_due_date:e.target.value})} style={inputStyle}/></FormField>
