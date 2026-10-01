@@ -913,8 +913,11 @@ export default function AuditDetailPage() {
 
       <section style={sectionStyle}>
         <h2 style={{ marginTop: 0 }}>3. Findings</h2>
-        {!isLocked && (
-          <div style={{ border:"1px solid #d1d5db", borderRadius:"10px", padding:"14px", marginBottom:"18px", background:"#f9fafb" }}>
+        {!isLocked && audit?.closure_approval_status !== "pending" && (
+          <>
+            {findings.length > 0 && !showFindingForm && <button type="button" onClick={()=>setShowFindingForm(true)} style={{...primaryButtonStyle,marginBottom:"14px"}}>Add Another Finding</button>}
+            {(findings.length === 0 || showFindingForm) && (
+            <div style={{ border:"1px solid #d1d5db", borderRadius:"10px", padding:"14px", marginBottom:"18px", background:"#f9fafb" }}>
             <h3 style={{marginTop:0}}>Add Audit Finding</h3>
             <FormField label="Finding Title"><input value={newFinding.finding_title} onChange={(e)=>setNewFinding({...newFinding,finding_title:e.target.value})} style={inputStyle}/></FormField>
             <FormField label="Finding Classification">
@@ -931,8 +934,11 @@ export default function AuditDetailPage() {
               <FormField label="Response Due Date"><input type="date" value={newFinding.response_due_date} onChange={(e)=>setNewFinding({...newFinding,response_due_date:e.target.value})} style={inputStyle}/></FormField>
             </div>
             <button type="button" disabled={creatingFinding} onClick={addAuditFinding} style={primaryButtonStyle}>{creatingFinding ? "Creating Finding..." : "Add Finding"}</button>
+            {findings.length > 0 && <button type="button" disabled={creatingFinding} onClick={()=>{setShowFindingForm(false);setFindingMessage("");}} style={{...secondaryButtonStyle,marginLeft:"8px"}}>Cancel</button>}
             {findingMessage && <p style={{fontWeight:600}}>{findingMessage}</p>}
-          </div>
+            </div>
+            )}
+          </>
         )}
 
         {findings.length === 0 ? (
