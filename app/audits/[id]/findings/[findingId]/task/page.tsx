@@ -36,7 +36,8 @@ export default function AuditFindingTaskPage() {
       const {error}=await supabase.from("audit_findings").update({response_attachments:next}).eq("id",finding.id).eq("tenant_id",finding.tenant_id);
       if(error) throw error;
       await supabase.rpc("qualisphere_add_audit_log",{p_entity_type:"audit_finding",p_entity_id:finding.id,p_action:"audit_finding_response_evidence_uploaded",p_details:`${added.length} response evidence attachment(s) uploaded by ${email}.`});
-      setFinding((current:any)=>current?{...current,response_attachments:next}:current);\n      setMessage(`${added.length} response evidence attachment(s) uploaded. Your response draft has been preserved.`);
+      setFinding((current:any)=>current?{...current,response_attachments:next}:current);
+      setMessage(`${added.length} response evidence attachment(s) uploaded. Your response draft has been preserved.`);
     } catch(e:any){setMessage(e?.message||"Evidence upload failed.");} finally {setUploading(false);}
   };
   const openAttachment=async(a:any)=>{
