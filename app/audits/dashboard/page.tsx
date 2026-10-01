@@ -265,9 +265,11 @@ export default function AuditIntelligenceDashboardPage() {
     { title: "Open Audits", value: metrics.openAudits.length, color: "#2563eb" },
     { title: "Open Findings", value: metrics.openFindings.length, color: metrics.openFindings.length > 0 ? "#d97706" : "#15803d" },
     { title: "Overdue Responses", value: metrics.overdueFindings.length, color: metrics.overdueFindings.length > 0 ? "#dc2626" : "#15803d" },
-    { title: "Observations", value: metrics.observationFindings.length, color: "#2563eb" },\n    { title: "Minor Findings", value: metrics.minorFindings.length, color: metrics.minorFindings.length > 0 ? "#d97706" : "#15803d" },
+    { title: "Observations", value: metrics.observationFindings.length, color: "#2563eb" },
+    { title: "Minor Findings", value: metrics.minorFindings.length, color: metrics.minorFindings.length > 0 ? "#d97706" : "#15803d" },
     { title: "Major Findings", value: metrics.majorFindings.length, color: metrics.majorFindings.length > 0 ? "#d97706" : "#15803d" },
-    { title: "CAPA Linked", value: metrics.capaLinkedFindings.length, color: "#2563eb" },\n    { title: "SCAR Linked", value: metrics.scarLinkedFindings.length, color: "#2563eb" },
+    { title: "CAPA Linked", value: metrics.capaLinkedFindings.length, color: "#2563eb" },
+    { title: "SCAR Linked", value: metrics.scarLinkedFindings.length, color: "#2563eb" },
     { title: "Avg Findings / Audit", value: metrics.averageFindingsPerAudit, color: "#2563eb" },
   ];
 
