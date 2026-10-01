@@ -25,8 +25,10 @@ type AuditFinding = {
   finding_severity: string | null;
   clause_reference: string | null;
   evidence: string | null;
-  capa_required: boolean | null;
-  capa_id: string | null;
+  linked_capa_id?: string | null;
+  linked_scar_id?: string | null;
+  escalation_justification?: string | null;
+  response_due_date?: string | null;
   finding_status: string | null;
   created_at: string | null;
   closed_at?: string | null;
