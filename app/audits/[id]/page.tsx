@@ -934,7 +934,7 @@ export default function AuditDetailPage() {
               <FormField label="Response Due Date"><input type="date" value={newFinding.response_due_date} onChange={(e)=>setNewFinding({...newFinding,response_due_date:e.target.value})} style={inputStyle}/></FormField>
             </div>
             <button type="button" disabled={creatingFinding} onClick={addAuditFinding} style={primaryButtonStyle}>{creatingFinding ? "Creating Finding..." : "Add Finding"}</button>
-            {findings.length > 0 && <button type="button" disabled={creatingFinding} onClick={()=>{setShowFindingForm(false);setFindingMessage("");}} style={{...secondaryButtonStyle,marginLeft:"8px"}}>Cancel</button>}
+            {findings.length > 0 && <button type="button" disabled={creatingFinding} onClick={()=>{setShowFindingForm(false);setFindingMessage("");}} style={{padding:"9px 14px",border:"1px solid #9ca3af",borderRadius:"6px",background:"white",color:"#111827",fontWeight:600,cursor:creatingFinding?"not-allowed":"pointer",marginLeft:"8px"}}>Cancel</button>}
             {findingMessage && <p style={{fontWeight:600}}>{findingMessage}</p>}
             </div>
             )}
