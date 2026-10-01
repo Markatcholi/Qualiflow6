@@ -30,6 +30,7 @@ export default function AuditDetailPage() {
   const [findingMessage, setFindingMessage] = useState("");
   const [newFindingEvidenceFiles,setNewFindingEvidenceFiles]=useState<File[]>([]);
   const [creatingFinding,setCreatingFinding]=useState(false);
+  const [showFindingForm,setShowFindingForm]=useState(false);
   const [findingResponses, setFindingResponses] = useState<Record<string, any>>({});
   const [responseMessages, setResponseMessages] = useState<Record<string, string>>({});
   const [verificationNotes, setVerificationNotes] = useState<Record<string, string>>({});
