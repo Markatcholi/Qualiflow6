@@ -135,14 +135,14 @@ export default function AuditFindingTaskPage() {
     const {error}=await supabase.from("audit_findings").update(update).eq("id",finding.id).eq("tenant_id",finding.tenant_id); if(error)return setMessage(error.message);
     const {error:taskError}=await supabase.from("approval_tasks").update({status:decision==="accept"?"completed":"rejected",approver_comment:notes,signed_by:email,signed_at:now,signature_meaning:decision==="accept"?"Audit finding response verified and accepted.":"Audit finding response returned for additional action."}).eq("id",task.id).eq("assigned_to_email",email); if(taskError)return setMessage(taskError.message);
     if(decision==="return"){
-      const nextCycle=Number(finding.response_cycle||1)+1;
+      const nextCycle=Math.max(Number(finding.response_cycle||1),Number(task.audit_response_cycle||1))+1;
       const {error:cycleError}=await supabase.from("audit_findings").update({response_cycle:nextCycle,auditee_response:null,correction:null,corrective_action:null,response_attachments:[],response_draft_updated_at:null}).eq("id",finding.id).eq("tenant_id",finding.tenant_id);
-      if(cycleError)return setMessage(`Finding was returned, but the new response cycle could not be opened: ${cycleError.message}`);
+      if(cycleError)return setMessage(`Finding was returned, but the new response cycle could not be opened: ${cycleError.message}`);\n      setFinding((current:any)=>current?{...current,response_cycle:nextCycle,auditee_response:null,correction:null,corrective_action:null,response_attachments:[]}:current);
       const owner=String(finding.finding_owner||"").trim().toLowerCase();
       if(!owner)return setMessage("Finding returned, but Finding Owner email is missing.");
       const {data:existing,error:existingError}=await supabase.from("approval_tasks").select("id").eq("entity_type","audit_finding").eq("entity_id",finding.id).eq("task_type","audit_finding_response").eq("status","pending").maybeSingle();
       if(existingError)return setMessage(`Finding was returned, but QualiSphere could not check the Finding Owner task: ${existingError.message}`);
-      if(!existing){
+      if(existing){\n        const {error:existingUpdateError}=await supabase.from("approval_tasks").update({audit_response_cycle:nextCycle,task_instructions:`Finding returned by Lead Auditor for additional action. A new Response Cycle ${nextCycle} has been opened. Previous response remains read-only in history. Response Verification Notes: ${notes}`}).eq("id",existing.id);\n        if(existingUpdateError)return setMessage(`Finding was returned, but the existing Finding Owner task could not be moved to Response Cycle ${nextCycle}: ${existingUpdateError.message}`);\n      } else {
         const {error:re}=await supabase.from("approval_tasks").insert({entity_type:"audit_finding",entity_id:finding.id,task_type:"audit_finding_response",required_function:"Finding Owner",assigned_to_email:owner,assigned_by_email:email,status:"pending",due_date:finding.response_due_date||null,record_number:audit.audit_number,task_title:`Audit Finding Response — ${audit.audit_number}`,task_instructions:`Finding returned by Lead Auditor for additional action. A new Response Cycle ${nextCycle} has been opened. Previous response remains read-only in history. Response Verification Notes: ${notes}`,audit_response_cycle:nextCycle});
         if(re)return setMessage(`Finding was returned, but the Finding Owner Workspace task could not be created: ${re.message}`);
       }
