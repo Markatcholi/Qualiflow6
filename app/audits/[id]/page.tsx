@@ -28,6 +28,8 @@ export default function AuditDetailPage() {
     clause_reference: "", evidence: "", finding_owner: "", response_due_date: ""
   });
   const [findingMessage, setFindingMessage] = useState("");
+  const [newFindingEvidenceFiles,setNewFindingEvidenceFiles]=useState<File[]>([]);
+  const [creatingFinding,setCreatingFinding]=useState(false);
   const [findingResponses, setFindingResponses] = useState<Record<string, any>>({});
   const [responseMessages, setResponseMessages] = useState<Record<string, string>>({});
   const [verificationNotes, setVerificationNotes] = useState<Record<string, string>>({});
@@ -248,6 +250,7 @@ export default function AuditDetailPage() {
     if (!newFinding.response_due_date) return setFindingMessage("Response Due Date is required.");
 
     setFindingMessage("");
+    setCreatingFinding(true);
     const { data: inserted, error } = await supabase.from("audit_findings").insert({
       tenant_id: audit.tenant_id, audit_id: id,
       finding_title: newFinding.finding_title.trim(),
@@ -259,7 +262,26 @@ export default function AuditDetailPage() {
       response_due_date: newFinding.response_due_date,
       finding_status: "open",
     }).select().single();
-    if (error) return setFindingMessage(error.message);
+    if (error) { setCreatingFinding(false); return setFindingMessage(error.message); }
+
+    if (newFindingEvidenceFiles.length) {
+      const attachments:any[]=[];
+      try {
+        for (const file of newFindingEvidenceFiles) {
+          const safe=file.name.replace(/[^a-zA-Z0-9._-]/g,"_");
+          const path=`tenant/${audit.tenant_id}/audits/${id}/findings/${inserted.id}/objective/${Date.now()}-${safe}`;
+          const {error:uploadError}=await supabase.storage.from("audit-evidence").upload(path,file,{upsert:false});
+          if(uploadError) throw uploadError;
+          attachments.push({file_name:file.name,storage_path:path,uploaded_by:currentUserEmail,uploaded_at:new Date().toISOString(),category:"finding_objective"});
+        }
+        const {error:attachmentError}=await supabase.from("audit_findings").update({finding_attachments:attachments}).eq("id",inserted.id).eq("tenant_id",audit.tenant_id);
+        if(attachmentError) throw attachmentError;
+      } catch(e:any) {
+        await supabase.from("audit_findings").delete().eq("id",inserted.id).eq("tenant_id",audit.tenant_id);
+        setCreatingFinding(false);
+        return setFindingMessage(`Finding evidence upload failed. Finding was not assigned: ${e?.message||"Unknown error"}`);
+      }
+    }
 
     const findingOwnerEmail = String(newFinding.finding_owner || "").trim().toLowerCase();
     const { error: responseTaskError } = await supabase.from("approval_tasks").insert({
@@ -272,6 +294,7 @@ export default function AuditDetailPage() {
     });
     if (responseTaskError) {
       await supabase.from("audit_findings").delete().eq("id", inserted.id).eq("tenant_id", audit.tenant_id);
+      setCreatingFinding(false);
       return setFindingMessage(`Finding assignment failed: ${responseTaskError.message}`);
     }
 
@@ -280,6 +303,8 @@ export default function AuditDetailPage() {
       p_details:`Audit finding created in ${audit.audit_number || id}. Classification: ${newFinding.finding_severity}.`
     });
     setNewFinding({ finding_title:"", finding_description:"", finding_severity:"observation", clause_reference:"", evidence:"", finding_owner:"", response_due_date:"" });
+    setNewFindingEvidenceFiles([]);
+    setCreatingFinding(false);
     setFindingMessage("Finding added.");
     await fetchData();
   };
@@ -843,12 +868,13 @@ export default function AuditDetailPage() {
             </FormField>
             <FormField label="Finding Description"><textarea value={newFinding.finding_description} onChange={(e)=>setNewFinding({...newFinding,finding_description:e.target.value})} rows={4} style={standardTextareaStyle}/></FormField>
             <FormField label="Requirement / Clause Reference"><input value={newFinding.clause_reference} onChange={(e)=>setNewFinding({...newFinding,clause_reference:e.target.value})} style={inputStyle}/></FormField>
-            <FormField label="Objective Evidence"><textarea value={newFinding.evidence} onChange={(e)=>setNewFinding({...newFinding,evidence:e.target.value})} rows={4} style={standardTextareaStyle}/></FormField><div style={{marginTop:12}}><strong>Finding Objective Evidence Attachments</strong><p style={{fontSize:13}}>Attach files after creating the finding from the finding record below.</p></div>
+            <FormField label="Objective Evidence"><textarea value={newFinding.evidence} onChange={(e)=>setNewFinding({...newFinding,evidence:e.target.value})} rows={4} style={standardTextareaStyle}/></FormField>
+            <div style={{marginTop:12,marginBottom:12}}><strong>Finding Objective Evidence Attachments</strong><p style={{fontSize:13,color:"#4b5563"}}>Attach supporting objective evidence before assigning the finding. These files become part of the Finding Owner's read-only finding package.</p><input type="file" multiple disabled={creatingFinding} onChange={e=>setNewFindingEvidenceFiles(Array.from(e.target.files||[]))}/>{newFindingEvidenceFiles.length>0&&<div style={{marginTop:8}}>{newFindingEvidenceFiles.map((file,i)=><div key={i}>{file.name}</div>)}</div>}</div>
             <div style={twoColumnStyle}>
               <FormField label="Finding Owner"><input value={newFinding.finding_owner} onChange={(e)=>setNewFinding({...newFinding,finding_owner:e.target.value})} style={inputStyle}/></FormField>
               <FormField label="Response Due Date"><input type="date" value={newFinding.response_due_date} onChange={(e)=>setNewFinding({...newFinding,response_due_date:e.target.value})} style={inputStyle}/></FormField>
             </div>
-            <button type="button" onClick={addAuditFinding} style={primaryButtonStyle}>Add Finding</button>
+            <button type="button" disabled={creatingFinding} onClick={addAuditFinding} style={primaryButtonStyle}>{creatingFinding ? "Creating Finding..." : "Add Finding"}</button>
             {findingMessage && <p style={{fontWeight:600}}>{findingMessage}</p>}
           </div>
         )}
