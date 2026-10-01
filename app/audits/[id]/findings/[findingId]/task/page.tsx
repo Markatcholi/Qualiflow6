@@ -18,6 +18,9 @@ export default function AuditFindingTaskPage() {
   const [verificationNotes,setVerificationNotes]=useState("");
   const [escalationJustification,setEscalationJustification]=useState("");
   const [uploading,setUploading]=useState(false);
+  const [responseSaveState,setResponseSaveState]=useState("");
+  const [verificationSaveState,setVerificationSaveState]=useState("");
+  const [loaded,setLoaded]=useState(false);
 
   const uploadResponseEvidence=async(files:FileList|null)=>{
     if(!files?.length||!finding||!audit||!task||task.task_type!=="audit_finding_response"||task.status!=="pending") return;
@@ -56,11 +59,40 @@ export default function AuditFindingTaskPage() {
     const {data:f,error:fe}=await supabase.from("audit_findings").select("*").eq("id",params.findingId).eq("audit_id",params.id).maybeSingle();
     if(fe||!f) return setMessage("Audit Finding is not available in your active company.");
     setFinding(f); setResponse({auditee_response:f.auditee_response||"",correction:f.correction||"",corrective_action:f.corrective_action||""});
-    setVerificationNotes(""); setEscalationJustification(f.escalation_justification||"");
+    setVerificationNotes(f.verification_draft_notes||""); setEscalationJustification(f.escalation_justification||"");
+    setLoaded(true);
     const {data:a}=await supabase.from("audits").select("id,audit_number,audit_title,audit_type,audit_scope,audit_criteria,lead_auditor,lead_auditor_email,tenant_id").eq("id",params.id).eq("tenant_id",f.tenant_id).maybeSingle();
     setAudit(a);
   };
   useEffect(()=>{void load();},[params.id,params.findingId,taskId]);
+
+  useEffect(()=>{
+    if(!loaded||!finding||!task||task.status!=="pending"||task.task_type!=="audit_finding_response")return;
+    setResponseSaveState("Saving…");
+    const timer=window.setTimeout(async()=>{
+      const {error}=await supabase.from("audit_findings").update({
+        auditee_response:response.auditee_response,
+        correction:response.correction,
+        corrective_action:response.corrective_action||null,
+        response_draft_updated_at:new Date().toISOString()
+      }).eq("id",finding.id).eq("tenant_id",finding.tenant_id);
+      setResponseSaveState(error?`Save failed: ${error.message}`:"Saved");
+    },700);
+    return()=>window.clearTimeout(timer);
+  },[response.auditee_response,response.correction,response.corrective_action,loaded]);
+
+  useEffect(()=>{
+    if(!loaded||!finding||!task||task.status!=="pending"||task.task_type!=="audit_finding_verification")return;
+    setVerificationSaveState("Saving…");
+    const timer=window.setTimeout(async()=>{
+      const {error}=await supabase.from("audit_findings").update({
+        verification_draft_notes:verificationNotes,
+        verification_draft_updated_at:new Date().toISOString()
+      }).eq("id",finding.id).eq("tenant_id",finding.tenant_id);
+      setVerificationSaveState(error?`Save failed: ${error.message}`:"Saved");
+    },700);
+    return()=>window.clearTimeout(timer);
+  },[verificationNotes,loaded]);
 
   const submit=async()=>{
     if(!task||task.status!=="pending") return setMessage("This task is no longer pending.");
@@ -95,7 +127,7 @@ export default function AuditFindingTaskPage() {
     const escalationComplete=!!finding.linked_scar_id||!!finding.linked_capa_id||!!String(finding.escalation_justification||"").trim();
     if(finding.finding_severity==="major"&&!escalationComplete)return setMessage("Major Finding requires linked CAPA/SCAR or a saved risk-based justification before response verification.");
     const now=new Date().toISOString();
-    const update=decision==="accept"?{verification_notes:notes,verified_by:email,verified_at:now,finding_status:"closed",closed_at:now}:{verified_by:null,verified_at:null,finding_status:"returned_for_action",closed_at:null};
+    const update=decision==="accept"?{verification_notes:notes,verification_draft_notes:null,verification_draft_updated_at:null,verified_by:email,verified_at:now,finding_status:"closed",closed_at:now}:{verification_draft_notes:null,verification_draft_updated_at:null,verified_by:null,verified_at:null,finding_status:"returned_for_action",closed_at:null};
     const {error}=await supabase.from("audit_findings").update(update).eq("id",finding.id).eq("tenant_id",finding.tenant_id); if(error)return setMessage(error.message);
     const {error:taskError}=await supabase.from("approval_tasks").update({status:decision==="accept"?"completed":"rejected",approver_comment:notes,signed_by:email,signed_at:now,signature_meaning:decision==="accept"?"Audit finding response verified and accepted.":"Audit finding response returned for additional action."}).eq("id",task.id).eq("assigned_to_email",email); if(taskError)return setMessage(taskError.message);
     if(decision==="return"){
@@ -123,8 +155,8 @@ export default function AuditFindingTaskPage() {
       <label><b>Response / Corrective Action Evidence</b></label>
       {Array.isArray(finding.response_attachments)&&finding.response_attachments.length>0?<div style={instructionBox}>{finding.response_attachments.map((a:any,i:number)=><div key={i}><button type="button" onClick={()=>openAttachment(a)}>{a.file_name||"Open attachment"}</button></div>)}</div>:<p>No response evidence attached.</p>}
       {task.status==="pending"&&<input type="file" multiple disabled={uploading} onChange={e=>void uploadResponseEvidence(e.target.files)}/>}
-      {uploading&&<p>Uploading evidence...</p>}
-      {task.status==="pending"?<button onClick={submit} style={button}>Submit Response for Verification</button>:<p><b>Status:</b> {task.status}</p>}</section>:<><section style={card}><h2>Submitted Finding Response</h2><p><b>Auditee Response:</b> {finding.auditee_response||"N/A"}</p><p><b>Correction / Immediate Action:</b> {finding.correction||"N/A"}</p><p><b>Corrective Action:</b> {finding.corrective_action||"N/A"}</p><p><b>Response / Corrective Action Evidence:</b></p>{Array.isArray(finding.response_attachments)&&finding.response_attachments.length>0?finding.response_attachments.map((a:any,i:number)=><div key={i}><button type="button" onClick={()=>openAttachment(a)}>{a.file_name||"Open attachment"}</button></div>):<p>N/A</p>}</section><section style={card}><h2>Escalation Evaluation</h2><p><b>Linked SCAR:</b> {finding.linked_scar_id||"Not opened"}</p><p><b>Linked CAPA:</b> {finding.linked_capa_id||"Not opened"}</p><label>Risk-Based Justification if SCAR/CAPA is Not Opened</label><textarea style={field} rows={4} disabled={task.status!=="pending"} value={escalationJustification} onChange={e=>setEscalationJustification(e.target.value)}/>{task.status==="pending"&&<button onClick={saveEscalationJustification}>Save Escalation Justification</button>}<p style={{fontSize:13,color:"#475569"}}>Major Findings require linked CAPA/SCAR or saved risk-based justification before response verification. CAPA/SCAR initiation remains available from the owned Audit workflow.</p></section><section style={card}><h2>Response Verification</h2>{task.task_type==="audit_finding_verification"&&task.task_instructions?.includes("Response Verification Notes:")&&<><p><b>Previous Response Verification / Return Reason:</b></p><div style={instructionBox}>{task.task_instructions.split("Response Verification Notes:").slice(1).join("Response Verification Notes:").trim()}</div></>}<label>Verification Notes</label><textarea style={field} rows={4} disabled={task.status!=="pending"} value={verificationNotes} onChange={e=>setVerificationNotes(e.target.value)}/>{task.status==="pending"?<div style={{display:"flex",gap:8,flexWrap:"wrap"}}><button onClick={()=>verify("accept")} style={button}>Accept & Close Finding</button><button onClick={()=>verify("return")}>Return for Additional Action</button></div>:<p><b>Status:</b> {task.status}</p>}</section></>}
+      {uploading&&<p>Uploading evidence...</p>}<p style={{fontSize:13,color:responseSaveState.startsWith("Save failed")?"#b91c1c":"#475569"}}>{responseSaveState}</p>
+      {task.status==="pending"?<button onClick={submit} style={button}>Submit Response for Verification</button>:<p><b>Status:</b> {task.status}</p>}</section>:<><section style={card}><h2>Submitted Finding Response</h2><p><b>Auditee Response:</b> {finding.auditee_response||"N/A"}</p><p><b>Correction / Immediate Action:</b> {finding.correction||"N/A"}</p><p><b>Corrective Action:</b> {finding.corrective_action||"N/A"}</p><p><b>Response / Corrective Action Evidence:</b></p>{Array.isArray(finding.response_attachments)&&finding.response_attachments.length>0?finding.response_attachments.map((a:any,i:number)=><div key={i}><button type="button" onClick={()=>openAttachment(a)}>{a.file_name||"Open attachment"}</button></div>):<p>N/A</p>}</section><section style={card}><h2>Escalation Evaluation</h2><p><b>Linked SCAR:</b> {finding.linked_scar_id||"Not opened"}</p><p><b>Linked CAPA:</b> {finding.linked_capa_id||"Not opened"}</p><label>Risk-Based Justification if SCAR/CAPA is Not Opened</label><textarea style={field} rows={4} disabled={task.status!=="pending"} value={escalationJustification} onChange={e=>setEscalationJustification(e.target.value)}/>{task.status==="pending"&&<button onClick={saveEscalationJustification}>Save Escalation Justification</button>}<p style={{fontSize:13,color:"#475569"}}>Major Findings require linked CAPA/SCAR or saved risk-based justification before response verification. CAPA/SCAR initiation remains available from the owned Audit workflow.</p></section><section style={card}><h2>Response Verification</h2>{task.task_type==="audit_finding_verification"&&task.task_instructions?.includes("Response Verification Notes:")&&<><p><b>Previous Response Verification / Return Reason:</b></p><div style={instructionBox}>{task.task_instructions.split("Response Verification Notes:").slice(1).join("Response Verification Notes:").trim()}</div></>}<label>Verification Notes</label><textarea style={field} rows={4} disabled={task.status!=="pending"} value={verificationNotes} onChange={e=>setVerificationNotes(e.target.value)}/><p style={{fontSize:13,color:verificationSaveState.startsWith("Save failed")?"#b91c1c":"#475569"}}>{verificationSaveState}</p>{task.status==="pending"?<div style={{display:"flex",gap:8,flexWrap:"wrap"}}><button onClick={()=>verify("accept")} style={button}>Accept & Close Finding</button><button onClick={()=>verify("return")}>Return for Additional Action</button></div>:<p><b>Status:</b> {task.status}</p>}</section></>}
     {message&&<p><b>{message}</b></p>}
   </main>;
 }
