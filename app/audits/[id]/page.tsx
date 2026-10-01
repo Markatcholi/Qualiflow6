@@ -42,6 +42,9 @@ export default function AuditDetailPage() {
   const [reviewerComment, setReviewerComment] = useState("");
   const [reviewerSignatureEmail, setReviewerSignatureEmail] = useState("");
   const [uploadMessage,setUploadMessage]=useState("");
+  const [planningSaveState,setPlanningSaveState]=useState("");
+  const [executionSaveState,setExecutionSaveState]=useState("");
+  const [pageLoaded,setPageLoaded]=useState(false);
 
   const uploadAuditFiles=async(files:FileList|null,kind:"execution"|"finding",findingId?:string)=>{
     if(!files?.length||!audit||isLocked)return;
@@ -63,7 +66,9 @@ export default function AuditDetailPage() {
       const query=kind==="execution"?supabase.from("audits").update({execution_attachments:next}).eq("id",id).eq("tenant_id",audit.tenant_id):supabase.from("audit_findings").update({finding_attachments:next}).eq("id",findingId!).eq("tenant_id",audit.tenant_id);
       const {error}=await query;if(error)throw error;
       await supabase.rpc("qualisphere_add_audit_log",{p_entity_type:kind==="execution"?"audit":"audit_finding",p_entity_id:kind==="execution"?id:findingId!,p_action:kind==="execution"?"audit_execution_evidence_uploaded":"audit_finding_evidence_uploaded",p_details:`${added.length} controlled evidence attachment(s) uploaded by ${currentUserEmail}.`});
-      setUploadMessage(`${added.length} evidence attachment(s) uploaded.`);await fetchData();
+      if(kind==="execution") setAudit((current:any)=>current?{...current,execution_attachments:next}:current);
+      else setFindings((current:any[])=>current.map((x:any)=>x.id===findingId?{...x,finding_attachments:next}:x));
+      setUploadMessage(`${added.length} evidence attachment(s) uploaded. Unsaved text was preserved.`);
     }catch(e:any){setUploadMessage(e?.message||"Evidence upload failed.");}
   };
   const openAuditAttachment=async(a:any)=>{
@@ -145,13 +150,61 @@ export default function AuditDetailPage() {
     (findingsRes.data || []).forEach((finding: any) => {
       verificationMap[finding.id] = finding.verification_notes || "";
     });
-    setVerificationNotes(verificationMap);
+    setVerificationNotes(verificationMap);\n    setPageLoaded(true);
   };
 
   useEffect(() => {
     if (id) fetchData();
     supabase.auth.getUser().then(({data}) => setCurrentUserEmail((data?.user?.email || "").toLowerCase()));
   }, [id]);
+
+  useEffect(()=>{
+    if(!pageLoaded||!audit||!planning||audit.is_locked||audit.closure_approval_status==="pending")return;
+    setPlanningSaveState("Saving…");
+    const timer=window.setTimeout(async()=>{
+      const {error}=await supabase.from("audits").update({
+        audit_title:planning.audit_title,
+        audit_type:planning.audit_type,
+        audit_objectives:planning.audit_objectives,
+        audit_scope:planning.audit_scope,
+        audit_criteria:planning.audit_criteria,
+        lead_auditor:planning.lead_auditor,
+        lead_auditor_email:planning.lead_auditor_email?.trim().toLowerCase()||audit.owner_email||null,
+        auditor:planning.lead_auditor,
+        audit_team:planning.audit_team||null,
+        scheduled_start_date:planning.scheduled_start_date||null,
+        scheduled_end_date:planning.scheduled_end_date||null,
+        audit_date:planning.scheduled_start_date||null
+      }).eq("id",id).eq("tenant_id",audit.tenant_id);
+      setPlanningSaveState(error?`Save failed: ${error.message}`:"Saved");
+    },800);
+    return()=>window.clearTimeout(timer);
+  },[planning,pageLoaded]);
+
+  useEffect(()=>{
+    if(!pageLoaded||!audit||!execution||audit.is_locked||audit.closure_approval_status==="pending")return;
+    setExecutionSaveState("Saving…");
+    const timer=window.setTimeout(async()=>{
+      const {error}=await supabase.from("audits").update({
+        actual_start_date:execution.actual_start_date||null,
+        actual_end_date:execution.actual_end_date||null,
+        execution_notes:execution.execution_notes
+      }).eq("id",id).eq("tenant_id",audit.tenant_id);
+      setExecutionSaveState(error?`Save failed: ${error.message}`:"Saved");
+    },800);
+    return()=>window.clearTimeout(timer);
+  },[execution,pageLoaded]);
+
+  useEffect(()=>{
+    if(typeof window==="undefined"||!id)return;
+    const key=`qualisphere_audit_finding_draft_${id}`;
+    const saved=window.localStorage.getItem(key);
+    if(saved){try{setNewFinding(JSON.parse(saved));}catch{}}
+  },[id]);
+  useEffect(()=>{
+    if(typeof window==="undefined"||!id)return;
+    window.localStorage.setItem(`qualisphere_audit_finding_draft_${id}`,JSON.stringify(newFinding));
+  },[newFinding,id]);
 
   if (!audit) return <main style={{ padding: 20 }}>Loading audit...</main>;
 
@@ -303,7 +356,7 @@ export default function AuditDetailPage() {
       p_details:`Audit finding created in ${audit.audit_number || id}. Classification: ${newFinding.finding_severity}.`
     });
     setNewFinding({ finding_title:"", finding_description:"", finding_severity:"observation", clause_reference:"", evidence:"", finding_owner:"", response_due_date:"" });
-    setNewFindingEvidenceFiles([]);
+    setNewFindingEvidenceFiles([]);\n    if(typeof window!=="undefined")window.localStorage.removeItem(`qualisphere_audit_finding_draft_${id}`);
     setCreatingFinding(false);
     setFindingMessage("Finding added.");
     await fetchData();
@@ -818,7 +871,7 @@ export default function AuditDetailPage() {
               </FormField>
             </div>
             {!isLocked && <button type="button" onClick={saveAuditPlanning} style={primaryButtonStyle}>Save Audit Planning</button>}
-            {planningMessage && <p style={{fontWeight:600}}>{planningMessage}</p>}
+            <p style={{fontSize:13,color:planningSaveState.startsWith("Save failed")?"#b91c1c":"#475569"}}>{planningSaveState}</p>{planningMessage && <p style={{fontWeight:600}}>{planningMessage}</p>}
           </>
         )}
       </section>
@@ -850,7 +903,7 @@ export default function AuditDetailPage() {
             </FormField>
             <div style={{marginBottom:14}}><strong>Audit Execution Evidence Attachments</strong>{attachmentList(audit.execution_attachments)}{!isLocked&&<input type="file" multiple onChange={e=>void uploadAuditFiles(e.target.files,"execution")}/>}</div>
             {!isLocked && <button type="button" onClick={saveAuditExecution} style={primaryButtonStyle}>Save Audit Execution</button>}
-            {executionMessage && <p style={{fontWeight:600}}>{executionMessage}</p>}
+            <p style={{fontSize:13,color:executionSaveState.startsWith("Save failed")?"#b91c1c":"#475569"}}>{executionSaveState}</p>{executionMessage && <p style={{fontWeight:600}}>{executionMessage}</p>}
           </>
         )}
       </section>
