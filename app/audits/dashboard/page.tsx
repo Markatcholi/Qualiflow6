@@ -147,6 +147,7 @@ export default function AuditIntelligenceDashboardPage() {
     const observationFindings = findings.filter((finding) => String(finding.finding_severity || "").toLowerCase() === "observation");
     const minorFindings = findings.filter((finding) => String(finding.finding_severity || "").toLowerCase() === "minor");
     const majorFindings = findings.filter((finding) => String(finding.finding_severity || "").toLowerCase() === "major");
+    const openMajorFindings = majorFindings.filter((finding) => String(finding.finding_status || "").toLowerCase() !== "closed");
     const capaLinkedFindings = findings.filter((finding) => Boolean(finding.linked_capa_id));
     const scarLinkedFindings = findings.filter((finding) => Boolean(finding.linked_scar_id));
     const escalatedFindings = findings.filter((finding) => Boolean(finding.linked_capa_id || finding.linked_scar_id));
@@ -212,6 +213,7 @@ export default function AuditIntelligenceDashboardPage() {
       observationFindings,
       minorFindings,
       majorFindings,
+      openMajorFindings,
       capaLinkedFindings,
       scarLinkedFindings,
       escalatedFindings,
@@ -373,7 +375,7 @@ export default function AuditIntelligenceDashboardPage() {
 
         <div style={escalationGridStyle}>
           <FindingEscalationCard title="Overdue Findings" count={metrics.overdueFindings.length} severity={metrics.overdueFindings.length > 0 ? "high" : "controlled"} items={metrics.overdueFindings} audits={audits} description="Open findings whose response due date has passed." />
-          <FindingEscalationCard title="Major Findings" count={metrics.majorFindings.length} severity={metrics.majorFindings.length > 0 ? "medium" : "controlled"} items={metrics.majorFindings} audits={audits} description="Major findings that may require escalation or CAPA." />
+          <FindingEscalationCard title="Open Major Findings" count={metrics.openMajorFindings.length} severity={metrics.openMajorFindings.length > 0 ? "medium" : "controlled"} items={metrics.openMajorFindings} audits={audits} description="Open Major findings requiring active escalation review or follow-up." />
           <FindingEscalationCard title="Major Findings Missing Escalation Disposition" count={metrics.majorWithoutDisposition.length} severity={metrics.majorWithoutDisposition.length > 0 ? "high" : "controlled"} items={metrics.majorWithoutDisposition} audits={audits} description="Major findings without linked CAPA, linked SCAR, or documented risk-based justification." />
           <AuditEscalationCard title="Audits with Open Findings" count={metrics.auditsWithOpenFindings.length} severity={metrics.auditsWithOpenFindings.length > 0 ? "medium" : "controlled"} items={metrics.auditsWithOpenFindings} findingsForAudit={findingsForAudit} description="Audits that cannot be cleanly closed due to open findings." />
         </div>
@@ -400,7 +402,7 @@ export default function AuditIntelligenceDashboardPage() {
             <table style={tableStyle}>
               <thead>
                 <tr>
-                  <th style={thStyle}>Audit</th>
+                  <th style={{...thStyle,minWidth:"150px",whiteSpace:"nowrap"}}>Audit</th>
                   <th style={thStyle}>Type</th>
                   <th style={thStyle}>Auditor</th>
                   <th style={thStyle}>Open Findings</th>
@@ -414,8 +416,8 @@ export default function AuditIntelligenceDashboardPage() {
 
                   return (
                     <tr key={audit.id}>
-                      <td style={tdStyle}>{audit.audit_number || audit.audit_title || audit.id}</td>
-                      <td style={tdStyle}>{audit.audit_type || "N/A"}</td>
+                      <td style={{...tdStyle,whiteSpace:"nowrap"}}>{audit.audit_number || audit.audit_title || audit.id}</td>
+                      <td style={tdStyle}>{audit.audit_type ? formatLabel(audit.audit_type) : "N/A"}</td>
                       <td style={tdStyle}>{audit.auditor || "N/A"}</td>
                       <td style={tdStyle}>{openFindings.length}</td>
                     </tr>
@@ -571,7 +573,7 @@ const escalationGridStyle: React.CSSProperties = { display: "grid", gridTemplate
 const escalationCardStyle: React.CSSProperties = { border: "1px solid #d1d5db", borderRadius: "14px", padding: "16px", background: "#f9fafb" };
 const escalationItemStyle: React.CSSProperties = { borderTop: "1px solid #e5e7eb", paddingTop: "10px", marginTop: "10px" };
 const smallMutedStyle: React.CSSProperties = { fontSize: "12px", color: "#6b7280", marginTop: "4px" };
-const dashboardGridStyle: React.CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(420px, 1fr))", gap: "20px" };
+const dashboardGridStyle: React.CSSProperties = { display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: "20px" };
 const cardStyle: React.CSSProperties = { background: "white", borderRadius: "16px", padding: "20px", border: "1px solid #d1d5db" };
 const metricRowStyle: React.CSSProperties = { display: "flex", justifyContent: "space-between", marginBottom: "10px" };
 const tableStyle: React.CSSProperties = { width: "100%", borderCollapse: "collapse" };
