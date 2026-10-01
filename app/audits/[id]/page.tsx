@@ -150,7 +150,8 @@ export default function AuditDetailPage() {
     (findingsRes.data || []).forEach((finding: any) => {
       verificationMap[finding.id] = finding.verification_notes || "";
     });
-    setVerificationNotes(verificationMap);\n    setPageLoaded(true);
+    setVerificationNotes(verificationMap);
+    setPageLoaded(true);
   };
 
   useEffect(() => {
@@ -356,7 +357,8 @@ export default function AuditDetailPage() {
       p_details:`Audit finding created in ${audit.audit_number || id}. Classification: ${newFinding.finding_severity}.`
     });
     setNewFinding({ finding_title:"", finding_description:"", finding_severity:"observation", clause_reference:"", evidence:"", finding_owner:"", response_due_date:"" });
-    setNewFindingEvidenceFiles([]);\n    if(typeof window!=="undefined")window.localStorage.removeItem(`qualisphere_audit_finding_draft_${id}`);
+    setNewFindingEvidenceFiles([]);
+    if(typeof window!=="undefined")window.localStorage.removeItem(`qualisphere_audit_finding_draft_${id}`);
     setCreatingFinding(false);
     setFindingMessage("Finding added.");
     await fetchData();
