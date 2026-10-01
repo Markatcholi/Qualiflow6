@@ -195,12 +195,9 @@ export default function AuditIntelligenceDashboardPage() {
     const findingClosureRate =
       findings.length > 0 ? Number(((closedFindings.length / findings.length) * 100).toFixed(1)) : 0;
 
-    const capaConversionRate =
-      findings.length > 0 ? Number(((capaRequiredFindings.length / findings.length) * 100).toFixed(1)) : 0;
-
-    const capaCreatedRate =
-      capaRequiredFindings.length > 0
-        ? Number(((capaCreatedFindings.length / capaRequiredFindings.length) * 100).toFixed(1))
+    const escalationLinkageRate =
+      majorFindings.length > 0
+        ? Number(((majorFindings.filter((finding) => finding.linked_capa_id || finding.linked_scar_id || String(finding.escalation_justification || "").trim()).length / majorFindings.length) * 100).toFixed(1))
         : 0;
 
     const averageFindingsPerAudit = audits.length > 0 ? Number((findings.length / audits.length).toFixed(1)) : 0;
