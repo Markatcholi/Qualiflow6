@@ -142,16 +142,13 @@ export default function AuditIntelligenceDashboardPage() {
       (finding) => String(finding.finding_status || "").toLowerCase() === "closed",
     );
 
-    const criticalFindings = findings.filter(
-      (finding) => String(finding.finding_severity || "").toLowerCase() === "critical",
-    );
-
-    const majorFindings = findings.filter(
-      (finding) => String(finding.finding_severity || "").toLowerCase() === "major",
-    );
-
-    const capaRequiredFindings = findings.filter((finding) => Boolean(finding.capa_required));
-    const capaCreatedFindings = findings.filter((finding) => Boolean(finding.capa_id));
+    const observationFindings = findings.filter((finding) => String(finding.finding_severity || "").toLowerCase() === "observation");
+    const minorFindings = findings.filter((finding) => String(finding.finding_severity || "").toLowerCase() === "minor");
+    const majorFindings = findings.filter((finding) => String(finding.finding_severity || "").toLowerCase() === "major");
+    const capaLinkedFindings = findings.filter((finding) => Boolean(finding.linked_capa_id));
+    const scarLinkedFindings = findings.filter((finding) => Boolean(finding.linked_scar_id));
+    const escalatedFindings = findings.filter((finding) => Boolean(finding.linked_capa_id || finding.linked_scar_id));
+    const majorWithoutDisposition = majorFindings.filter((finding) => !finding.linked_capa_id && !finding.linked_scar_id && !String(finding.escalation_justification || "").trim());
 
     const auditsWithOpenFindings = audits.filter((audit) =>
       findings.some(
@@ -213,10 +210,13 @@ export default function AuditIntelligenceDashboardPage() {
       closedAudits,
       openFindings,
       closedFindings,
-      criticalFindings,
+      observationFindings,
+      minorFindings,
       majorFindings,
-      capaRequiredFindings,
-      capaCreatedFindings,
+      capaLinkedFindings,
+      scarLinkedFindings,
+      escalatedFindings,
+      majorWithoutDisposition,
       auditsWithOpenFindings,
       overdueFindings,
       averageOpenFindingAge,
@@ -225,15 +225,14 @@ export default function AuditIntelligenceDashboardPage() {
       findingsClosedWithin30,
       auditClosureRate,
       findingClosureRate,
-      capaConversionRate,
-      capaCreatedRate,
+      escalationLinkageRate,
       averageFindingsPerAudit,
     };
   }, [audits, findings]);
 
   const findingClosureStatus = getSlaStatus(metrics.findingsClosedWithin30);
   const findingClosureRateStatus = getSlaStatus(metrics.findingClosureRate);
-  const capaCreatedStatus = getSlaStatus(metrics.capaCreatedRate);
+  const escalationStatus = getSlaStatus(metrics.escalationLinkageRate);
 
   const kpis: KpiTile[] = [
     {
@@ -257,21 +256,21 @@ export default function AuditIntelligenceDashboardPage() {
       statusColor: findingClosureRateStatus.color,
     },
     {
-      title: "CAPA Created Rate",
-      value: metrics.capaCreatedRate,
+      title: "Major Finding Governance",
+      value: metrics.escalationLinkageRate,
       suffix: "%",
-      color: capaCreatedStatus.color,
-      target: "Target: 90%",
-      statusLabel: capaCreatedStatus.label,
-      statusIcon: capaCreatedStatus.icon,
-      statusColor: capaCreatedStatus.color,
+      color: escalationStatus.color,
+      target: "CAPA / SCAR / justification documented",
+      statusLabel: escalationStatus.label,
+      statusIcon: escalationStatus.icon,
+      statusColor: escalationStatus.color,
     },
     { title: "Open Audits", value: metrics.openAudits.length, color: "#2563eb" },
     { title: "Open Findings", value: metrics.openFindings.length, color: metrics.openFindings.length > 0 ? "#d97706" : "#15803d" },
     { title: "Overdue Findings >30 Days", value: metrics.overdueFindings.length, color: metrics.overdueFindings.length > 0 ? "#dc2626" : "#15803d" },
     { title: "Critical Findings", value: metrics.criticalFindings.length, color: metrics.criticalFindings.length > 0 ? "#dc2626" : "#15803d" },
     { title: "Major Findings", value: metrics.majorFindings.length, color: metrics.majorFindings.length > 0 ? "#d97706" : "#15803d" },
-    { title: "CAPA Required", value: metrics.capaRequiredFindings.length, color: metrics.capaRequiredFindings.length > 0 ? "#d97706" : "#15803d" },
+    { title: "CAPA Linked", value: metrics.capaLinkedFindings.length, color: "#2563eb" },\n    { title: "SCAR Linked", value: metrics.scarLinkedFindings.length, color: "#2563eb" },
     { title: "Avg Findings / Audit", value: metrics.averageFindingsPerAudit, color: "#2563eb" },
   ];
 
@@ -307,7 +306,7 @@ export default function AuditIntelligenceDashboardPage() {
           <h1 style={{ margin: "6px 0" }}>Audit Intelligence Dashboard</h1>
           <p style={subtleText}>
             Executive operational intelligence for audit execution, finding severity,
-            clause recurrence, CAPA conversion, closure performance, and regulatory readiness.
+            clause recurrence, CAPA/SCAR escalation governance, response timeliness, closure performance, and regulatory readiness.
           </p>
         </div>
 
@@ -325,9 +324,9 @@ export default function AuditIntelligenceDashboardPage() {
       <section style={slaPanelStyle}>
         <div>
           <div style={eyebrowStyle}>AUDIT PERFORMANCE</div>
-          <h2 style={{ margin: "6px 0" }}>Finding Closure & CAPA Governance</h2>
+          <h2 style={{ margin: "6px 0" }}>Finding Closure & Escalation Governance</h2>
           <p style={subtleText}>
-            Tracks audit finding aging, CAPA conversion, findings closed within target,
+            Tracks response due-date performance, CAPA/SCAR linkage, findings closed within target,
             and readiness for audit closure.
           </p>
         </div>
@@ -372,10 +371,9 @@ export default function AuditIntelligenceDashboardPage() {
         </div>
 
         <div style={escalationGridStyle}>
-          <FindingEscalationCard title="Overdue Findings" count={metrics.overdueFindings.length} severity={metrics.overdueFindings.length > 0 ? "high" : "controlled"} items={metrics.overdueFindings} audits={audits} description="Open audit findings greater than 30 days old." />
-          <FindingEscalationCard title="Critical Findings" count={metrics.criticalFindings.length} severity={metrics.criticalFindings.length > 0 ? "high" : "controlled"} items={metrics.criticalFindings} audits={audits} description="Critical audit findings requiring immediate leadership attention." />
+          <FindingEscalationCard title="Overdue Findings" count={metrics.overdueFindings.length} severity={metrics.overdueFindings.length > 0 ? "high" : "controlled"} items={metrics.overdueFindings} audits={audits} description="Open findings whose response due date has passed." />
           <FindingEscalationCard title="Major Findings" count={metrics.majorFindings.length} severity={metrics.majorFindings.length > 0 ? "medium" : "controlled"} items={metrics.majorFindings} audits={audits} description="Major findings that may require escalation or CAPA." />
-          <FindingEscalationCard title="CAPA Required Findings" count={metrics.capaRequiredFindings.length} severity={metrics.capaRequiredFindings.length > 0 ? "medium" : "controlled"} items={metrics.capaRequiredFindings} audits={audits} description="Findings requiring corrective and preventive action." />
+          <FindingEscalationCard title="Major Findings Missing Escalation Disposition" count={metrics.majorWithoutDisposition.length} severity={metrics.majorWithoutDisposition.length > 0 ? "high" : "controlled"} items={metrics.majorWithoutDisposition} audits={audits} description="Major findings without linked CAPA, linked SCAR, or documented risk-based justification." />
           <AuditEscalationCard title="Audits with Open Findings" count={metrics.auditsWithOpenFindings.length} severity={metrics.auditsWithOpenFindings.length > 0 ? "medium" : "controlled"} items={metrics.auditsWithOpenFindings} findingsForAudit={findingsForAudit} description="Audits that cannot be cleanly closed due to open findings." />
         </div>
       </section>
@@ -387,11 +385,12 @@ export default function AuditIntelligenceDashboardPage() {
         <DistributionSection title="Auditor Workload" items={auditorCounts} />
 
         <section style={cardStyle}>
-          <h2>CAPA Intelligence</h2>
-          <MetricRow label="CAPA Required Findings" value={metrics.capaRequiredFindings.length} />
-          <MetricRow label="CAPA Created Findings" value={metrics.capaCreatedFindings.length} />
-          <MetricRow label="CAPA Conversion Rate" value={metrics.capaConversionRate} suffix="%" />
-          <MetricRow label="CAPA Created Rate" value={metrics.capaCreatedRate} suffix="%" />
+          <h2>Escalation & Linkage Intelligence</h2>
+          <MetricRow label="Major Findings" value={metrics.majorFindings.length} />
+          <MetricRow label="CAPA Linked Findings" value={metrics.capaLinkedFindings.length} />
+          <MetricRow label="SCAR Linked Findings" value={metrics.scarLinkedFindings.length} />
+          <MetricRow label="Major Findings Missing Disposition" value={metrics.majorWithoutDisposition.length} />
+          <MetricRow label="Major Finding Governance" value={metrics.escalationLinkageRate} suffix="%" />
         </section>
 
         <section style={cardStyle}>
@@ -479,7 +478,9 @@ function FindingEscalationCard({ title, count, severity, items, audits, descript
             <div key={item.id} style={escalationItemStyle}>
               <strong>{item.finding_title || item.id}</strong>
               <div style={smallMutedStyle}>Audit: {audit?.audit_number || audit?.audit_title || "N/A"} | Severity: {item.finding_severity || "N/A"} | Status: {item.finding_status || "open"}</div>
-              {item.capa_id ? <Link href={`/capa/${item.capa_id}`}>Open CAPA</Link> : null}
+              {item.linked_capa_id ? <Link href={`/capa/${item.linked_capa_id}`}>Open CAPA</Link> : null}
+              {item.linked_capa_id && item.linked_scar_id ? " | " : null}
+              {item.linked_scar_id ? <Link href={`/supplier-quality/scars/${item.linked_scar_id}`}>Open SCAR</Link> : null}
             </div>
           );
         })}
