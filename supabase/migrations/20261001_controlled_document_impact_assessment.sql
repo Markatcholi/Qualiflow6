@@ -1,3 +1,6 @@
+alter table public.controlled_documents
+  add column if not exists is_initial_release boolean;
+
 -- Controlled Document impact assessment and disposition foundation
 create table if not exists public.document_impact_assessments (
   id uuid primary key default gen_random_uuid(),
