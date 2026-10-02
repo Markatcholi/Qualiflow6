@@ -61,6 +61,7 @@ type ControlledDocument = {
   revision_change_justification?: string | null;
   originating_change_control_id?: string | null;
   change_required?: boolean | null;
+  is_initial_release?: boolean | null;
   superseded_by_document_id?: string | null;
   superseded_document_id?: string | null;
   collaboration_required?: boolean | null;
@@ -195,6 +196,7 @@ export default function DocumentWorkflowPage() {
     training_impact: "FORMAL_TRAINING",
     read_ack_required: true,
     training_required: false,
+    is_initial_release: "" as "" | "yes" | "no",
   });
   const [initiationFile, setInitiationFile] = useState<File | null>(null);
   const [releasePdfFile, setReleasePdfFile] = useState<File | null>(null);
@@ -358,7 +360,12 @@ export default function DocumentWorkflowPage() {
     const revisionChangeDescription = documentRecord.revision_change_description || documentRecord.change_summary;
     const revisionChangeJustification = documentRecord.revision_change_justification || documentRecord.change_rationale;
 
-    if (isRevisionRecord(documentRecord)) {
+    if (documentRecord.is_initial_release === null || documentRecord.is_initial_release === undefined) {
+      alert("Initial Release? must be answered before the document can advance.");
+      return false;
+    }
+
+    if (!documentRecord.is_initial_release && isRevisionRecord(documentRecord)) {
       if (!String(revisionChangeDescription || "").trim()) {
         alert("Change description is required before a revision can leave draft.");
         return false;
@@ -593,6 +600,7 @@ export default function DocumentWorkflowPage() {
       training_impact: doc.training_impact || (doc.training_required ? "FORMAL_TRAINING" : doc.read_ack_required ? "READ_AND_ACKNOWLEDGE" : "NO_TRAINING"),
       read_ack_required: Boolean(doc.read_ack_required),
       training_required: Boolean(doc.training_required),
+      is_initial_release: doc.is_initial_release === true ? "yes" : doc.is_initial_release === false ? "no" : "",
     });
     setInitiationFile(null);
   }, [doc?.id]);
@@ -708,6 +716,7 @@ export default function DocumentWorkflowPage() {
           training_impact: initiationForm.training_impact || null,
           read_ack_required: initiationForm.training_impact === "READ_AND_ACKNOWLEDGE" || initiationForm.read_ack_required,
           training_required: initiationForm.training_impact === "FORMAL_TRAINING" || initiationForm.training_required,
+          is_initial_release: initiationForm.is_initial_release === "yes" ? true : initiationForm.is_initial_release === "no" ? false : null,
           file_name: uploaded.file_name,
           file_path: uploaded.file_path,
           file_url: uploaded.file_url,
@@ -1134,7 +1143,8 @@ export default function DocumentWorkflowPage() {
   };
 
   const validateImpactAssessmentGate = async (documentRecord: ControlledDocument) => {
-    if (!isRevisionRecord(documentRecord)) return true;
+    if (documentRecord.is_initial_release === true) return true;
+    if (documentRecord.is_initial_release === null || documentRecord.is_initial_release === undefined) { alert("Initial Release? must be answered before the document can advance."); return false; }
     const impactAreas = ["product_design","manufacturing_process","tooling_equipment","inspection_test_methods","specifications","supplier","inventory_wip","regulatory_risk","validation","training"];
     const { data: assessments, error: assessmentError } = await supabase.from("document_impact_assessments").select("id,impact_area,is_impacted,assessment,disposition_required,disposition_summary").eq("document_id", documentRecord.id);
     if (assessmentError) { alert(assessmentError.message); return false; }
@@ -1592,7 +1602,7 @@ export default function DocumentWorkflowPage() {
       alert("A final release PDF is required before releasing the controlled document.");
       return;
     }
-    if (isRevisionRecord(doc)) {
+    if (doc.is_initial_release === false) {
       const requiredAreas = ["product_design","manufacturing_process","tooling_equipment","inspection_test_methods","specifications","supplier","inventory_wip","regulatory_risk","validation","training"];
       const { data: impactRows, error: impactError } = await supabase.from("document_impact_assessments").select("id,impact_area,is_impacted,disposition_required").eq("document_id",doc.id);
       if (impactError) { alert(impactError.message); return; }
@@ -2197,6 +2207,19 @@ export default function DocumentWorkflowPage() {
                 style={inputStyle}
               />
             </Field>
+            <Field label="Initial Release?">
+              <select
+                value={initiationForm.is_initial_release}
+                onChange={(e) => setInitiationForm({ ...initiationForm, is_initial_release: e.target.value as "" | "yes" | "no" })}
+                style={inputStyle}
+              >
+                <option value="">Select Yes / No</option>
+                <option value="yes">Yes</option>
+                <option value="no">No</option>
+              </select>
+              <p style={subtleText}>Select Yes for the first controlled release. Impact Assessment does not apply to an initial release.</p>
+            </Field>
+
             <Field label="Training Impact Assessment">
               <select
                 value={revisionForm.training_impact}
@@ -2478,7 +2501,7 @@ export default function DocumentWorkflowPage() {
         )}
       </section>
 
-      {doc.tenant_id && isRevisionRecord(doc) ? (
+      {doc.tenant_id && doc.is_initial_release === false ? (
         <DocumentImpactAssessment documentId={doc.id} tenantId={doc.tenant_id} documentNumber={doc.document_number} revision={doc.revision} status={doc.status} userEmail={userEmail} canManage={canManageWorkflow || canApprove} />
       ) : null}
 
