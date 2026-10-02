@@ -2207,19 +2207,6 @@ export default function DocumentWorkflowPage() {
                 style={inputStyle}
               />
             </Field>
-            <Field label="Initial Release?">
-              <select
-                value={initiationForm.is_initial_release}
-                onChange={(e) => setInitiationForm({ ...initiationForm, is_initial_release: e.target.value as "" | "yes" | "no" })}
-                style={inputStyle}
-              >
-                <option value="">Select Yes / No</option>
-                <option value="yes">Yes</option>
-                <option value="no">No</option>
-              </select>
-              <p style={subtleText}>Select Yes for the first controlled release. Impact Assessment does not apply to an initial release.</p>
-            </Field>
-
             <Field label="Training Impact Assessment">
               <select
                 value={revisionForm.training_impact}
@@ -2369,6 +2356,19 @@ export default function DocumentWorkflowPage() {
                 rows={3}
                 style={textareaStyle}
               />
+            </Field>
+
+            <Field label="Initial Release?">
+              <select
+                value={initiationForm.is_initial_release}
+                onChange={(e) => setInitiationForm({ ...initiationForm, is_initial_release: e.target.value as "" | "yes" | "no" })}
+                style={inputStyle}
+              >
+                <option value="">Select Yes / No</option>
+                <option value="yes">Yes</option>
+                <option value="no">No</option>
+              </select>
+              <p style={subtleText}>Select Yes for the first controlled release. Impact Assessment does not apply to an initial release.</p>
             </Field>
 
             <Field label="Training Impact Assessment">
