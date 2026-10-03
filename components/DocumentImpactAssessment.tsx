@@ -72,7 +72,7 @@ export default function DocumentImpactAssessment({
         impact_area: area,
         is_impacted: patch.is_impacted !== undefined ? patch.is_impacted : current?.is_impacted ?? null,
         assessment: patch.assessment !== undefined ? patch.assessment : current?.assessment ?? null,
-        disposition_required: false,
+        disposition_required: patch.disposition_required !== undefined ? patch.disposition_required : current?.disposition_required ?? false,
         disposition_summary: patch.disposition_summary !== undefined ? patch.disposition_summary : current?.disposition_summary ?? null,
         assessed_by: userEmail,
         assessed_at: new Date().toISOString(),
@@ -120,15 +120,59 @@ export default function DocumentImpactAssessment({
               <div style={{ marginTop: 12 }}>
                 <label style={labelStyle}>Impact Assessment</label>
                 <textarea disabled={!editableAssessment} defaultValue={row.assessment || ""} onBlur={(e) => saveArea(key, { assessment: e.target.value })} rows={3} style={textareaStyle} placeholder={`Describe the ${label.toLowerCase()} impact.`} />
-                <label style={labelStyle}>Post-Approval Requirements / Notes</label>
-                <textarea
-                  disabled={!editableAssessment}
-                  defaultValue={row.disposition_summary || ""}
-                  onBlur={(e) => saveArea(key, { disposition_summary: e.target.value })}
-                  rows={2}
-                  style={textareaStyle}
-                  placeholder="Identify anticipated post-approval needs, such as validation, TMV, product disposition, regulatory approval, supplier approval, or classroom training."
-                />
+                {key === "validation" ? (
+                  <>
+                    <label style={labelStyle}>Revalidation Required?</label>
+                    <select
+                      disabled={!editableAssessment || busy}
+                      value={row.disposition_required === true ? "yes" : row.disposition_required === false && row.disposition_summary === "Revalidation not required." ? "no" : ""}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        if (value === "yes") {
+                          saveArea(key, { disposition_required: true, disposition_summary: "Upload the completed validation report." });
+                        } else if (value === "no") {
+                          saveArea(key, { disposition_required: false, disposition_summary: "Revalidation not required." });
+                        }
+                      }}
+                      style={inputStyle}
+                    >
+                      <option value="">Select Yes / No</option>
+                      <option value="yes">Yes — Revalidation required</option>
+                      <option value="no">No — Revalidation not required</option>
+                    </select>
+                    {row.disposition_required ? (
+                      <>
+                        <label style={labelStyle}>Post-Approval Task Instruction</label>
+                        <textarea
+                          disabled={!editableAssessment}
+                          value={row.disposition_summary || "Upload the completed validation report."}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            setRows((current) => current.map((item) => item.impact_area === key ? { ...item, disposition_summary: value } : item));
+                          }}
+                          onBlur={(e) => saveArea(key, { disposition_summary: e.target.value })}
+                          rows={2}
+                          style={textareaStyle}
+                        />
+                        <div style={{ marginTop: 6, fontSize: 12, color: "#596579" }}>
+                          After formal approval, Document Control will select the assignee and due date. The completed validation report will be required as objective evidence.
+                        </div>
+                      </>
+                    ) : null}
+                  </>
+                ) : (
+                  <>
+                    <label style={labelStyle}>Post-Approval Requirements / Notes</label>
+                    <textarea
+                      disabled={!editableAssessment}
+                      defaultValue={row.disposition_summary || ""}
+                      onBlur={(e) => saveArea(key, { disposition_summary: e.target.value })}
+                      rows={2}
+                      style={textareaStyle}
+                      placeholder="Identify anticipated post-approval needs, such as TMV, product disposition, regulatory approval, supplier approval, or classroom training."
+                    />
+                  </>
+                )}
               </div>
             ) : null}
           </div>
