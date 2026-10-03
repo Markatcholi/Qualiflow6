@@ -105,7 +105,6 @@ export default function DocumentImpactAssessment({
 
       {IMPACT_AREAS.map(([key, label]) => {
         const row = rowMap.get(key);
-        const areaTasks = row ? tasks.filter((task) => task.document_impact_assessment_id === row.id) : [];
         return (
           <div key={key} style={{ borderTop: "1px solid #e6eaf0", padding: "16px 0" }}>
             <div style={{ display: "grid", gridTemplateColumns: "minmax(220px,1fr) 180px", gap: 12, alignItems: "center" }}>
