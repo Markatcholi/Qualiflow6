@@ -1172,6 +1172,7 @@ function getTaskUrl(task: any) {
   if (task.entity_type === "ncmr") return `/ncmrs/${task.entity_id}`;
   if (task.entity_type === "capa") return `/capa/${task.entity_id}`;
   if (task.entity_type === "change_control") return `/change-control/${task.entity_id}`;
+  if (task.entity_type === "document" && String(task.task_type || "").trim().toLowerCase() === "document_post_approval") return `/documents/${task.entity_id}/implementation?taskId=${task.id}`;
   if (task.entity_type === "document") return `/documents/${task.entity_id}`;
   if (task.entity_type === "scar") return `/supplier-quality/scars/${task.entity_id}`;
   if (task.entity_type === "complaint") return `/complaints/${task.entity_id}`;
