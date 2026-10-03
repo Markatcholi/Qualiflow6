@@ -6,6 +6,7 @@ import { supabase } from "../../../lib/supabaseClient";
 import ESignatureModal from "../../../components/ESignatureModal";
 import DocumentSignatures from "../../../components/DocumentSignatures";
 import DocumentImpactAssessment from "../../../components/DocumentImpactAssessment";
+import DocumentPostApprovalTasks from "../../../components/DocumentPostApprovalTasks";
 import { createESignature } from "../../../lib/eSignatureEngine";
 import { processRetrainingForDocument } from "../../../services/retrainingService";
 import { generateControlledCopy } from "../../../services/controlledCopyService";
@@ -1152,7 +1153,7 @@ export default function DocumentWorkflowPage() {
     const impactAreas = ["product_design","manufacturing_process","tooling_equipment","inspection_test_methods","specifications","supplier","inventory_wip","regulatory_risk","validation","training"];
     const { data: assessments, error: assessmentError } = await supabase
       .from("document_impact_assessments")
-      .select("impact_area,is_impacted,assessment")
+      .select("impact_area,is_impacted,assessment,disposition_required,disposition_summary")
       .eq("document_id", documentRecord.id);
 
     if (assessmentError) { alert(assessmentError.message); return false; }
@@ -1171,6 +1172,16 @@ export default function DocumentWorkflowPage() {
     const impactedRows = (assessments || []).filter((row: any) => row.is_impacted === true);
     if (impactedRows.some((row: any) => !String(row.assessment || "").trim())) {
       alert("Every impacted area requires an Impact Assessment description.");
+      return false;
+    }
+
+    const validationImpact: any = assessmentMap.get("validation");
+    if (
+      validationImpact?.is_impacted === true &&
+      validationImpact?.disposition_required !== true &&
+      String(validationImpact?.disposition_summary || "").trim() !== "Revalidation not required."
+    ) {
+      alert("Complete the Revalidation Required? decision in the Validation impact assessment before advancing the document.");
       return false;
     }
 
@@ -2519,6 +2530,18 @@ export default function DocumentWorkflowPage() {
 
       {doc.tenant_id && doc.is_initial_release === false ? (
         <DocumentImpactAssessment documentId={doc.id} tenantId={doc.tenant_id} documentNumber={doc.document_number} revision={doc.revision} status={doc.status} userEmail={userEmail} canManage={canManageWorkflow || canApprove} />
+      ) : null}
+
+      {doc.tenant_id && doc.is_initial_release === false ? (
+        <DocumentPostApprovalTasks
+          documentId={doc.id}
+          tenantId={doc.tenant_id}
+          documentNumber={doc.document_number}
+          revision={doc.revision}
+          status={doc.status}
+          userEmail={userEmail}
+          canCoordinate={canManage}
+        />
       ) : null}
 
       <section style={cardStyle}>
