@@ -1144,23 +1144,36 @@ export default function DocumentWorkflowPage() {
 
   const validateImpactAssessmentGate = async (documentRecord: ControlledDocument) => {
     if (documentRecord.is_initial_release === true) return true;
-    if (documentRecord.is_initial_release === null || documentRecord.is_initial_release === undefined) { alert("Initial Release? must be answered before the document can advance."); return false; }
-    const impactAreas = ["product_design","manufacturing_process","tooling_equipment","inspection_test_methods","specifications","supplier","inventory_wip","regulatory_risk","validation","training"];
-    const { data: assessments, error: assessmentError } = await supabase.from("document_impact_assessments").select("id,impact_area,is_impacted,assessment,disposition_required,disposition_summary").eq("document_id", documentRecord.id);
-    if (assessmentError) { alert(assessmentError.message); return false; }
-    const assessmentMap = new Map((assessments || []).map((row: any) => [row.impact_area, row]));
-    const unanswered = impactAreas.filter((area) => { const row: any = assessmentMap.get(area); return !row || row.is_impacted === null || row.is_impacted === undefined; });
-    if (unanswered.length > 0) { alert(`Complete all Impact Assessment areas before advancing the revision. Remaining: ${unanswered.length}.`); return false; }
-    const impactedRows = (assessments || []).filter((row: any) => row.is_impacted === true);
-    if (impactedRows.some((row: any) => !String(row.assessment || "").trim())) { alert("Every impacted area requires an Impact Assessment description."); return false; }
-    const dispositionRows = impactedRows.filter((row: any) => row.disposition_required === true);
-    if (dispositionRows.some((row: any) => !String(row.disposition_summary || "").trim())) { alert("Every required disposition requires a Disposition Summary."); return false; }
-    if (dispositionRows.length > 0) {
-      const { data: dispositionTasks, error: taskError } = await supabase.from("approval_tasks").select("document_impact_assessment_id").eq("entity_type","document").eq("entity_id",documentRecord.id).eq("task_type","document_disposition").neq("status","cancelled");
-      if (taskError) { alert(taskError.message); return false; }
-      const taskAssessmentIds = new Set((dispositionTasks || []).map((task: any) => task.document_impact_assessment_id));
-      if (dispositionRows.some((row: any) => !taskAssessmentIds.has(row.id))) { alert("Each impact area requiring disposition must have at least one disposition task before the revision advances."); return false; }
+    if (documentRecord.is_initial_release === null || documentRecord.is_initial_release === undefined) {
+      alert("Initial Release? must be answered before the document can advance.");
+      return false;
     }
+
+    const impactAreas = ["product_design","manufacturing_process","tooling_equipment","inspection_test_methods","specifications","supplier","inventory_wip","regulatory_risk","validation","training"];
+    const { data: assessments, error: assessmentError } = await supabase
+      .from("document_impact_assessments")
+      .select("impact_area,is_impacted,assessment")
+      .eq("document_id", documentRecord.id);
+
+    if (assessmentError) { alert(assessmentError.message); return false; }
+
+    const assessmentMap = new Map((assessments || []).map((row: any) => [row.impact_area, row]));
+    const unanswered = impactAreas.filter((area) => {
+      const row: any = assessmentMap.get(area);
+      return !row || row.is_impacted === null || row.is_impacted === undefined;
+    });
+
+    if (unanswered.length > 0) {
+      alert(`Complete all Impact Assessment areas before advancing the document. Remaining: ${unanswered.length}.`);
+      return false;
+    }
+
+    const impactedRows = (assessments || []).filter((row: any) => row.is_impacted === true);
+    if (impactedRows.some((row: any) => !String(row.assessment || "").trim())) {
+      alert("Every impacted area requires an Impact Assessment description.");
+      return false;
+    }
+
     return true;
   };
 
@@ -1602,20 +1615,23 @@ export default function DocumentWorkflowPage() {
       alert("A final release PDF is required before releasing the controlled document.");
       return;
     }
-    if (doc.is_initial_release === false) {
-      const requiredAreas = ["product_design","manufacturing_process","tooling_equipment","inspection_test_methods","specifications","supplier","inventory_wip","regulatory_risk","validation","training"];
-      const { data: impactRows, error: impactError } = await supabase.from("document_impact_assessments").select("id,impact_area,is_impacted,disposition_required").eq("document_id",doc.id);
-      if (impactError) { alert(impactError.message); return; }
-      const assessedAreas = new Set((impactRows || []).filter((row: any) => row.is_impacted !== null && row.is_impacted !== undefined).map((row: any) => row.impact_area));
-      if (requiredAreas.some((area) => !assessedAreas.has(area))) { alert("Release blocked: the revision Impact Assessment is incomplete."); return; }
-      const dispositionRows = (impactRows || []).filter((row: any) => row.is_impacted === true && row.disposition_required === true);
-      if (dispositionRows.length > 0) {
-        const { data: dispositionTasks, error: taskError } = await supabase.from("approval_tasks").select("id,document_impact_assessment_id,status,implementation_verification_status").eq("entity_type","document").eq("entity_id",doc.id).eq("task_type","document_disposition").neq("status","cancelled");
-        if (taskError) { alert(taskError.message); return; }
-        const tasks = dispositionTasks || [];
-        const unresolved = dispositionRows.some((assessment: any) => { const areaTasks = tasks.filter((task: any) => task.document_impact_assessment_id === assessment.id); return areaTasks.length === 0 || areaTasks.some((task: any) => task.implementation_verification_status !== "verified"); });
-        if (unresolved) { alert("Release blocked: all required impact disposition tasks must be completed and verified before release."); return; }
-      }
+    const { data: postApprovalTasks, error: postApprovalTaskError } = await supabase
+      .from("approval_tasks")
+      .select("id,status,implementation_verification_status,required")
+      .eq("entity_type", "document")
+      .eq("entity_id", doc.id)
+      .eq("task_type", "document_post_approval")
+      .neq("status", "cancelled");
+
+    if (postApprovalTaskError) { alert(postApprovalTaskError.message); return; }
+
+    const unresolvedPostApprovalTasks = (postApprovalTasks || []).filter(
+      (task: any) => task.required !== false && task.implementation_verification_status !== "verified"
+    );
+
+    if (unresolvedPostApprovalTasks.length > 0) {
+      alert(`Release blocked: ${unresolvedPostApprovalTasks.length} required post-approval task(s) remain incomplete or unverified.`);
+      return;
     }
 
 
