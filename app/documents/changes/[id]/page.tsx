@@ -29,7 +29,10 @@ export default function DciWorkspacePage() {
   const [saving, setSaving] = useState(false);
   const [sourceId, setSourceId] = useState("");
   const [proposedRevision, setProposedRevision] = useState("");
-  const [newDoc, setNewDoc] = useState({ title:"", document_type:"SOP", revision:"A", department:"", process_area:"" });
+  const [newDoc, setNewDoc] = useState({ document_number:"", title:"", document_type:"SOP", revision:"A", department:"", process_area:"", owner_email:"", change_description:"", change_rationale:"" });
+  const [newPrimaryFile,setNewPrimaryFile]=useState<File|null>(null);
+  const [newAdditionalFiles,setNewAdditionalFiles]=useState<File[]>([]);
+  const [autoGeneratingNumber,setAutoGeneratingNumber]=useState(false);
 
   const load = async () => {
     const user = await supabase.auth.getUser(); setUserEmail(user.data?.user?.email || "");
@@ -98,15 +101,40 @@ export default function DciWorkspacePage() {
     } catch(e:any){ alert(e.message || "Unable to add document."); } finally { setSaving(false); }
   };
 
+  const prepareNewDocument = async () => {
+    setMode("new");
+    setAutoGeneratingNumber(true);
+    const number=await supabase.rpc("generate_document_number",{p_document_type:"SOP"});
+    setAutoGeneratingNumber(false);
+    if(number.error) return alert(number.error.message);
+    setNewDoc({document_number:String(number.data||""),title:"",document_type:"SOP",revision:"A",department:"",process_area:"",owner_email:userEmail,change_description:"",change_rationale:""});
+    setNewPrimaryFile(null); setNewAdditionalFiles([]);
+  };
+
+  const changeNewDocumentType = async (document_type:string) => {
+    setNewDoc(prev=>({...prev,document_type,document_number:""}));
+    setAutoGeneratingNumber(true);
+    const number=await supabase.rpc("generate_document_number",{p_document_type:document_type});
+    setAutoGeneratingNumber(false);
+    if(number.error) return alert(number.error.message);
+    setNewDoc(prev=>({...prev,document_type,document_number:String(number.data||"")}));
+  };
+
   const addNew = async () => {
     if(!newDoc.title.trim()) return alert("Document title is required.");
     setSaving(true);
     try {
-      const number = await supabase.rpc("generate_document_number",{p_document_type:newDoc.document_type});
-      if(number.error) throw new Error(number.error.message);
+      if(!newDoc.document_number.trim()) throw new Error("Document number is required.");
+      let primary:{file_name:string|null,file_path:string|null}={file_name:null,file_path:null};
+      if(newPrimaryFile){
+        const filePath=await buildControlledDocumentStoragePath({documentNumber:newDoc.document_number,revision:newDoc.revision||"A",area:"working",fileName:`${Date.now()}_${newPrimaryFile.name}`});
+        const up=await supabase.storage.from(CONTROLLED_DOCUMENT_BUCKET).upload(filePath,newPrimaryFile); if(up.error) throw new Error(up.error.message);
+        primary={file_name:newPrimaryFile.name,file_path:filePath};
+      }
       const created = await supabase.from("controlled_documents").insert({
-        document_number:number.data, title:newDoc.title.trim(), document_type:newDoc.document_type, revision:newDoc.revision.trim()||"A",
-        status:"draft", department:newDoc.department||null, process_area:newDoc.process_area||null, owner_email:userEmail, created_by:userEmail, dci_id:id,
+        document_number:newDoc.document_number.trim(), title:newDoc.title.trim(), document_type:newDoc.document_type, revision:newDoc.revision.trim()||"A",
+        status:"draft", department:newDoc.department||null, process_area:newDoc.process_area||null, owner_email:newDoc.owner_email||userEmail, created_by:userEmail, dci_id:id,
+        file_name:primary.file_name,file_path:primary.file_path,file_url:null,change_summary:newDoc.change_description||null,change_rationale:newDoc.change_rationale||null,
         read_ack_required:false, training_required:false
       }).select("id").single();
       if(created.error) throw new Error(created.error.message);
@@ -114,7 +142,15 @@ export default function DciWorkspacePage() {
         dci_id:id, document_id:created.data.id, change_type:"new", sequence_no:children.length+1, created_by:userEmail
       });
       if(linked.error) throw new Error(linked.error.message);
-      setMode(null); setNewDoc({title:"",document_type:"SOP",revision:"A",department:"",process_area:""}); await load();
+      if(newAdditionalFiles.length){
+        const tenant=await supabase.rpc("qualisphere_current_controlled_documents_tenant"); if(tenant.error) throw new Error(tenant.error.message);
+        for(const file of newAdditionalFiles){
+          const filePath=await buildControlledDocumentStoragePath({documentNumber:newDoc.document_number,revision:newDoc.revision||"A",area:"dci-supporting",fileName:`${Date.now()}_${file.name}`});
+          const up=await supabase.storage.from(CONTROLLED_DOCUMENT_BUCKET).upload(filePath,file); if(up.error) throw new Error(up.error.message);
+          const ins=await supabase.from("document_change_document_files").insert({tenant_id:tenant.data,dci_id:id,document_id:created.data.id,file_name:file.name,file_path:filePath,uploaded_by:userEmail}); if(ins.error) throw new Error(ins.error.message);
+        }
+      }
+      setMode(null); setNewDoc({document_number:"",title:"",document_type:"SOP",revision:"A",department:"",process_area:"",owner_email:"",change_description:"",change_rationale:""}); setNewPrimaryFile(null); setNewAdditionalFiles([]); await load();
     } catch(e:any){ alert(e.message || "Unable to add new document."); } finally { setSaving(false); }
   };
 
@@ -187,14 +223,25 @@ export default function DciWorkspacePage() {
     <section style={card}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12}}>
         <div><h2 style={{margin:"0 0 4px"}}>Affected Documents</h2><div style={{color:"#667085"}}>Each document has its own proposed revision and Impact Assessment. The DCI will be collaborated and formally approved as one package.</div></div>
-        {editable&&<div style={{display:"flex",gap:8}}><button style={secondaryButton} onClick={()=>setMode("new")}>Add New Document</button><button style={secondaryButton} onClick={()=>setMode("revision")}>Add Revision</button><button style={secondaryButton} onClick={()=>setMode("reinstatement")}>Reinstate Obsolete</button></div>}
+        {editable&&<div style={{display:"flex",gap:8}}><button style={secondaryButton} onClick={prepareNewDocument}>Add New Document</button><button style={secondaryButton} onClick={()=>setMode("revision")}>Add Revision</button><button style={secondaryButton} onClick={()=>setMode("reinstatement")}>Reinstate Obsolete</button></div>}
       </div>
 
-      {mode==="new"&&<div style={subcard}><h3>Add New Document</h3>
-        <label style={label}>Title *</label><input style={input} value={newDoc.title} onChange={e=>setNewDoc({...newDoc,title:e.target.value})}/>
-        <div style={two}><div><label style={label}>Document Type</label><select style={input} value={newDoc.document_type} onChange={e=>setNewDoc({...newDoc,document_type:e.target.value})}>{["SOP","Work Instruction","Form","Policy","Specification","Protocol","Report","Template","Other"].map(x=><option key={x}>{x}</option>)}</select></div>
-        <div><label style={label}>Initial Revision</label><input style={input} value={newDoc.revision} onChange={e=>setNewDoc({...newDoc,revision:e.target.value})}/></div></div>
-        <div style={{display:"flex",gap:8}}><button disabled={saving} onClick={addNew} style={primary}>Add to {dci.dci_number}</button><button onClick={()=>setMode(null)} style={secondaryButton}>Cancel</button></div>
+      {mode==="new"&&<div style={subcard}><h3>Create New Document</h3>
+        <div style={{color:"#667085",marginBottom:12}}>Create the controlled document directly in this DCI. The document number is assigned automatically from the selected document type.</div>
+        <div style={two}>
+          <div><label style={label}>Document Type</label><select style={input} value={newDoc.document_type} onChange={e=>changeNewDocumentType(e.target.value)}>{["SOP","Work Instruction","Form","Policy","Specification","Protocol","Report","Template","Other"].map(x=><option key={x}>{x}</option>)}</select></div>
+          <div><label style={label}>Document Number</label><input style={input} value={autoGeneratingNumber?"Generating...":newDoc.document_number} readOnly/></div>
+          <div><label style={label}>Title *</label><input style={input} value={newDoc.title} onChange={e=>setNewDoc({...newDoc,title:e.target.value})}/></div>
+          <div><label style={label}>Revision</label><input style={input} value={newDoc.revision} onChange={e=>setNewDoc({...newDoc,revision:e.target.value})}/></div>
+          <div><label style={label}>Department</label><input style={input} value={newDoc.department} onChange={e=>setNewDoc({...newDoc,department:e.target.value})}/></div>
+          <div><label style={label}>Process Area</label><input style={input} value={newDoc.process_area} onChange={e=>setNewDoc({...newDoc,process_area:e.target.value})}/></div>
+          <div><label style={label}>Owner Email</label><input type="email" style={input} value={newDoc.owner_email} onChange={e=>setNewDoc({...newDoc,owner_email:e.target.value})}/></div>
+        </div>
+        <label style={label}>Change Description</label><textarea style={input} rows={3} value={newDoc.change_description} onChange={e=>setNewDoc({...newDoc,change_description:e.target.value})}/>
+        <label style={label}>Change Rationale / Justification</label><textarea style={input} rows={3} value={newDoc.change_rationale} onChange={e=>setNewDoc({...newDoc,change_rationale:e.target.value})}/>
+        <label style={label}>Markup / Redline</label><input type="file" style={input} onChange={e=>setNewPrimaryFile(e.target.files?.[0]||null)}/>
+        <label style={label}>Additional Files (Optional)</label><input type="file" multiple style={input} onChange={e=>setNewAdditionalFiles(Array.from(e.target.files||[]))}/>
+        <div style={{display:"flex",gap:8}}><button disabled={saving||autoGeneratingNumber} onClick={addNew} style={primary}>Create & Add to {dci.dci_number}</button><button onClick={()=>setMode(null)} style={secondaryButton}>Cancel</button></div>
       </div>}
 
       {(mode==="revision"||mode==="reinstatement")&&<div style={subcard}><h3>{mode==="revision"?"Add Existing Document Revision":"Reinstate Obsolete Document"}</h3>
@@ -206,15 +253,16 @@ export default function DciWorkspacePage() {
       </div>}
 
       {children.length===0?<p style={{color:"#667085"}}>No affected documents have been added yet.</p>:<div style={{overflowX:"auto",marginTop:18}}><table style={{width:"100%",borderCollapse:"collapse"}}>
-        <thead><tr>{["#","Document","Change","Revision","Document File","Additional Files (Optional)","Actions"].map(x=><th key={x} style={th}>{x}</th>)}</tr></thead>
-        <tbody>{children.map((child,i)=>{const d=child.document; return <tr key={child.id}>
-          <td style={td}>{i+1}</td>
-          <td style={td}>{d ? (editingId===d.id?<input style={input} value={editDoc.title} onChange={e=>setEditDoc({...editDoc,title:e.target.value})}/>:<><strong>{d.document_number}</strong><br/><span style={{color:"#667085"}}>{d.title}</span></>) : <strong>Document unavailable</strong>}</td>
-          <td style={td}>{child.change_type}</td>
-          <td style={td}>{d ? (editingId===d.id?<input style={{...input,width:90}} value={editDoc.revision} onChange={e=>setEditDoc({...editDoc,revision:e.target.value})}/>:d.revision) : "—"}</td>
-          <td style={td}>{d ? <><div>{d.resolved_file_url?<a style={secondary} href={d.resolved_file_url} target="_blank" rel="noreferrer">Open Document</a>:<span style={{color:"#667085"}}>No document uploaded</span>}</div>{editable&&<label style={{...secondaryButton,marginTop:6}}>Edit / Replace<input type="file" hidden disabled={uploadingFor===d.id} onChange={e=>{const file=e.target.files?.[0];if(file)uploadPrimary(d,file);}}/></label>}</>:"—"}</td>
-          <td style={td}>{d?<><div>{additionalFiles.filter(x=>x.document_id===d.id).map(x=><div key={x.id} style={{marginBottom:5}}>{x.signed_url?<a href={x.signed_url} target="_blank" rel="noreferrer">{x.file_name}</a>:x.file_name}</div>)}</div>{editable&&<label style={secondaryButton}>Add File<input type="file" hidden disabled={uploadingFor===d.id} onChange={e=>{const file=e.target.files?.[0];if(file)uploadAdditional(d,file);}}/></label>}</>:"—"}</td>
+        <thead><tr>{["Action","Document Number","Current Rev","New Rev","Document Title","Document Type","Markup / Redline","Additional Files"].map(x=><th key={x} style={th}>{x}</th>)}</tr></thead>
+        <tbody>{children.map(child=>{const d=child.document;const source=released.find(x=>x.id===child.source_document_id);return <tr key={child.id}>
           <td style={td}>{d&&editable?(editingId===d.id?<><button style={primary} onClick={()=>saveEdit(d.id)}>Save</button> <button style={secondaryButton} onClick={()=>setEditingId(null)}>Cancel</button></>:<><button style={secondaryButton} onClick={()=>{setEditingId(d.id);setEditDoc({title:d.title,revision:d.revision});}}>Edit</button> <button style={danger} onClick={()=>removeDocument(child)}>Remove</button></>):"—"}</td>
+          <td style={td}>{d?<a href={`/documents/${d.id}`} style={{fontWeight:800,color:"#1d4ed8",textDecoration:"underline"}}>{d.document_number}</a>:"Unavailable"}</td>
+          <td style={td}>{child.change_type==="new"?"—":source?.revision||"—"}</td>
+          <td style={td}>{d?(editingId===d.id?<input style={{...input,width:80}} value={editDoc.revision} onChange={e=>setEditDoc({...editDoc,revision:e.target.value})}/>:d.revision):"—"}</td>
+          <td style={td}>{d?(editingId===d.id?<input style={input} value={editDoc.title} onChange={e=>setEditDoc({...editDoc,title:e.target.value})}/>:d.title):"—"}</td>
+          <td style={td}>{d?.document_type||"—"}</td>
+          <td style={td}>{d?<><div>{d.resolved_file_url?<a href={d.resolved_file_url} target="_blank" rel="noreferrer">{d.file_name||"Open Markup / Redline"}</a>:<span style={{color:"#667085"}}>No file uploaded</span>}</div>{editable&&<label style={{...secondaryButton,marginTop:6}}>Edit / Replace<input type="file" hidden disabled={uploadingFor===d.id} onChange={e=>{const file=e.target.files?.[0];if(file)uploadPrimary(d,file);}}/></label>}</>:"—"}</td>
+          <td style={td}>{d?<><div>{additionalFiles.filter(x=>x.document_id===d.id).map(x=><div key={x.id} style={{marginBottom:5}}>{x.signed_url?<a href={x.signed_url} target="_blank" rel="noreferrer">{x.file_name}</a>:x.file_name}</div>)}</div>{editable&&<label style={secondaryButton}>Add File<input type="file" hidden disabled={uploadingFor===d.id} onChange={e=>{const file=e.target.files?.[0];if(file)uploadAdditional(d,file);}}/></label>}</>:"—"}</td>
         </tr>})}</tbody>
       </table></div>}
     </section>
