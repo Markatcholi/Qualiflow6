@@ -688,7 +688,7 @@ export default function DocumentCollaborationPage() {
               <div style={ownerOnlyNoticeStyle}>
                 <strong>Owner-controlled resolution</strong>
                 <p style={{ margin: "6px 0 0" }}>
-                  Only the document owner ({ncmrOwnerEmail || "not assigned"}) may
+                  Only the document owner ({documentOwnerEmail || "not assigned"}) may
                   resolve the overall collaboration after every collaborator
                   has completed their assigned task.
                 </p>
@@ -697,13 +697,11 @@ export default function DocumentCollaborationPage() {
               <>
                 {!allCollaboratorsCompleted ? (
                   <div style={pendingCompletionNoticeStyle}>
-                    All collaborator assignments must be completed before the
-                    collaboration can be resolved.
+                    Some collaborator assignments are still open. The document owner may still close the collaboration when sufficient input has been received; remaining open tasks will be cancelled and preserved in the collaboration history.
                   </div>
                 ) : (
                   <div style={readyToResolveNoticeStyle}>
-                    All collaborator assignments are complete. The document owner
-                    may now document the outcome and resolve the collaboration.
+                    All collaborator assignments are complete. The document owner may document the outcome and close the collaboration.
                   </div>
                 )}
 
