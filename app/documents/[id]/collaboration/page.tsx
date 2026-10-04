@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "../../../../lib/supabaseClient";
 import DocumentImpactAssessment from "../../../../components/DocumentImpactAssessment";
+import { resolveControlledDocumentFileUrl } from "../../../../lib/controlledDocumentStorage";
 
 type DirectoryUser = {
   user_email: string;
@@ -187,7 +188,11 @@ export default function DocumentCollaborationPage() {
 
         if (recordResponse.error) throw new Error(recordResponse.error.message);
         if (!recordResponse.data) throw new Error("Controlled Document record not found.");
-        setRecord(recordResponse.data);
+        const resolvedWorkingFileUrl = await resolveControlledDocumentFileUrl({
+          filePath: recordResponse.data.file_path,
+          legacyUrl: recordResponse.data.file_url,
+        });
+        setRecord({ ...recordResponse.data, file_url: resolvedWorkingFileUrl });
         setChangeDescription(recordResponse.data.revision_change_description || recordResponse.data.change_summary || "");
         setChangeJustification(recordResponse.data.revision_change_justification || recordResponse.data.change_rationale || "");
         if (!usersResponse.error) setDirectoryUsers((usersResponse.data as DirectoryUser[]) || []);
