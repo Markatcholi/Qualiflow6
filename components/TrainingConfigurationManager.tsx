@@ -33,6 +33,22 @@ export default function TrainingConfigurationManager({ tenantId }:{ tenantId:str
     const {error}=await supabase.from("training_methods").insert({tenant_id:tenantId,code:method.code.trim().toUpperCase().replace(/\s+/g,"_"),label:method.label.trim(),release_blocking:method.release_blocking,acknowledgement_required:method.acknowledgement_required,evidence_required:method.evidence_required});
     setBusy(false); if(error) return alert(error.message); setMethod({code:"",label:"",release_blocking:false,acknowledgement_required:true,evidence_required:false}); await load();
   };
+  const removeMethod=async(id:string)=>{
+    const methodToRemove=methods.find(m=>m.id===id);
+    if(!methodToRemove) return;
+    if(!confirm(`Remove training method "${methodToRemove.label}"? It will no longer be available for new training requirements.`)) return;
+    setBusy(true);
+    const {count,error:usageError}=await supabase.from("document_training_requirements").select("id",{count:"exact",head:true}).eq("training_method_id",id);
+    if(usageError){setBusy(false);return alert(usageError.message);}
+    if((count||0)>0){
+      const {error}=await supabase.from("training_methods").update({is_active:false}).eq("id",id);
+      setBusy(false); if(error)return alert(error.message);
+      alert("This method is already referenced by document training records, so it was deactivated instead of deleted. Existing records are preserved.");
+      return load();
+    }
+    const {error}=await supabase.from("training_methods").delete().eq("id",id);
+    setBusy(false); if(error)return alert(error.message); await load();
+  };
   const addGroup=async()=>{
     if(!group.group_name.trim()) return alert("Training group name is required.");
     setBusy(true); const {error}=await supabase.from("training_groups").insert({tenant_id:tenantId,group_name:group.group_name.trim(),description:group.description.trim()||null});
@@ -60,7 +76,7 @@ export default function TrainingConfigurationManager({ tenantId }:{ tenantId:str
       <label><input type="checkbox" checked={method.evidence_required} onChange={e=>setMethod({...method,evidence_required:e.target.checked})}/> Completion evidence required</label>
     </div>
     <button disabled={busy} onClick={addMethod} style={button}>Add Training Method</button>
-    <ul>{methods.map(m=><li key={m.id}><strong>{m.label}</strong> — {m.release_blocking?"Release prerequisite":"Post-release completion permitted"}</li>)}</ul>
+    <div style={{marginTop:10}}>{methods.map(m=><div key={m.id} style={{display:"flex",justifyContent:"space-between",gap:12,padding:"8px 0",borderBottom:"1px solid #e5e7eb"}}><span><strong>{m.label}</strong> — {m.release_blocking?"Release prerequisite":"Post-release completion permitted"}</span><button disabled={busy} onClick={()=>removeMethod(m.id)} style={linkButton}>Remove</button></div>)}</div>
 
     <hr style={{margin:"22px 0"}}/>
     <h3>Training Groups</h3>
