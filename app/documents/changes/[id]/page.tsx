@@ -227,7 +227,7 @@ export default function DciWorkspacePage() {
         <div><strong>{d.document_number} Rev {d.revision} — {d.title}</strong><div style={{color:"#667085",fontSize:13}}>Impact Assessment: {count===10?"Complete":`${count}/10 areas assessed`}</div></div>
         <a style={secondary} href={`/documents/${d.id}`}>Open Impact Assessment</a>
       </div>})}
-
+    </section>
 
     <section style={card}>
       <h2 style={{marginTop:0}}>DCI Review & Approval</h2>
