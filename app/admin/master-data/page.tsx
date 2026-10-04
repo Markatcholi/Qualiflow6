@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { supabase } from "../../../lib/supabaseClient";
+import TrainingConfigurationManager from "../../../components/TrainingConfigurationManager";
 
 type SimpleItem = {
   id: string;
@@ -92,6 +93,7 @@ export default function MasterDataPage() {
   const [loading, setLoading] = useState(true);
   const [userEmail, setUserEmail] = useState("");
   const [userRole, setUserRole] = useState("");
+  const [tenantId, setTenantId] = useState("");
   const [securityRoles, setSecurityRoles] = useState<SecurityRoleDefinition[]>([]);
   const [userDirectory, setUserDirectory] = useState<UserDirectoryItem[]>([]);
   const [userRoleAssignments, setUserRoleAssignments] = useState<UserRoleAssignment[]>([]);
@@ -208,6 +210,14 @@ export default function MasterDataPage() {
     }
 
     setUserRole(data?.role || "");
+
+    const { data: membership } = await supabase
+      .from("tenant_memberships")
+      .select("tenant_id")
+      .ilike("user_email", email)
+      .eq("membership_status", "active")
+      .maybeSingle();
+    setTenantId(membership?.tenant_id || "");
     setLoading(false);
   };
 
@@ -823,6 +833,8 @@ export default function MasterDataPage() {
       <h1>Admin Master Data</h1>
       <p><strong>Logged-in Email:</strong> {userEmail}</p>
       <p><strong>Your Role:</strong> {userRole}</p>
+
+      {tenantId ? <TrainingConfigurationManager tenantId={tenantId} /> : null}
 
       <div
         style={{
