@@ -85,7 +85,7 @@ export default function DciWorkspacePage() {
     if(!dci || dci.status==="released") return;
     const reason = window.prompt("Withdrawal reason (required):");
     if(!reason?.trim()) return;
-    if(!window.confirm(`Withdraw ${dic.dci_number}? The record and completed history will be retained.`)) return;
+    if(!window.confirm(`Withdraw ${dci.dci_number}? The record and completed history will be retained.`)) return;
     const now=new Date().toISOString();
     const u=await supabase.from("document_change_initiations").update({status:"withdrawn",withdrawn_reason:reason.trim(),withdrawn_by:userEmail,withdrawn_at:now,updated_at:now}).eq("id",id);
     if(u.error) return alert(u.error.message);
@@ -93,13 +93,13 @@ export default function DciWorkspacePage() {
     await load();
   };
 
-  if(!dic) return <main style={{padding:28}}>Loading DIC...</main>;
+  if(!dci) return <main style={{padding:28}}>Loading DCI...</main>;
   const editable=dci.status==="draft";
 
   return <main style={{padding:28,maxWidth:1320,margin:"0 auto",fontFamily:"Arial, sans-serif"}}>
     <div style={{display:"flex",justifyContent:"space-between",gap:16,alignItems:"flex-start",marginBottom:18}}>
       <div><div style={{fontSize:12,fontWeight:800,letterSpacing:1.2,color:"#536274"}}>DOCUMENT CHANGE INITIATION</div>
-        <h1 style={{margin:"6px 0"}}>{dic.dci_number}{dci.title ? ` — ${dci.title}` : ""}</h1>
+        <h1 style={{margin:"6px 0"}}>{dci.dci_number}{dci.title ? ` — ${dci.title}` : ""}</h1>
         <div style={{color:"#667085"}}>Owner: {dci.owner_email} · Status: <strong>{String(dci.status).replaceAll("_"," ")}</strong> · {dci.release_strategy} release</div>
       </div>
       <div style={{display:"flex",gap:8}}><a href="/documents/changes" style={secondary}>DCI Register</a>{editable&&<button onClick={withdraw} style={danger}>Withdraw DCI</button>}</div>
