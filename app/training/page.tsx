@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
 import ESignatureModal from "../../components/ESignatureModal";
 import { acknowledgeTraining } from "../../services/trainingService";
-import TrainingConfigurationManager from "../../components/TrainingConfigurationManager";
 
 type TrainingAssignment = {
   id: string;
@@ -106,7 +105,6 @@ export default function TrainingManagementPage() {
   const [loading, setLoading] = useState(true);
   const [userEmail, setUserEmail] = useState("");
   const [userRole, setUserRole] = useState("");
-  const [tenantId, setTenantId] = useState("");
 
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterMine, setFilterMine] = useState(false);
@@ -161,13 +159,6 @@ export default function TrainingManagementPage() {
 
     setUserRole(data?.role || "user");
 
-    const { data: membership } = await supabase
-      .from("tenant_memberships")
-      .select("tenant_id")
-      .ilike("user_email", email)
-      .eq("membership_status", "active")
-      .maybeSingle();
-    setTenantId(membership?.tenant_id || "");
   };
 
   const fetchData = async () => {
@@ -794,8 +785,6 @@ export default function TrainingManagementPage() {
           </a>
         </div>
       </header>
-
-      {tenantId && canManage ? <TrainingConfigurationManager tenantId={tenantId} /> : null}
 
       
       <section style={cardStyle}>
