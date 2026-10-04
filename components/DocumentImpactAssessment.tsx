@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
+import DocumentTrainingRequirements from "./DocumentTrainingRequirements";
 
 const IMPACT_AREAS = [
   ["product_design", "Product / Design"],
@@ -160,6 +161,13 @@ export default function DocumentImpactAssessment({
                       </>
                     ) : null}
                   </>
+                ) : key === "training" ? (
+                  <DocumentTrainingRequirements
+                    documentId={documentId}
+                    tenantId={tenantId}
+                    userEmail={userEmail}
+                    editable={editableAssessment}
+                  />
                 ) : (
                   <>
                     <label style={labelStyle}>Post-Approval Requirements / Notes</label>
@@ -169,7 +177,7 @@ export default function DocumentImpactAssessment({
                       onBlur={(e) => saveArea(key, { disposition_summary: e.target.value })}
                       rows={2}
                       style={textareaStyle}
-                      placeholder="Identify anticipated post-approval needs, such as TMV, product disposition, regulatory approval, supplier approval, or classroom training."
+                      placeholder="Identify anticipated post-approval needs, such as TMV, product disposition, regulatory approval, supplier approval, or implementation evidence."
                     />
                   </>
                 )}
