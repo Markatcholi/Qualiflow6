@@ -606,6 +606,10 @@ export default function DocumentControlLandingPage() {
               Open Full Workflow Dashboard
             </a>
 
+            <a href="/documents/changes" style={primaryLinkStyle}>
+              Document Change Initiations (DIC)
+            </a>
+
             <a href="/documents/dashboard" style={secondaryButtonStyle}>
               Document Intelligence Dashboard
             </a>
