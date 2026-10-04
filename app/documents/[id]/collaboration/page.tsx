@@ -272,8 +272,8 @@ export default function DocumentCollaborationPage() {
       const path = `collaboration/${MODULE}/${id}/${threadId}/${Date.now()}_${index + 1}_${safeName}`;
       const upload = await supabase.storage.from("evidence").upload(path, file, { cacheControl: "3600", upsert: false, contentType: file.type || undefined });
       if (upload.error) throw new Error(`Unable to upload ${file.name}: ${upload.error.message}`);
-      const publicUrl = supabase.storage.from("evidence").getPublicUrl(path).data.publicUrl;
-      attachments.push({ name:file.name, url:publicUrl, storage_path:path, uploaded_at:new Date().toISOString(), uploaded_by:userEmail || "unknown" });
+      // Store the private object path. A fresh signed URL is generated only when the user opens the attachment.
+      attachments.push({ name:file.name, url:"", storage_path:path, uploaded_at:new Date().toISOString(), uploaded_by:userEmail || "unknown" });
     } return attachments;
   };
 
@@ -298,6 +298,13 @@ export default function DocumentCollaborationPage() {
   };
 
   const uploadFiles = async (threadId: string) => uploadFilesForCollaboration(threadId, selectedFiles);
+
+  const openCollaborationAttachment = async (attachment: Attachment) => {
+    if (!attachment.storage_path) return alert("Attachment storage path is unavailable.");
+    const { data, error } = await supabase.storage.from("evidence").createSignedUrl(attachment.storage_path, 60 * 10);
+    if (error || !data?.signedUrl) return alert(error?.message || "Unable to open attachment.");
+    window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+  };
 
   const postComment = async () => {
     if (!thread) return;
@@ -637,7 +644,7 @@ export default function DocumentCollaborationPage() {
                 <span style={metaStyle}>{formatIsoDateTime(comment.created_at)}</span>
                 <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.55, marginTop: "10px" }}>{comment.comment_text}</div>
                 {Array.isArray(comment.attachments) && comment.attachments.length > 0 ? (
-                  <div style={attachmentRowStyle}>{comment.attachments.map((a, index) => <a key={`${a.storage_path}-${index}`} href={a.url} target="_blank" rel="noreferrer" style={attachmentLinkStyle}>📎 {a.name}</a>)}</div>
+                  <div style={attachmentRowStyle}>{comment.attachments.map((a, index) => <button type="button" key={`${a.storage_path}-${index}`} onClick={() => openCollaborationAttachment(a)} style={{...attachmentLinkStyle, border:"none", cursor:"pointer"}}>📎 {a.name}</button>)}</div>
                 ) : null}
                 {Array.isArray(comment.tagged_users) && comment.tagged_users.length > 0 ? <div style={tagStyle}><strong>Collaborators notified:</strong> {comment.tagged_users.join(", ")}</div> : null}
               </article>
