@@ -453,6 +453,9 @@ export default function DocumentCollaborationPage() {
 
   const saveWorkingRecord = async () => {
     if (!record || !thread || thread.status !== "open") return;
+    const owner = normalizeEmail(record.owner_email || record.owner);
+    const assigned = participants.some((p) => normalizeEmail(p.user_email) === normalizeEmail(userEmail) && p.status === "active");
+    if (normalizeEmail(userEmail) !== owner && !assigned) return alert("Only the document owner or an active collaborator may edit the working record.");
     setSavingWorkingRecord(true);
     try {
       const { error } = await supabase.from("controlled_documents").update({
@@ -474,9 +477,9 @@ export default function DocumentCollaborationPage() {
 
   const isOpen = thread.status === "open";
   const currentUserEmail = normalizeEmail(userEmail);
-  const ncmrOwnerEmail = normalizeEmail(record.owner_email || record.owner);
+  const documentOwnerEmail = normalizeEmail(record.owner_email || record.owner);
   const isDocumentOwner =
-    Boolean(ncmrOwnerEmail) && ncmrOwnerEmail === currentUserEmail;
+    Boolean(documentOwnerEmail) && documentOwnerEmail === currentUserEmail;
 
   const eligibleParticipants = participants.filter(
     (participant) => participant.status !== "removed"
@@ -522,10 +525,10 @@ export default function DocumentCollaborationPage() {
         <p style={mutedStyle}>{record.document_number || "Document"} Rev {record.revision || "-"}</p>
         {record.file_url ? <p><a href={record.file_url} target="_blank" rel="noreferrer">Open current proposed document</a></p> : null}
         <label style={labelStyle}>Change Description</label>
-        <textarea value={changeDescription} onChange={(e)=>setChangeDescription(e.target.value)} rows={4} disabled={!isOpen} style={textareaStyle} />
+        <textarea value={changeDescription} onChange={(e)=>setChangeDescription(e.target.value)} rows={4} disabled={!isOpen || (!isDocumentOwner && !myActiveAssignment)} style={textareaStyle} />
         <label style={labelStyle}>Change Justification</label>
-        <textarea value={changeJustification} onChange={(e)=>setChangeJustification(e.target.value)} rows={4} disabled={!isOpen} style={textareaStyle} />
-        {isOpen ? <button disabled={savingWorkingRecord} onClick={saveWorkingRecord} style={primaryButtonStyle}>{savingWorkingRecord ? "Saving..." : "Save Working Record"}</button> : null}
+        <textarea value={changeJustification} onChange={(e)=>setChangeJustification(e.target.value)} rows={4} disabled={!isOpen || (!isDocumentOwner && !myActiveAssignment)} style={textareaStyle} />
+        {isOpen && (isDocumentOwner || myActiveAssignment) ? <button disabled={savingWorkingRecord} onClick={saveWorkingRecord} style={primaryButtonStyle}>{savingWorkingRecord ? "Saving..." : "Save Working Record"}</button> : null}
       </section>
 
       <section style={cardStyle}>
