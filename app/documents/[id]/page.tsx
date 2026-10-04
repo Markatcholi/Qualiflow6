@@ -7,6 +7,7 @@ import ESignatureModal from "../../../components/ESignatureModal";
 import DocumentSignatures from "../../../components/DocumentSignatures";
 import DocumentImpactAssessment from "../../../components/DocumentImpactAssessment";
 import DocumentPostApprovalTasks from "../../../components/DocumentPostApprovalTasks";
+import DocumentTrainingAssignment from "../../../components/DocumentTrainingAssignment";
 import { createESignature } from "../../../lib/eSignatureEngine";
 import { processRetrainingForDocument } from "../../../services/retrainingService";
 import { generateControlledCopy } from "../../../services/controlledCopyService";
@@ -194,9 +195,7 @@ export default function DocumentWorkflowPage() {
     owner_email: "",
     change_summary: "",
     change_rationale: "",
-    training_impact: "FORMAL_TRAINING",
-    read_ack_required: true,
-    training_required: false,
+
     is_initial_release: "" as "" | "yes" | "no",
   });
   const [initiationFile, setInitiationFile] = useState<File | null>(null);
@@ -207,7 +206,6 @@ export default function DocumentWorkflowPage() {
     revision: "",
     change_description: "",
     change_justification: "",
-    training_impact: "FORMAL_TRAINING",
   });
 
   const doc = documents[0] || null;
@@ -377,10 +375,6 @@ export default function DocumentWorkflowPage() {
         return false;
       }
 
-      if (!documentRecord.training_impact) {
-        alert("Training impact assessment is required before a revision can leave draft.");
-        return false;
-      }
 
       if (!documentRecord.file_url) {
         alert("A master / redline source document is required before a revision can leave draft.");
@@ -1783,7 +1777,6 @@ export default function DocumentWorkflowPage() {
       revision: getNextRevisionValue(doc.revision),
       change_description: "",
       change_justification: "",
-      training_impact: doc.training_required ? "FORMAL_TRAINING" : doc.read_ack_required ? "READ_AND_ACKNOWLEDGE" : "NO_TRAINING",
     });
     setShowRevisionPanel(true);
   };
@@ -1814,10 +1807,6 @@ export default function DocumentWorkflowPage() {
       return;
     }
 
-    if (!revisionForm.training_impact) {
-      alert("Training impact assessment is required.");
-      return;
-    }
 
     setBusy(true);
 
@@ -1847,9 +1836,9 @@ export default function DocumentWorkflowPage() {
           change_rationale: revisionForm.change_justification.trim(),
           revision_change_description: revisionForm.change_description.trim(),
           revision_change_justification: revisionForm.change_justification.trim(),
-          training_impact: revisionForm.training_impact,
-          read_ack_required: revisionForm.training_impact === "READ_AND_ACKNOWLEDGE",
-          training_required: revisionForm.training_impact === "FORMAL_TRAINING",
+          training_impact: null,
+          read_ack_required: false,
+          training_required: false,
           owner_email: sourceDoc.owner_email || userEmail || null,
           approver_email: null,
           effective_date: null,
@@ -1897,7 +1886,6 @@ export default function DocumentWorkflowPage() {
           previous_document_id: sourceDoc.id,
           previous_revision: sourceDoc.revision,
           new_revision: revisionForm.revision.trim(),
-          training_impact: revisionForm.training_impact,
         },
       });
 
@@ -2234,17 +2222,6 @@ export default function DocumentWorkflowPage() {
                 style={inputStyle}
               />
             </Field>
-            <Field label="Training Impact Assessment">
-              <select
-                value={revisionForm.training_impact}
-                onChange={(e) => setRevisionForm({ ...revisionForm, training_impact: e.target.value })}
-                style={inputStyle}
-              >
-                <option value="NO_TRAINING">No Training Required</option>
-                <option value="READ_AND_ACKNOWLEDGE">Read & Acknowledge</option>
-                <option value="FORMAL_TRAINING">Formal Training Required</option>
-              </select>
-            </Field>
           </div>
 
           <Field label="Change Description">
@@ -2398,54 +2375,6 @@ export default function DocumentWorkflowPage() {
               <p style={subtleText}>Select Yes for the first controlled release. Impact Assessment does not apply to an initial release.</p>
             </Field>
 
-            <Field label="Training Impact Assessment">
-              <select
-                value={initiationForm.training_impact}
-                onChange={(e) =>
-                  setInitiationForm({
-                    ...initiationForm,
-                    training_impact: e.target.value,
-                    read_ack_required: e.target.value === "READ_AND_ACKNOWLEDGE",
-                    training_required: e.target.value === "FORMAL_TRAINING",
-                  })
-                }
-                style={inputStyle}
-              >
-                <option value="NO_TRAINING">No Training Required</option>
-                <option value="READ_AND_ACKNOWLEDGE">Read & Acknowledge</option>
-                <option value="FORMAL_TRAINING">Formal Training Required</option>
-              </select>
-            </Field>
-
-            <div style={buttonRowStyle}>
-              <label>
-                <input
-                  type="checkbox"
-                  checked={initiationForm.read_ack_required}
-                  onChange={(e) =>
-                    setInitiationForm({
-                      ...initiationForm,
-                      read_ack_required: e.target.checked,
-                    })
-                  }
-                />{" "}
-                Read acknowledgement required
-              </label>
-
-              <label>
-                <input
-                  type="checkbox"
-                  checked={initiationForm.training_required}
-                  onChange={(e) =>
-                    setInitiationForm({
-                      ...initiationForm,
-                      training_required: e.target.checked,
-                    })
-                  }
-                />{" "}
-                Training required
-              </label>
-            </div>
 
             <Field label="Document File">
               <div style={buttonRowStyle}>
@@ -2488,9 +2417,6 @@ export default function DocumentWorkflowPage() {
               <Field label="Owner"><div>{doc.owner_email || "N/A"}</div></Field>
               <Field label="Approver"><div>{doc.approver_email || "N/A"}</div></Field>
               <Field label="Effective Date"><div>{doc.effective_date || "N/A"}</div></Field>
-              <Field label="Read Acknowledgement Required"><div>{doc.read_ack_required ? "Yes" : "No"}</div></Field>
-              <Field label="Training Required"><div>{doc.training_required ? "Yes" : "No"}</div></Field>
-              <Field label="Training Impact"><div>{trainingImpactLabel(doc.training_impact)}</div></Field>
               <Field label="Originating Change Control"><div>{doc.originating_change_control_id || "None"}</div></Field>
             </div>
 
@@ -2541,6 +2467,8 @@ export default function DocumentWorkflowPage() {
           status={doc.status}
           userEmail={userEmail}
           canCoordinate={canManage}
+          assignmentMode={false}
+          postApprovalReady={doc.status === "approved" || (doc.status === "formal_review" && requiredFormalApproved && requiredApproversApproved)}
         />
       ) : null}
 
@@ -3052,27 +2980,34 @@ export default function DocumentWorkflowPage() {
             </button>
           ) : null}
 
-          {doc.training_required ? (
-            <details>
-              <summary>Assign Training</summary>
-              {!doc.file_url ? (
-                <p style={warningStyle}>Training cannot be assigned until a document file is attached.</p>
-              ) : (
-                <p style={smallTextStyle}>Training will include the current document attachment link.</p>
-              )}
-              <textarea
-                value={trainingEmails[doc.id] || ""}
-                onChange={(e) =>
-                  setTrainingEmails({ ...trainingEmails, [doc.id]: e.target.value })
-                }
-                placeholder="Emails separated by comma, semicolon, or new line"
-                rows={3}
-                style={textareaStyle}
-              />
-              <button disabled={busy || !transitionPermissions.assignTraining.allowed} onClick={() => assignTraining(doc)} style={primaryButtonStyle}>
-                Assign Training
-              </button>
-            </details>
+          {doc.tenant_id && doc.is_initial_release === false && (doc.status === "approved" || (doc.status === "formal_review" && requiredFormalApproved && requiredApproversApproved)) ? (
+            <>
+              <details>
+                <summary>Assign Training</summary>
+                <DocumentTrainingAssignment
+                  documentId={doc.id}
+                  tenantId={doc.tenant_id}
+                  documentNumber={doc.document_number}
+                  revision={doc.revision}
+                  userEmail={userEmail}
+                  canCoordinate={canManage}
+                />
+              </details>
+              <details>
+                <summary>Assign Post-Approval Tasks</summary>
+                <DocumentPostApprovalTasks
+                  documentId={doc.id}
+                  tenantId={doc.tenant_id}
+                  documentNumber={doc.document_number}
+                  revision={doc.revision}
+                  status={doc.status}
+                  userEmail={userEmail}
+                  canCoordinate={canManage}
+                  assignmentMode={true}
+                  postApprovalReady={true}
+                />
+              </details>
+            </>
           ) : null}
 
           {transitionPermissions.obsolete.allowed ? (
