@@ -1163,6 +1163,19 @@ export default function DocumentWorkflowPage() {
       return false;
     }
 
+    const trainingImpact: any = assessmentMap.get("training");
+    if (trainingImpact?.is_impacted === true) {
+      const { count: trainingRequirementCount, error: trainingRequirementError } = await supabase
+        .from("document_training_requirements")
+        .select("id", { count: "exact", head: true })
+        .eq("document_id", documentRecord.id);
+      if (trainingRequirementError) { alert(trainingRequirementError.message); return false; }
+      if (!trainingRequirementCount) {
+        alert("Training is impacted. Add at least one configured Training Requirement before advancing the document.");
+        return false;
+      }
+    }
+
     const validationImpact: any = assessmentMap.get("validation");
     if (
       validationImpact?.is_impacted === true &&
@@ -1633,6 +1646,36 @@ export default function DocumentWorkflowPage() {
       return;
     }
 
+
+    const { data: blockingRequirements, error: blockingRequirementError } = await supabase
+      .from("document_training_requirements")
+      .select("id,training_methods!inner(release_blocking)")
+      .eq("document_id", doc.id)
+      .eq("training_methods.release_blocking", true);
+    if (blockingRequirementError) { alert(blockingRequirementError.message); return; }
+
+    if ((blockingRequirements || []).length > 0) {
+      const blockingIds = (blockingRequirements || []).map((item: any) => item.id);
+      const { data: blockingTraining, error: blockingTrainingError } = await supabase
+        .from("training_assignments")
+        .select("id,training_requirement_id,status")
+        .eq("document_id", doc.id)
+        .eq("release_blocking", true);
+      if (blockingTrainingError) { alert(blockingTrainingError.message); return; }
+
+      const blockingAssignments = blockingTraining || [];
+      const unassignedRequirementCount = blockingIds.filter(
+        (id: string) => !blockingAssignments.some((assignment: any) => assignment.training_requirement_id === id)
+      ).length;
+      const incompleteBlockingCount = blockingAssignments.filter(
+        (assignment: any) => assignment.status !== "completed" && assignment.status !== "waived"
+      ).length;
+
+      if (unassignedRequirementCount > 0 || incompleteBlockingCount > 0) {
+        alert(`Release blocked: prerequisite training remains unresolved (${unassignedRequirementCount} requirement(s) not assigned, ${incompleteBlockingCount} individual assignment(s) incomplete).`);
+        return;
+      }
+    }
 
     const effectiveDate = doc.effective_date || getLocalDateString();
     const releaseComment =
