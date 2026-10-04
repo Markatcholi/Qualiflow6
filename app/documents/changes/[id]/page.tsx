@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "../../../../lib/supabaseClient";
 import { buildControlledDocumentStoragePath, resolveControlledDocumentFileUrl, CONTROLLED_DOCUMENT_BUCKET } from "../../../../lib/controlledDocumentStorage";
@@ -76,7 +76,6 @@ export default function DciWorkspacePage() {
   };
   useEffect(()=>{ if(id) load(); },[id]);
 
-  const currentIds = useMemo(()=>new Set(children.map(x=>x.document_id)),[children]);
 
   const addExisting = async () => {
     const source = released.find(x=>x.id===sourceId);
