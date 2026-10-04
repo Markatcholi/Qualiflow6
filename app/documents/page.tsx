@@ -607,7 +607,7 @@ export default function DocumentControlLandingPage() {
             </a>
 
             <a href="/documents/changes" style={primaryLinkStyle}>
-              Document Change Initiations (DIC)
+              Document Change Initiations (DCI)
             </a>
 
             <a href="/documents/dashboard" style={secondaryButtonStyle}>
