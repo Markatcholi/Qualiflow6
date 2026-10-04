@@ -592,9 +592,6 @@ export default function DocumentWorkflowPage() {
       owner_email: doc.owner_email || "",
       change_summary: doc.change_summary || doc.revision_change_description || "",
       change_rationale: doc.change_rationale || doc.revision_change_justification || "",
-      training_impact: doc.training_impact || (doc.training_required ? "FORMAL_TRAINING" : doc.read_ack_required ? "READ_AND_ACKNOWLEDGE" : "NO_TRAINING"),
-      read_ack_required: Boolean(doc.read_ack_required),
-      training_required: Boolean(doc.training_required),
       is_initial_release: doc.is_initial_release === true ? "yes" : doc.is_initial_release === false ? "no" : "",
     });
     setInitiationFile(null);
@@ -708,9 +705,6 @@ export default function DocumentWorkflowPage() {
           change_rationale: initiationForm.change_rationale || null,
           revision_change_description: initiationForm.change_summary || null,
           revision_change_justification: initiationForm.change_rationale || null,
-          training_impact: initiationForm.training_impact || null,
-          read_ack_required: initiationForm.training_impact === "READ_AND_ACKNOWLEDGE" || initiationForm.read_ack_required,
-          training_required: initiationForm.training_impact === "FORMAL_TRAINING" || initiationForm.training_required,
           is_initial_release: initiationForm.is_initial_release === "yes" ? true : initiationForm.is_initial_release === "no" ? false : null,
           file_name: uploaded.file_name,
           file_path: uploaded.file_path,
