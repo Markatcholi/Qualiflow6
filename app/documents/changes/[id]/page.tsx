@@ -3,12 +3,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "../../../../lib/supabaseClient";
+import { buildControlledDocumentStoragePath, resolveControlledDocumentFileUrl, CONTROLLED_DOCUMENT_BUCKET } from "../../../../lib/controlledDocumentStorage";
 
 type Doc = {
   id: string; document_number: string; title: string; document_type: string | null; revision: string; status: string;
   department: string | null; process_area: string | null; file_name: string | null; file_path: string | null; file_url: string | null;
-  owner_email: string | null; effective_date: string | null;
+  owner_email: string | null; effective_date: string | null; resolved_file_url?: string | null;
 };
+type AdditionalFile = { id:string; document_id:string; file_name:string; file_path:string; signed_url?:string|null };
 type Child = { id: string; change_type: "new"|"revision"|"reinstatement"; sequence_no: number; source_document_id: string | null; document_id: string; document: Doc | null };
 
 export default function DciWorkspacePage() {
@@ -17,6 +19,11 @@ export default function DciWorkspacePage() {
   const [dci, setDci] = useState<any>(null);
   const [children, setChildren] = useState<Child[]>([]);
   const [released, setReleased] = useState<Doc[]>([]);
+  const [additionalFiles, setAdditionalFiles] = useState<AdditionalFile[]>([]);
+  const [impactCounts, setImpactCounts] = useState<Record<string,number>>({});
+  const [editingId, setEditingId] = useState<string|null>(null);
+  const [editDoc, setEditDoc] = useState({title:"",revision:""});
+  const [uploadingFor, setUploadingFor] = useState<string|null>(null);
   const [userEmail, setUserEmail] = useState("");
   const [mode, setMode] = useState<"new"|"revision"|"reinstatement"|null>(null);
   const [saving, setSaving] = useState(false);
@@ -48,8 +55,22 @@ export default function DciWorkspacePage() {
         if (docResult.error) alert(docResult.error.message);
         else docs = (docResult.data as Doc[]) || [];
       }
-      const byId = new Map(docs.map(doc => [doc.id, doc]));
+      const resolvedDocs = await Promise.all(docs.map(async doc => ({...doc, resolved_file_url: await resolveControlledDocumentFileUrl({filePath:doc.file_path,legacyUrl:doc.file_url}).catch(()=>doc.file_url)})));
+      const byId = new Map(resolvedDocs.map(doc => [doc.id, doc]));
       setChildren(linkRows.map((row: any) => ({ ...row, document: byId.get(row.document_id) || null })) as Child[]);
+      if (ids.length) {
+        const [filesRes, impactRes] = await Promise.all([
+          supabase.from("document_change_document_files").select("id,document_id,file_name,file_path").eq("dci_id",id).in("document_id",ids).order("created_at"),
+          supabase.from("document_impact_assessments").select("document_id,is_impacted").in("document_id",ids)
+        ]);
+        if (!filesRes.error) {
+          const signed = await Promise.all((filesRes.data||[]).map(async (x:any)=>({...x,signed_url:await resolveControlledDocumentFileUrl({filePath:x.file_path}).catch(()=>null)})));
+          setAdditionalFiles(signed);
+        }
+        if (!impactRes.error) {
+          const counts:Record<string,number>={}; (impactRes.data||[]).forEach((x:any)=>{if(x.is_impacted!==null) counts[x.document_id]=(counts[x.document_id]||0)+1;}); setImpactCounts(counts);
+        }
+      }
     }
     if (!r.error) setReleased((r.data as Doc[]) || []);
   };
@@ -96,6 +117,43 @@ export default function DciWorkspacePage() {
       if(linked.error) throw new Error(linked.error.message);
       setMode(null); setNewDoc({title:"",document_type:"SOP",revision:"A",department:"",process_area:""}); await load();
     } catch(e:any){ alert(e.message || "Unable to add new document."); } finally { setSaving(false); }
+  };
+
+  const saveEdit = async (documentId:string) => {
+    if(!editDoc.title.trim() || !editDoc.revision.trim()) return alert("Title and revision are required.");
+    const {error}=await supabase.from("controlled_documents").update({title:editDoc.title.trim(),revision:editDoc.revision.trim(),updated_at:new Date().toISOString()}).eq("id",documentId);
+    if(error) return alert(error.message); setEditingId(null); await load();
+  };
+
+  const removeDocument = async (child:Child) => {
+    if(!editable || !child.document) return;
+    if(!window.confirm(`Remove ${child.document.document_number} Rev ${child.document.revision} from this DCI? The released source document, if any, will not be changed.`)) return;
+    const {error:linkError}=await supabase.from("document_change_initiation_documents").delete().eq("id",child.id);
+    if(linkError) return alert(linkError.message);
+    const {error:docError}=await supabase.from("controlled_documents").delete().eq("id",child.document_id).eq("status","draft").eq("dci_id",id);
+    if(docError) return alert(docError.message);
+    await load();
+  };
+
+  const uploadPrimary = async (doc:Doc,file:File) => {
+    setUploadingFor(doc.id);
+    try {
+      const path=await buildControlledDocumentStoragePath({documentNumber:doc.document_number,revision:doc.revision,area:"working",fileName:file.name});
+      const up=await supabase.storage.from(CONTROLLED_DOCUMENT_BUCKET).upload(path,file,{upsert:true}); if(up.error) throw new Error(up.error.message);
+      const u=await supabase.from("controlled_documents").update({file_name:file.name,file_path:path,file_url:null,working_file_name:file.name,updated_at:new Date().toISOString()}).eq("id",doc.id);
+      if(u.error) throw new Error(u.error.message); await load();
+    } catch(e:any){alert(e.message);} finally{setUploadingFor(null);}
+  };
+
+  const uploadAdditional = async (doc:Doc,file:File) => {
+    setUploadingFor(doc.id);
+    try {
+      const path=await buildControlledDocumentStoragePath({documentNumber:doc.document_number,revision:doc.revision,area:"dci-supporting",fileName:`${Date.now()}_${file.name}`});
+      const up=await supabase.storage.from(CONTROLLED_DOCUMENT_BUCKET).upload(path,file); if(up.error) throw new Error(up.error.message);
+      const tenant=await supabase.rpc("qualisphere_current_controlled_documents_tenant"); if(tenant.error) throw new Error(tenant.error.message);
+      const ins=await supabase.from("document_change_document_files").insert({tenant_id:tenant.data,dci_id:id,document_id:doc.id,file_name:file.name,file_path:path,uploaded_by:userEmail});
+      if(ins.error) throw new Error(ins.error.message); await load();
+    } catch(e:any){alert(e.message);} finally{setUploadingFor(null);}
   };
 
   const withdraw = async () => {
@@ -149,14 +207,27 @@ export default function DciWorkspacePage() {
       </div>}
 
       {children.length===0?<p style={{color:"#667085"}}>No affected documents have been added yet.</p>:<div style={{overflowX:"auto",marginTop:18}}><table style={{width:"100%",borderCollapse:"collapse"}}>
-        <thead><tr>{["#","Document","Change","Proposed Revision","Document Status","Impact Assessment / Workflow"].map(x=><th key={x} style={th}>{x}</th>)}</tr></thead>
+        <thead><tr>{["#","Document","Change","Revision","Document File","Additional Files (Optional)","Actions"].map(x=><th key={x} style={th}>{x}</th>)}</tr></thead>
         <tbody>{children.map((child,i)=>{const d=child.document; return <tr key={child.id}>
-          <td style={td}>{i+1}</td><td style={td}>{d ? <><strong>{d.document_number}</strong><br/><span style={{color:"#667085"}}>{d.title}</span></> : <strong>Document unavailable</strong>}</td>
-          <td style={td}>{child.change_type}</td><td style={td}>{d?.revision || "—"}</td><td style={td}>{d?.status || "—"}</td>
-          <td style={td}>{d ? <a style={secondary} href={`/documents/${d.id}`}>Open Document Assessment</a> : <span style={{color:"#9f1d20"}}>Linked record could not be loaded</span>}</td>
+          <td style={td}>{i+1}</td>
+          <td style={td}>{d ? (editingId===d.id?<input style={input} value={editDoc.title} onChange={e=>setEditDoc({...editDoc,title:e.target.value})}/>:<><strong>{d.document_number}</strong><br/><span style={{color:"#667085"}}>{d.title}</span></>) : <strong>Document unavailable</strong>}</td>
+          <td style={td}>{child.change_type}</td>
+          <td style={td}>{d ? (editingId===d.id?<input style={{...input,width:90}} value={editDoc.revision} onChange={e=>setEditDoc({...editDoc,revision:e.target.value})}/>:d.revision) : "—"}</td>
+          <td style={td}>{d ? <><div>{d.resolved_file_url?<a style={secondary} href={d.resolved_file_url} target="_blank" rel="noreferrer">Open Document</a>:<span style={{color:"#667085"}}>No document uploaded</span>}</div>{editable&&<label style={{...secondaryButton,marginTop:6}}>Edit / Replace<input type="file" hidden disabled={uploadingFor===d.id} onChange={e=>{const file=e.target.files?.[0];if(file)uploadPrimary(d,file);}}/></label>}</>:"—"}</td>
+          <td style={td}>{d?<><div>{additionalFiles.filter(x=>x.document_id===d.id).map(x=><div key={x.id} style={{marginBottom:5}}>{x.signed_url?<a href={x.signed_url} target="_blank" rel="noreferrer">{x.file_name}</a>:x.file_name}</div>)}</div>{editable&&<label style={secondaryButton}>Add File<input type="file" hidden disabled={uploadingFor===d.id} onChange={e=>{const file=e.target.files?.[0];if(file)uploadAdditional(d,file);}}/></label>}</>:"—"}</td>
+          <td style={td}>{d&&editable?(editingId===d.id?<><button style={primary} onClick={()=>saveEdit(d.id)}>Save</button> <button style={secondaryButton} onClick={()=>setEditingId(null)}>Cancel</button></>:<><button style={secondaryButton} onClick={()=>{setEditingId(d.id);setEditDoc({title:d.title,revision:d.revision});}}>Edit</button> <button style={danger} onClick={()=>removeDocument(child)}>Remove</button></>):"—"}</td>
         </tr>})}</tbody>
       </table></div>}
     </section>
+
+    <section style={card}>
+      <h2 style={{marginTop:0}}>Impact Assessment</h2>
+      <p style={{color:"#667085"}}>Complete the Impact Assessment independently for each affected document before the DCI advances to collaboration.</p>
+      {children.length===0?<p style={{color:"#667085"}}>Add affected documents first.</p>:children.map(child=>{const d=child.document;if(!d)return null;const count=impactCounts[d.id]||0;return <div key={child.id} style={{...subcard,display:"flex",justifyContent:"space-between",alignItems:"center",gap:12}}>
+        <div><strong>{d.document_number} Rev {d.revision} — {d.title}</strong><div style={{color:"#667085",fontSize:13}}>Impact Assessment: {count===10?"Complete":`${count}/10 areas assessed`}</div></div>
+        <a style={secondary} href={`/documents/${d.id}`}>Open Impact Assessment</a>
+      </div>})}
+
 
     <section style={card}>
       <h2 style={{marginTop:0}}>DCI Review & Approval</h2>
