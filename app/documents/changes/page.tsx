@@ -3,9 +3,9 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../../../lib/supabaseClient";
 
-type Dic = {
+type Dci = {
   id: string;
-  dic_number: string;
+  dci_number: string;
   title: string | null;
   change_description: string;
   change_justification: string;
@@ -22,7 +22,7 @@ const fmt = (value: string | null) => {
 };
 
 export default function DocumentChangesPage() {
-  const [items, setItems] = useState<Dic[]>([]);
+  const [items, setItems] = useState<Dci[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -35,22 +35,22 @@ export default function DocumentChangesPage() {
     setUserEmail(user.data?.user?.email || "");
     const { data, error } = await supabase.from("document_change_initiations").select("*").order("created_at", { ascending: false });
     if (error) alert(error.message);
-    else setItems((data as Dic[]) || []);
+    else setItems((data as Dci[]) || []);
     setLoading(false);
   };
 
   useEffect(() => { load(); }, []);
 
-  const createDic = async () => {
+  const createDci = async () => {
     if (!form.change_description.trim() || !form.change_justification.trim()) {
       return alert("Change Description and Change Justification are required.");
     }
     setSaving(true);
     try {
-      const number = await supabase.rpc("generate_dic_number");
+      const number = await supabase.rpc("generate_dci_number");
       if (number.error) throw new Error(number.error.message);
       const inserted = await supabase.from("document_change_initiations").insert({
-        dic_number: number.data,
+        dci_number: number.data,
         title: form.title.trim() || null,
         change_description: form.change_description.trim(),
         change_justification: form.change_justification.trim(),
@@ -61,7 +61,7 @@ export default function DocumentChangesPage() {
       if (inserted.error) throw new Error(inserted.error.message);
       window.location.href = `/documents/changes/${inserted.data.id}`;
     } catch (e: any) {
-      alert(e.message || "Unable to create DIC.");
+      alert(e.message || "Unable to create DCI.");
       setSaving(false);
     }
   };
@@ -71,17 +71,17 @@ export default function DocumentChangesPage() {
       <div>
         <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 1.2, color: "#536274" }}>DOCUMENT CONTROL</div>
         <h1 style={{ margin: "6px 0" }}>Document Change Initiations</h1>
-        <p style={{ margin: 0, color: "#667085" }}>One DIC can contain multiple new, revised, or reinstated documents. Collaboration and formal approval occur at the DIC package level.</p>
+        <p style={{ margin: 0, color: "#667085" }}>One DCI can contain multiple new, revised, or reinstated documents. Collaboration and formal approval occur at the DCI package level.</p>
       </div>
       <div style={{ display: "flex", gap: 10 }}>
         <a href="/documents" style={secondary}>Controlled Documents</a>
-        <button onClick={() => setShowCreate(!showCreate)} style={primary}>Create DIC</button>
+        <button onClick={() => setShowCreate(!showCreate)} style={primary}>Create DCI</button>
       </div>
     </div>
 
     {showCreate && <section style={card}>
       <h2 style={{ marginTop: 0 }}>New Document Change Initiation</h2>
-      <label style={label}>DIC Title / Short Description</label>
+      <label style={label}>DCI Title / Short Description</label>
       <input value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} style={input} placeholder="Optional short package title" />
       <label style={label}>Change Description *</label>
       <textarea value={form.change_description} onChange={e => setForm({ ...form, change_description: e.target.value })} style={input} rows={3} />
@@ -92,20 +92,20 @@ export default function DocumentChangesPage() {
         <option value="coordinated">Coordinated release</option>
         <option value="independent">Independent document release</option>
       </select>
-      <p style={{ color: "#667085", fontSize: 13 }}>This records the package strategy. Release gates will be enforced as the DIC workflow is completed.</p>
-      <button disabled={saving} onClick={createDic} style={primary}>{saving ? "Creating..." : "Create DIC"}</button>
+      <p style={{ color: "#667085", fontSize: 13 }}>This records the package strategy. Release gates will be enforced as the DCI workflow is completed.</p>
+      <button disabled={saving} onClick={createDci} style={primary}>{saving ? "Creating..." : "Create DCI"}</button>
     </section>}
 
     <section style={card}>
-      <h2 style={{ marginTop: 0 }}>DIC Register</h2>
+      <h2 style={{ marginTop: 0 }}>DCI Register</h2>
       {loading ? <p>Loading...</p> : items.length === 0 ? <p style={{ color: "#667085" }}>No DIC records yet.</p> :
       <div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}>
-        <thead><tr>{["DIC","Title","Owner","Status","Release Strategy","Created",""].map(x => <th key={x} style={th}>{x}</th>)}</tr></thead>
+        <thead><tr>{["DCI","Title","Owner","Status","Release Strategy","Created",""].map(x => <th key={x} style={th}>{x}</th>)}</tr></thead>
         <tbody>{items.map(item => <tr key={item.id}>
-          <td style={td}><strong>{item.dic_number}</strong></td><td style={td}>{item.title || item.change_description}</td>
+          <td style={td}><strong>{item.dci_number}</strong></td><td style={td}>{item.title || item.change_description}</td>
           <td style={td}>{item.owner_email}</td><td style={td}>{item.status.replaceAll("_"," ")}</td>
           <td style={td}>{item.release_strategy}</td><td style={td}>{fmt(item.created_at)}</td>
-          <td style={td}><a href={`/documents/changes/${item.id}`} style={secondary}>Open DIC</a></td>
+          <td style={td}><a href={`/documents/changes/${item.id}`} style={secondary}>Open DCI</a></td>
         </tr>)}</tbody>
       </table></div>}
     </section>
