@@ -9,9 +9,7 @@ type Doc = {
   department: string | null; process_area: string | null; file_name: string | null; file_path: string | null; file_url: string | null;
   owner_email: string | null; effective_date: string | null;
 };
-type Child = { id: string; change_type: "new"|"revision"|"reinstatement"; sequence_no: number; source_document_id: string | null; document_id: string; controlled_documents: Doc | Doc[] | null };
-
-const unwrap = (v: Doc | Doc[] | null) => Array.isArray(v) ? v[0] || null : v;
+type Child = { id: string; change_type: "new"|"revision"|"reinstatement"; sequence_no: number; source_document_id: string | null; document_id: string; document: Doc | null };
 
 export default function DciWorkspacePage() {
   const params = useParams<{ id: string }>();
@@ -28,13 +26,32 @@ export default function DciWorkspacePage() {
 
   const load = async () => {
     const user = await supabase.auth.getUser(); setUserEmail(user.data?.user?.email || "");
-    const [d,c,r] = await Promise.all([
+    const [d,links,r] = await Promise.all([
       supabase.from("document_change_initiations").select("*").eq("id",id).single(),
-      supabase.from("document_change_initiation_documents").select("id,change_type,sequence_no,source_document_id,document_id,controlled_documents(id,document_number,title,document_type,revision,status,department,process_area,file_name,file_path,file_url,owner_email,effective_date)").eq("dci_id",id).order("sequence_no"),
+      supabase.from("document_change_initiation_documents").select("id,change_type,sequence_no,source_document_id,document_id").eq("dci_id",id).order("created_at"),
       supabase.from("controlled_documents").select("id,document_number,title,document_type,revision,status,department,process_area,file_name,file_path,file_url,owner_email,effective_date").in("status",["release","effective","obsolete"]).order("document_number"),
     ]);
     if (d.error) return alert(d.error.message);
-    setDci(d.data); if (!c.error) setChildren((c.data as unknown as Child[]) || []); if (!r.error) setReleased((r.data as Doc[]) || []);
+    setDci(d.data);
+    if (links.error) {
+      alert(links.error.message);
+      setChildren([]);
+    } else {
+      const linkRows = links.data || [];
+      const ids = linkRows.map((row: any) => row.document_id).filter(Boolean);
+      let docs: Doc[] = [];
+      if (ids.length) {
+        const docResult = await supabase
+          .from("controlled_documents")
+          .select("id,document_number,title,document_type,revision,status,department,process_area,file_name,file_path,file_url,owner_email,effective_date")
+          .in("id", ids);
+        if (docResult.error) alert(docResult.error.message);
+        else docs = (docResult.data as Doc[]) || [];
+      }
+      const byId = new Map(docs.map(doc => [doc.id, doc]));
+      setChildren(linkRows.map((row: any) => ({ ...row, document: byId.get(row.document_id) || null })) as Child[]);
+    }
+    if (!r.error) setReleased((r.data as Doc[]) || []);
   };
   useEffect(()=>{ if(id) load(); },[id]);
 
@@ -133,10 +150,10 @@ export default function DciWorkspacePage() {
 
       {children.length===0?<p style={{color:"#667085"}}>No affected documents have been added yet.</p>:<div style={{overflowX:"auto",marginTop:18}}><table style={{width:"100%",borderCollapse:"collapse"}}>
         <thead><tr>{["#","Document","Change","Proposed Revision","Document Status","Impact Assessment / Workflow"].map(x=><th key={x} style={th}>{x}</th>)}</tr></thead>
-        <tbody>{children.map((child,i)=>{const d=unwrap(child.controlled_documents); if(!d)return null; return <tr key={child.id}>
-          <td style={td}>{i+1}</td><td style={td}><strong>{d.document_number}</strong><br/><span style={{color:"#667085"}}>{d.title}</span></td>
-          <td style={td}>{child.change_type}</td><td style={td}>{d.revision}</td><td style={td}>{d.status}</td>
-          <td style={td}><a style={secondary} href={`/documents/${d.id}`}>Open Document Assessment</a></td>
+        <tbody>{children.map((child,i)=>{const d=child.document; return <tr key={child.id}>
+          <td style={td}>{i+1}</td><td style={td}>{d ? <><strong>{d.document_number}</strong><br/><span style={{color:"#667085"}}>{d.title}</span></> : <strong>Document unavailable</strong>}</td>
+          <td style={td}>{child.change_type}</td><td style={td}>{d?.revision || "—"}</td><td style={td}>{d?.status || "—"}</td>
+          <td style={td}>{d ? <a style={secondary} href={`/documents/${d.id}`}>Open Document Assessment</a> : <span style={{color:"#9f1d20"}}>Linked record could not be loaded</span>}</td>
         </tr>})}</tbody>
       </table></div>}
     </section>
