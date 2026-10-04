@@ -13,10 +13,10 @@ type Child = { id: string; change_type: "new"|"revision"|"reinstatement"; sequen
 
 const unwrap = (v: Doc | Doc[] | null) => Array.isArray(v) ? v[0] || null : v;
 
-export default function DicWorkspacePage() {
+export default function DciWorkspacePage() {
   const params = useParams<{ id: string }>();
   const id = params.id;
-  const [dic, setDic] = useState<any>(null);
+  const [dci, setDci] = useState<any>(null);
   const [children, setChildren] = useState<Child[]>([]);
   const [released, setReleased] = useState<Doc[]>([]);
   const [userEmail, setUserEmail] = useState("");
@@ -30,11 +30,11 @@ export default function DicWorkspacePage() {
     const user = await supabase.auth.getUser(); setUserEmail(user.data?.user?.email || "");
     const [d,c,r] = await Promise.all([
       supabase.from("document_change_initiations").select("*").eq("id",id).single(),
-      supabase.from("document_change_initiation_documents").select("id,change_type,sequence_no,source_document_id,document_id,controlled_documents(id,document_number,title,document_type,revision,status,department,process_area,file_name,file_path,file_url,owner_email,effective_date)").eq("dic_id",id).order("sequence_no"),
+      supabase.from("document_change_initiation_documents").select("id,change_type,sequence_no,source_document_id,document_id,controlled_documents(id,document_number,title,document_type,revision,status,department,process_area,file_name,file_path,file_url,owner_email,effective_date)").eq("dci_id",id).order("sequence_no"),
       supabase.from("controlled_documents").select("id,document_number,title,document_type,revision,status,department,process_area,file_name,file_path,file_url,owner_email,effective_date").in("status",["release","effective","obsolete"]).order("document_number"),
     ]);
     if (d.error) return alert(d.error.message);
-    setDic(d.data); if (!c.error) setChildren((c.data as unknown as Child[]) || []); if (!r.error) setReleased((r.data as Doc[]) || []);
+    setDci(d.data); if (!c.error) setChildren((c.data as unknown as Child[]) || []); if (!r.error) setReleased((r.data as Doc[]) || []);
   };
   useEffect(()=>{ if(id) load(); },[id]);
 
@@ -50,11 +50,11 @@ export default function DicWorkspacePage() {
         document_number: source.document_number, title: source.title, document_type: source.document_type,
         revision: proposedRevision.trim(), status:"draft", department:source.department, process_area:source.process_area,
         file_name:source.file_name, file_path:source.file_path, file_url:source.file_url, owner_email:userEmail,
-        created_by:userEmail, change_required:true, superseded_document_id:source.id, dic_id:id,
+        created_by:userEmail, change_required:true, superseded_document_id:source.id, dci_id:id,
       }).select("id").single();
       if(created.error) throw new Error(created.error.message);
       const linked = await supabase.from("document_change_initiation_documents").insert({
-        dic_id:id, document_id:created.data.id, source_document_id:source.id, change_type:mode, sequence_no:children.length+1, created_by:userEmail
+        dci_id:id, document_id:created.data.id, source_document_id:source.id, change_type:mode, sequence_no:children.length+1, created_by:userEmail
       });
       if(linked.error) throw new Error(linked.error.message);
       setMode(null); setSourceId(""); setProposedRevision(""); await load();
@@ -69,12 +69,12 @@ export default function DicWorkspacePage() {
       if(number.error) throw new Error(number.error.message);
       const created = await supabase.from("controlled_documents").insert({
         document_number:number.data, title:newDoc.title.trim(), document_type:newDoc.document_type, revision:newDoc.revision.trim()||"A",
-        status:"draft", department:newDoc.department||null, process_area:newDoc.process_area||null, owner_email:userEmail, created_by:userEmail, dic_id:id,
+        status:"draft", department:newDoc.department||null, process_area:newDoc.process_area||null, owner_email:userEmail, created_by:userEmail, dci_id:id,
         read_ack_required:false, training_required:false
       }).select("id").single();
       if(created.error) throw new Error(created.error.message);
       const linked = await supabase.from("document_change_initiation_documents").insert({
-        dic_id:id, document_id:created.data.id, change_type:"new", sequence_no:children.length+1, created_by:userEmail
+        dci_id:id, document_id:created.data.id, change_type:"new", sequence_no:children.length+1, created_by:userEmail
       });
       if(linked.error) throw new Error(linked.error.message);
       setMode(null); setNewDoc({title:"",document_type:"SOP",revision:"A",department:"",process_area:""}); await load();
@@ -82,10 +82,10 @@ export default function DicWorkspacePage() {
   };
 
   const withdraw = async () => {
-    if(!dic || dic.status==="released") return;
+    if(!dci || dci.status==="released") return;
     const reason = window.prompt("Withdrawal reason (required):");
     if(!reason?.trim()) return;
-    if(!window.confirm(`Withdraw ${dic.dic_number}? The record and completed history will be retained.`)) return;
+    if(!window.confirm(`Withdraw ${dic.dci_number}? The record and completed history will be retained.`)) return;
     const now=new Date().toISOString();
     const u=await supabase.from("document_change_initiations").update({status:"withdrawn",withdrawn_reason:reason.trim(),withdrawn_by:userEmail,withdrawn_at:now,updated_at:now}).eq("id",id);
     if(u.error) return alert(u.error.message);
@@ -94,25 +94,25 @@ export default function DicWorkspacePage() {
   };
 
   if(!dic) return <main style={{padding:28}}>Loading DIC...</main>;
-  const editable=dic.status==="draft";
+  const editable=dci.status==="draft";
 
   return <main style={{padding:28,maxWidth:1320,margin:"0 auto",fontFamily:"Arial, sans-serif"}}>
     <div style={{display:"flex",justifyContent:"space-between",gap:16,alignItems:"flex-start",marginBottom:18}}>
       <div><div style={{fontSize:12,fontWeight:800,letterSpacing:1.2,color:"#536274"}}>DOCUMENT CHANGE INITIATION</div>
-        <h1 style={{margin:"6px 0"}}>{dic.dic_number}{dic.title ? ` — ${dic.title}` : ""}</h1>
-        <div style={{color:"#667085"}}>Owner: {dic.owner_email} · Status: <strong>{String(dic.status).replaceAll("_"," ")}</strong> · {dic.release_strategy} release</div>
+        <h1 style={{margin:"6px 0"}}>{dic.dci_number}{dci.title ? ` — ${dci.title}` : ""}</h1>
+        <div style={{color:"#667085"}}>Owner: {dci.owner_email} · Status: <strong>{String(dci.status).replaceAll("_"," ")}</strong> · {dci.release_strategy} release</div>
       </div>
-      <div style={{display:"flex",gap:8}}><a href="/documents/changes" style={secondary}>DIC Register</a>{editable&&<button onClick={withdraw} style={danger}>Withdraw DIC</button>}</div>
+      <div style={{display:"flex",gap:8}}><a href="/documents/changes" style={secondary}>DCI Register</a>{editable&&<button onClick={withdraw} style={danger}>Withdraw DCI</button>}</div>
     </div>
 
     <section style={card}>
       <h2 style={{marginTop:0}}>Change Package</h2>
-      <div style={two}><div><strong>Change Description</strong><p>{dic.change_description}</p></div><div><strong>Change Justification</strong><p>{dic.change_justification}</p></div></div>
+      <div style={two}><div><strong>Change Description</strong><p>{dci.change_description}</p></div><div><strong>Change Justification</strong><p>{dci.change_justification}</p></div></div>
     </section>
 
     <section style={card}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12}}>
-        <div><h2 style={{margin:"0 0 4px"}}>Affected Documents</h2><div style={{color:"#667085"}}>Each document has its own proposed revision and Impact Assessment. The DIC will be collaborated and formally approved as one package.</div></div>
+        <div><h2 style={{margin:"0 0 4px"}}>Affected Documents</h2><div style={{color:"#667085"}}>Each document has its own proposed revision and Impact Assessment. The DCI will be collaborated and formally approved as one package.</div></div>
         {editable&&<div style={{display:"flex",gap:8}}><button style={secondaryButton} onClick={()=>setMode("new")}>Add New Document</button><button style={secondaryButton} onClick={()=>setMode("revision")}>Add Revision</button><button style={secondaryButton} onClick={()=>setMode("reinstatement")}>Reinstate Obsolete</button></div>}
       </div>
 
@@ -120,7 +120,7 @@ export default function DicWorkspacePage() {
         <label style={label}>Title *</label><input style={input} value={newDoc.title} onChange={e=>setNewDoc({...newDoc,title:e.target.value})}/>
         <div style={two}><div><label style={label}>Document Type</label><select style={input} value={newDoc.document_type} onChange={e=>setNewDoc({...newDoc,document_type:e.target.value})}>{["SOP","Work Instruction","Form","Policy","Specification","Protocol","Report","Template","Other"].map(x=><option key={x}>{x}</option>)}</select></div>
         <div><label style={label}>Initial Revision</label><input style={input} value={newDoc.revision} onChange={e=>setNewDoc({...newDoc,revision:e.target.value})}/></div></div>
-        <div style={{display:"flex",gap:8}}><button disabled={saving} onClick={addNew} style={primary}>Add to {dic.dic_number}</button><button onClick={()=>setMode(null)} style={secondaryButton}>Cancel</button></div>
+        <div style={{display:"flex",gap:8}}><button disabled={saving} onClick={addNew} style={primary}>Add to {dci.dci_number}</button><button onClick={()=>setMode(null)} style={secondaryButton}>Cancel</button></div>
       </div>}
 
       {(mode==="revision"||mode==="reinstatement")&&<div style={subcard}><h3>{mode==="revision"?"Add Existing Document Revision":"Reinstate Obsolete Document"}</h3>
@@ -128,7 +128,7 @@ export default function DicWorkspacePage() {
           {released.filter(x=>mode==="reinstatement"?x.status==="obsolete":(x.status==="release"||x.status==="effective")).map(x=><option key={x.id} value={x.id}>{x.document_number} Rev {x.revision} — {x.title}</option>)}
         </select>
         <label style={label}>Proposed New Revision *</label><input style={input} value={proposedRevision} onChange={e=>setProposedRevision(e.target.value)} placeholder="e.g. D"/>
-        <div style={{display:"flex",gap:8}}><button disabled={saving} onClick={addExisting} style={primary}>Add to {dic.dic_number}</button><button onClick={()=>setMode(null)} style={secondaryButton}>Cancel</button></div>
+        <div style={{display:"flex",gap:8}}><button disabled={saving} onClick={addExisting} style={primary}>Add to {dci.dci_number}</button><button onClick={()=>setMode(null)} style={secondaryButton}>Cancel</button></div>
       </div>}
 
       {children.length===0?<p style={{color:"#667085"}}>No affected documents have been added yet.</p>:<div style={{overflowX:"auto",marginTop:18}}><table style={{width:"100%",borderCollapse:"collapse"}}>
@@ -142,8 +142,8 @@ export default function DicWorkspacePage() {
     </section>
 
     <section style={card}>
-      <h2 style={{marginTop:0}}>DIC Review & Approval</h2>
-      <p style={{marginBottom:0,color:"#667085"}}><strong>Package rule:</strong> collaborators and formal approvers review every affected document on this DIC. A collaboration or formal approval decision applies to the complete DIC package, not to individual documents.</p>
+      <h2 style={{marginTop:0}}>DCI Review & Approval</h2>
+      <p style={{marginBottom:0,color:"#667085"}}><strong>Package rule:</strong> collaborators and formal approvers review every affected document on this DCI. A collaboration or formal approval decision applies to the complete DCI package, not to individual documents.</p>
     </section>
   </main>;
 }
