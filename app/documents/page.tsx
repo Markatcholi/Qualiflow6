@@ -118,8 +118,6 @@ export default function DocumentControlLandingPage() {
     change_rationale: "",
     owner_email: "",
     effective_date: "",
-    read_ack_required: true,
-    training_required: false,
   });
 
   const fetchUser = async () => {
@@ -494,8 +492,6 @@ export default function DocumentControlLandingPage() {
       change_rationale: "",
       owner_email: "",
       effective_date: "",
-      read_ack_required: true,
-      training_required: false,
     });
     setSelectedFile(null);
 
@@ -563,8 +559,8 @@ export default function DocumentControlLandingPage() {
           owner_email: normalizeEmail(newDoc.owner_email) || userEmail || null,
           approver_email: null,
           effective_date: newDoc.effective_date || null,
-          read_ack_required: newDoc.read_ack_required,
-          training_required: newDoc.training_required,
+          read_ack_required: false,
+          training_required: false,
           created_by: userEmail || "unknown",
         })
         .select()
@@ -928,11 +924,6 @@ export default function DocumentControlLandingPage() {
             <Field label="Change Description"><textarea value={newDoc.change_description} onChange={(e) => setNewDoc({ ...newDoc, change_description: e.target.value })} rows={3} style={textareaStyle} /></Field>
 
             <Field label="Change Rationale / Justification"><textarea value={newDoc.change_rationale} onChange={(e) => setNewDoc({ ...newDoc, change_rationale: e.target.value })} rows={3} style={textareaStyle} /></Field>
-
-            <div style={buttonRowStyle}>
-              <label><input type="checkbox" checked={newDoc.read_ack_required} onChange={(e) => setNewDoc({ ...newDoc, read_ack_required: e.target.checked })} /> Read & Acknowledge Required</label>
-              <label><input type="checkbox" checked={newDoc.training_required} onChange={(e) => setNewDoc({ ...newDoc, training_required: e.target.checked })} /> Training Required</label>
-            </div>
 
             <Field label="Document File"><input type="file" onChange={(e) => setSelectedFile(e.target.files?.[0] || null)} style={inputStyle} /></Field>
 
