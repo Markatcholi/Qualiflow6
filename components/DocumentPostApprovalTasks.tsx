@@ -42,6 +42,8 @@ export default function DocumentPostApprovalTasks({
   status,
   userEmail,
   canCoordinate,
+  assignmentMode = false,
+  postApprovalReady = false,
 }: {
   documentId: string;
   tenantId: string;
@@ -50,6 +52,8 @@ export default function DocumentPostApprovalTasks({
   status: string;
   userEmail: string;
   canCoordinate: boolean;
+  assignmentMode?: boolean;
+  postApprovalReady?: boolean;
 }) {
   const [impacts, setImpacts] = useState<ImpactRow[]>([]);
   const [tasks, setTasks] = useState<TaskRow[]>([]);
@@ -91,7 +95,7 @@ export default function DocumentPostApprovalTasks({
   };
 
   const assignTask = async (impact: ImpactRow) => {
-    if (!canCoordinate || status !== "approved") return;
+    if (!canCoordinate || !postApprovalReady) return;
     const mapped = REQUIREMENT_MAP[impact.impact_area];
     const form = formFor(impact);
     if (!mapped || !form.assignee || !form.dueDate || !form.instruction.trim()) {
@@ -160,9 +164,11 @@ export default function DocumentPostApprovalTasks({
 
   return (
     <section style={cardStyle}>
-      <h2 style={{ marginTop: 0 }}>Post-Approval Implementation</h2>
+      <h2 style={{ marginTop: 0 }}>{assignmentMode ? "Assign Post-Approval Tasks" : "Post-Approval Implementation"}</h2>
       <p style={subtleStyle}>
-        QualiSphere carries required actions forward from the Impact Assessment. After formal approval, Document Control assigns the resulting implementation tasks and verifies the submitted evidence.
+        {assignmentMode
+          ? "Impact Assessment requirements are carried forward automatically. Document Control selects the assignee and due date."
+          : "Track assigned implementation tasks, submitted evidence, and Document Control verification."}
       </p>
 
       <div style={summaryStyle}>
@@ -184,7 +190,7 @@ export default function DocumentPostApprovalTasks({
             </div>
 
             {!task ? (
-              status === "approved" && canCoordinate ? (
+              assignmentMode && postApprovalReady && canCoordinate ? (
                 <div style={gridStyle}>
                   <label style={labelStyle}>Assignee
                     <select value={form.assignee} onChange={(e) => patchForm(impact, { assignee: e.target.value })} style={inputStyle}>
@@ -200,8 +206,10 @@ export default function DocumentPostApprovalTasks({
                   </label>
                   <button disabled={busy} onClick={() => assignTask(impact)} style={buttonStyle}>Assign Implementation Task</button>
                 </div>
+              ) : assignmentMode ? (
+                <div style={noticeStyle}>Formal review/approval must be complete before Document Control can assign this implementation task.</div>
               ) : (
-                <div style={noticeStyle}>Formal approval must be completed before Document Control can assign this implementation task.</div>
+                <div style={noticeStyle}>This requirement has not yet been assigned. Use Workflow Actions → Assign Post-Approval Tasks after formal approval.</div>
               )
             ) : (
               <div style={taskStyle}>
