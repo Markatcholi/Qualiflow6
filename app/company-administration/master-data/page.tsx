@@ -11,6 +11,7 @@ type DefectSubcategoryItem = { id: string; category_code: string; code: string; 
 type RoomItem = { id: string; code: string; label: string; room_type: string | null; is_active: boolean | null };
 type EquipmentItem = { id: string; equipment_id: string; equipment_name: string; equipment_type: string | null; room_code: string | null; is_active: boolean | null };
 type TestMethodItem = { id: string; code: string; label: string; investigation_source: string | null; default_unit: string | null; is_active: boolean | null };
+type ImpactAreaItem = { id: string; code: string; label: string; sort_order: number; behavior_type: string; is_active: boolean; is_system_seed: boolean };
 type OosLimitItem = { id: string; investigation_source: string; test_method_code: string; room_code: string | null; equipment_id: string | null; alert_limit: string | null; action_limit: string | null; specification_limit: string | null; unit_of_measure: string | null; is_active: boolean | null };
 
 export default function CompanyMasterDataPage() {
@@ -31,6 +32,9 @@ export default function CompanyMasterDataPage() {
   const [equipment, setEquipment] = useState<EquipmentItem[]>([]);
   const [testMethods, setTestMethods] = useState<TestMethodItem[]>([]);
   const [oosLimits, setOosLimits] = useState<OosLimitItem[]>([]);
+  const [impactAreas, setImpactAreas] = useState<ImpactAreaItem[]>([]);
+  const [newImpactAreaCode, setNewImpactAreaCode] = useState("");
+  const [newImpactAreaLabel, setNewImpactAreaLabel] = useState("");
   const [newPartCode, setNewPartCode] = useState("");
   const [newPartDescription, setNewPartDescription] = useState("");
   const [newPartIsActive, setNewPartIsActive] = useState(true);
@@ -70,7 +74,7 @@ export default function CompanyMasterDataPage() {
   const investigationSources = ["Product Bioburden", "Cleanroom Routine Monitoring", "Room Temperature", "Room Humidity", "Differential Pressure", "pH Testing", "Equipment Calibration", "Other"];
 
   const loadAll = async (activeTenantId: string) => {
-    const [partRes, dispositionRes, detectionRes, departmentRes, materialRes, defectCategoryRes, defectSubcategoryRes, roomRes, equipmentRes, methodRes, limitRes] = await Promise.all([
+    const [partRes, dispositionRes, detectionRes, departmentRes, materialRes, defectCategoryRes, defectSubcategoryRes, roomRes, equipmentRes, methodRes, limitRes, impactAreaRes] = await Promise.all([
       supabase.from("md_product_part_numbers").select("*").eq("tenant_id", activeTenantId).order("label"),
       supabase.from("md_dispositions").select("*").eq("tenant_id", activeTenantId).order("label"),
       supabase.from("md_detection_sources").select("*").eq("tenant_id", activeTenantId).order("label"),
@@ -82,8 +86,9 @@ export default function CompanyMasterDataPage() {
       supabase.from("md_equipment").select("*").eq("tenant_id", activeTenantId).order("equipment_name"),
       supabase.from("md_test_methods").select("*").eq("tenant_id", activeTenantId).order("label"),
       supabase.from("md_oos_limits").select("*").eq("tenant_id", activeTenantId).order("investigation_source"),
+      supabase.from("md_document_impact_areas").select("*").eq("tenant_id", activeTenantId).order("sort_order").order("label"),
     ]);
-    const responses = [partRes, dispositionRes, detectionRes, departmentRes, materialRes, defectCategoryRes, defectSubcategoryRes, roomRes, equipmentRes, methodRes, limitRes];
+    const responses = [partRes, dispositionRes, detectionRes, departmentRes, materialRes, defectCategoryRes, defectSubcategoryRes, roomRes, equipmentRes, methodRes, limitRes, impactAreaRes];
     const firstError = responses.find((response) => response.error)?.error;
     if (firstError) throw new Error(firstError.message);
     setPartNumbers((partRes.data as ProductPartItem[]) || []);
@@ -97,6 +102,7 @@ export default function CompanyMasterDataPage() {
     setEquipment((equipmentRes.data as EquipmentItem[]) || []);
     setTestMethods((methodRes.data as TestMethodItem[]) || []);
     setOosLimits((limitRes.data as OosLimitItem[]) || []);
+    setImpactAreas((impactAreaRes.data as ImpactAreaItem[]) || []);
   };
 
   useEffect(() => {
@@ -138,6 +144,36 @@ export default function CompanyMasterDataPage() {
   const insertRoom = async () => { if (!newRoomCode.trim() || !newRoomLabel.trim()) return setMessage("Room code and label are required."); const { error } = await supabase.from("md_rooms").insert({ tenant_id: tenantId, code: newRoomCode.trim(), label: newRoomLabel.trim(), room_type: newRoomType.trim() || null, is_active: true }); if (error) return setMessage(error.message); setNewRoomCode(""); setNewRoomLabel(""); setNewRoomType(""); setMessage("Rooms / Areas updated successfully."); await refresh(); };
   const insertEquipment = async () => { if (!newEquipmentId.trim() || !newEquipmentName.trim()) return setMessage("Equipment ID and equipment name are required."); const { error } = await supabase.from("md_equipment").insert({ tenant_id: tenantId, equipment_id: newEquipmentId.trim(), equipment_name: newEquipmentName.trim(), equipment_type: newEquipmentType.trim() || null, room_code: newEquipmentRoomCode || null, is_active: true }); if (error) return setMessage(error.message); setNewEquipmentId(""); setNewEquipmentName(""); setNewEquipmentType(""); setNewEquipmentRoomCode(""); setMessage("Equipment updated successfully."); await refresh(); };
   const insertTestMethod = async () => { if (!newMethodCode.trim() || !newMethodLabel.trim()) return setMessage("Method code and label are required."); const { error } = await supabase.from("md_test_methods").insert({ tenant_id: tenantId, code: newMethodCode.trim(), label: newMethodLabel.trim(), investigation_source: newMethodSource || null, default_unit: newMethodUnit.trim() || null, is_active: true }); if (error) return setMessage(error.message); setNewMethodCode(""); setNewMethodLabel(""); setNewMethodSource("Product Bioburden"); setNewMethodUnit(""); setMessage("Test Methods updated successfully."); await refresh(); };
+  const insertImpactArea = async () => {
+    const code = newImpactAreaCode.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+    const label = newImpactAreaLabel.trim();
+    if (!code || !label) return setMessage("Impact Area code and label are required.");
+    const nextOrder = impactAreas.length ? Math.max(...impactAreas.map((area) => Number(area.sort_order || 0))) + 10 : 10;
+    const { error } = await supabase.from("md_document_impact_areas").insert({ tenant_id: tenantId, code, label, sort_order: nextOrder, behavior_type: "generic", is_active: true, is_system_seed: false });
+    if (error) return setMessage(error.message);
+    setNewImpactAreaCode(""); setNewImpactAreaLabel(""); setMessage("Impact Assessment Area added successfully."); await refresh();
+  };
+  const updateImpactArea = async (item: ImpactAreaItem) => {
+    const { error } = await supabase.from("md_document_impact_areas").update({ label: item.label.trim(), sort_order: Number(item.sort_order || 0), is_active: item.is_active }).eq("id", item.id).eq("tenant_id", tenantId);
+    if (error) return setMessage(error.message);
+    setMessage("Impact Assessment Area updated successfully."); await refresh();
+  };
+  const removeImpactArea = async (item: ImpactAreaItem) => {
+    const { count, error: countError } = await supabase.from("document_impact_assessments").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("impact_area", item.code);
+    if (countError) return setMessage(countError.message);
+    if ((count || 0) > 0) {
+      const { error } = await supabase.from("md_document_impact_areas").update({ is_active: false }).eq("id", item.id).eq("tenant_id", tenantId);
+      if (error) return setMessage(error.message);
+      setMessage("This Impact Assessment Area has historical use, so it was deactivated rather than deleted.");
+    } else {
+      if (!window.confirm(`Delete Impact Assessment Area "${item.label}"? It has not been used in an assessment.`)) return;
+      const { error } = await supabase.from("md_document_impact_areas").delete().eq("id", item.id).eq("tenant_id", tenantId);
+      if (error) return setMessage(error.message);
+      setMessage("Impact Assessment Area deleted.");
+    }
+    await refresh();
+  };
+
   const insertOosLimit = async () => { if (!newLimitSource || !newLimitMethodCode) return setMessage("Investigation source and test method are required."); if (!newAlertLimit && !newActionLimit && !newSpecificationLimit) return setMessage("At least one limit is required."); const selectedMethod = testMethods.find((method) => method.code === newLimitMethodCode); const { error } = await supabase.from("md_oos_limits").insert({ tenant_id: tenantId, investigation_source: newLimitSource, test_method_code: newLimitMethodCode, room_code: newLimitRoomCode || null, equipment_id: newLimitEquipmentId || null, alert_limit: newAlertLimit || null, action_limit: newActionLimit || null, specification_limit: newSpecificationLimit || null, unit_of_measure: newLimitUnit || selectedMethod?.default_unit || null, is_active: true }); if (error) return setMessage(error.message); setNewLimitSource("Product Bioburden"); setNewLimitMethodCode(""); setNewLimitRoomCode(""); setNewLimitEquipmentId(""); setNewAlertLimit(""); setNewActionLimit(""); setNewSpecificationLimit(""); setNewLimitUnit(""); setMessage("OOS/OOT Limits updated successfully."); await refresh(); };
 
   const sectionStyle: React.CSSProperties = { border: "1px solid #ccc", padding: 16, marginBottom: 20, borderRadius: 8 };
@@ -155,6 +191,16 @@ export default function CompanyMasterDataPage() {
 
       <CompanyUserAdministration tenantId={tenantId} administratorEmail={email} />
 
+      <div style={sectionStyle}>
+        <h2>Controlled Document Impact Assessment Areas</h2>
+        <p style={{ color: "#4b5563" }}>QualiSphere provides a starter assessment framework. Add, rename, reorder, activate, or deactivate areas for this Company Account. Areas already used in historical assessments are deactivated instead of deleted.</p>
+        <input value={newImpactAreaCode} onChange={(e) => setNewImpactAreaCode(e.target.value)} placeholder="Code, e.g. sterilization" style={inputStyle} />
+        <input value={newImpactAreaLabel} onChange={(e) => setNewImpactAreaLabel(e.target.value)} placeholder="Label, e.g. Sterilization" style={{ ...inputStyle, minWidth: 260 }} />
+        <button onClick={insertImpactArea}>Add Impact Area</button>
+        <div style={{ overflowX: "auto", marginTop: 16 }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr><th align="left">Code</th><th align="left">Label</th><th align="left">Order</th><th align="left">Status</th><th align="left">Actions</th></tr></thead><tbody>
+          {impactAreas.map((item) => <tr key={item.id}><td>{item.code}</td><td><input value={item.label} onChange={(e) => setImpactAreas((current) => current.map((area) => area.id === item.id ? { ...area, label: e.target.value } : area))} style={inputStyle} /></td><td><input type="number" value={item.sort_order} onChange={(e) => setImpactAreas((current) => current.map((area) => area.id === item.id ? { ...area, sort_order: Number(e.target.value) } : area))} style={{ ...inputStyle, width: 80 }} /></td><td><select value={item.is_active ? "active" : "inactive"} onChange={(e) => setImpactAreas((current) => current.map((area) => area.id === item.id ? { ...area, is_active: e.target.value === "active" } : area))} style={selectStyle}><option value="active">Active</option><option value="inactive">Inactive</option></select></td><td><button onClick={() => updateImpactArea(item)} style={{ marginRight: 8 }}>Save</button><button onClick={() => removeImpactArea(item)}>{item.is_active ? "Remove" : "Delete / Keep Inactive"}</button></td></tr>)}
+        </tbody></table></div>
+      </div>
       <div style={sectionStyle}><h2>Product Part Master</h2><p style={{ color: "#4b5563" }}>Maintain the controlled Part Number and Part Description used to auto-populate product information across QualiSphere workflows.</p><input value={newPartCode} onChange={(e) => setNewPartCode(e.target.value)} placeholder="Part Number" style={inputStyle} /><input value={newPartDescription} onChange={(e) => setNewPartDescription(e.target.value)} placeholder="Part Description" style={{ ...inputStyle, minWidth: 320 }} /><select value={newPartIsActive ? "active" : "inactive"} onChange={(e) => setNewPartIsActive(e.target.value === "active")} style={selectStyle}><option value="active">Active</option><option value="inactive">Inactive</option></select><button onClick={insertProductPart}>Add Product Part</button><div style={{ overflowX: "auto", marginTop: 16 }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr><th align="left">Part Number</th><th align="left">Part Description</th><th align="left">Status</th><th align="left">Actions</th></tr></thead><tbody>{partNumbers.map((item) => <tr key={item.id}><td><input value={item.code || ""} onChange={(e) => setPartNumbers((current) => current.map((part) => part.id === item.id ? { ...part, code: e.target.value, label: e.target.value } : part))} style={inputStyle} /></td><td><input value={item.part_description || ""} onChange={(e) => setPartNumbers((current) => current.map((part) => part.id === item.id ? { ...part, part_description: e.target.value } : part))} style={{ ...inputStyle, minWidth: 320 }} /></td><td><select value={item.is_active === false ? "inactive" : "active"} onChange={(e) => setPartNumbers((current) => current.map((part) => part.id === item.id ? { ...part, is_active: e.target.value === "active" } : part))} style={selectStyle}><option value="active">Active</option><option value="inactive">Inactive</option></select></td><td><button onClick={() => updateProductPart(item)} style={{ marginRight: 8 }}>Save</button><button onClick={() => deleteRow("md_product_part_numbers", item.id)}>Delete</button></td></tr>)}</tbody></table></div></div>
       <div style={sectionStyle}><h2>Dispositions</h2><input value={newDispositionCode} onChange={(e) => setNewDispositionCode(e.target.value)} placeholder="Code" style={inputStyle} /><input value={newDispositionLabel} onChange={(e) => setNewDispositionLabel(e.target.value)} placeholder="Label" style={inputStyle} /><button onClick={() => insertSimple("md_dispositions", newDispositionCode, newDispositionLabel, () => { setNewDispositionCode(""); setNewDispositionLabel(""); })}>Add</button><ul>{dispositions.map((item) => <li key={item.id}>{item.code} — {item.label} <button onClick={() => deleteRow("md_dispositions", item.id)}>Delete</button></li>)}</ul></div>
       <div style={sectionStyle}><h2>Detection Sources</h2><input value={newDetectionCode} onChange={(e) => setNewDetectionCode(e.target.value)} placeholder="Code" style={inputStyle} /><input value={newDetectionLabel} onChange={(e) => setNewDetectionLabel(e.target.value)} placeholder="Label" style={inputStyle} /><button onClick={() => insertSimple("md_detection_sources", newDetectionCode, newDetectionLabel, () => { setNewDetectionCode(""); setNewDetectionLabel(""); })}>Add</button><ul>{detectionSources.map((item) => <li key={item.id}>{item.code} — {item.label} <button onClick={() => deleteRow("md_detection_sources", item.id)}>Delete</button></li>)}</ul></div>
