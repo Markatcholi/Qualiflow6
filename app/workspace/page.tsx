@@ -221,6 +221,21 @@ export default function HomePage() {
       }
 
       const rawAssignedTasks = taskResponse.data || [];
+      const dciTaskIds = rawAssignedTasks
+        .filter((task: any) => String(task.entity_type || "").trim().toLowerCase() === "document_change_initiation")
+        .map((task: any) => task.entity_id)
+        .filter(Boolean);
+      const dciNumberMap: Record<string, string> = {};
+      if (dciTaskIds.length > 0) {
+        const { data: dciRows } = await supabase
+          .from("document_change_initiations")
+          .select("id,dci_number")
+          .in("id", dciTaskIds);
+        (dciRows || []).forEach((row: any) => {
+          dciNumberMap[String(row.id)] = String(row.dci_number || "");
+        });
+      }
+
       const auditFindingIds = rawAssignedTasks
         .filter((task: any) => String(task.entity_type || "").trim().toLowerCase() === "audit_finding")
         .map((task: any) => task.entity_id)
@@ -243,6 +258,10 @@ export default function HomePage() {
           parent_audit_id:
             String(task.entity_type || "").trim().toLowerCase() === "audit_finding"
               ? auditFindingParentMap[String(task.entity_id)] || ""
+              : undefined,
+          dci_number:
+            String(task.entity_type || "").trim().toLowerCase() === "document_change_initiation"
+              ? dciNumberMap[String(task.entity_id)] || ""
               : undefined,
         }))
         .filter((task: any) => internalTenant || workItemModuleEnabled(task, entitlementSet));
@@ -1194,6 +1213,7 @@ function getCollaborationTaskUrl(task: any) {
   if (entityType === "ncmr") return `/ncmrs/${entityId}/collaboration`;
   if (entityType === "capa") return `/capa/${entityId}/collaboration`;
   if (entityType === "change_control") return `/change-control/${entityId}/collaboration`;
+  if (entityType === "document_change_initiation") return `/documents/changes/${entityId}/collaboration`;
   if (entityType === "document" || entityType === "controlled_document") return `/documents/${entityId}/collaboration`;
   if (entityType === "scar") return `/supplier-quality/scars/${entityId}/collaboration`;
   if (entityType === "complaint") return `/complaints/${entityId}/collaboration`;
@@ -1203,7 +1223,7 @@ function getCollaborationTaskUrl(task: any) {
 }
 
 function getRecordDisplay(task: any) {
-  const directRecord = task.capa_number || task.ncmr_number || task.change_number || task.change_control_number || task.scar_number || task.document_number || task.complaint_number || task.audit_number || task.investigation_number || task.review_number || task.record_number || task.entity_number;
+  const directRecord = task.capa_number || task.ncmr_number || task.dci_number || task.change_number || task.change_control_number || task.scar_number || task.document_number || task.complaint_number || task.audit_number || task.investigation_number || task.review_number || task.record_number || task.entity_number;
   if (directRecord) {
     if ((task.workspace_item_type === "document_review" || task.workspace_item_type === "training_assignment") && task.revision) {
       return `${directRecord} Rev ${task.revision}`;
@@ -1211,7 +1231,7 @@ function getRecordDisplay(task: any) {
     return directRecord;
   }
   const title = String(task.task_title || task.title || "");
-  const recordMatch = title.match(/\b(CAPA[-\s]?\d+|NCMR[-\s]?\d+|CC[-\s]?\d+|SCAR[-\s]?\d+|AUD[-\s]?\d+|DOC[-\s]?\d+|CMP[-\s]?\d+|MR[-\s]?\d+(?:[-\s]?\d+)?|EF[-\s]?\d+)\b/i);
+  const recordMatch = title.match(/\b(CAPA[-\s]?\d+|NCMR[-\s]?\d+|DCI[-\s]?\d+|CC[-\s]?\d+|SCAR[-\s]?\d+|AUD[-\s]?\d+|DOC[-\s]?\d+|CMP[-\s]?\d+|MR[-\s]?\d+(?:[-\s]?\d+)?|EF[-\s]?\d+)\b/i);
   if (recordMatch?.[1]) return recordMatch[1].toUpperCase();
 
   // SCAR currently has no populated scar_number. Show its meaningful title in
@@ -1336,6 +1356,7 @@ function getModuleLabel(task: any) {
   const type = String(task.entity_type || task.workspace_item_type || "").toLowerCase();
   if (type.includes("ncmr")) return "NCMR";
   if (type.includes("capa")) return "CAPA";
+  if (type.includes("document_change_initiation")) return "Document Change";
   if (type.includes("change")) return "Change";
   if (type.includes("scar")) return "SCAR";
   if (type.includes("document")) return "Document";
@@ -1352,6 +1373,7 @@ function getModuleIcon(task: any) {
   const label = getModuleLabel(task);
   if (label === "NCMR") return "⚠️";
   if (label === "CAPA") return "🛠️";
+  if (label === "Document Change") return "🔄";
   if (label === "Change") return "🔄";
   if (label === "SCAR") return "🏭";
   if (label === "Document") return "📄";
