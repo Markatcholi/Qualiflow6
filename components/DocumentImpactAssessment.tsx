@@ -4,18 +4,9 @@ import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 import DocumentTrainingRequirements from "./DocumentTrainingRequirements";
 
-const IMPACT_AREAS = [
-  ["product_design", "Product / Design"],
-  ["manufacturing_process", "Manufacturing / Process"],
-  ["tooling_equipment", "Tooling / Equipment"],
-  ["inspection_test_methods", "Inspection / Test Methods"],
-  ["specifications", "Specifications"],
-  ["supplier", "Supplier"],
-  ["inventory_wip", "Inventory / WIP"],
-  ["regulatory_risk", "Regulatory / Risk"],
-  ["validation", "Validation"],
-  ["training", "Training"],
-] as const;
+type ImpactArea = { id: string; code: string; label: string; sort_order: number; behavior_type: "generic" | "inventory_wip" | "validation" | "training"; is_active: boolean };
+
+
 
 type Assessment = {
   id: string;
@@ -44,18 +35,30 @@ export default function DocumentImpactAssessment({
   canManage: boolean;
 }) {
   const [rows, setRows] = useState<Assessment[]>([]);
+  const [impactAreas, setImpactAreas] = useState<ImpactArea[]>([]);
   const [busy, setBusy] = useState(false);
 
   const editableAssessment = canManage && ["draft", "rejected", "collaboration"].includes(status);
 
   const load = async () => {
-    const assessmentRes = await supabase
+    const [assessmentRes, areaRes] = await Promise.all([
+      supabase
       .from("document_impact_assessments")
       .select("*")
       .eq("document_id", documentId)
-      .order("impact_area");
+      .order("impact_area"),
+      supabase
+        .from("md_document_impact_areas")
+        .select("id,code,label,sort_order,behavior_type,is_active")
+        .eq("tenant_id", tenantId)
+        .eq("is_active", true)
+        .order("sort_order")
+        .order("label")
+    ]);
     if (assessmentRes.error) throw new Error(assessmentRes.error.message);
+    if (areaRes.error) throw new Error(areaRes.error.message);
     setRows((assessmentRes.data || []) as Assessment[]);
+    setImpactAreas((areaRes.data || []) as ImpactArea[]);
   };
 
   useEffect(() => { load().catch((e) => alert(e.message)); }, [documentId]);
@@ -91,7 +94,7 @@ export default function DocumentImpactAssessment({
     setBusy(false);
   };
 
-  const completedAreas = IMPACT_AREAS.filter(([key]) => rowMap.get(key)?.is_impacted !== null && rowMap.get(key)?.is_impacted !== undefined).length;
+  const completedAreas = impactAreas.filter((area) => rowMap.get(area.code)?.is_impacted !== null && rowMap.get(area.code)?.is_impacted !== undefined).length;
 
   return (
     <section style={{ border: "1px solid #d8dee8", borderRadius: 12, padding: 18, marginTop: 18, background: "#fff" }}>
@@ -101,10 +104,12 @@ export default function DocumentImpactAssessment({
         Use the assessment to identify post-approval requirements. Task assignment occurs only after formal approval.
       </p>
       <div style={{ display: "flex", gap: 16, marginBottom: 16, flexWrap: "wrap" }}>
-        <strong>Areas assessed: {completedAreas}/{IMPACT_AREAS.length}</strong>
+        <strong>Areas assessed: {completedAreas}/{impactAreas.length}</strong>
       </div>
 
-      {IMPACT_AREAS.map(([key, label]) => {
+      {impactAreas.map((area) => {
+        const key = area.code;
+        const label = area.label;
         const row = rowMap.get(key);
         return (
           <div key={key} style={{ borderTop: "1px solid #e6eaf0", padding: "16px 0" }}>
@@ -121,7 +126,7 @@ export default function DocumentImpactAssessment({
               <div style={{ marginTop: 12 }}>
                 <label style={labelStyle}>Impact Assessment</label>
                 <textarea disabled={!editableAssessment} defaultValue={row.assessment || ""} onBlur={(e) => saveArea(key, { assessment: e.target.value })} rows={3} style={textareaStyle} placeholder={`Describe the ${label.toLowerCase()} impact.`} />
-                {key === "inventory_wip" ? (
+                {area.behavior_type === "inventory_wip" ? (
                   <>
                     <label style={labelStyle}>Existing Inventory / WIP Disposition Required?</label>
                     <select
@@ -165,7 +170,7 @@ export default function DocumentImpactAssessment({
                       </>
                     ) : null}
                   </>
-                ) : key === "validation" ? (
+                ) : area.behavior_type === "validation" ? (
                   <>
                     <label style={labelStyle}>Revalidation Required?</label>
                     <select
@@ -205,7 +210,7 @@ export default function DocumentImpactAssessment({
                       </>
                     ) : null}
                   </>
-                ) : key === "training" ? (
+                ) : area.behavior_type === "training" ? (
                   <DocumentTrainingRequirements
                     documentId={documentId}
                     tenantId={tenantId}
