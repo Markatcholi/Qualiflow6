@@ -121,7 +121,51 @@ export default function DocumentImpactAssessment({
               <div style={{ marginTop: 12 }}>
                 <label style={labelStyle}>Impact Assessment</label>
                 <textarea disabled={!editableAssessment} defaultValue={row.assessment || ""} onBlur={(e) => saveArea(key, { assessment: e.target.value })} rows={3} style={textareaStyle} placeholder={`Describe the ${label.toLowerCase()} impact.`} />
-                {key === "validation" ? (
+                {key === "inventory_wip" ? (
+                  <>
+                    <label style={labelStyle}>Existing Inventory / WIP Disposition Required?</label>
+                    <select
+                      disabled={!editableAssessment || busy}
+                      value={row.disposition_required === true ? "yes" : row.disposition_required === false && row.disposition_summary?.startsWith("No disposition required") ? "no" : ""}
+                      onChange={(e) => {
+                        const value=e.target.value;
+                        if(value==="yes") saveArea(key,{disposition_required:true,disposition_summary:""});
+                        else if(value==="no") saveArea(key,{disposition_required:false,disposition_summary:"No disposition required — "});
+                      }}
+                      style={inputStyle}
+                    >
+                      <option value="">Select Yes / No</option>
+                      <option value="yes">Yes — Disposition required</option>
+                      <option value="no">No — No disposition required</option>
+                    </select>
+                    {row.disposition_required ? (
+                      <>
+                        <label style={labelStyle}>Anticipated Disposition / Instructions</label>
+                        <textarea
+                          disabled={!editableAssessment}
+                          defaultValue={row.disposition_summary || ""}
+                          onBlur={(e)=>saveArea(key,{disposition_summary:e.target.value})}
+                          rows={3}
+                          style={textareaStyle}
+                          placeholder="Identify the anticipated disposition for existing inventory or WIP, such as Use As Is, Rework, Scrap, Return to Supplier, Inspect/Screen to New Requirement, or Other. Include rationale or implementation instructions."
+                        />
+                        <div style={{marginTop:6,fontSize:12,color:"#596579"}}>This is the anticipated disposition for collaboration review. Execution, assignment, evidence, and verification occur after formal approval.</div>
+                      </>
+                    ) : row.disposition_summary?.startsWith("No disposition required") ? (
+                      <>
+                        <label style={labelStyle}>Rationale</label>
+                        <textarea
+                          disabled={!editableAssessment}
+                          defaultValue={row.disposition_summary.replace(/^No disposition required\s*[—-]?\s*/,"")}
+                          onBlur={(e)=>saveArea(key,{disposition_summary:`No disposition required — ${e.target.value}`})}
+                          rows={2}
+                          style={textareaStyle}
+                          placeholder="Explain why existing inventory / WIP does not require disposition."
+                        />
+                      </>
+                    ) : null}
+                  </>
+                ) : key === "validation" ? (
                   <>
                     <label style={labelStyle}>Revalidation Required?</label>
                     <select
