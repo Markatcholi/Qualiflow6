@@ -294,12 +294,27 @@ export default function DciWorkspacePage() {
     </section>
 
     <section style={card}>
-      <h2 style={{marginTop:0}}>Impact Assessment</h2>
-      <p style={{color:"#667085"}}>Complete the Impact Assessment independently for each affected document before the DCI advances to collaboration.</p>
-      {children.length===0?<p style={{color:"#667085"}}>Add affected documents first.</p>:children.map(child=>{const d=child.document;if(!d)return null;const count=impactCounts[d.id]||0;return <div key={child.id} style={{...subcard,display:"flex",justifyContent:"space-between",alignItems:"center",gap:12}}>
-        <div><strong>{d.document_number} Rev {d.revision} — {d.title}</strong><div style={{color:"#667085",fontSize:13}}>Impact Assessment: {count===10?"Complete":`${count}/10 areas assessed`}</div></div>
-        <a style={secondary} href={`/documents/${d.id}`}>Open Impact Assessment</a>
-      </div>})}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:16,flexWrap:"wrap"}}>
+        <div><h2 style={{margin:"0 0 4px"}}>Impact Assessment</h2>
+          <div style={{color:"#667085"}}>Assess each affected document independently. All 10 impact areas must be assessed before the DCI is ready to advance to Collaboration.</div>
+        </div>
+        {children.length>0&&<div style={{fontSize:13,fontWeight:700,color:Object.values(impactCounts).length>0&&children.filter(x=>x.document).every(x=>(impactCounts[x.document_id]||0)===10)?"#18794e":"#8a5a00"}}>
+          {children.filter(x=>x.document).filter(x=>(impactCounts[x.document_id]||0)===10).length} of {children.filter(x=>x.document).length} Complete
+        </div>}
+      </div>
+      {children.length===0?<p style={{color:"#667085"}}>Add affected documents first.</p>:<div style={{overflowX:"auto",marginTop:18}}><table style={{width:"100%",borderCollapse:"collapse"}}>
+        <thead><tr>{["Document Number","Revision","Document Title","Document Type","Assessment Progress","Status","Action"].map(x=><th key={x} style={th}>{x}</th>)}</tr></thead>
+        <tbody>{children.map(child=>{const d=child.document;if(!d)return null;const count=impactCounts[d.id]||0;const complete=count===10;return <tr key={child.id}>
+          <td style={td}><a href={`/documents/${d.id}`} style={{fontWeight:800,color:"#1d4ed8",textDecoration:"underline"}}>{d.document_number}</a></td>
+          <td style={td}>{d.revision}</td>
+          <td style={td}>{d.title}</td>
+          <td style={td}>{d.document_type||"—"}</td>
+          <td style={td}><strong>{count}/10</strong> areas assessed</td>
+          <td style={td}><span style={{display:"inline-block",padding:"4px 9px",borderRadius:999,fontSize:12,fontWeight:800,background:complete?"#e9f7ef":"#fff4d6",color:complete?"#18794e":"#8a5a00"}}>{complete?"Complete":count===0?"Not Started":"In Progress"}</span></td>
+          <td style={td}><a style={secondary} href={`/documents/${d.id}#impact-assessment`}>{complete?"Review Assessment":"Open Assessment"}</a></td>
+        </tr>})}</tbody>
+      </table></div>}
+      {children.length>0&&children.filter(x=>x.document).every(x=>(impactCounts[x.document_id]||0)===10)&&<div style={{marginTop:14,padding:"10px 12px",border:"1px solid #b7ddc7",borderRadius:7,background:"#f3fbf6",color:"#18794e",fontWeight:700}}>Impact Assessment complete for all affected documents. The DCI is ready for the next workflow stage.</div>}
     </section>
 
     <section style={card}>
