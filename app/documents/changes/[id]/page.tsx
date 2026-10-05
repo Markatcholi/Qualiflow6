@@ -22,6 +22,7 @@ export default function DciWorkspacePage() {
   const [released, setReleased] = useState<Doc[]>([]);
   const [additionalFiles, setAdditionalFiles] = useState<AdditionalFile[]>([]);
   const [impactCounts, setImpactCounts] = useState<Record<string,number>>({});
+  const [activeImpactAreaCount, setActiveImpactAreaCount] = useState(0);
   const [expandedAssessments,setExpandedAssessments]=useState<Record<string,boolean>>({});
   const [editingId, setEditingId] = useState<string|null>(null);
   const [editDoc, setEditDoc] = useState({document_number:"",title:"",document_type:"SOP",revision:"A",department:"",process_area:"",owner_email:"",change_description:"",change_rationale:""});
@@ -46,6 +47,8 @@ export default function DciWorkspacePage() {
     ]);
     if (d.error) return alert(d.error.message);
     setDci(d.data);
+    const areaCountRes=await supabase.from("md_document_impact_areas").select("id",{count:"exact",head:true}).eq("tenant_id",d.data.tenant_id).eq("is_active",true);
+    if(!areaCountRes.error) setActiveImpactAreaCount(areaCountRes.count||0);
     if (links.error) {
       alert(links.error.message);
       setChildren([]);
@@ -312,20 +315,20 @@ export default function DciWorkspacePage() {
     <section style={card}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:16,flexWrap:"wrap"}}>
         <div><h2 style={{margin:"0 0 4px"}}>Impact Assessment</h2>
-          <div style={{color:"#667085"}}>Assess each affected document independently. All 10 impact areas must be assessed before the DCI is ready to advance to Collaboration.</div>
+          <div style={{color:"#667085"}}>Assess each affected document independently. All active Company Account impact areas must be assessed before the DCI is ready to advance to Collaboration.</div>
         </div>
-        {children.length>0&&<div style={{fontSize:13,fontWeight:700,color:Object.values(impactCounts).length>0&&children.filter(x=>x.document).every(x=>(impactCounts[x.document_id]||0)===10)?"#18794e":"#8a5a00"}}>
-          {children.filter(x=>x.document).filter(x=>(impactCounts[x.document_id]||0)===10).length} of {children.filter(x=>x.document).length} Complete
+        {children.length>0&&<div style={{fontSize:13,fontWeight:700,color:Object.values(impactCounts).length>0&&children.filter(x=>x.document).every(x=>(impactCounts[x.document_id]||0)===activeImpactAreaCount)?"#18794e":"#8a5a00"}}>
+          {children.filter(x=>x.document).filter(x=>(impactCounts[x.document_id]||0)===activeImpactAreaCount).length} of {children.filter(x=>x.document).length} Complete
         </div>}
       </div>
       {children.length===0?<p style={{color:"#667085"}}>Add affected documents first.</p>:<div style={{marginTop:18}}>
-        {children.map(child=>{const d=child.document;if(!d)return null;const count=impactCounts[d.id]||0;const complete=count===10;const expanded=Boolean(expandedAssessments[d.id]);return <div key={child.id} style={{border:"1px solid #d9e0e8",borderRadius:9,marginBottom:12,overflow:"hidden"}}>
+        {children.map(child=>{const d=child.document;if(!d)return null;const count=impactCounts[d.id]||0;const complete=count===activeImpactAreaCount;const expanded=Boolean(expandedAssessments[d.id]);return <div key={child.id} style={{border:"1px solid #d9e0e8",borderRadius:9,marginBottom:12,overflow:"hidden"}}>
           <div style={{display:"grid",gridTemplateColumns:"minmax(120px,0.8fr) 70px minmax(220px,1.7fr) minmax(120px,1fr) minmax(145px,1fr) 105px 150px",gap:10,alignItems:"center",padding:"12px 14px",background:"#fff"}}>
             <div><a href={`/documents/${d.id}`} style={{fontWeight:800,color:"#1d4ed8",textDecoration:"underline"}}>{d.document_number}</a></div>
             <div>{d.revision}</div>
             <div>{d.title}</div>
             <div>{d.document_type||"—"}</div>
-            <div><strong>{count}/10</strong> areas assessed</div>
+            <div><strong>{count}/{activeImpactAreaCount}</strong> areas assessed</div>
             <div><span style={{display:"inline-block",padding:"4px 9px",borderRadius:999,fontSize:12,fontWeight:800,background:complete?"#e9f7ef":"#fff4d6",color:complete?"#18794e":"#8a5a00"}}>{complete?"Complete":count===0?"Not Started":"In Progress"}</span></div>
             <div><button type="button" style={secondaryButton} onClick={()=>toggleAssessment(d.id)}>{expanded?"Collapse Assessment":complete?"Review Assessment":"Open Assessment"}</button></div>
           </div>
@@ -334,13 +337,13 @@ export default function DciWorkspacePage() {
           </div>}
         </div>})}
       </div>}
-      {children.length>0&&children.filter(x=>x.document).every(x=>(impactCounts[x.document_id]||0)===10)&&<div style={{marginTop:14,padding:"10px 12px",border:"1px solid #b7ddc7",borderRadius:7,background:"#f3fbf6",color:"#18794e",fontWeight:700}}>Impact Assessment complete for all affected documents. The DCI is ready for the next workflow stage.</div>}
+      {children.length>0&&children.filter(x=>x.document).every(x=>(impactCounts[x.document_id]||0)===activeImpactAreaCount)&&<div style={{marginTop:14,padding:"10px 12px",border:"1px solid #b7ddc7",borderRadius:7,background:"#f3fbf6",color:"#18794e",fontWeight:700}}>Impact Assessment complete for all affected documents. The DCI is ready for the next workflow stage.</div>}
     </section>
 
     <section style={card}>
       <div style={{display:"flex",justifyContent:"space-between",gap:16,alignItems:"center",flexWrap:"wrap"}}>
         <div><h2 style={{margin:"0 0 4px"}}>DCI Collaboration</h2><div style={{color:"#667085"}}>Collaborators review the complete DCI package: all affected documents, Markup / Redlines, supporting files, Impact Assessments, and anticipated dispositions.</div></div>
-        {children.length>0&&children.filter(x=>x.document).every(x=>(impactCounts[x.document_id]||0)===10)
+        {children.length>0&&children.filter(x=>x.document).every(x=>(impactCounts[x.document_id]||0)===activeImpactAreaCount)
           ? <a href={`/documents/changes/${id}/collaboration`} style={primary}>Open DCI Collaboration</a>
           : <span style={{color:"#8a5a00",fontWeight:700}}>Complete all Impact Assessments before Collaboration.</span>}
       </div>
