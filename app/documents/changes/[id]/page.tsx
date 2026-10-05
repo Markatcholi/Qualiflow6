@@ -338,6 +338,15 @@ export default function DciWorkspacePage() {
     </section>
 
     <section style={card}>
+      <div style={{display:"flex",justifyContent:"space-between",gap:16,alignItems:"center",flexWrap:"wrap"}}>
+        <div><h2 style={{margin:"0 0 4px"}}>DCI Collaboration</h2><div style={{color:"#667085"}}>Collaborators review the complete DCI package: all affected documents, Markup / Redlines, supporting files, Impact Assessments, and anticipated dispositions.</div></div>
+        {children.length>0&&children.filter(x=>x.document).every(x=>(impactCounts[x.document_id]||0)===10)
+          ? <a href={`/documents/changes/${id}/collaboration`} style={primary}>Open DCI Collaboration</a>
+          : <span style={{color:"#8a5a00",fontWeight:700}}>Complete all Impact Assessments before Collaboration.</span>}
+      </div>
+    </section>
+
+    <section style={card}>
       <h2 style={{marginTop:0}}>DCI Review & Approval</h2>
       <p style={{marginBottom:0,color:"#667085"}}><strong>Package rule:</strong> collaborators and formal approvers review every affected document on this DCI. A collaboration or formal approval decision applies to the complete DCI package, not to individual documents.</p>
     </section>
