@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "../../../../lib/supabaseClient";
 import { buildControlledDocumentStoragePath, resolveControlledDocumentFileUrl, CONTROLLED_DOCUMENT_BUCKET } from "../../../../lib/controlledDocumentStorage";
+import DocumentImpactAssessment from "../../../../components/DocumentImpactAssessment";
 
 type Doc = {
   id: string; document_number: string; title: string; document_type: string | null; revision: string; status: string;
@@ -21,6 +22,7 @@ export default function DciWorkspacePage() {
   const [released, setReleased] = useState<Doc[]>([]);
   const [additionalFiles, setAdditionalFiles] = useState<AdditionalFile[]>([]);
   const [impactCounts, setImpactCounts] = useState<Record<string,number>>({});
+  const [expandedAssessments,setExpandedAssessments]=useState<Record<string,boolean>>({});
   const [editingId, setEditingId] = useState<string|null>(null);
   const [editDoc, setEditDoc] = useState({document_number:"",title:"",document_type:"SOP",revision:"A",department:"",process_area:"",owner_email:"",change_description:"",change_rationale:""});
   const [editPrimaryFile,setEditPrimaryFile]=useState<File|null>(null);
@@ -198,6 +200,20 @@ export default function DciWorkspacePage() {
     await load();
   };
 
+  const refreshImpactCounts = async () => {
+    const ids=children.map(x=>x.document_id).filter(Boolean);
+    if(!ids.length){setImpactCounts({});return;}
+    const impactRes=await supabase.from("document_impact_assessments").select("document_id,is_impacted").in("document_id",ids);
+    if(impactRes.error) return;
+    const counts:Record<string,number>={}; (impactRes.data||[]).forEach((x:any)=>{if(x.is_impacted!==null) counts[x.document_id]=(counts[x.document_id]||0)+1;}); setImpactCounts(counts);
+  };
+
+  const toggleAssessment = async (documentId:string) => {
+    const opening=!expandedAssessments[documentId];
+    setExpandedAssessments(prev=>({...prev,[documentId]:opening}));
+    if(!opening) await refreshImpactCounts();
+  };
+
   const withdraw = async () => {
     if(!dci || dci.status==="released") return;
     const reason = window.prompt("Withdrawal reason (required):");
@@ -302,18 +318,22 @@ export default function DciWorkspacePage() {
           {children.filter(x=>x.document).filter(x=>(impactCounts[x.document_id]||0)===10).length} of {children.filter(x=>x.document).length} Complete
         </div>}
       </div>
-      {children.length===0?<p style={{color:"#667085"}}>Add affected documents first.</p>:<div style={{overflowX:"auto",marginTop:18}}><table style={{width:"100%",borderCollapse:"collapse"}}>
-        <thead><tr>{["Document Number","Revision","Document Title","Document Type","Assessment Progress","Status","Action"].map(x=><th key={x} style={th}>{x}</th>)}</tr></thead>
-        <tbody>{children.map(child=>{const d=child.document;if(!d)return null;const count=impactCounts[d.id]||0;const complete=count===10;return <tr key={child.id}>
-          <td style={td}><a href={`/documents/${d.id}`} style={{fontWeight:800,color:"#1d4ed8",textDecoration:"underline"}}>{d.document_number}</a></td>
-          <td style={td}>{d.revision}</td>
-          <td style={td}>{d.title}</td>
-          <td style={td}>{d.document_type||"—"}</td>
-          <td style={td}><strong>{count}/10</strong> areas assessed</td>
-          <td style={td}><span style={{display:"inline-block",padding:"4px 9px",borderRadius:999,fontSize:12,fontWeight:800,background:complete?"#e9f7ef":"#fff4d6",color:complete?"#18794e":"#8a5a00"}}>{complete?"Complete":count===0?"Not Started":"In Progress"}</span></td>
-          <td style={td}><a style={secondary} href={`/documents/${d.id}#impact-assessment`}>{complete?"Review Assessment":"Open Assessment"}</a></td>
-        </tr>})}</tbody>
-      </table></div>}
+      {children.length===0?<p style={{color:"#667085"}}>Add affected documents first.</p>:<div style={{marginTop:18}}>
+        {children.map(child=>{const d=child.document;if(!d)return null;const count=impactCounts[d.id]||0;const complete=count===10;const expanded=Boolean(expandedAssessments[d.id]);return <div key={child.id} style={{border:"1px solid #d9e0e8",borderRadius:9,marginBottom:12,overflow:"hidden"}}>
+          <div style={{display:"grid",gridTemplateColumns:"minmax(120px,0.8fr) 70px minmax(220px,1.7fr) minmax(120px,1fr) minmax(145px,1fr) 105px 150px",gap:10,alignItems:"center",padding:"12px 14px",background:"#fff"}}>
+            <div><a href={`/documents/${d.id}`} style={{fontWeight:800,color:"#1d4ed8",textDecoration:"underline"}}>{d.document_number}</a></div>
+            <div>{d.revision}</div>
+            <div>{d.title}</div>
+            <div>{d.document_type||"—"}</div>
+            <div><strong>{count}/10</strong> areas assessed</div>
+            <div><span style={{display:"inline-block",padding:"4px 9px",borderRadius:999,fontSize:12,fontWeight:800,background:complete?"#e9f7ef":"#fff4d6",color:complete?"#18794e":"#8a5a00"}}>{complete?"Complete":count===0?"Not Started":"In Progress"}</span></div>
+            <div><button type="button" style={secondaryButton} onClick={()=>toggleAssessment(d.id)}>{expanded?"Collapse Assessment":complete?"Review Assessment":"Open Assessment"}</button></div>
+          </div>
+          {expanded&&<div style={{padding:"0 14px 14px",background:"#f8fafc",borderTop:"1px solid #edf0f4"}}>
+            <DocumentImpactAssessment documentId={d.id} tenantId={dci.tenant_id} documentNumber={d.document_number} revision={d.revision} status={d.status} userEmail={userEmail} canManage={editable} />
+          </div>}
+        </div>})}
+      </div>}
       {children.length>0&&children.filter(x=>x.document).every(x=>(impactCounts[x.document_id]||0)===10)&&<div style={{marginTop:14,padding:"10px 12px",border:"1px solid #b7ddc7",borderRadius:7,background:"#f3fbf6",color:"#18794e",fontWeight:700}}>Impact Assessment complete for all affected documents. The DCI is ready for the next workflow stage.</div>}
     </section>
 
