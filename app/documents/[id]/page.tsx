@@ -2492,7 +2492,7 @@ export default function DocumentWorkflowPage() {
       </section>
 
       {doc.tenant_id && doc.is_initial_release === false ? (
-        <DocumentImpactAssessment documentId={doc.id} tenantId={doc.tenant_id} documentNumber={doc.document_number} revision={doc.revision} status={doc.status} userEmail={userEmail} canManage={canManageWorkflow || canApprove} />
+        <div id="impact-assessment"><DocumentImpactAssessment documentId={doc.id} tenantId={doc.tenant_id} documentNumber={doc.document_number} revision={doc.revision} status={doc.status} userEmail={userEmail} canManage={canManageWorkflow || canApprove} /></div>
       ) : null}
 
       {doc.tenant_id && doc.is_initial_release === false ? (
