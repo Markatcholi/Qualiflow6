@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { supabase } from "../../../lib/supabaseClient";
 import CompanyUserAdministration from "./CompanyUserAdministration";
+import TrainingConfigurationManager from "../../../components/TrainingConfigurationManager";
 
 type SimpleItem = { id: string; code: string; label: string };
 type ProductPartItem = { id: string; code: string; label: string; part_description: string | null; is_active: boolean | null };
@@ -190,6 +191,8 @@ export default function CompanyMasterDataPage() {
       {message ? <div style={{ padding: 12, background: "#f8fafc", border: "1px solid #cbd5e1", borderRadius: 8, marginBottom: 18 }}>{message}</div> : null}
 
       <CompanyUserAdministration tenantId={tenantId} administratorEmail={email} />
+
+      <TrainingConfigurationManager tenantId={tenantId} />
 
       <div style={sectionStyle}>
         <h2>Controlled Document Impact Assessment Areas</h2>
