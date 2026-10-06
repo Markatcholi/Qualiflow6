@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { supabase } from "../../../lib/supabaseClient";
 import TrainingConfigurationManager from "../../../components/TrainingConfigurationManager";
+import DocumentImpactAreaConfigurationManager from "../../../components/DocumentImpactAreaConfigurationManager";
 
 type SimpleItem = {
   id: string;
@@ -835,6 +836,7 @@ export default function MasterDataPage() {
       <p><strong>Your Role:</strong> {userRole}</p>
 
       {tenantId ? <TrainingConfigurationManager tenantId={tenantId} /> : null}
+      {tenantId ? <DocumentImpactAreaConfigurationManager tenantId={tenantId} /> : null}
 
       <div
         style={{
