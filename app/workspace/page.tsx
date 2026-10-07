@@ -1203,7 +1203,8 @@ function getTaskUrl(task: any) {
 }
 
 function isCollaborationTask(task: any) {
-  return task.workspace_item_type === "assigned_task" && String(task.task_type || "").trim().toLowerCase() === "collaboration_task";
+  const taskType = String(task.task_type || "").trim().toLowerCase();
+  return task.workspace_item_type === "assigned_task" && (taskType === "collaboration_task" || taskType === "collaboration_resolution");
 }
 
 function getCollaborationTaskUrl(task: any) {
