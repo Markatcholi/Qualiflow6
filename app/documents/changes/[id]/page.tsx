@@ -39,8 +39,8 @@ export default function DciWorkspacePage() {
   const [autoGeneratingNumber,setAutoGeneratingNumber]=useState(false);
   const [companyUsers,setCompanyUsers]=useState<string[]>([]);
   const [documentControlCoordinators,setDocumentControlCoordinators]=useState<string[]>([]);
-  const [formalApprovers,setFormalApprovers]=useState<{email:string;dueDate:string}[]>([]);
-  const [approverDraft,setApproverDraft]=useState({email:"",dueDate:""});
+  const [formalApprovers,setFormalApprovers]=useState<{functionName:string;jobTitle:string;email:string;dueDate:string}[]>([]);
+  const [approverDraft,setApproverDraft]=useState({functionName:"",jobTitle:"",email:"",dueDate:""});
   const [collaborationResolved,setCollaborationResolved]=useState(false);
 
   const load = async () => {
