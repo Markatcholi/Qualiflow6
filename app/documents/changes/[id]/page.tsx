@@ -38,8 +38,9 @@ export default function DciWorkspacePage() {
   const [newAdditionalFiles,setNewAdditionalFiles]=useState<File[]>([]);
   const [autoGeneratingNumber,setAutoGeneratingNumber]=useState(false);
   const [companyUsers,setCompanyUsers]=useState<string[]>([]);
-  const [docControlEmail,setDocControlEmail]=useState("");
-  const [formalApprovers,setFormalApprovers]=useState<string[]>([]);
+  const [documentControlCoordinators,setDocumentControlCoordinators]=useState<string[]>([]);
+  const [formalApprovers,setFormalApprovers]=useState<{email:string;dueDate:string}[]>([]);
+  const [approverDraft,setApproverDraft]=useState({email:"",dueDate:""});
   const [collaborationResolved,setCollaborationResolved]=useState(false);
 
   const load = async () => {
@@ -86,8 +87,9 @@ export default function DciWorkspacePage() {
       }
     }
     if (!r.error) setReleased((r.data as Doc[]) || []);
-    const [members,collab]=await Promise.all([supabase.from("tenant_memberships").select("user_email").eq("tenant_id",d.data.tenant_id).eq("membership_status","active").order("user_email"),supabase.from("collaboration_threads").select("status").eq("module","document_change_initiation").eq("record_id",id).order("created_at",{ascending:false}).limit(1).maybeSingle()]);
-    if(!members.error)setCompanyUsers((members.data||[]).map((x:any)=>String(x.user_email||"").trim().toLowerCase()).filter(Boolean));
+    const [members,collab,roleAssignments]=await Promise.all([supabase.from("tenant_memberships").select("user_email").eq("tenant_id",d.data.tenant_id).eq("membership_status","active").order("user_email"),supabase.from("collaboration_threads").select("status").eq("module","document_change_initiation").eq("record_id",id).order("created_at",{ascending:false}).limit(1).maybeSingle(),supabase.from("tenant_user_role_assignments").select("user_email,customer_roles!inner(role_name,is_active)").eq("tenant_id",d.data.tenant_id).eq("is_active",true)]);
+    const activeMembers=(members.data||[]).map((x:any)=>String(x.user_email||"").trim().toLowerCase()).filter(Boolean);if(!members.error)setCompanyUsers(activeMembers);
+    if(!roleAssignments.error){const activeSet=new Set(activeMembers);setDocumentControlCoordinators((roleAssignments.data||[]).filter((x:any)=>{const role=Array.isArray(x.customer_roles)?x.customer_roles[0]:x.customer_roles;return role?.is_active!==false&&String(role?.role_name||"").trim().toLowerCase()==="document control coordinator";}).map((x:any)=>String(x.user_email||"").trim().toLowerCase()).filter((e:string)=>e&&activeSet.has(e)));}
     setCollaborationResolved(collab.data?.status==="resolved");
   };
   useEffect(()=>{ if(id) load(); },[id]);
@@ -224,21 +226,24 @@ export default function DciWorkspacePage() {
     if(!opening) await refreshImpactCounts();
   };
 
+  const addFormalApprover=()=>{const email=approverDraft.email.trim().toLowerCase();if(!email)return alert("Select an approver.");if(!approverDraft.dueDate)return alert("Select a due date.");if(formalApprovers.some(a=>a.email===email))return alert("This approver has already been added.");setFormalApprovers(v=>[...v,{email,dueDate:approverDraft.dueDate}]);setApproverDraft({email:"",dueDate:""});};
+
   const submitForAdministrativeReview = async () => {
     if(!collaborationResolved)return alert("Resolve Collaboration before submitting for formal review.");
-    if(!docControlEmail)return alert("Select the Document Control Coordinator.");
-    if(formalApprovers.length===0)return alert("Select at least one formal approver.");
-    if(!window.confirm(`Submit ${dci.dci_number} to Document Control for administrative check? Formal approver tasks will remain queued until Document Control accepts the package.`))return;
+    if(formalApprovers.length===0)return alert("Add at least one formal approver.");
+    if(documentControlCoordinators.length===0)return alert("No active Document Control Coordinator is configured for this tenant.");
+    if(!window.confirm(`Submit ${dci.dci_number} to the Document Control queue for administrative check? Formal approver tasks will remain queued until Document Control accepts the package.`))return;
     setSaving(true);
     try{
       const now=new Date().toISOString();
       await supabase.from("approval_tasks").update({status:"cancelled"}).eq("entity_type","document_change_initiation").eq("entity_id",id).in("task_type",["dci_administrative_review","dci_formal_approval"]).in("status",["pending","queued"]);
-      const admin=await supabase.from("approval_tasks").insert({entity_type:"document_change_initiation",entity_id:id,task_type:"dci_administrative_review",task_title:`Administrative Check for ${dci.dci_number}`,required_function:"Document Control",assigned_to_email:docControlEmail,assigned_by_email:userEmail,status:"pending",comments:"Perform the administrative and format readiness check before the DCI is released to formal approvers.",record_number:dci.dci_number});if(admin.error)throw new Error(admin.error.message);
-      const qa=await supabase.from("approval_tasks").insert(formalApprovers.map(email=>({entity_type:"document_change_initiation",entity_id:id,task_type:"dci_formal_approval",task_title:`Formal Approval for ${dci.dci_number}`,required_function:"Formal Approver",assigned_to_email:email,assigned_by_email:userEmail,status:"queued",comments:"Queued pending Document Control administrative acceptance.",record_number:dci.dci_number})));if(qa.error)throw new Error(qa.error.message);
+      const admin=await supabase.from("approval_tasks").insert({entity_type:"document_change_initiation",entity_id:id,task_type:"dci_administrative_review",task_title:`Administrative Check for ${dci.dci_number}`,required_function:"Document Control Coordinator",assigned_to_email:null,assigned_by_email:userEmail,status:"pending",comments:"Shared Document Control queue. Claim this task to perform the administrative and format readiness check.",record_number:dci.dci_number});if(admin.error)throw new Error(admin.error.message);
+      const qa=await supabase.from("approval_tasks").insert(formalApprovers.map(a=>({entity_type:"document_change_initiation",entity_id:id,task_type:"dci_formal_approval",task_title:`Formal Approval for ${dci.dci_number}`,required_function:"Formal Approver",assigned_to_email:a.email,assigned_by_email:userEmail,status:"queued",due_date:a.dueDate,comments:"Queued pending Document Control administrative acceptance.",record_number:dci.dci_number})));if(qa.error)throw new Error(qa.error.message);
       const u=await supabase.from("document_change_initiations").update({status:"administrative_review",updated_at:now}).eq("id",id);if(u.error)throw new Error(u.error.message);
-      await supabase.from("notifications").insert({user_email:docControlEmail,assigned_role:"Document Control",notification_type:"dci_administrative_review",severity:"info",title:`Administrative check: ${dci.dci_number}`,message:"The DCI owner submitted the completed package for administrative and format verification before formal approval.",related_module:"document_change_initiation",related_record_id:id,related_url:`/documents/changes/${id}/administrative-review`,read_status:false,created_by:userEmail,delivery_frequency:"immediate",delivery_status:"in_app",deduplication_key:`document_change_initiation:${id}:administrative_review:${now}`});
-      await supabase.rpc("qualisphere_add_audit_log",{p_entity_type:"document_change_initiation",p_entity_id:id,p_action:"submitted_for_administrative_review",p_details:`${dci.dci_number} submitted to ${docControlEmail} for Document Control administrative check with ${formalApprovers.length} queued formal approver(s).`});
-      await load();alert("Submitted to Document Control. Formal approver tasks are queued until the administrative check is accepted.");
+      for(const coordinator of documentControlCoordinators){await supabase.from("notifications").insert({user_email:coordinator,assigned_role:"Document Control Coordinator",notification_type:"dci_administrative_review",severity:"info",title:`Administrative check available: ${dci.dci_number}`,message:"A DCI is available in the shared Document Control queue. Any active Document Control Coordinator may claim it.",related_module:"document_change_initiation",related_record_id:id,related_url:`/documents/changes/${id}/administrative-review`,read_status:false,created_by:userEmail,delivery_frequency:"immediate",delivery_status:"in_app",deduplication_key:`document_change_initiation:${id}:administrative_review:${coordinator}:${now}`});}
+      await supabase.from("approval_tasks").update({status:"completed",completed_at:now,completed_by_email:userEmail}).eq("entity_type","document_change_initiation").eq("entity_id",id).eq("task_type","dci_owner_finalization").eq("assigned_to_email",userEmail).eq("status","pending");
+      await supabase.rpc("qualisphere_add_audit_log",{p_entity_type:"document_change_initiation",p_entity_id:id,p_action:"submitted_for_administrative_review",p_details:`${dci.dci_number} submitted to the shared Document Control Coordinator queue with ${formalApprovers.length} queued formal approver(s).`});
+      await load();alert("Submitted to the Document Control queue. Formal approver tasks are queued until the administrative check is accepted.");
     }catch(e:any){alert(e.message||"Unable to submit for administrative review.");}finally{setSaving(false);}
   };
 
@@ -376,10 +381,11 @@ export default function DciWorkspacePage() {
 
     {collaborationResolved && dci.status==="collaboration" && <section style={card}>
       <h2 style={{marginTop:0}}>Owner Finalization & Formal Review Submission</h2>
-      <p style={{color:"#667085"}}>Collaboration is resolved. Finalize the package, select the Document Control Coordinator and formal approvers, then submit. Formal approver tasks remain queued until Document Control completes the administrative check.</p>
-      <div style={two}>
-        <div><label style={label}>Document Control Coordinator *</label><select style={input} value={docControlEmail} onChange={e=>setDocControlEmail(e.target.value)}><option value="">Select...</option>{companyUsers.filter(e=>e!==userEmail.toLowerCase()).map(e=><option key={e} value={e}>{e}</option>)}</select></div>
-        <div><label style={label}>Formal Approvers *</label><select multiple size={Math.min(6,Math.max(3,companyUsers.length))} style={input} value={formalApprovers} onChange={e=>setFormalApprovers(Array.from(e.target.selectedOptions).map(o=>o.value))}>{companyUsers.filter(e=>e!==userEmail.toLowerCase()&&e!==docControlEmail).map(e=><option key={e} value={e}>{e}</option>)}</select><div style={{color:"#667085",fontSize:12}}>Use Ctrl/Cmd to select multiple approvers.</div></div>
+      <p style={{color:"#667085"}}>Collaboration is resolved. Finalize the package and add the required Formal Approvers with an individual due date for each. Submission sends the DCI to the shared Document Control Coordinator queue for administrative review.</p>
+      <div style={subcard}><h3 style={{marginTop:0}}>Formal Approvers</h3>
+        {formalApprovers.length>0&&<table style={{width:"100%",borderCollapse:"collapse",marginBottom:14}}><thead><tr><th style={th}>Approver</th><th style={th}>Due Date</th><th style={th}>Action</th></tr></thead><tbody>{formalApprovers.map(a=><tr key={a.email}><td style={td}>{a.email}</td><td style={td}>{a.dueDate}</td><td style={td}><button type="button" style={secondaryButton} onClick={()=>setFormalApprovers(v=>v.filter(x=>x.email!==a.email))}>Remove</button></td></tr>)}</tbody></table>}
+        <div style={two}><div><label style={label}>Approver</label><select style={input} value={approverDraft.email} onChange={e=>setApproverDraft(v=>({...v,email:e.target.value}))}><option value="">Select...</option>{companyUsers.filter(e=>e!==userEmail.toLowerCase()&&!formalApprovers.some(a=>a.email===e)).map(e=><option key={e} value={e}>{e}</option>)}</select></div><div><label style={label}>Due Date</label><input type="date" style={input} value={approverDraft.dueDate} onChange={e=>setApproverDraft(v=>({...v,dueDate:e.target.value}))}/></div></div>
+        <button type="button" style={secondaryButton} onClick={addFormalApprover}>+ Add Approver</button>
       </div>
       <button style={primary} disabled={saving} onClick={submitForAdministrativeReview}>{saving?"Submitting...":"Submit for Formal Review"}</button>
     </section>}
