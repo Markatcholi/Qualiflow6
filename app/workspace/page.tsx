@@ -1176,7 +1176,9 @@ function getTaskUrl(task: any) {
   if (task.workspace_item_type === "owned_oos_oot") return `/oos-oot/${task.id}`;
   if (task.workspace_item_type === "document_review") return `/documents/${task.document_id}`;
   if (task.workspace_item_type === "training_assignment") return `/training/${task.id}`;
-  if (isCollaborationTask(task)) return getCollaborationTaskUrl(task);
+  if (String(task.entity_type || "").trim().toLowerCase() === "document_change_initiation" && String(task.task_type || "").trim().toLowerCase() === "dci_administrative_review") return `/documents/changes/${task.entity_id}/administrative-review`;
+  if (String(task.entity_type || "").trim().toLowerCase() === "document_change_initiation" && String(task.task_type || "").trim().toLowerCase() === "dci_owner_finalization") return `/documents/changes/${task.entity_id}`;
+    if (isCollaborationTask(task)) return getCollaborationTaskUrl(task);
   if (isCapaApprovalTask(task)) {
     const gate = getCapaGateFromTask(task);
     return `/capa/${task.entity_id}/approval-review?gate=${gate}&taskId=${task.id}`;
