@@ -220,7 +220,16 @@ export default function HomePage() {
         throw new Error(taskResponse.error.message);
       }
 
-      const rawAssignedTasks = taskResponse.data || [];
+      let rawAssignedTasks = taskResponse.data || [];
+      if(roleNames.some((name:string)=>name.trim().toLowerCase()==="document control coordinator")){
+        const shared=await supabase.from("approval_tasks").select("*").eq("task_type","dci_administrative_review").eq("required_function","Document Control Coordinator").is("assigned_to_email",null).eq("status","pending").order("created_at",{ascending:true});
+        if(!shared.error&&shared.data?.length){
+          const ids=shared.data.map((x:any)=>x.entity_id).filter(Boolean);
+          const tenantDcis=ids.length?await supabase.from("document_change_initiations").select("id").eq("tenant_id",tenantId).in("id",ids):{data:[]};
+          const allowed=new Set((tenantDcis.data||[]).map((x:any)=>x.id));
+          rawAssignedTasks=[...rawAssignedTasks,...shared.data.filter((x:any)=>allowed.has(x.entity_id))];
+        }
+      }
       const dciTaskIds = rawAssignedTasks
         .filter((task: any) => String(task.entity_type || "").trim().toLowerCase() === "document_change_initiation")
         .map((task: any) => task.entity_id)
