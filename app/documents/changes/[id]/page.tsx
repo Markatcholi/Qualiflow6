@@ -315,7 +315,7 @@ export default function DciWorkspacePage() {
     <section style={card}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:16,flexWrap:"wrap"}}>
         <div><h2 style={{margin:"0 0 4px"}}>Impact Assessment</h2>
-          <div style={{color:"#667085"}}>Assess each affected document independently. All active Company Account impact areas must be assessed before the DCI is ready to advance to Collaboration.</div>
+          <div style={{color:"#667085"}}>Assess each affected document independently. During Collaboration, active collaborators may update these assessments. All active Company Account impact areas must be complete before Collaboration can be closed.</div>
         </div>
         {children.length>0&&<div style={{fontSize:13,fontWeight:700,color:Object.values(impactCounts).length>0&&children.filter(x=>x.document).every(x=>(impactCounts[x.document_id]||0)===activeImpactAreaCount)?"#18794e":"#8a5a00"}}>
           {children.filter(x=>x.document).filter(x=>(impactCounts[x.document_id]||0)===activeImpactAreaCount).length} of {children.filter(x=>x.document).length} Complete
@@ -343,9 +343,9 @@ export default function DciWorkspacePage() {
     <section style={card}>
       <div style={{display:"flex",justifyContent:"space-between",gap:16,alignItems:"center",flexWrap:"wrap"}}>
         <div><h2 style={{margin:"0 0 4px"}}>DCI Collaboration</h2><div style={{color:"#667085"}}>Collaborators review the complete DCI package: all affected documents, Markup / Redlines, supporting files, Impact Assessments, and anticipated dispositions.</div></div>
-        {children.length>0&&children.filter(x=>x.document).every(x=>(impactCounts[x.document_id]||0)===activeImpactAreaCount)
+        {(dci.status==="collaboration"||children.length>0&&children.filter(x=>x.document).every(x=>(impactCounts[x.document_id]||0)===activeImpactAreaCount))
           ? <a href={`/documents/changes/${id}/collaboration`} style={primary}>Open DCI Collaboration</a>
-          : <span style={{color:"#8a5a00",fontWeight:700}}>Complete all Impact Assessments before Collaboration.</span>}
+          : <span style={{color:"#8a5a00",fontWeight:700}}>Complete all Impact Assessments before starting the first Collaboration round.</span>}
       </div>
     </section>
 
