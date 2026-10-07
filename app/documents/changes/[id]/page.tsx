@@ -38,6 +38,7 @@ export default function DciWorkspacePage() {
   const [newAdditionalFiles,setNewAdditionalFiles]=useState<File[]>([]);
   const [autoGeneratingNumber,setAutoGeneratingNumber]=useState(false);
   const [companyUsers,setCompanyUsers]=useState<string[]>([]);
+  const [documentControlCoordinators,setDocumentControlCoordinators]=useState<string[]>([]);
   const [docControlEmail,setDocControlEmail]=useState("");
   const [formalApprovers,setFormalApprovers]=useState<string[]>([]);
   const [collaborationResolved,setCollaborationResolved]=useState(false);
@@ -86,8 +87,9 @@ export default function DciWorkspacePage() {
       }
     }
     if (!r.error) setReleased((r.data as Doc[]) || []);
-    const [members,collab]=await Promise.all([supabase.from("tenant_memberships").select("user_email").eq("tenant_id",d.data.tenant_id).eq("membership_status","active").order("user_email"),supabase.from("collaboration_threads").select("status").eq("module","document_change_initiation").eq("record_id",id).order("created_at",{ascending:false}).limit(1).maybeSingle()]);
-    if(!members.error)setCompanyUsers((members.data||[]).map((x:any)=>String(x.user_email||"").trim().toLowerCase()).filter(Boolean));
+    const [members,collab,roleAssignments]=await Promise.all([supabase.from("tenant_memberships").select("user_email").eq("tenant_id",d.data.tenant_id).eq("membership_status","active").order("user_email"),supabase.from("collaboration_threads").select("status").eq("module","document_change_initiation").eq("record_id",id).order("created_at",{ascending:false}).limit(1).maybeSingle(),supabase.from("tenant_user_role_assignments").select("user_email,customer_roles!inner(role_name,is_active)").eq("tenant_id",d.data.tenant_id).eq("is_active",true)]);
+    const activeMembers=(members.data||[]).map((x:any)=>String(x.user_email||"").trim().toLowerCase()).filter(Boolean);if(!members.error)setCompanyUsers(activeMembers);
+    if(!roleAssignments.error){const activeSet=new Set(activeMembers);setDocumentControlCoordinators((roleAssignments.data||[]).filter((x:any)=>{const role=Array.isArray(x.customer_roles)?x.customer_roles[0]:x.customer_roles;return role?.is_active!==false&&String(role?.role_name||"").trim().toLowerCase()==="document control coordinator";}).map((x:any)=>String(x.user_email||"").trim().toLowerCase()).filter((e:string)=>e&&activeSet.has(e)));}
     setCollaborationResolved(collab.data?.status==="resolved");
   };
   useEffect(()=>{ if(id) load(); },[id]);
@@ -378,7 +380,7 @@ export default function DciWorkspacePage() {
       <h2 style={{marginTop:0}}>Owner Finalization & Formal Review Submission</h2>
       <p style={{color:"#667085"}}>Collaboration is resolved. Finalize the package, select the Document Control Coordinator and formal approvers, then submit. Formal approver tasks remain queued until Document Control completes the administrative check.</p>
       <div style={two}>
-        <div><label style={label}>Document Control Coordinator *</label><select style={input} value={docControlEmail} onChange={e=>setDocControlEmail(e.target.value)}><option value="">Select...</option>{companyUsers.filter(e=>e!==userEmail.toLowerCase()).map(e=><option key={e} value={e}>{e}</option>)}</select></div>
+        <div><label style={label}>Document Control Coordinator *</label><select style={input} value={docControlEmail} onChange={e=>setDocControlEmail(e.target.value)}><option value="">Select...</option>{documentControlCoordinators.filter(e=>e!==userEmail.toLowerCase()).map(e=><option key={e} value={e}>{e}</option>)}</select></div>
         <div><label style={label}>Formal Approvers *</label><select multiple size={Math.min(6,Math.max(3,companyUsers.length))} style={input} value={formalApprovers} onChange={e=>setFormalApprovers(Array.from(e.target.selectedOptions).map(o=>o.value))}>{companyUsers.filter(e=>e!==userEmail.toLowerCase()&&e!==docControlEmail).map(e=><option key={e} value={e}>{e}</option>)}</select><div style={{color:"#667085",fontSize:12}}>Use Ctrl/Cmd to select multiple approvers.</div></div>
       </div>
       <button style={primary} disabled={saving} onClick={submitForAdministrativeReview}>{saving?"Submitting...":"Submit for Formal Review"}</button>
