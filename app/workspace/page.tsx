@@ -398,6 +398,15 @@ export default function HomePage() {
     }));
   };
 
+  const claimDciTask = async (task: any) => {
+    const { error } = await supabase.rpc("qualisphere_claim_dci_administrative_review", { p_task_id: task.id });
+    if (error) {
+      alert(error.message);
+    } else {
+      await fetchHomeData(false);
+    }
+  };
+
   const openReassignDialog = (task: any) => {
     setReassignTask(task);
     setReassignEmail("");
@@ -725,7 +734,11 @@ export default function HomePage() {
                         </td>
                         <td style={tableCellStyle}>
                           <div style={actionButtonGroupStyle}>
-                            <a href={taskUrl} style={tableOpenLinkStyle}>Open</a>
+                            {task.task_type === "dci_administrative_review" && !task.assigned_to_email ? (
+                              <button type="button" onClick={() => claimDciTask(task)} style={tableReassignButtonStyle}>Claim Task</button>
+                            ) : (
+                              <a href={taskUrl} style={tableOpenLinkStyle}>Open</a>
+                            )}
                             {canReassignItem(task) ? (
                               <button
                                 type="button"
@@ -1137,6 +1150,7 @@ function requiresUserAction(record: any, itemType: WorkspaceItemType) {
 }
 
 function canReassignItem(item: any) {
+  if (item.task_type === "dci_administrative_review" && !item.assigned_to_email) return false;
   return item.workspace_item_type === "assigned_task" || item.workspace_item_type === "owned_capa";
 }
 
