@@ -90,6 +90,12 @@ export default function DciWorkspacePage() {
     const [members,collab,roleAssignments]=await Promise.all([supabase.from("tenant_memberships").select("user_email").eq("tenant_id",d.data.tenant_id).eq("membership_status","active").order("user_email"),supabase.from("collaboration_threads").select("status").eq("module","document_change_initiation").eq("record_id",id).order("created_at",{ascending:false}).limit(1).maybeSingle(),supabase.from("tenant_user_role_assignments").select("user_email,customer_roles!inner(role_name,is_active)").eq("tenant_id",d.data.tenant_id).eq("is_active",true)]);
     const activeMembers=(members.data||[]).map((x:any)=>String(x.user_email||"").trim().toLowerCase()).filter(Boolean);if(!members.error)setCompanyUsers(activeMembers);
     if(!roleAssignments.error){const activeSet=new Set(activeMembers);setDocumentControlCoordinators((roleAssignments.data||[]).filter((x:any)=>{const role=Array.isArray(x.customer_roles)?x.customer_roles[0]:x.customer_roles;return role?.is_active!==false&&String(role?.role_name||"").trim().toLowerCase()==="document control coordinator";}).map((x:any)=>String(x.user_email||"").trim().toLowerCase()).filter((e:string)=>e&&activeSet.has(e)));}
+    // Internal master data stores role assignments in user_security_roles rather than tenant_user_role_assignments.
+    const internalRoles=await supabase.from("user_security_roles").select("user_email,role_code").eq("role_code","document_control_coordinator");
+    if(!internalRoles.error){
+      const internalCoordinators=(internalRoles.data||[]).map((x:any)=>String(x.user_email||"").trim().toLowerCase()).filter(Boolean);
+      setDocumentControlCoordinators(previous=>Array.from(new Set([...previous,...internalCoordinators.filter((email:string)=>activeMembers.includes(email))])));
+    }
     setCollaborationResolved(collab.data?.status==="resolved");
   };
   useEffect(()=>{ if(id) load(); },[id]);
