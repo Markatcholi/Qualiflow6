@@ -1150,7 +1150,6 @@ function requiresUserAction(record: any, itemType: WorkspaceItemType) {
 }
 
 function canReassignItem(item: any) {
-  if (item.task_type === "dci_administrative_review" && !item.assigned_to_email) return false;
   return item.workspace_item_type === "assigned_task" || item.workspace_item_type === "owned_capa";
 }
 
