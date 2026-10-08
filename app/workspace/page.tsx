@@ -221,7 +221,8 @@ export default function HomePage() {
       }
 
       let rawAssignedTasks = taskResponse.data || [];
-      if(roleNames.some((name:string)=>name.trim().toLowerCase()==="document control coordinator")){
+      const internalCoordinatorRole = internalTenant ? await supabase.from("user_security_roles").select("role_code").ilike("user_email",userEmail).eq("role_code","document_control_coordinator").limit(1) : null;
+      if(roleNames.some((name:string)=>name.trim().toLowerCase()==="document control coordinator") || Boolean(internalTenant && !internalCoordinatorRole?.error && internalCoordinatorRole?.data?.length)){
         const shared=await supabase.from("approval_tasks").select("*").eq("task_type","dci_administrative_review").eq("required_function","Document Control Coordinator").is("assigned_to_email",null).eq("status","pending").order("created_at",{ascending:true});
         if(!shared.error&&shared.data?.length){
           const ids=shared.data.map((x:any)=>x.entity_id).filter(Boolean);
