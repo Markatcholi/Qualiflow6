@@ -223,7 +223,7 @@ export default function HomePage() {
       let rawAssignedTasks = taskResponse.data || [];
       const internalCoordinatorRole = internalTenant ? await supabase.from("user_security_roles").select("role_code").ilike("user_email",userEmail).eq("role_code","document_control_coordinator").limit(1) : null;
       if(roleNames.some((name:string)=>name.trim().toLowerCase()==="document control coordinator") || Boolean(internalTenant && !internalCoordinatorRole?.error && internalCoordinatorRole?.data?.length)){
-        const shared=await supabase.from("approval_tasks").select("*").eq("task_type","dci_administrative_review").eq("required_function","Document Control Coordinator").is("assigned_to_email",null).eq("status","pending").order("created_at",{ascending:true});
+        const shared=await supabase.from("approval_tasks").select("*").in("task_type",["dci_administrative_review","dci_post_approval_coordination"]).eq("required_function","Document Control Coordinator").is("assigned_to_email",null).eq("status","pending").order("created_at",{ascending:true});
         if(!shared.error&&shared.data?.length){
           const ids=shared.data.map((x:any)=>x.entity_id).filter(Boolean);
           const tenantDcis=ids.length?await supabase.from("document_change_initiations").select("id").eq("tenant_id",tenantId).in("id",ids):{data:[]};
@@ -399,7 +399,7 @@ export default function HomePage() {
   };
 
   const claimDciTask = async (task: any) => {
-    const { error } = await supabase.rpc("qualisphere_claim_dci_administrative_review", { p_task_id: task.id });
+    const { error } = await supabase.rpc(task.task_type === "dci_post_approval_coordination" ? "qualisphere_claim_dci_post_approval" : "qualisphere_claim_dci_administrative_review", { p_task_id: task.id });
     if (error) {
       alert(error.message);
     } else {
@@ -734,7 +734,7 @@ export default function HomePage() {
                         </td>
                         <td style={tableCellStyle}>
                           <div style={actionButtonGroupStyle}>
-                            {task.task_type === "dci_administrative_review" && !task.assigned_to_email ? (
+                            {["dci_administrative_review","dci_post_approval_coordination"].includes(task.task_type) && !task.assigned_to_email ? (
                               <button type="button" onClick={() => claimDciTask(task)} style={tableReassignButtonStyle}>Claim Task</button>
                             ) : (
                               <a href={taskUrl} style={tableOpenLinkStyle}>Open</a>
@@ -1199,6 +1199,7 @@ function getTaskUrl(task: any) {
   if (task.workspace_item_type === "owned_oos_oot") return `/oos-oot/${task.id}`;
   if (task.workspace_item_type === "document_review") return `/documents/${task.document_id}`;
   if (task.workspace_item_type === "training_assignment") return `/training/${task.id}`;
+  if (String(task.entity_type || "").trim().toLowerCase() === "document_change_initiation" && String(task.task_type || "").trim().toLowerCase() === "dci_post_approval_coordination") return `/documents/changes/${task.entity_id}/post-approval`;
   if (String(task.entity_type || "").trim().toLowerCase() === "document_change_initiation" && String(task.task_type || "").trim().toLowerCase() === "dci_administrative_review") return `/documents/changes/${task.entity_id}/administrative-review`;
   if (String(task.entity_type || "").trim().toLowerCase() === "document_change_initiation" && String(task.task_type || "").trim().toLowerCase() === "dci_owner_finalization") return `/documents/changes/${task.entity_id}`;
   if (String(task.entity_type || "").trim().toLowerCase() === "document_change_initiation" && String(task.task_type || "").trim().toLowerCase() === "dci_formal_approval") return `/documents/changes/${task.entity_id}/formal-approval?taskId=${task.id}`;
