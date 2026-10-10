@@ -23,8 +23,21 @@ export default function DciReleaseReadinessPage(){
  useEffect(()=>{let active=true;async function load(){
   setLoading(true);setError("");
   try{
-   const d=await supabase.from("document_change_initiations").select("dci_number,status,release_strategy").eq("id",id).single();
+   const auth=await supabase.auth.getUser();
+   const email=String(auth.data.user?.email||"").trim().toLowerCase();
+   if(!email)throw new Error("Document Control Coordinator sign-in required.");
+   const d=await supabase.from("document_change_initiations").select("dci_number,status,release_strategy,tenant_id").eq("id",id).single();
    if(d.error)throw d.error;
+   const membership=await supabase.from("tenant_memberships").select("user_email").eq("tenant_id",d.data.tenant_id).eq("user_email",email).eq("membership_status","active").maybeSingle();
+   if(membership.error)throw membership.error;
+   if(!membership.data)throw new Error("Access denied: active company membership required.");
+   const [assigned,internal]=await Promise.all([
+    supabase.from("tenant_user_role_assignments").select("customer_roles!inner(role_name,is_active)").eq("tenant_id",d.data.tenant_id).eq("user_email",email).eq("is_active",true),
+    supabase.from("user_security_roles").select("role_code").eq("user_email",email).eq("role_code","document_control_coordinator")
+   ]);
+   const customerCoordinator=!assigned.error&&(assigned.data||[]).some((row:any)=>{const role=Array.isArray(row.customer_roles)?row.customer_roles[0]:row.customer_roles;return role?.is_active!==false&&String(role?.role_name||"").toLowerCase()==="document control coordinator";});
+   const internalCoordinator=!internal.error&&(internal.data||[]).length>0;
+   if(!customerCoordinator&&!internalCoordinator)throw new Error("Access denied: Document Control Coordinator role required.");
    const linkResult=await supabase.from("document_change_initiation_documents").select("document_id").eq("dci_id",id).order("sequence_no");
    if(linkResult.error)throw linkResult.error;
    const ids=(linkResult.data||[]).map(x=>x.document_id);
