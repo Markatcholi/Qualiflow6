@@ -39,7 +39,7 @@ export default function DocumentChangesPage() {
     setLoading(false);
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); const params=new URLSearchParams(window.location.search); if(params.get("intent")==="new"||params.has("source_document_id"))setShowCreate(true); }, []);
 
   const createDci = async () => {
     if (!form.change_description.trim() || !form.change_justification.trim()) {
@@ -59,7 +59,8 @@ export default function DocumentChangesPage() {
         release_strategy: form.release_strategy,
       }).select("id").single();
       if (inserted.error) throw new Error(inserted.error.message);
-      window.location.href = `/documents/changes/${inserted.data.id}`;
+      const sourceId=new URLSearchParams(window.location.search).get("source_document_id");
+      window.location.href = `/documents/changes/${inserted.data.id}${sourceId?`?source_document_id=${encodeURIComponent(sourceId)}`:""}`;
     } catch (e: any) {
       alert(e.message || "Unable to create DCI.");
       setSaving(false);
@@ -80,7 +81,7 @@ export default function DocumentChangesPage() {
     </div>
 
     {showCreate && <section style={card}>
-      <h2 style={{ marginTop: 0 }}>New Document Change Initiation</h2>
+      <h2 style={{ marginTop: 0 }}>New Document Change Initiation</h2><p style={{color:"#667085"}}>Create the DCI first, then add a new document or select the existing document revision within the DCI package.</p>
       <label style={label}>DCI Title / Short Description</label>
       <input value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} style={input} placeholder="Optional short package title" />
       <label style={label}>Change Description *</label>
