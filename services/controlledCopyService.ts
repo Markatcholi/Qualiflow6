@@ -120,6 +120,7 @@ async function stampPdf({
   sourcePdfBytes: ArrayBuffer;
   doc: ControlledDocument;
 }) {
+  if (!doc.effective_date) throw new Error("An effective date is required to stamp a released controlled copy.");
   const pdfDoc = await PDFDocument.load(sourcePdfBytes, {
     ignoreEncryption: true,
   });
@@ -254,6 +255,37 @@ async function stampPdf({
   });
 
   return await pdfDoc.save();
+}
+
+/** Prepare a controlled copy using the existing RELEASED stamp without changing database or storage. */
+export async function prepareControlledCopyPdf(input: {
+  sourcePdfBytes: ArrayBuffer;
+  document: {
+    id: string;
+    tenant_id: string;
+    document_number: string;
+    title: string;
+    revision: string;
+    effective_date: string;
+  };
+  companyName: string;
+}): Promise<{ fileName: string; bytes: Uint8Array }> {
+  const { document, sourcePdfBytes, companyName } = input;
+  if (!document.id || !document.tenant_id || !document.document_number || !document.revision || !document.effective_date) {
+    throw new Error("Document identity and effective date are required.");
+  }
+  const bytes = await stampPdf({
+    sourcePdfBytes,
+    doc: {
+      ...document,
+      status: "release",
+      file_name: null,
+      file_url: null,
+      company_name: companyName,
+    },
+  });
+  const fileName = sanitizePathSegment(document.document_number) + "_Rev_" + sanitizePathSegment(document.revision) + "_Controlled_Copy.pdf";
+  return { fileName, bytes };
 }
 
 export async function generateControlledCopy({
