@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "../../../../../lib/supabaseClient";
 import DocumentTrainingAssignment from "../../../../../components/DocumentTrainingAssignment";
+import { prepareControlledCopyPdf } from "../../../../../services/controlledCopyService";
 import { buildControlledDocumentStoragePath, CONTROLLED_DOCUMENT_BUCKET, resolveControlledDocumentFileUrl } from "../../../../../lib/controlledDocumentStorage";
 
 type DocumentRow = { id:string; document_number:string; revision:string; title:string; file_path:string|null; file_url:string|null; release_pdf_file_path:string|null; release_pdf_file_url:string|null; status:string; effective_date:string|null };
@@ -31,6 +32,9 @@ export default function DciReleaseReadinessPage(){
  const [coordinatorEmail,setCoordinatorEmail]=useState("");
  const [tenantId,setTenantId]=useState("");
  const [selectedTrainingDoc,setSelectedTrainingDoc]=useState<string|null>(null);
+ const [effectiveDate,setEffectiveDate]=useState(new Date().toISOString().slice(0,10));
+ const [preparing,setPreparing]=useState<string|null>(null);
+ const [previewError,setPreviewError]=useState("");
  useEffect(()=>{let active=true;async function load(){
   setLoading(true);setError("");
   try{
@@ -103,6 +107,31 @@ export default function DciReleaseReadinessPage(){
   else{setPdfVerifications(p=>[...p.filter(v=>v.document_id!==doc.id),{document_id:doc.id,pdf_storage_path:doc.release_pdf_file_path!,verified_by_email:coordinatorEmail,verified_at:new Date().toISOString()}]);setUploadMessage(`PDF verification recorded for ${doc.document_number} Rev ${doc.revision}.`);}
   setVerifying(null);
  };
+ const previewControlledCopy=async(doc:DocumentRow)=>{
+  if(!doc.release_pdf_file_path||!verifiedPdf(doc))return setPreviewError("A verified final PDF is required.");
+  if(!effectiveDate)return setPreviewError("Select a proposed effective date.");
+  setPreparing(doc.id);setPreviewError("");
+  try{
+   const current=await supabase.from("controlled_documents").select("release_pdf_file_path").eq("id",doc.id).eq("tenant_id",tenantId).single();
+   if(current.error)throw current.error;
+   if(current.data.release_pdf_file_path!==doc.release_pdf_file_path)throw new Error("The final PDF has changed. Refresh this page.");
+   const download=await supabase.storage.from(CONTROLLED_DOCUMENT_BUCKET).download(doc.release_pdf_file_path);
+   if(download.error||!download.data)throw new Error(download.error?.message||"Unable to read verified PDF.");
+   const tenant=await supabase.from("tenants").select("company_name").eq("id",tenantId).single();
+   if(tenant.error)throw tenant.error;
+   const prepared=await prepareControlledCopyPdf({
+    sourcePdfBytes:await download.data.arrayBuffer(),
+    document:{id:doc.id,tenant_id:tenantId,document_number:doc.document_number,title:doc.title,revision:doc.revision,effective_date:effectiveDate},
+    companyName:tenant.data.company_name||"QualiSphere"
+   });
+   const buffer=new ArrayBuffer(prepared.bytes.byteLength);
+   new Uint8Array(buffer).set(prepared.bytes);
+   const url=URL.createObjectURL(new Blob([buffer],{type:"application/pdf"}));
+   const anchor=document.createElement("a");anchor.href=url;anchor.download="PREVIEW_"+prepared.fileName;document.body.appendChild(anchor);anchor.click();anchor.remove();
+   window.setTimeout(()=>URL.revokeObjectURL(url),60000);
+  }catch(e:any){setPreviewError(e.message||"Unable to prepare controlled copy preview.");}
+  finally{setPreparing(null);}
+ };
  const verifiedPdf=(doc:DocumentRow)=>pdfVerifications.find(v=>Boolean(doc.release_pdf_file_path)&&v.document_id===doc.id&&v.pdf_storage_path===doc.release_pdf_file_path);
  const approved=tasks.filter(t=>t.task_type==="dci_formal_approval");
  const actions=tasks.filter(t=>t.task_type==="dci_post_approval_action");
@@ -126,6 +155,7 @@ export default function DciReleaseReadinessPage(){
    <section style={card}><h2>Controlled documents and training</h2><div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse"}}><thead><tr>{["Document","Working master","Final PDF","Blocking training","Effective date","Readiness"].map(x=><th key={x} style={cell}>{x}</th>)}</tr></thead><tbody>{docs.map(doc=>{const c=check(doc);return <tr key={doc.id}><td style={cell}><strong>{doc.document_number} Rev {doc.revision}</strong><div>{doc.title}</div></td><td style={cell}>{c.master?<a href={links[doc.id]||`/documents/${doc.id}`} target="_blank" rel="noreferrer">View working master</a>:"Missing"}</td><td style={cell}>{c.pdf?(verifiedPdf(doc)?"Verified":"Verification pending"):"Not yet attached / generated"}</td><td style={cell}>{c.unassigned===0&&c.incomplete===0?"Satisfied":`${c.unassigned} unassigned; ${c.incomplete} incomplete`}</td><td style={cell}>{doc.effective_date||"To be set at release"}</td><td style={cell}>{c.ready?"Ready":"Action required"}</td></tr>})}</tbody></table></div></section>
    <section style={card}><h2>Training assignment management</h2><p>Assign required training through the existing Training module workflow. Blocking training must be completed or formally waived before release.</p>{docs.map(doc=><div key={doc.id} style={{marginBottom:14}}><button type="button" onClick={()=>setSelectedTrainingDoc(selectedTrainingDoc===doc.id?null:doc.id)} style={{padding:"8px 12px",cursor:"pointer"}}>{selectedTrainingDoc===doc.id?"Close training assignments":"Manage training — "+doc.document_number+" Rev "+doc.revision}</button>{selectedTrainingDoc===doc.id&&tenantId&&coordinatorEmail?<div style={{marginTop:12}}><DocumentTrainingAssignment documentId={doc.id} tenantId={tenantId} documentNumber={doc.document_number} revision={doc.revision} userEmail={coordinatorEmail} canCoordinate={true}/><p style={{fontSize:13}}>After assigning training, refresh this page to update the readiness summary.</p></div>:null}</div>)}</section>
    <section style={card}><h2>Final PDF preparation</h2><p>Upload the final PDF prepared from the approved working master. The original master remains unchanged. Automatic Office conversion is not yet enabled. After uploading, open the PDF and record coordinator verification. Uploading alone does not authorize release.</p>{uploadMessage?<p role="status">{uploadMessage}</p>:null}{docs.map(doc=><div key={doc.id} style={{borderTop:"1px solid #e2e8f0",padding:"12px 0"}}><strong>{doc.document_number} Rev {doc.revision}</strong> — {doc.title}<div style={{marginTop:8}}>{doc.release_pdf_file_path||doc.release_pdf_file_url?<><span>PDF uploaded. </span>{pdfLinks[doc.id]?<a href={pdfLinks[doc.id]||"#"} target="_blank" rel="noreferrer">Review PDF</a>:<button type="button" onClick={async()=>{const url=await resolveControlledDocumentFileUrl({filePath:doc.release_pdf_file_path,legacyUrl:doc.release_pdf_file_url});if(url)setPdfLinks(p=>({...p,[doc.id]:url}));else setUploadMessage("Unable to open the PDF.");}}>Open PDF</button>}{verifiedPdf(doc)?<span> · Verified by {verifiedPdf(doc)?.verified_by_email} on {new Date(verifiedPdf(doc)!.verified_at).toLocaleString()}</span>:<div style={{marginTop:8}}><label>Verification notes (confirm content, document number, revision and formatting) <input aria-label={`PDF verification notes for ${doc.document_number}`} value={verificationComments[doc.id]||""} onChange={e=>setVerificationComments(p=>({...p,[doc.id]:e.target.value}))} style={{width:"min(100%,550px)",padding:6}}/></label><button type="button" disabled={verifying!==null||(verificationComments[doc.id]||"").trim().length<8} onClick={()=>void verifyPdf(doc)} style={{marginLeft:8}}>{verifying===doc.id?"Recording...":"Verify final PDF"}</button></div>}</>:<><input aria-label={`Final PDF for ${doc.document_number}`} type="file" accept="application/pdf,.pdf" onChange={e=>setPdfFiles(p=>({...p,[doc.id]:e.target.files?.[0]||null}))}/><button type="button" disabled={uploading!==null||!pdfFiles[doc.id]} onClick={()=>void uploadPdf(doc)}>{uploading===doc.id?"Uploading...":"Upload final PDF"}</button></>}</div></div>)}</section>
+   <section style={card}><h2>Controlled-copy stamp preview</h2><p>Preview the existing RELEASED stamp, document number, revision, and effective date on each verified PDF. This creates a local download only; it does not publish, store, or release a controlled copy.</p><label>Proposed effective date <input type="date" value={effectiveDate} onChange={e=>setEffectiveDate(e.target.value)}/></label>{previewError?<p role="alert">{previewError}</p>:null}<div>{docs.map(doc=><div key={doc.id} style={{marginTop:10}}><button type="button" disabled={preparing!==null||!Boolean(verifiedPdf(doc))||!effectiveDate} onClick={()=>void previewControlledCopy(doc)}>{preparing===doc.id?"Preparing...":"Preview stamped copy — "+doc.document_number+" Rev "+doc.revision}</button></div>)}</div></section>
    <section style={card}><h2>Release decision</h2><p><strong>{allReady?"Preliminary checks passed":"Release is not yet authorized"}</strong></p><p>This screen records PDF verification but does not convert Office files, publish controlled PDFs, supersede revisions, or release the DCI. The final release action will require coordinator authorization and server-side transactional checks.</p></section>
   </>}
  </main>;
