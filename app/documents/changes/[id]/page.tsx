@@ -99,6 +99,16 @@ export default function DciWorkspacePage() {
     setCollaborationResolved(collab.data?.status==="resolved");
   };
   useEffect(()=>{ if(id) load(); },[id]);
+  useEffect(()=>{
+    const requestedSource = new URLSearchParams(window.location.search).get("source_document_id");
+    if (!requestedSource || !dci || !released.length) return;
+    const source = released.find(doc => doc.id === requestedSource);
+    if (!source || !["release","effective"].includes(source.status)) return;
+    if (children.some(child => child.source_document_id === source.id)) return;
+    if (dci.status !== "draft") return;
+    setSourceId(source.id);
+    setMode("revision");
+  },[dci, released, children]);
 
 
   const addExisting = async () => {
