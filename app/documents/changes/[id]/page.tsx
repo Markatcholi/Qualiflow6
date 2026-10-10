@@ -282,7 +282,7 @@ export default function DciWorkspacePage() {
         <h1 style={{margin:"6px 0"}}>{dci.dci_number}{dci.title ? ` — ${dci.title}` : ""}</h1>
         <div style={{color:"#667085"}}>Owner: {dci.owner_email} · Status: <strong>{String(dci.status).replaceAll("_"," ")}</strong> · {dci.release_strategy} release</div>
       </div>
-      <div style={{display:"flex",gap:8}}><a href="/documents/changes" style={secondary}>DCI Register</a>{editable&&<button onClick={withdraw} style={danger}>Withdraw DCI</button>}</div>
+      <div style={{display:"flex",gap:8}}><a href="/documents/changes" style={secondary}>DCI Register</a>{(dci.status==="release_ready"||dci.status==="released")&&<a href={`/documents/changes/${id}/release`} style={secondary}>Release Readiness</a>}{editable&&<button onClick={withdraw} style={danger}>Withdraw DCI</button>}</div>
     </div>
 
     <section style={card}>
