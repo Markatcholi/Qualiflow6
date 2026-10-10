@@ -288,6 +288,25 @@ export async function prepareControlledCopyPdf(input: {
   return { fileName, bytes };
 }
 
+/** Identification-only preparation before verification: never mark an unreleased PDF as RELEASED. */
+export async function prepareDciIdentificationPdf(input: {
+ sourcePdfBytes: ArrayBuffer;
+ documentNumber: string;
+ revision: string;
+ title: string;
+}): Promise<Uint8Array> {
+ const pdf = await PDFDocument.load(input.sourcePdfBytes);
+ const font = await pdf.embedFont(StandardFonts.HelveticaBold);
+ const lines = [`Document Number: ${input.documentNumber}    Revision: ${input.revision}`, "UNRELEASED — FOR COORDINATOR REVIEW"];
+ for (const page of pdf.getPages()) {
+  const {width,height}=page.getSize();
+  page.drawRectangle({x:0,y:height-38,width,height:38,color:rgb(1,1,1),opacity:0.95});
+  page.drawText(lines[0],{x:24,y:height-15,size:9,font,color:rgb(0.1,0.1,0.1)});
+  page.drawText(lines[1],{x:24,y:height-29,size:8,font,color:rgb(0.45,0.1,0.1)});
+ }
+ return pdf.save();
+}
+
 export async function generateControlledCopy({
   documentId,
   generatedBy,
