@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "../../../../../lib/supabaseClient";
 import DocumentTrainingAssignment from "../../../../../components/DocumentTrainingAssignment";
-import { resolveControlledDocumentFileUrl } from "../../../../../lib/controlledDocumentStorage";
+import { buildControlledDocumentStoragePath, CONTROLLED_DOCUMENT_BUCKET, resolveControlledDocumentFileUrl } from "../../../../../lib/controlledDocumentStorage";
 
 type DocumentRow = { id:string; document_number:string; revision:string; title:string; file_path:string|null; file_url:string|null; release_pdf_file_path:string|null; release_pdf_file_url:string|null; status:string; effective_date:string|null };
 type Requirement = { id:string; document_id:string; training_methods: { release_blocking:boolean; label:string } | { release_blocking:boolean; label:string }[] | null };
@@ -19,6 +19,10 @@ export default function DciReleaseReadinessPage(){
  const [assignments,setAssignments]=useState<Assignment[]>([]);
  const [tasks,setTasks]=useState<{task_type:string;status:string;implementation_verification_status:string|null}[]>([]);
  const [links,setLinks]=useState<Record<string,string|null>>({});
+ const [pdfLinks,setPdfLinks]=useState<Record<string,string|null>>({});
+ const [pdfFiles,setPdfFiles]=useState<Record<string,File|null>>({});
+ const [uploading,setUploading]=useState<string|null>(null);
+ const [uploadMessage,setUploadMessage]=useState("");
  const [loading,setLoading]=useState(true);
  const [error,setError]=useState("");
  const [coordinatorEmail,setCoordinatorEmail]=useState("");
@@ -55,11 +59,38 @@ export default function DciReleaseReadinessPage(){
    for(const result of [docResult,reqResult,assignmentResult,taskResult])if(result.error)throw result.error;
    const records=(docResult.data||[]) as DocumentRow[];
    const urls:Record<string,string|null>={};
-   await Promise.all(records.map(async doc=>{urls[doc.id]=await resolveControlledDocumentFileUrl({filePath:doc.file_path,legacyUrl:doc.file_url}).catch(()=>null);}));
-   if(active){setDci(d.data);setDocs(ids.map(docId=>records.find(x=>x.id===docId)).filter((x):x is DocumentRow=>Boolean(x)));setRequirements((reqResult.data||[]) as Requirement[]);setAssignments((assignmentResult.data||[]) as Assignment[]);setTasks(taskResult.data||[]);setLinks(urls);}
+   const pdfUrls:Record<string,string|null>={};
+   await Promise.all(records.map(async doc=>{urls[doc.id]=await resolveControlledDocumentFileUrl({filePath:doc.file_path,legacyUrl:doc.file_url}).catch(()=>null);pdfUrls[doc.id]=await resolveControlledDocumentFileUrl({filePath:doc.release_pdf_file_path,legacyUrl:doc.release_pdf_file_url}).catch(()=>null);}));
+   if(active){setDci(d.data);setDocs(ids.map(docId=>records.find(x=>x.id===docId)).filter((x):x is DocumentRow=>Boolean(x)));setRequirements((reqResult.data||[]) as Requirement[]);setAssignments((assignmentResult.data||[]) as Assignment[]);setTasks(taskResult.data||[]);setLinks(urls);setPdfLinks(pdfUrls);}
   }catch(e:any){if(active)setError(e.message||"Unable to load release readiness.");}
   finally{if(active)setLoading(false);}
  }if(id)void load();return()=>{active=false};},[id]);
+ const uploadPdf=async(doc:DocumentRow)=>{
+  const file=pdfFiles[doc.id];
+  if(!file)return setUploadMessage("Choose a PDF file first.");
+  if(!file.name.toLowerCase().endsWith(".pdf")||file.type&&file.type!=="application/pdf")return setUploadMessage("Only PDF files are accepted.");
+  if(dci?.status!=="release_ready")return setUploadMessage("DCI must be release ready.");
+  if(doc.release_pdf_file_path||doc.release_pdf_file_url)return setUploadMessage("A final PDF already exists. Replacement requires a controlled revision process.");
+  setUploading(doc.id);setUploadMessage("");
+  let path:string|null=null;
+  try{
+   const bytes=new Uint8Array(await file.slice(0,5).arrayBuffer());
+   if(String.fromCharCode(...bytes)!=="%PDF-")throw new Error("The selected file is not a valid PDF.");
+   path=await buildControlledDocumentStoragePath({documentNumber:doc.document_number,revision:doc.revision,area:"release-pdfs",fileName:`${crypto.randomUUID()}_${file.name.replace(/[^a-zA-Z0-9._-]/g,"_")}`});
+   const upload=await supabase.storage.from(CONTROLLED_DOCUMENT_BUCKET).upload(path,file,{contentType:"application/pdf",upsert:false});
+   if(upload.error)throw upload.error;
+   const update=await supabase.from("controlled_documents").update({release_pdf_file_name:file.name,release_pdf_file_path:path,release_pdf_file_url:null,updated_at:new Date().toISOString()}).eq("id",doc.id).eq("tenant_id",tenantId).is("release_pdf_file_path",null).select("id");
+   if(update.error)throw update.error;
+   if(!update.data?.length)throw new Error("The PDF was not linked to the document. Check permissions or whether another PDF was attached.");
+   setDocs(previous=>previous.map(d=>d.id===doc.id?{...d,release_pdf_file_path:path,release_pdf_file_url:null}:d));
+   setPdfLinks(previous=>({...previous,[doc.id]:null}));
+   setPdfFiles(previous=>({...previous,[doc.id]:null}));
+   setUploadMessage(`PDF stored for ${doc.document_number} Rev ${doc.revision}. Open and inspect it before proceeding. Upload alone is not verification.`);
+  }catch(e:any){
+   if(path)await supabase.storage.from(CONTROLLED_DOCUMENT_BUCKET).remove([path]).catch(()=>{});
+   setUploadMessage(e.message||"PDF upload failed.");
+  }finally{setUploading(null);}
+ };
  const approved=tasks.filter(t=>t.task_type==="dci_formal_approval");
  const actions=tasks.filter(t=>t.task_type==="dci_post_approval_action");
  const coordination=tasks.filter(t=>t.task_type==="dci_post_approval_coordination");
@@ -81,7 +112,7 @@ export default function DciReleaseReadinessPage(){
    <section style={card}><h2>Package governance</h2><p>{governanceReady?"Complete — formal approvals and post-approval verification recorded.":"Not ready — release-ready status, formal approvals, and completed verified post-approval activities are required."}</p></section>
    <section style={card}><h2>Controlled documents and training</h2><div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse"}}><thead><tr>{["Document","Working master","Final PDF","Blocking training","Effective date","Readiness"].map(x=><th key={x} style={cell}>{x}</th>)}</tr></thead><tbody>{docs.map(doc=>{const c=check(doc);return <tr key={doc.id}><td style={cell}><strong>{doc.document_number} Rev {doc.revision}</strong><div>{doc.title}</div></td><td style={cell}>{c.master?<a href={links[doc.id]||`/documents/${doc.id}`} target="_blank" rel="noreferrer">View working master</a>:"Missing"}</td><td style={cell}>{c.pdf?"Attached":"Not yet attached / generated"}</td><td style={cell}>{c.unassigned===0&&c.incomplete===0?"Satisfied":`${c.unassigned} unassigned; ${c.incomplete} incomplete`}</td><td style={cell}>{doc.effective_date||"To be set at release"}</td><td style={cell}>{c.ready?"Ready":"Action required"}</td></tr>})}</tbody></table></div></section>
    <section style={card}><h2>Training assignment management</h2><p>Assign required training through the existing Training module workflow. Blocking training must be completed or formally waived before release.</p>{docs.map(doc=><div key={doc.id} style={{marginBottom:14}}><button type="button" onClick={()=>setSelectedTrainingDoc(selectedTrainingDoc===doc.id?null:doc.id)} style={{padding:"8px 12px",cursor:"pointer"}}>{selectedTrainingDoc===doc.id?"Close training assignments":"Manage training — "+doc.document_number+" Rev "+doc.revision}</button>{selectedTrainingDoc===doc.id&&tenantId&&coordinatorEmail?<div style={{marginTop:12}}><DocumentTrainingAssignment documentId={doc.id} tenantId={tenantId} documentNumber={doc.document_number} revision={doc.revision} userEmail={coordinatorEmail} canCoordinate={true}/><p style={{fontSize:13}}>After assigning training, refresh this page to update the readiness summary.</p></div>:null}</div>)}</section>
-   <section style={card}><h2>Final PDF preparation</h2><p>Approved working masters remain preserved. Final PDF conversion and coordinator verification will be added through a secure conversion and verification workflow; release remains unavailable.</p></section>
+   <section style={card}><h2>Final PDF preparation</h2><p>Upload the final PDF prepared from the approved working master. The original master remains unchanged. Automatic Office conversion and formal PDF verification are not yet enabled; uploading a PDF does not authorize release.</p>{uploadMessage?<p role="status">{uploadMessage}</p>:null}{docs.map(doc=><div key={doc.id} style={{borderTop:"1px solid #e2e8f0",padding:"12px 0"}}><strong>{doc.document_number} Rev {doc.revision}</strong> — {doc.title}<div style={{marginTop:8}}>{doc.release_pdf_file_path||doc.release_pdf_file_url?<><span>PDF uploaded. </span>{pdfLinks[doc.id]?<a href={pdfLinks[doc.id]||"#"} target="_blank" rel="noreferrer">Review PDF</a>:<button type="button" onClick={async()=>{const url=await resolveControlledDocumentFileUrl({filePath:doc.release_pdf_file_path,legacyUrl:doc.release_pdf_file_url});if(url)setPdfLinks(p=>({...p,[doc.id]:url}));else setUploadMessage("Unable to open the PDF.");}}>Open PDF</button>}<span> · Verification pending</span></>:<><input aria-label={`Final PDF for ${doc.document_number}`} type="file" accept="application/pdf,.pdf" onChange={e=>setPdfFiles(p=>({...p,[doc.id]:e.target.files?.[0]||null}))}/><button type="button" disabled={uploading!==null||!pdfFiles[doc.id]} onClick={()=>void uploadPdf(doc)}>{uploading===doc.id?"Uploading...":"Upload final PDF"}</button></>}</div></div>)}</section>
    <section style={card}><h2>Release decision</h2><p><strong>{allReady?"Preliminary checks passed":"Release is not yet authorized"}</strong></p><p>This screen is read-only. It does not convert Office files, publish controlled PDFs, supersede revisions, or release the DCI. The final release action will require coordinator authorization and server-side transactional checks.</p></section>
   </>}
  </main>;
