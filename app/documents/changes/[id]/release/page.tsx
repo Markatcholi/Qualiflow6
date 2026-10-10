@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "../../../../../lib/supabaseClient";
+import DocumentTrainingAssignment from "../../../../../components/DocumentTrainingAssignment";
 import { resolveControlledDocumentFileUrl } from "../../../../../lib/controlledDocumentStorage";
 
 type DocumentRow = { id:string; document_number:string; revision:string; title:string; file_path:string|null; file_url:string|null; release_pdf_file_path:string|null; release_pdf_file_url:string|null; status:string; effective_date:string|null };
@@ -20,6 +21,9 @@ export default function DciReleaseReadinessPage(){
  const [links,setLinks]=useState<Record<string,string|null>>({});
  const [loading,setLoading]=useState(true);
  const [error,setError]=useState("");
+ const [coordinatorEmail,setCoordinatorEmail]=useState("");
+ const [tenantId,setTenantId]=useState("");
+ const [selectedTrainingDoc,setSelectedTrainingDoc]=useState<string|null>(null);
  useEffect(()=>{let active=true;async function load(){
   setLoading(true);setError("");
   try{
@@ -38,6 +42,7 @@ export default function DciReleaseReadinessPage(){
    const customerCoordinator=!assigned.error&&(assigned.data||[]).some((row:any)=>{const role=Array.isArray(row.customer_roles)?row.customer_roles[0]:row.customer_roles;return role?.is_active!==false&&String(role?.role_name||"").toLowerCase()==="document control coordinator";});
    const internalCoordinator=!internal.error&&(internal.data||[]).length>0;
    if(!customerCoordinator&&!internalCoordinator)throw new Error("Access denied: Document Control Coordinator role required.");
+   if(active){setCoordinatorEmail(email);setTenantId(d.data.tenant_id);}
    const linkResult=await supabase.from("document_change_initiation_documents").select("document_id").eq("dci_id",id).order("sequence_no");
    if(linkResult.error)throw linkResult.error;
    const ids=(linkResult.data||[]).map(x=>x.document_id);
@@ -75,6 +80,8 @@ export default function DciReleaseReadinessPage(){
   {loading?<p>Loading release package...</p>:error?<p role="alert">{error}</p>:<><p><strong>{dci?.dci_number}</strong> · {dci?.status.replaceAll("_"," ")} · {dci?.release_strategy} release</p>
    <section style={card}><h2>Package governance</h2><p>{governanceReady?"Complete — formal approvals and post-approval verification recorded.":"Not ready — release-ready status, formal approvals, and completed verified post-approval activities are required."}</p></section>
    <section style={card}><h2>Controlled documents and training</h2><div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse"}}><thead><tr>{["Document","Working master","Final PDF","Blocking training","Effective date","Readiness"].map(x=><th key={x} style={cell}>{x}</th>)}</tr></thead><tbody>{docs.map(doc=>{const c=check(doc);return <tr key={doc.id}><td style={cell}><strong>{doc.document_number} Rev {doc.revision}</strong><div>{doc.title}</div></td><td style={cell}>{c.master?<a href={links[doc.id]||`/documents/${doc.id}`} target="_blank" rel="noreferrer">View working master</a>:"Missing"}</td><td style={cell}>{c.pdf?"Attached":"Not yet attached / generated"}</td><td style={cell}>{c.unassigned===0&&c.incomplete===0?"Satisfied":`${c.unassigned} unassigned; ${c.incomplete} incomplete`}</td><td style={cell}>{doc.effective_date||"To be set at release"}</td><td style={cell}>{c.ready?"Ready":"Action required"}</td></tr>})}</tbody></table></div></section>
+   <section style={card}><h2>Training assignment management</h2><p>Assign required training through the existing Training module workflow. Blocking training must be completed or formally waived before release.</p>{docs.map(doc=><div key={doc.id} style={{marginBottom:14}}><button type="button" onClick={()=>setSelectedTrainingDoc(selectedTrainingDoc===doc.id?null:doc.id)} style={{padding:"8px 12px",cursor:"pointer"}}>{selectedTrainingDoc===doc.id?"Close training assignments":"Manage training — "+doc.document_number+" Rev "+doc.revision}</button>{selectedTrainingDoc===doc.id&&tenantId&&coordinatorEmail?<div style={{marginTop:12}}><DocumentTrainingAssignment documentId={doc.id} tenantId={tenantId} documentNumber={doc.document_number} revision={doc.revision} userEmail={coordinatorEmail} canCoordinate={true}/><p style={{fontSize:13}}>After assigning training, refresh this page to update the readiness summary.</p></div>:null}</div>)}</section>
+   <section style={card}><h2>Final PDF preparation</h2><p>Approved working masters remain preserved. Final PDF conversion and coordinator verification will be added through a secure conversion and verification workflow; release remains unavailable.</p></section>
    <section style={card}><h2>Release decision</h2><p><strong>{allReady?"Preliminary checks passed":"Release is not yet authorized"}</strong></p><p>This screen is read-only. It does not convert Office files, publish controlled PDFs, supersede revisions, or release the DCI. The final release action will require coordinator authorization and server-side transactional checks.</p></section>
   </>}
  </main>;
