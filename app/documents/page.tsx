@@ -581,7 +581,7 @@ export default function DocumentControlLandingPage() {
   };
 
   const reviseDocument = async (doc: ControlledDocument) => {
-    window.location.href = `/documents/${doc.id}`;
+    window.location.href = `/documents/changes?source_document_id=${encodeURIComponent(doc.id)}`;
   };
 
   if (loading) return <main style={pageStyle}>Loading Document Control...</main>;
@@ -714,7 +714,7 @@ export default function DocumentControlLandingPage() {
             <h2 style={{ margin: 0 }}>Document Register</h2>
             <p style={subtleText}>Search, sort, filter, open files, launch workflows, and revise documents.</p>
           </div>
-          <button onClick={() => setShowCreateForm(true)} style={primaryButtonStyle}>
+          <button onClick={() => { window.location.href = "/documents/changes?intent=new"; }} style={primaryButtonStyle}>
             Create New Document
           </button>
         </div>
@@ -856,10 +856,10 @@ export default function DocumentControlLandingPage() {
             <p style={subtleText}>Create a new controlled document package. Existing documents can be revised from the register above.</p>
           </div>
           <button
-            onClick={() => setShowCreateForm(!showCreateForm)}
+            onClick={() => { window.location.href = "/documents/changes?intent=new"; }}
             style={showCreateForm ? secondaryButtonStyle : primaryButtonStyle}
           >
-            {showCreateForm ? "Hide Form" : "Create New Document"}
+            Create New Document via DCI
           </button>
         </div>
 
