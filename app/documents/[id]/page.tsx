@@ -2205,7 +2205,7 @@ export default function DocumentWorkflowPage() {
           <a href="/documents" style={darkButtonStyle}>Back to Document Register</a>
           <a href="/dashboard" style={darkButtonStyle}>Dashboard</a>
           {(doc.status === "release" || doc.status === "superseded") && (canManageWorkflow || canApprove) ? (
-            <button onClick={() => openRevisionPanel(doc)} style={secondaryButtonStyle}>
+            <button onClick={() => { window.location.href = `/documents/changes?source_document_id=${encodeURIComponent(doc.id)}`; }} style={secondaryButtonStyle}>
               Revise Document
             </button>
           ) : null}
