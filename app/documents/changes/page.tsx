@@ -84,7 +84,7 @@ export default function DocumentChangesPage() {
         <p style={{ margin: 0, color: "#667085" }}>One DCI can contain multiple new, revised, or reinstated documents. Collaboration and formal approval occur at the DCI package level.</p>
       </div>
       <div style={{ display: "flex", gap: 10 }}>
-        <a href="/documents" style={secondary}>Controlled Documents</a>
+        <a href="/documents" style={secondary}>Document Repository</a>
         <button onClick={() => setShowCreate(!showCreate)} style={primary}>Create DCI</button>
       </div>
     </div>
