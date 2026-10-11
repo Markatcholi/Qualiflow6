@@ -52,6 +52,8 @@ export default function DocumentControlIntelligenceDashboardPage() {
   const [documents, setDocuments] = useState<ControlledDocument[]>([]);
   const [reviewers, setReviewers] = useState<AssignedReviewer[]>([]);
   const [loading, setLoading] = useState(true);
+  const [accessAllowed, setAccessAllowed] = useState(false);
+  const [accessError, setAccessError] = useState("");
 
   const fetchData = async () => {
     setLoading(true);
@@ -86,7 +88,31 @@ export default function DocumentControlIntelligenceDashboardPage() {
   };
 
   useEffect(() => {
-    fetchData();
+    let active = true;
+    (async () => {
+      setLoading(true);
+      const auth = await supabase.auth.getUser();
+      const email = String(auth.data.user?.email || "").trim().toLowerCase();
+      if (!email) { if(active){setAccessError("Sign in required.");setLoading(false);}return; }
+      const tenant = await supabase.rpc("qualisphere_current_controlled_documents_tenant");
+      if (tenant.error || !tenant.data) { if(active){setAccessError("An active Company Account is required.");setLoading(false);}return; }
+      const tenantId = String(tenant.data);
+      const [admin, roles, legacy] = await Promise.all([
+        supabase.rpc("qualisphere_is_company_admin", { p_tenant_id: tenantId }),
+        supabase.from("tenant_user_role_assignments").select("customer_roles(role_name,is_active)").eq("tenant_id",tenantId).ilike("user_email",email).eq("is_active",true),
+        supabase.from("user_security_roles").select("role_code").ilike("user_email",email).in("role_code",["administrator","document_control_coordinator","vp_quality"])
+      ]);
+      const assigned = (roles.data || []).some((assignment: any) => {
+        const r = Array.isArray(assignment.customer_roles) ? assignment.customer_roles[0] : assignment.customer_roles;
+        return r?.is_active !== false && /^(document control coordinator|administrator|company administrator|vp quality|vice president.*quality)$/i.test(String(r?.role_name||"").trim());
+      });
+      const permitted = admin.data === true || assigned || (legacy.data || []).length > 0;
+      if (!active) return;
+      if (!permitted) { setAccessError("Dashboard access is limited to Document Control Coordinators, Administrators, and VP Quality.");setLoading(false);return; }
+      setAccessAllowed(true);
+      await fetchData();
+    })();
+    return () => { active = false; };
   }, []);
 
   const documentMap = useMemo(() => {
@@ -422,6 +448,8 @@ export default function DocumentControlIntelligenceDashboardPage() {
   if (loading) {
     return <main style={pageStyle}>Loading Document Control Intelligence...</main>;
   }
+
+  if (!accessAllowed) return <main style={{padding:32,fontFamily:"Arial,sans-serif"}}><h1>Controlled Documents Dashboard</h1><p>{accessError || "Verifying dashboard access..."}</p><a href="/workspace">Back to My Workspace</a></main>;
 
   return (
     <main style={pageStyle}>
