@@ -5,6 +5,16 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../../lib/supabaseClient";
 
+type TrainingCertification = {
+  id: string;
+  employee_email: string;
+  certification_title: string;
+  certified_on: string;
+  expires_on: string;
+  reminder_days: number;
+  renewal_of_id: string | null;
+};
+
 type TrainingAssignment = {
   id: string;
   document_id: string | null;
@@ -85,6 +95,7 @@ type KpiTile = {
 
 export default function TrainingIntelligenceDashboardPage() {
   const [assignments, setAssignments] = useState<TrainingAssignment[]>([]);
+  const [certifications, setCertifications] = useState<TrainingCertification[]>([]);
   const [matrixRows, setMatrixRows] = useState<TrainingMatrixRow[]>([]);
   const [documents, setDocuments] = useState<ControlledDocument[]>([]);
   const [employees, setEmployees] = useState<EmployeeProfile[]>([]);
@@ -94,7 +105,7 @@ export default function TrainingIntelligenceDashboardPage() {
   const fetchData = async () => {
     setLoading(true);
 
-    const [assignmentRes, matrixRes, docRes, employeeRes, signatureRes] =
+    const [assignmentRes, matrixRes, docRes, employeeRes, signatureRes, certificationRes] =
       await Promise.all([
         supabase
           .from("training_assignments")
@@ -117,6 +128,7 @@ export default function TrainingIntelligenceDashboardPage() {
           .select("*")
           .eq("module_name", "training")
           .order("signed_at", { ascending: false }),
+        supabase.from("training_certifications").select("id,employee_email,certification_title,certified_on,expires_on,reminder_days,renewal_of_id"),
       ]);
 
     if (assignmentRes.error) {
@@ -126,6 +138,7 @@ export default function TrainingIntelligenceDashboardPage() {
     }
 
     setAssignments((assignmentRes.data as TrainingAssignment[]) || []);
+    if (certificationRes.error) { alert(certificationRes.error.message); } else { setCertifications((certificationRes.data as TrainingCertification[]) || []); }
     setMatrixRows((matrixRes.data as TrainingMatrixRow[]) || []);
     setDocuments((docRes.data as ControlledDocument[]) || []);
     setEmployees((employeeRes.data as EmployeeProfile[]) || []);
@@ -138,6 +151,18 @@ export default function TrainingIntelligenceDashboardPage() {
   }, []);
 
   const today = new Date().toISOString().slice(0, 10);
+
+  const certificationStatus = useMemo(() => {
+    const current = certifications.filter((record) =>
+      !certifications.some((newer) => newer.renewal_of_id === record.id)
+    );
+    const expired = current.filter((record) => record.expires_on < today);
+    const expiring = current.filter((record) => {
+      const days = Math.ceil((Date.parse(record.expires_on + "T00:00:00Z") - Date.parse(today + "T00:00:00Z")) / 86400000);
+      return days >= 0 && days <= record.reminder_days;
+    });
+    return { expired, expiring };
+  }, [certifications, today]);
 
   const documentMap = useMemo(() => {
     const map = new Map<string, ControlledDocument>();
@@ -260,6 +285,8 @@ export default function TrainingIntelligenceDashboardPage() {
     { title: "On-Time Completion", value: metrics.onTimeCompletionRate, suffix: "%", color: metrics.onTimeStatus.color, target: "Target: 90%", statusLabel: metrics.onTimeStatus.label, statusIcon: metrics.onTimeStatus.icon, statusColor: metrics.onTimeStatus.color },
     { title: "Effectiveness Completion", value: metrics.effectivenessCompletionRate, suffix: "%", color: metrics.effectivenessStatus.color, target: "Target: 90%", statusLabel: metrics.effectivenessStatus.label, statusIcon: metrics.effectivenessStatus.icon, statusColor: metrics.effectivenessStatus.color },
     { title: "Total Assignments", value: assignments.length, color: "#2563eb" },
+    { title: "Expired Certifications", value: certificationStatus.expired.length, color: certificationStatus.expired.length ? "#dc2626" : "#15803d" },
+    { title: "Certifications Expiring Soon", value: certificationStatus.expiring.length, color: certificationStatus.expiring.length ? "#d97706" : "#15803d" },
     { title: "Open Training", value: metrics.openTraining.length, color: metrics.openTraining.length > 0 ? "#d97706" : "#15803d" },
     { title: "Overdue Training", value: metrics.overdueTraining.length, color: metrics.overdueTraining.length > 0 ? "#dc2626" : "#15803d" },
     { title: "Awaiting Signature", value: metrics.awaitingSignature.length, color: metrics.awaitingSignature.length > 0 ? "#d97706" : "#15803d" },
@@ -410,6 +437,14 @@ export default function TrainingIntelligenceDashboardPage() {
       <section style={analyticsGridStyle}>
         <SummaryCard title="Training by Status" rows={statusCounts} />
         <SummaryCard title="Training by Department" rows={departmentCounts.length ? departmentCounts : [["No data", 0]]} />
+        <section style={{ background: "white", padding: 20, borderRadius: 14, marginBottom: 20 }}>
+          <h2>Certification Expiration Register</h2>
+          <p>Expired qualifications remain expired until a new certification record is issued. Renewal assignments alone do not extend validity.</p>
+          <table style={tableStyle}><thead><tr><th style={thStyle}>Employee</th><th style={thStyle}>Certification</th><th style={thStyle}>Expires</th><th style={thStyle}>Status</th></tr></thead>
+          <tbody>{[...certificationStatus.expired, ...certificationStatus.expiring].map((record) => (
+            <tr key={record.id}><td style={tdStyle}>{record.employee_email}</td><td style={tdStyle}>{record.certification_title}</td><td style={tdStyle}>{record.expires_on}</td><td style={tdStyle}>{record.expires_on < today ? "Expired" : "Expiring Soon"}</td></tr>
+          ))}</tbody></table>
+        </section>
         <SummaryCard title="Training by Role" rows={roleCounts.length ? roleCounts : [["No data", 0]]} />
         <SummaryCard title="Training by Source" rows={sourceCounts.length ? sourceCounts : [["No data", 0]]} />
         <SummaryCard title="Top Trainees by Assignment Volume" rows={employeeCounts.length ? employeeCounts : [["No data", 0]]} />
