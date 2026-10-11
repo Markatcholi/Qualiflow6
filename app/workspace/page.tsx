@@ -998,7 +998,20 @@ function ModuleGroup({
 
       {isOpen ? (
         <ul style={moduleListStyle}>
-          {items.map((item) => (
+          {items.map((item) => item.label === "Controlled Documents" ? (
+            <li key={item.href} style={moduleListItemStyle}>
+              <details>
+                <summary style={{cursor:"pointer",fontWeight:700}}>Controlled Documents</summary>
+                <ul style={{paddingLeft:18,margin:"8px 0",lineHeight:1.9}}>
+                  <li><a href="/documents/search" style={moduleLinkStyle}>Search Documents</a></li>
+                  <li><a href="/documents/changes" style={moduleLinkStyle}>Search DCI</a></li>
+                  <li><a href="/documents/changes?intent=new" style={moduleLinkStyle}>Initiate DCI</a></li>
+                  <li><a href="/documents" style={moduleLinkStyle}>Document Register</a></li>
+                  <li><a href="/documents/dashboard" style={moduleLinkStyle}>Document Dashboard</a></li>
+                </ul>
+              </details>
+            </li>
+          ) : (
             <li key={item.href} style={moduleListItemStyle}>
               <a href={item.href} style={moduleLinkStyle}>{item.label}</a>
             </li>
