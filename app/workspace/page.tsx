@@ -619,6 +619,7 @@ export default function HomePage() {
               isOpen={openGroups.quality}
               onToggle={() => toggleGroup("quality")}
               items={qualityModules}
+              canManageDocuments={isCompanyAdministrator || /document control coordinator|quality system admin|qms admin/i.test(role)}
             />
           ) : null}
 
@@ -984,11 +985,13 @@ function ModuleGroup({
   isOpen,
   onToggle,
   items,
+  canManageDocuments = false,
 }: {
   title: string;
   isOpen: boolean;
   onToggle: () => void;
   items: Array<{ label: string; href: string }>;
+  canManageDocuments?: boolean;
 }) {
   return (
     <div style={moduleGroupStyle}>
@@ -1006,8 +1009,7 @@ function ModuleGroup({
                   <li><a href="/documents/search" style={moduleLinkStyle}>Search Documents</a></li>
                   <li><a href="/documents/changes" style={moduleLinkStyle}>Search DCI</a></li>
                   <li><a href="/documents/changes?intent=new" style={moduleLinkStyle}>Initiate DCI</a></li>
-                  <li><a href="/documents" style={moduleLinkStyle}>Document Register</a></li>
-                  <li><a href="/documents/dashboard" style={moduleLinkStyle}>Document Dashboard</a></li>
+                  {canManageDocuments ? <><li><a href="/documents" style={moduleLinkStyle}>Document Register</a></li><li><a href="/documents/dashboard" style={moduleLinkStyle}>Document Dashboard</a></li></> : null}
                 </ul>
               </details>
             </li>
