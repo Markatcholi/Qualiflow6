@@ -23,6 +23,9 @@ const fmt = (value: string | null) => {
 
 export default function DocumentChangesPage() {
   const [items, setItems] = useState<Dci[]>([]);
+  const [searchDci, setSearchDci] = useState("");
+  const [searchOwner, setSearchOwner] = useState("");
+  const [searchStatus, setSearchStatus] = useState("");
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -40,6 +43,12 @@ export default function DocumentChangesPage() {
   };
 
   useEffect(() => { load(); const params=new URLSearchParams(window.location.search); if(params.get("intent")==="new"||params.has("source_document_id"))setShowCreate(true); }, []);
+
+  const filteredItems = items.filter(item =>
+    (!searchDci.trim() || (item.dci_number + " " + (item.title || "") + " " + item.change_description).toLowerCase().includes(searchDci.trim().toLowerCase())) &&
+    (!searchOwner.trim() || item.owner_email.toLowerCase().includes(searchOwner.trim().toLowerCase())) &&
+    (!searchStatus || item.status === searchStatus)
+  );
 
   const createDci = async () => {
     if (!form.change_description.trim() || !form.change_justification.trim()) {
@@ -98,11 +107,16 @@ export default function DocumentChangesPage() {
     </section>}
 
     <section style={card}>
-      <h2 style={{ marginTop: 0 }}>DCI Register</h2>
-      {loading ? <p>Loading...</p> : items.length === 0 ? <p style={{ color: "#667085" }}>No DIC records yet.</p> :
+      <h2 style={{ marginTop: 0 }}>Search DCI</h2>
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
+        <label>DCI Number / Title<input value={searchDci} onChange={e => setSearchDci(e.target.value)} style={input} placeholder="Search DCI" /></label>
+        <label>DCI Owner<input value={searchOwner} onChange={e => setSearchOwner(e.target.value)} style={input} placeholder="Owner email" /></label>
+        <label>Status<select value={searchStatus} onChange={e => setSearchStatus(e.target.value)} style={input}><option value="">All statuses</option>{Array.from(new Set(items.map(item => item.status))).sort().map(value => <option key={value} value={value}>{value.replaceAll("_", " ")}</option>)}</select></label>
+      </div>
+      {loading ? <p>Loading...</p> : filteredItems.length === 0 ? <p style={{ color: "#667085" }}>No matching DCI records.</p> :
       <div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}>
         <thead><tr>{["DCI","Title","Owner","Status","Release Strategy","Created",""].map(x => <th key={x} style={th}>{x}</th>)}</tr></thead>
-        <tbody>{items.map(item => <tr key={item.id}>
+        <tbody>{filteredItems.map(item => <tr key={item.id}>
           <td style={td}><strong>{item.dci_number}</strong></td><td style={td}>{item.title || item.change_description}</td>
           <td style={td}>{item.owner_email}</td><td style={td}>{item.status.replaceAll("_"," ")}</td>
           <td style={td}>{item.release_strategy}</td><td style={td}>{fmt(item.created_at)}</td>
