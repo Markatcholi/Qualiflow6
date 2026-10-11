@@ -19,7 +19,7 @@ export default function SearchDocuments(){
    .eq("tenant_id",tenant.data).eq("status","release").order("document_number");
   if(response.error)throw response.error;
   const today=new Date().toLocaleDateString("en-CA");
-  if(active)setDocs((response.data||[]).filter(d=>Boolean(d.effective_date)&&d.effective_date!<=today&&Boolean(d.controlled_copy_file_path||d.controlled_copy_file_url)));
+  if(active)setDocs((response.data||[]).filter(d=>Boolean(d.effective_date)&&String(d.effective_date)<=today&&Boolean(d.controlled_copy_file_path||d.controlled_copy_file_url)));
  }catch(e:any){if(active)setError(e.message||"Unable to search documents.");}finally{if(active)setLoading(false);}})();return()=>{active=false};},[]);
  const results=query.trim()?docs.filter(d=>(d.document_number+" "+d.title+" "+d.revision).toLowerCase().includes(query.trim().toLowerCase())):[];
  const open=async(doc:Doc)=>{setOpening(doc.id);setError("");try{const url=await resolveControlledDocumentFileUrl({filePath:doc.controlled_copy_file_path,legacyUrl:doc.controlled_copy_file_url});if(!url)throw new Error("Controlled copy unavailable.");window.open(url,"_blank","noopener,noreferrer");}catch(e:any){setError(e.message||"Unable to open document.");}finally{setOpening(null);}};
