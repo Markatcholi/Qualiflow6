@@ -36,6 +36,8 @@ export default function DciReleaseReadinessPage(){
  const [preparing,setPreparing]=useState<string|null>(null);
  const [previewError,setPreviewError]=useState("");
  const [identifying,setIdentifying]=useState<string|null>(null);
+ const [releasing,setReleasing]=useState(false);
+ const [releaseMessage,setReleaseMessage]=useState("");
  useEffect(()=>{let active=true;async function load(){
   setLoading(true);setError("");
   try{
@@ -160,6 +162,39 @@ export default function DciReleaseReadinessPage(){
   }catch(e:any){setPreviewError(e.message||"Unable to prepare controlled copy preview.");}
   finally{setPreparing(null);}
  };
+ const releasePackage=async()=>{
+  if(!allReady||!tenantId||!effectiveDate||releasing)return;
+  if(!window.confirm("Release ALL "+docs.length+" documents in "+dci?.dci_number+" effective "+effectiveDate+"? This supersedes prior revisions and cannot be undone."))return;
+  setReleasing(true);setReleaseMessage("");
+  const staged:string[]=[];
+  try{
+   const tenant=await supabase.from("tenants").select("company_name").eq("id",tenantId).single();
+   if(tenant.error)throw tenant.error;
+   const manifest:{document_id:string;document_number:string;revision:string;source_path:string;path:string;file_name:string}[]=[];
+   for(const doc of docs){
+    if(!doc.release_pdf_file_path||!verifiedPdf(doc))throw new Error("Verified PDF missing: "+doc.document_number);
+    const fresh=await supabase.from("controlled_documents").select("release_pdf_file_path").eq("id",doc.id).eq("tenant_id",tenantId).single();
+    if(fresh.error)throw fresh.error;
+    if(fresh.data.release_pdf_file_path!==doc.release_pdf_file_path)throw new Error("PDF changed. Refresh and revalidate "+doc.document_number);
+    const download=await supabase.storage.from(CONTROLLED_DOCUMENT_BUCKET).download(doc.release_pdf_file_path);
+    if(download.error||!download.data)throw new Error(download.error?.message||"Unable to read PDF");
+    const prepared=await prepareControlledCopyPdf({sourcePdfBytes:await download.data.arrayBuffer(),document:{id:doc.id,tenant_id:tenantId,document_number:doc.document_number,title:doc.title,revision:doc.revision,effective_date:effectiveDate},companyName:tenant.data.company_name||"QualiSphere"});
+    const path=await buildControlledDocumentStoragePath({documentNumber:doc.document_number,revision:doc.revision,area:"controlled-copies",fileName:crypto.randomUUID()+"_"+prepared.fileName});
+    const buffer=new ArrayBuffer(prepared.bytes.byteLength);new Uint8Array(buffer).set(prepared.bytes);
+    const upload=await supabase.storage.from(CONTROLLED_DOCUMENT_BUCKET).upload(path,new Blob([buffer],{type:"application/pdf"}),{contentType:"application/pdf",upsert:false});
+    if(upload.error)throw upload.error;
+    staged.push(path);
+    manifest.push({document_id:doc.id,document_number:doc.document_number,revision:doc.revision,source_path:doc.release_pdf_file_path,path,file_name:prepared.fileName});
+   }
+   const result=await supabase.rpc("qualisphere_release_dci_coordinated",{p_dci_id:id,p_effective_date:effectiveDate,p_manifest:manifest});
+   if(result.error)throw result.error;
+   setDci(previous=>previous?{...previous,status:"released"}:previous);
+   setReleaseMessage("Coordinated release completed for all "+docs.length+" documents. Refresh to view the released records.");
+  }catch(e:any){
+   if(staged.length)await supabase.storage.from(CONTROLLED_DOCUMENT_BUCKET).remove(staged);
+   setReleaseMessage("Release was not completed: "+(e.message||"Unknown error")+". No document status changes should have been committed.");
+  }finally{setReleasing(false);}
+ };
  const verifiedPdf=(doc:DocumentRow)=>pdfVerifications.find(v=>Boolean(doc.release_pdf_file_path)&&v.document_id===doc.id&&v.pdf_storage_path===doc.release_pdf_file_path);
  const approved=tasks.filter(t=>t.task_type==="dci_formal_approval");
  const actions=tasks.filter(t=>t.task_type==="dci_post_approval_action");
@@ -184,7 +219,7 @@ export default function DciReleaseReadinessPage(){
    <section style={card}><h2>Training assignment management</h2><p>Assign required training through the existing Training module workflow. Blocking training must be completed or formally waived before release.</p>{docs.map(doc=><div key={doc.id} style={{marginBottom:14}}><button type="button" onClick={()=>setSelectedTrainingDoc(selectedTrainingDoc===doc.id?null:doc.id)} style={{padding:"8px 12px",cursor:"pointer"}}>{selectedTrainingDoc===doc.id?"Close training assignments":"Manage training — "+doc.document_number+" Rev "+doc.revision}</button>{selectedTrainingDoc===doc.id&&tenantId&&coordinatorEmail?<div style={{marginTop:12}}><DocumentTrainingAssignment documentId={doc.id} tenantId={tenantId} documentNumber={doc.document_number} revision={doc.revision} userEmail={coordinatorEmail} canCoordinate={true}/><p style={{fontSize:13}}>After assigning training, refresh this page to update the readiness summary.</p></div>:null}</div>)}</section>
    <section style={card}><h2>Final PDF preparation</h2><p>Upload the final PDF prepared from the approved working master. The original master remains unchanged. Automatic Office conversion is not yet enabled. After uploading, use Apply document number and revision if the source PDF lacks identification. Open the prepared PDF and verify it before proceeding. This preparation is explicitly UNRELEASED; the RELEASED stamp and effective date are added only at actual release.</p>{uploadMessage?<p role="status">{uploadMessage}</p>:null}{docs.map(doc=><div key={doc.id} style={{borderTop:"1px solid #e2e8f0",padding:"12px 0"}}><strong>{doc.document_number} Rev {doc.revision}</strong> — {doc.title}<div style={{marginTop:8}}>{doc.release_pdf_file_path||doc.release_pdf_file_url?<><span>PDF uploaded. </span>{pdfLinks[doc.id]?<a href={pdfLinks[doc.id]||"#"} target="_blank" rel="noreferrer">Review PDF</a>:<button type="button" onClick={async()=>{const url=await resolveControlledDocumentFileUrl({filePath:doc.release_pdf_file_path,legacyUrl:doc.release_pdf_file_url});if(url)setPdfLinks(p=>({...p,[doc.id]:url}));else setUploadMessage("Unable to open the PDF.");}}>Open PDF</button>}{!verifiedPdf(doc)&&doc.release_pdf_file_path?<button type="button" disabled={identifying!==null||uploading!==null} onClick={()=>void prepareIdentifiedPdf(doc)} style={{marginLeft:8}}>{identifying===doc.id?"Preparing...":"Apply document number and revision"}</button>:null}{verifiedPdf(doc)?<span> · Verified by {verifiedPdf(doc)?.verified_by_email} on {new Date(verifiedPdf(doc)!.verified_at).toLocaleString()}</span>:<div style={{marginTop:8}}><label>Verification notes (confirm content, document number, revision and formatting) <input aria-label={`PDF verification notes for ${doc.document_number}`} value={verificationComments[doc.id]||""} onChange={e=>setVerificationComments(p=>({...p,[doc.id]:e.target.value}))} style={{width:"min(100%,550px)",padding:6}}/></label><button type="button" disabled={verifying!==null||(verificationComments[doc.id]||"").trim().length<8} onClick={()=>void verifyPdf(doc)} style={{marginLeft:8}}>{verifying===doc.id?"Recording...":"Verify final PDF"}</button></div>}</>:<><input aria-label={`Final PDF for ${doc.document_number}`} type="file" accept="application/pdf,.pdf" onChange={e=>setPdfFiles(p=>({...p,[doc.id]:e.target.files?.[0]||null}))}/><button type="button" disabled={uploading!==null||!pdfFiles[doc.id]} onClick={()=>void uploadPdf(doc)}>{uploading===doc.id?"Uploading...":"Upload final PDF"}</button></>}</div></div>)}</section>
    <section style={card}><h2>Controlled-copy stamp preview</h2><p>Preview the existing RELEASED stamp, document number, revision, and effective date on each verified PDF. This creates a local download only; it does not publish, store, or release a controlled copy.</p><label>Proposed effective date <input type="date" value={effectiveDate} onChange={e=>setEffectiveDate(e.target.value)}/></label>{previewError?<p role="alert">{previewError}</p>:null}<div>{docs.map(doc=><div key={doc.id} style={{marginTop:10}}><button type="button" disabled={preparing!==null||!Boolean(verifiedPdf(doc))||!effectiveDate} onClick={()=>void previewControlledCopy(doc)}>{preparing===doc.id?"Preparing...":"Preview stamped copy — "+doc.document_number+" Rev "+doc.revision}</button></div>)}</div></section>
-   <section style={card}><h2>Release decision</h2><p><strong>{allReady?"Preliminary checks passed":"Release is not yet authorized"}</strong></p><p>This screen records PDF verification but does not convert Office files, publish controlled PDFs, supersede revisions, or release the DCI. The final release action will require coordinator authorization and server-side transactional checks.</p></section>
+   <section style={card}><h2>Release decision</h2><p><strong>{allReady?"Preliminary checks passed":"Release is not yet authorized"}</strong></p><p>All documents will be released together after server-side revalidation of approvals, training, PDF verification, and staged stamped controlled copies. The release transaction also supersedes prior revisions.</p><button type="button" disabled={!allReady||releasing||!effectiveDate||dci?.status!=="release_ready"} onClick={()=>void releasePackage()} style={{padding:"10px 16px",fontWeight:700}}>{releasing?"Preparing and releasing package...":"Release all documents together"}</button>{releaseMessage?<p role="status">{releaseMessage}</p>:null}</section>
   </>}
  </main>;
 }
