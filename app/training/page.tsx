@@ -7,6 +7,14 @@ import { acknowledgeTraining } from "../../services/trainingService";
 
 type TrainingAssignment = {
   id: string;
+  tenant_id?: string | null;
+  training_category?: string | null;
+  recurring_evidence_mode?: string | null;
+  training_evidence_storage_path?: string | null;
+  training_evidence_file_name?: string | null;
+  training_completed_on?: string | null;
+  training_valid_until?: string | null;
+  retraining_due_date?: string | null;
   document_id: string | null;
   assigned_to_email: string;
   assigned_by_email: string | null;
@@ -111,6 +119,60 @@ export default function TrainingManagementPage() {
   const [showTrainingSignature, setShowTrainingSignature] = useState(false);
   const [pendingSignatureAssignment, setPendingSignatureAssignment] =
     useState<TrainingAssignment | null>(null);
+
+  const [completionAssignment, setCompletionAssignment] = useState<TrainingAssignment | null>(null);
+  const [completionFile, setCompletionFile] = useState<File | null>(null);
+  const [completionDate, setCompletionDate] = useState(new Date().toISOString().slice(0,10));
+  const [validUntil, setValidUntil] = useState("");
+  const [retrainingDue, setRetrainingDue] = useState("");
+  const [savingCompletion, setSavingCompletion] = useState(false);
+  const evidenceMode = (assignment: TrainingAssignment) =>
+    assignment.training_category === "certification" ? "attachment" :
+    assignment.training_category === "recurring" ? (assignment.recurring_evidence_mode || "attachment") : "signature";
+  const beginCompletion = (assignment: TrainingAssignment) => {
+    setCompletionAssignment(assignment);
+    setCompletionFile(null);
+    setCompletionDate(new Date().toISOString().slice(0,10));
+    setValidUntil(assignment.training_valid_until || "");
+    setRetrainingDue(assignment.retraining_due_date || "");
+  };
+  const submitCompletion = async () => {
+    const assignment=completionAssignment;
+    if (!assignment || savingCompletion) return;
+    const mode=evidenceMode(assignment);
+    const attachmentRequired=mode==="attachment" || mode==="both";
+    const signatureRequired=mode==="signature" || mode==="both";
+    if (attachmentRequired && !completionFile && !assignment.training_evidence_storage_path) { alert("A signed training evidence form is required."); return; }
+    if (!completionDate) { alert("Completion date is required."); return; }
+    if (validUntil && validUntil<completionDate) { alert("Validity date cannot precede completion."); return; }
+    setSavingCompletion(true);
+    try {
+      let path=assignment.training_evidence_storage_path || null;
+      let fileName=assignment.training_evidence_file_name || null;
+      if (completionFile) {
+        if (!assignment.tenant_id) throw new Error("Training tenant is missing.");
+        if (completionFile.size>10485760) throw new Error("Maximum evidence file size is 10 MB.");
+        const extension=completionFile.name.split(".").pop()?.toLowerCase() || "bin";
+        path=`${assignment.tenant_id}/${assignment.id}/${crypto.randomUUID()}.${extension}`;
+        const upload=await supabase.storage.from("training-completion-evidence").upload(path,completionFile,{upsert:false});
+        if(upload.error) throw upload.error;
+        fileName=completionFile.name;
+      }
+      const payload:any={training_completed_on:completionDate,training_valid_until:validUntil||null,retraining_due_date:retrainingDue||null,training_evidence_storage_path:path,training_evidence_file_name:fileName};
+      if (!signatureRequired) { payload.status="completed";payload.completed_at=new Date().toISOString();payload.completed_by=userEmail; }
+      const update=await supabase.from("training_assignments").update(payload).eq("id",assignment.id);
+      if(update.error) throw update.error;
+      setCompletionAssignment(null);
+      if(signatureRequired) {
+        setPendingSignatureAssignment({...assignment,...payload});
+        setShowTrainingSignature(true);
+      } else {
+        alert("Training completion recorded.");
+      }
+      await fetchData();
+    } catch(err:any) {alert(err?.message || "Unable to save training completion.");}
+    finally {setSavingCompletion(false);}
+  };
 
   const [newAssignment, setNewAssignment] = useState({
     document_id: "",
@@ -565,7 +627,7 @@ export default function TrainingManagementPage() {
     }
 
     if (status === "completed") {
-      if (assignment.acknowledgement_required && !assignment.signature_id) {
+      if ((evidenceMode(assignment) === "signature" || evidenceMode(assignment) === "both") && !assignment.signature_id) {
         setPendingSignatureAssignment(assignment);
         setShowTrainingSignature(true);
         return;
@@ -574,7 +636,7 @@ export default function TrainingManagementPage() {
       payload.completed_at = new Date().toISOString();
       payload.completed_by = userEmail;
 
-      if (assignment.acknowledgement_required) {
+      if (evidenceMode(assignment) === "signature" || evidenceMode(assignment) === "both") {
         payload.acknowledged_at = new Date().toISOString();
         payload.acknowledged_by = userEmail;
       }
@@ -981,17 +1043,10 @@ export default function TrainingManagementPage() {
                       (assignment.assigned_to_email === userEmail || canManage) ? (
                         <button
                           onClick={() => {
-                            if (assignment.acknowledgement_required) {
-                              setPendingSignatureAssignment(assignment);
-                              setShowTrainingSignature(true);
-                            } else {
-                              updateAssignmentStatus(assignment, "completed");
-                            }
+                            beginCompletion(assignment);
                           }}
                         >
-                          {assignment.acknowledgement_required
-                            ? "Electronic Signature Required"
-                            : "Complete Training"}
+                          Record Training Completion
                         </button>
                       ) : null}
 
@@ -1371,6 +1426,26 @@ export default function TrainingManagementPage() {
         )}
       </section>
 
+      {completionAssignment ? (
+        <div role="dialog" aria-modal="true" aria-label="Record Training Completion" style={{position:"fixed",inset:0,background:"rgba(0,0,0,.55)",display:"grid",placeItems:"center",zIndex:1000}}>
+          <div style={{background:"white",padding:24,borderRadius:12,width:"min(540px,94vw)",maxHeight:"90vh",overflowY:"auto"}}>
+            <h2>Record Training Completion</h2>
+            <p>{completionAssignment.training_title || "Training"} — {completionAssignment.training_category || "standard"}</p>
+            <Field label="Completion Date"><input type="date" value={completionDate} onChange={e=>setCompletionDate(e.target.value)} style={inputStyle}/></Field>
+            {(evidenceMode(completionAssignment)==="attachment" || evidenceMode(completionAssignment)==="both") ? (
+              <Field label="Signed Training Form (required)">
+                <input type="file" accept=".pdf,.png,.jpg,.jpeg" onChange={e=>setCompletionFile(e.target.files?.[0]||null)} />
+                {completionAssignment.training_evidence_file_name ? <p>Existing evidence: {completionAssignment.training_evidence_file_name}</p> : null}
+              </Field>
+            ) : null}
+            <Field label="Valid Until (optional)"><input type="date" value={validUntil} onChange={e=>setValidUntil(e.target.value)} style={inputStyle}/></Field>
+            <Field label="Retraining Due (optional)"><input type="date" value={retrainingDue} onChange={e=>setRetrainingDue(e.target.value)} style={inputStyle}/></Field>
+            <p>{(evidenceMode(completionAssignment)==="signature" || evidenceMode(completionAssignment)==="both") ? "Electronic acknowledgement will follow this step." : "Completion will be recorded with the supplied evidence."}</p>
+            <button disabled={savingCompletion} onClick={submitCompletion} style={primaryButtonStyle}>{savingCompletion?"Saving...":"Save Completion"}</button>
+            <button disabled={savingCompletion} onClick={()=>setCompletionAssignment(null)}>Cancel</button>
+          </div>
+        </div>
+      ) : null}
       <ESignatureModal
         open={showTrainingSignature}
         title="Training Acknowledgement Signature"
