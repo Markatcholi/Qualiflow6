@@ -115,6 +115,9 @@ export default function TrainingManagementPage() {
   const [newAssignment, setNewAssignment] = useState({
     document_id: "",
     training_category: "standard",
+    recurrence_months: "12",
+    recurrence_basis: "completion",
+    recurring_evidence_mode: "attachment",
     assigned_to_email: "",
     training_title: "",
     training_description: "",
@@ -404,12 +407,17 @@ export default function TrainingManagementPage() {
       return;
     }
 
+    if (newAssignment.training_category === "recurring" && (!Number.isInteger(Number(newAssignment.recurrence_months)) || Number(newAssignment.recurrence_months) < 1 || Number(newAssignment.recurrence_months) > 120)) { alert("Recurrence must be between 1 and 120 months."); return; }
+
     const { error } = await supabase.from("training_assignments").insert({
       document_id: newAssignment.document_id || null,
       assigned_to_email: normalizeEmail(newAssignment.assigned_to_email),
       assigned_by_email: userEmail || "unknown",
       assignment_source: "manual",
       training_category: newAssignment.training_category,
+      recurrence_months: newAssignment.training_category === "recurring" ? Number(newAssignment.recurrence_months) : null,
+      recurrence_basis: newAssignment.training_category === "recurring" ? newAssignment.recurrence_basis : null,
+      recurring_evidence_mode: newAssignment.training_category === "recurring" ? newAssignment.recurring_evidence_mode : null,
       role_name: newAssignment.role_name || null,
       department: newAssignment.department || null,
       training_title: newAssignment.training_title,
@@ -1051,7 +1059,13 @@ export default function TrainingManagementPage() {
         <p style={subtleText}>Certification training assigns required learning and competency assessment. It does not certify the employee; QA-approved certification evidence must be registered separately.</p>
 
         <div style={gridStyle}>
-          <Field label="Training Type"><select value={newAssignment.training_category} onChange={(e) => setNewAssignment({ ...newAssignment, training_category: e.target.value })} style={inputStyle}><option value="standard">Standard Training</option><option value="certification">Certification Training</option></select></Field>
+          <Field label="Training Type"><select value={newAssignment.training_category} onChange={(e) => setNewAssignment({ ...newAssignment, training_category: e.target.value })} style={inputStyle}><option value="standard">Read &amp; Understand / Standard Training</option><option value="certification">Certification Training</option><option value="recurring">Recurring Training</option></select></Field>
+          {newAssignment.training_category === "recurring" ? <>
+            <Field label="Repeat Every (Months)"><input type="number" min={1} max={120} value={newAssignment.recurrence_months} onChange={(e) => setNewAssignment({ ...newAssignment, recurrence_months: e.target.value })} style={inputStyle} /></Field>
+            <Field label="Recurrence Basis"><select value={newAssignment.recurrence_basis} onChange={(e) => setNewAssignment({ ...newAssignment, recurrence_basis: e.target.value })} style={inputStyle}><option value="completion">Last Completion Date</option><option value="calendar">Fixed Calendar Schedule</option></select></Field>
+            <Field label="Required Completion Evidence"><select value={newAssignment.recurring_evidence_mode} onChange={(e) => setNewAssignment({ ...newAssignment, recurring_evidence_mode: e.target.value })} style={inputStyle}><option value="signature">Electronic Acknowledgement</option><option value="attachment">Training Evidence Attachment</option><option value="both">Both</option></select></Field>
+            <p style={subtleText}>Recurring configuration is saved for planning. Automatic future assignments and attachment enforcement will be enabled in the next phase.</p>
+          </> : null}
           <Field label="Controlled Document">
             <select
               value={newAssignment.document_id}
