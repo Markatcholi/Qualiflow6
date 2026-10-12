@@ -114,6 +114,7 @@ export default function TrainingManagementPage() {
 
   const [newAssignment, setNewAssignment] = useState({
     document_id: "",
+    training_category: "standard",
     assigned_to_email: "",
     training_title: "",
     training_description: "",
@@ -408,6 +409,7 @@ export default function TrainingManagementPage() {
       assigned_to_email: normalizeEmail(newAssignment.assigned_to_email),
       assigned_by_email: userEmail || "unknown",
       assignment_source: "manual",
+      training_category: newAssignment.training_category,
       role_name: newAssignment.role_name || null,
       department: newAssignment.department || null,
       training_title: newAssignment.training_title,
@@ -1045,8 +1047,10 @@ export default function TrainingManagementPage() {
 
 <section style={cardStyle}>
         <h2 style={{ marginTop: 0 }}>Create Training Assignment</h2>
+        <p style={subtleText}>Certification training assigns required learning and competency assessment. It does not certify the employee; QA-approved certification evidence must be registered separately.</p>
 
         <div style={gridStyle}>
+          <Field label="Training Type"><select value={newAssignment.training_category} onChange={(e) => setNewAssignment({ ...newAssignment, training_category: e.target.value })} style={inputStyle}><option value="standard">Standard Training</option><option value="certification">Certification Training</option></select></Field>
           <Field label="Controlled Document">
             <select
               value={newAssignment.document_id}
