@@ -441,6 +441,9 @@ export default function TrainingManagementPage() {
     setNewAssignment({
       document_id: "",
       training_category: "standard",
+      recurrence_months: "12",
+      recurrence_basis: "completion",
+      recurring_evidence_mode: "attachment",
       assigned_to_email: "",
       training_title: "",
       training_description: "",
