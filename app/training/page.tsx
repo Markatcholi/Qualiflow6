@@ -100,6 +100,7 @@ export default function TrainingManagementPage() {
   const [employees, setEmployees] = useState<EmployeeProfile[]>([]);
   const [signatures, setSignatures] = useState<ElectronicSignature[]>([]);
   const [autoAssigning, setAutoAssigning] = useState(false);
+  const [generatingRecurring, setGeneratingRecurring] = useState(false);
   const [autoAssignResult, setAutoAssignResult] = useState<any>(null);
 
   const [newEmployee, setNewEmployee] = useState({
@@ -457,6 +458,21 @@ export default function TrainingManagementPage() {
       })
       .filter((row) => row.assigned > 0);
   }, [documents, assignments, today]);
+
+  const generateRecurringCycles = async () => {
+    if (generatingRecurring) return;
+    setGeneratingRecurring(true);
+    try {
+      const { data, error } = await supabase.rpc("qualisphere_generate_recurring_training_cycles");
+      if (error) throw error;
+      alert(`${Number(data || 0)} recurring training cycle(s) created. Existing open cycles were not changed.`);
+      await fetchData();
+    } catch (error: any) {
+      alert(error?.message || "Could not generate recurring training cycles.");
+    } finally {
+      setGeneratingRecurring(false);
+    }
+  };
 
   const createAssignment = async () => {
     if (!normalizeEmail(newAssignment.assigned_to_email)) {
@@ -1113,7 +1129,11 @@ export default function TrainingManagementPage() {
       </section>
 
 <section style={cardStyle}>
-        <h2 style={{ marginTop: 0 }}>Create Training Assignment</h2>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
+          <h2 style={{ marginTop: 0 }}>Create Training Assignment</h2>
+          {canManage ? <button onClick={generateRecurringCycles} disabled={generatingRecurring} style={primaryButtonStyle}>{generatingRecurring ? "Checking Cycles..." : "Generate Due Recurring Cycles"}</button> : null}
+        </div>
+        <p style={subtleText}>Recurring cycles are generated when due, based on the previous completed cycle. Each new cycle retains its own assignment, evidence and history. Uncompleted cycles remain open.</p>
         <p style={subtleText}>Certification training assigns required learning and competency assessment. It does not certify the employee; QA-approved certification evidence must be registered separately.</p>
 
         <div style={gridStyle}>
