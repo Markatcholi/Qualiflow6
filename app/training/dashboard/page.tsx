@@ -10,7 +10,7 @@ type TrainingCertification = {
   employee_email: string;
   certification_title: string;
   certified_on: string;
-  expires_on: string;
+  expires_on: string | null;
   reminder_days: number;
   renewal_of_id: string | null;
 };
@@ -156,8 +156,9 @@ export default function TrainingIntelligenceDashboardPage() {
     const current = certifications.filter((record) =>
       !certifications.some((newer) => newer.renewal_of_id === record.id)
     );
-    const expired = current.filter((record) => record.expires_on < today);
+    const expired = current.filter((record) => record.expires_on !== null && record.expires_on < today);
     const expiring = current.filter((record) => {
+      if (!record.expires_on) return false;
       const days = Math.ceil((Date.parse(record.expires_on + "T00:00:00Z") - Date.parse(today + "T00:00:00Z")) / 86400000);
       return days >= 0 && days <= record.reminder_days;
     });
@@ -442,7 +443,7 @@ export default function TrainingIntelligenceDashboardPage() {
           <p>Expired qualifications remain expired until a new certification record is issued. Renewal assignments alone do not extend validity.</p>
           <table style={tableStyle}><thead><tr><th style={thStyle}>Employee</th><th style={thStyle}>Certification</th><th style={thStyle}>Expires</th><th style={thStyle}>Status</th></tr></thead>
           <tbody>{[...certificationStatus.expired, ...certificationStatus.expiring].map((record) => (
-            <tr key={record.id}><td style={tdStyle}>{record.employee_email}</td><td style={tdStyle}>{record.certification_title}</td><td style={tdStyle}>{record.expires_on}</td><td style={tdStyle}>{record.expires_on < today ? "Expired" : "Expiring Soon"}</td></tr>
+            <tr key={record.id}><td style={tdStyle}>{record.employee_email}</td><td style={tdStyle}>{record.certification_title}</td><td style={tdStyle}>{record.expires_on}</td><td style={tdStyle}>{record.expires_on && record.expires_on < today ? "Expired" : "Expiring Soon"}</td></tr>
           ))}</tbody></table>
         </section>
         <SummaryCard title="Training by Role" rows={roleCounts.length ? roleCounts : [["No data", 0]]} />
