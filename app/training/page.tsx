@@ -115,6 +115,7 @@ export default function TrainingManagementPage() {
   const [loading, setLoading] = useState(true);
   const [userEmail, setUserEmail] = useState("");
   const [userRole, setUserRole] = useState("");
+  const [trainingCoordinator, setTrainingCoordinator] = useState(false);
 
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterMine, setFilterMine] = useState(false);
@@ -205,12 +206,7 @@ export default function TrainingManagementPage() {
   const [effectivenessResult, setEffectivenessResult] = useState("");
   const [effectivenessComments, setEffectivenessComments] = useState("");
 
-  const canManage =
-    userRole === "admin" ||
-    userRole === "approver" ||
-    userRole === "vp_quality" ||
-    userRole === "quality" ||
-    userRole === "training_admin";
+  const canManage = trainingCoordinator;
 
   const fetchUser = async () => {
     const { data: userData } = await supabase.auth.getUser();
@@ -226,6 +222,11 @@ export default function TrainingManagementPage() {
       .maybeSingle();
 
     setUserRole(data?.role || "user");
+    const { data: tenant } = await supabase.rpc("qualisphere_resolve_training_tenant");
+    if (tenant) {
+      const { data: allowed } = await supabase.rpc("qualisphere_training_is_coordinator", {p_tenant:tenant});
+      setTrainingCoordinator(allowed === true);
+    } else setTrainingCoordinator(false);
 
   };
 
@@ -337,7 +338,9 @@ export default function TrainingManagementPage() {
   const today = new Date().toISOString().slice(0, 10);
 
   const filteredAssignments = useMemo(() => {
+    const reportEmails = new Set(employees.filter((e) => e.manager_email?.toLowerCase() === userEmail.toLowerCase()).map((e) => e.user_email.toLowerCase()));
     return assignments.filter((item) => {
+      if (!canManage && item.assigned_to_email.toLowerCase() !== userEmail.toLowerCase() && !reportEmails.has(item.assigned_to_email.toLowerCase())) return false;
       const matchesStatus =
         filterStatus === "all" || item.status === filterStatus;
 
@@ -346,7 +349,7 @@ export default function TrainingManagementPage() {
 
       return matchesStatus && matchesMine;
     });
-  }, [assignments, filterStatus, filterMine, userEmail]);
+  }, [assignments, employees, canManage, filterStatus, filterMine, userEmail]);
 
   const metrics = useMemo(() => {
     const open = assignments.filter(
@@ -1143,6 +1146,7 @@ export default function TrainingManagementPage() {
         </div>
       </section>
 
+{canManage ? (
 <section style={cardStyle}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
           <h2 style={{ marginTop: 0 }}>Create Training Assignment</h2>
@@ -1311,6 +1315,9 @@ export default function TrainingManagementPage() {
         </button>
       </section>
 
+) : null}
+
+{canManage ? (
       <section style={cardStyle}>
         <h2 style={{ marginTop: 0 }}>Employee Profiles</h2>
 
@@ -1402,6 +1409,8 @@ export default function TrainingManagementPage() {
           ))}
         </ul>
       </section>
+
+) : null}
 
       <section style={cardStyle}>
         <h2 style={{ marginTop: 0 }}>
