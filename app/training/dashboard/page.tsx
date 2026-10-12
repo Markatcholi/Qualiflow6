@@ -40,6 +40,8 @@ type TrainingAssignment = {
   signature_id?: string | null;
   training_comments: string | null;
   created_at: string | null;
+  training_category?: string | null;
+  recurring_parent_assignment_id?: string | null;
 };
 
 type TrainingMatrixRow = {
@@ -212,6 +214,18 @@ export default function TrainingIntelligenceDashboardPage() {
         assignment.status === "effectiveness_complete",
     );
     const waivedTraining = assignments.filter((assignment) => assignment.status === "waived");
+    const recurringAssignments = assignments.filter((assignment) => assignment.training_category === "recurring");
+    const recurringOverdue = recurringAssignments.filter((assignment) => isOverdueAssignment(assignment));
+    const upcomingRecurring = recurringAssignments.filter((assignment) => {
+      if (!isOpen(assignment) || !assignment.due_date) return false;
+      const due = String(assignment.due_date).slice(0,10);
+      const horizon = new Date(today + "T12:00:00");
+      horizon.setDate(horizon.getDate()+30);
+      return due >= today && due <= horizon.toISOString().slice(0,10);
+    });
+    const recurringCyclesCompleted = recurringAssignments.filter((assignment) =>
+      Boolean(assignment.recurring_parent_assignment_id) &&
+      (assignment.status === "completed" || assignment.status === "effectiveness_complete"));
     const inProgressTraining = assignments.filter((assignment) => assignment.status === "in_progress");
     const awaitingSignature = assignments.filter(
       (assignment) =>
@@ -260,6 +274,9 @@ export default function TrainingIntelligenceDashboardPage() {
     return {
       openTraining,
       overdueTraining,
+      recurringOverdue,
+      upcomingRecurring,
+      recurringCyclesCompleted,
       completedTraining,
       waivedTraining,
       inProgressTraining,
@@ -282,6 +299,9 @@ export default function TrainingIntelligenceDashboardPage() {
   }, [assignments, signatures, today]);
 
   const kpis: KpiTile[] = [
+    { title: "Recurring Training Due in 30 Days", value: metrics.upcomingRecurring.length, color: "#2563eb" },
+    { title: "Overdue Recurring Training", value: metrics.recurringOverdue.length, color: "#dc2626" },
+    { title: "Completed Retraining Cycles", value: metrics.recurringCyclesCompleted.length, color: "#15803d" },
     { title: "Training Completion Rate", value: metrics.completionRate, suffix: "%", color: metrics.completionStatus.color, target: "Target: 90%", statusLabel: metrics.completionStatus.label, statusIcon: metrics.completionStatus.icon, statusColor: metrics.completionStatus.color },
     { title: "On-Time Completion", value: metrics.onTimeCompletionRate, suffix: "%", color: metrics.onTimeStatus.color, target: "Target: 90%", statusLabel: metrics.onTimeStatus.label, statusIcon: metrics.onTimeStatus.icon, statusColor: metrics.onTimeStatus.color },
     { title: "Effectiveness Completion", value: metrics.effectivenessCompletionRate, suffix: "%", color: metrics.effectivenessStatus.color, target: "Target: 90%", statusLabel: metrics.effectivenessStatus.label, statusIcon: metrics.effectivenessStatus.icon, statusColor: metrics.effectivenessStatus.color },
