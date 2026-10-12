@@ -432,6 +432,7 @@ export default function TrainingManagementPage() {
 
     setNewAssignment({
       document_id: "",
+      training_category: "standard",
       assigned_to_email: "",
       training_title: "",
       training_description: "",
