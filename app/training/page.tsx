@@ -101,6 +101,7 @@ export default function TrainingManagementPage() {
   const [signatures, setSignatures] = useState<ElectronicSignature[]>([]);
   const [autoAssigning, setAutoAssigning] = useState(false);
   const [generatingRecurring, setGeneratingRecurring] = useState(false);
+  const [sendingTrainingNotices, setSendingTrainingNotices] = useState(false);
   const [autoAssignResult, setAutoAssignResult] = useState<any>(null);
 
   const [newEmployee, setNewEmployee] = useState({
@@ -458,6 +459,20 @@ export default function TrainingManagementPage() {
       })
       .filter((row) => row.assigned > 0);
   }, [documents, assignments, today]);
+
+  const sendTrainingDueNotices = async () => {
+    if (sendingTrainingNotices) return;
+    setSendingTrainingNotices(true);
+    try {
+      const { data, error } = await supabase.rpc("qualisphere_send_training_due_notices");
+      if (error) throw error;
+      alert(`${Number(data || 0)} new due-soon or overdue notification(s) sent. Duplicate notices were skipped.`);
+    } catch (error: any) {
+      alert(error?.message || "Unable to send training notifications.");
+    } finally {
+      setSendingTrainingNotices(false);
+    }
+  };
 
   const generateRecurringCycles = async () => {
     if (generatingRecurring) return;
@@ -1132,6 +1147,7 @@ export default function TrainingManagementPage() {
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
           <h2 style={{ marginTop: 0 }}>Create Training Assignment</h2>
           {canManage ? <button onClick={generateRecurringCycles} disabled={generatingRecurring} style={primaryButtonStyle}>{generatingRecurring ? "Checking Cycles..." : "Generate Due Recurring Cycles"}</button> : null}
+          {canManage ? <button onClick={sendTrainingDueNotices} disabled={sendingTrainingNotices} style={primaryButtonStyle}>{sendingTrainingNotices ? "Sending Notices..." : "Send Due Training Notices"}</button> : null}
         </div>
         <p style={subtleText}>Recurring cycles are generated when due, based on the previous completed cycle. Each new cycle retains its own assignment, evidence and history. Uncompleted cycles remain open.</p>
         <p style={subtleText}>Certification training assigns required learning and competency assessment. It does not certify the employee; QA-approved certification evidence must be registered separately.</p>
