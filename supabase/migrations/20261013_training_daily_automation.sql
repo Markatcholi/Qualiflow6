@@ -1,10 +1,12 @@
 -- QualiSphere Training: unattended daily recurring cycles and reminders.
 -- This migration installs a database-only worker; it never accepts client-supplied tenant IDs.
+-- SECURITY INVOKER is intentional: cron executes under its privileged job owner.
+-- No SECURITY DEFINER privilege escalation is exposed through the Data API.
 create extension if not exists pg_cron with schema pg_catalog;
 
 create or replace function public.qualisphere_training_daily_automation()
 returns table(cycles_created integer, notices_created integer)
-language plpgsql security definer
+language plpgsql security invoker
 set search_path = public, pg_catalog
 as $$
 declare
@@ -16,8 +18,9 @@ declare
   v_kind text;
   v_key text;
 begin
-  -- Never expose the scheduler as a user-callable endpoint.
-  if current_user <> 'postgres' and session_user <> 'postgres' then
+  -- Only the privileged postgres session may execute this invoker function.
+  -- Never grant EXECUTE to API roles or ordinary authenticated users.
+  if session_user <> 'postgres' then
     raise exception 'Database scheduler only';
   end if;
   for r in
@@ -95,6 +98,7 @@ begin
 end;
 $$;
 revoke all on function public.qualisphere_training_daily_automation() from public, anon, authenticated;
+grant execute on function public.qualisphere_training_daily_automation() to postgres;
 -- Cron runs as the migration owner (postgres). Avoid granting access to API roles.
 do $$
 begin
