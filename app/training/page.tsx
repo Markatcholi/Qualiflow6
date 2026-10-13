@@ -886,6 +886,11 @@ export default function TrainingManagementPage() {
         </div>
 
         <div style={buttonRowStyle}>
+          {canManage && (
+            <a href="/training/compliance" style={darkButtonStyle}>
+              Training Compliance Report
+            </a>
+          )}
           <a href="/training/dashboard" style={darkButtonStyle}>
             Training Intelligence Dashboard
           </a>
