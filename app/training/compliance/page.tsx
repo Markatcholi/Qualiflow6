@@ -94,6 +94,36 @@ export default function TrainingCompliancePage(){
  };
  const recurringUpcoming=recurring.filter(a=>{const due=renewalDate(a);return due&&due>=asOf&&due<=nextThirty;}).length;
  const recurringOverdue=recurring.filter(a=>{const due=renewalDate(a);return due&&due<asOf&&!completed(a.status);}).length;
+ const overdueEmployees=useMemo(()=>{
+  const grouped=new Map<string,{email:string;department:string;count:number;oldest:string}>();
+  for(const a of scoped){
+   if(classification(a)!=="Overdue")continue;
+   const key=a.assigned_to_email.trim().toLowerCase();
+   const prev=grouped.get(key);
+   if(prev){prev.count++;if(a.due_date&&a.due_date<prev.oldest)prev.oldest=a.due_date;}
+   else grouped.set(key,{email:a.assigned_to_email,department:a.department||"Unassigned",count:1,oldest:a.due_date||asOf});
+  }
+  return [...grouped.values()].sort((a,b)=>b.count-a.count||a.oldest.localeCompare(b.oldest));
+ },[scoped,asOf]);
+ const completedLast90=scoped.filter(a=>{
+  const date=a.training_completed_on||a.completed_at?.slice(0,10);
+  if(!completed(a.status)||!date||date>asOf)return false;
+  const start=new Date(Date.parse(asOf+"T00:00:00Z")-89*86400000).toISOString().slice(0,10);
+  return date>=start;
+ }).length;
+ const certificationRisks=scoped.filter(a=>{
+  if(a.training_category!=="certification")return false;
+  if(!completed(a.status)&&!waived(a.status))return classification(a)==="Overdue"||classification(a)==="Due within 30 days";
+  return !!a.training_valid_until&&a.training_valid_until<=nextThirty;
+ });
+ const trend=Array.from({length:6},(_,i)=>{
+  const ref=new Date(Date.parse(asOf+"T00:00:00Z"));
+  ref.setUTCDate(1);ref.setUTCMonth(ref.getUTCMonth()-(5-i));
+  const year=ref.getUTCFullYear(),month=ref.getUTCMonth();
+  const key=year+"-"+String(month+1).padStart(2,"0");
+  const count=scoped.filter(a=>completed(a.status)&&(a.training_completed_on||a.completed_at?.slice(0,10)||"").startsWith(key)).length;
+  return {month:key,count};
+ });
  const exportCsv=()=>{
   const lines=[
    ["Employee","Department","Training","Category","Status","Due date","Completed on","Classification"],
@@ -123,6 +153,17 @@ export default function TrainingCompliancePage(){
    <div style={{display:"flex",gap:16,flexWrap:"wrap",marginBottom:24}}>
     {([["Assignments",total],["Completed",completeCount],["Waived",waivedCount],["Overdue",overdue],["Due within 30 days",upcoming],["Closed rate",total?Math.round((completeCount+waivedCount)*100/total)+"%":"N/A"]] as const).map(([label,value])=><div key={label} style={{border:"1px solid #ccc",borderRadius:8,padding:16,minWidth:130}}><strong style={{display:"block",fontSize:24}}>{value}</strong>{label}</div>)}
    </div>
+   <h2>Management compliance overview</h2>
+   <p>Six-month completion activity and employee-level overdue exposure. Metrics reflect the selected department and category filters and the reporting date.</p>
+   <div style={{display:"flex",gap:16,flexWrap:"wrap",marginBottom:18}}>
+    {([["Completed in last 90 days",completedLast90],["Employees with overdue training",overdueEmployees.length],["Certification risks",certificationRisks.length]] as const).map(([label,value])=><div key={label} style={{border:"1px solid #ccc",borderRadius:8,padding:14,minWidth:175}}><strong style={{display:"block",fontSize:22}}>{value}</strong>{label}</div>)}
+   </div>
+   <h3>Training completions by month</h3>
+   <div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse"}}><thead><tr>{trend.map(t=><th key={t.month} style={cell}>{t.month}</th>)}</tr></thead><tbody><tr>{trend.map(t=><td key={t.month} style={cell}>{t.count}</td>)}</tr></tbody></table></div>
+   <h3>Employees with overdue assignments</h3>
+   <div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse"}}><thead><tr>{["Employee","Department","Overdue assignments","Oldest due date"].map(h=><th key={h} style={cell}>{h}</th>)}</tr></thead><tbody>{overdueEmployees.map(e=><tr key={e.email}><td style={cell}>{e.email}</td><td style={cell}>{e.department}</td><td style={cell}>{e.count}</td><td style={cell}>{e.oldest}</td></tr>)}</tbody></table>{overdueEmployees.length===0&&<p>No overdue employees in this reporting scope.</p>}</div>
+   <h3>Certification expiry and due-date risks</h3>
+   <div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse"}}><thead><tr>{["Employee","Certification","Status","Due date","Valid until"].map(h=><th key={h} style={cell}>{h}</th>)}</tr></thead><tbody>{certificationRisks.map(a=><tr key={a.id}><td style={cell}>{a.assigned_to_email}</td><td style={cell}>{a.training_title||"Certification"}</td><td style={cell}>{a.status||"assigned"}</td><td style={cell}>{a.due_date||"—"}</td><td style={cell}>{a.training_valid_until||"—"}</td></tr>)}</tbody></table>{certificationRisks.length===0&&<p>No certification risks in this reporting scope.</p>}</div>
    <h2>Recurring training oversight</h2>
    <p>Renewal dates are calculated from the configured recurrence basis when no next-due date is stored. Completed historical cycles remain visible and are not treated as overdue.</p>
    <div style={{display:"flex",gap:16,flexWrap:"wrap",marginBottom:14}}>
