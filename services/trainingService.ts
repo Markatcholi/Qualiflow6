@@ -44,6 +44,7 @@ export async function acknowledgeTraining({
     .from("training_assignments")
     .update({
       status: "completed",
+      training_completed_on: new Date().toISOString().slice(0, 10),
       completed_at: new Date().toISOString(),
       completed_by: userEmail,
       acknowledged_at: new Date().toISOString(),
