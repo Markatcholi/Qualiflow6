@@ -653,6 +653,10 @@ export default function TrainingManagementPage() {
     assignment: TrainingAssignment,
     status: string
   ) => {
+    if (status === "in_progress" && assignment.assigned_to_email.trim().toLowerCase() !== userEmail.trim().toLowerCase()) {
+      alert("Only the assigned employee can start this training.");
+      return;
+    }
     const payload: any = { status };
 
     if (status === "in_progress") {
@@ -1067,7 +1071,7 @@ export default function TrainingManagementPage() {
                         Open Training Record
                       </a>
 
-                      {assignment.status === "assigned" ? (
+                      {assignment.status === "assigned" && assignment.assigned_to_email.trim().toLowerCase() === userEmail.trim().toLowerCase() ? (
                         <button
                           onClick={() =>
                             updateAssignmentStatus(assignment, "in_progress")
