@@ -1098,9 +1098,9 @@ export default function TrainingManagementPage() {
 
                       {canManage && assignment.effectiveness_required ? (
                         <details>
-                          <summary>Effectiveness Check</summary>
+                          <summary>Training Evaluation</summary>
                           <input
-                            placeholder="Method"
+                            placeholder="Evaluation Method"
                             value={effectivenessMethod}
                             onChange={(e) =>
                               setEffectivenessMethod(e.target.value)
@@ -1108,7 +1108,7 @@ export default function TrainingManagementPage() {
                             style={inputStyle}
                           />
                           <input
-                            placeholder="Result"
+                            placeholder="Evaluation Result"
                             value={effectivenessResult}
                             onChange={(e) =>
                               setEffectivenessResult(e.target.value)
@@ -1127,7 +1127,7 @@ export default function TrainingManagementPage() {
                           <button
                             onClick={() => completeEffectiveness(assignment)}
                           >
-                            Complete Effectiveness
+                            Complete Evaluation
                           </button>
                         </details>
                       ) : null}
