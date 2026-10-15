@@ -557,12 +557,12 @@ export default function TrainingAssignmentDetailPage() {
       </section>
 
       <section style={cardStyle}>
-        <h2 style={{ marginTop: 0 }}>Effectiveness Check</h2>
+        <h2 style={{ marginTop: 0 }}>Training Evaluation</h2>
 
         {assignment.effectiveness_required ? (
           <>
             <div style={gridStyle}>
-              <Field label="Effectiveness Status"><div>{trainingEffectivenessLabel(assignment.effectiveness_status)}</div></Field>
+              <Field label="Evaluation Status"><div>{trainingEffectivenessLabel(assignment.effectiveness_status)}</div></Field>
               <Field label="Supervisor Verification">
                 <div>
                   {assignment.supervisor_verification_required
@@ -576,15 +576,15 @@ export default function TrainingAssignmentDetailPage() {
 
             {canManage ? (
               <div style={trainingCardStyle}>
-                <h3 style={{ marginTop: 0 }}>Complete Effectiveness Check</h3>
+                <h3 style={{ marginTop: 0 }}>Complete Training Evaluation</h3>
                 <input
-                  placeholder="Method"
+                  placeholder="Evaluation Method"
                   value={effectivenessMethod}
                   onChange={(e) => setEffectivenessMethod(e.target.value)}
                   style={inputStyle}
                 />
                 <input
-                  placeholder="Result"
+                  placeholder="Evaluation Result"
                   value={effectivenessResult}
                   onChange={(e) => setEffectivenessResult(e.target.value)}
                   style={inputStyle}
@@ -597,12 +597,12 @@ export default function TrainingAssignmentDetailPage() {
                   style={textareaStyle}
                 />
                 <button disabled={busy} onClick={completeEffectiveness} style={primaryButtonStyle}>
-                  Complete Effectiveness
+                  Complete Evaluation
                 </button>
               </div>
             ) : null}
 
-            <h3>Effectiveness History</h3>
+            <h3>Evaluation History</h3>
             {effectivenessChecks.length === 0 ? (
               <p style={subtleText}>No effectiveness checks recorded.</p>
             ) : (
