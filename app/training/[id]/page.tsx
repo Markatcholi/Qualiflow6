@@ -386,7 +386,6 @@ export default function TrainingAssignmentDetailPage() {
       .from("training_assignments")
       .update({
         effectiveness_status: "effectiveness_complete",
-        status: assignment.status === "completed" ? "effectiveness_complete" : assignment.status,
       })
       .eq("id", assignment.id);
 
@@ -435,7 +434,7 @@ export default function TrainingAssignmentDetailPage() {
         <div style={kpiCardStyle}><div style={kpiTitleStyle}>Training Status</div><StatusBadge status={isOverdue ? "overdue" : assignment.status || "assigned"} /></div>
         <div style={kpiCardStyle}><div style={kpiTitleStyle}>Due Date</div><strong>{assignment.due_date || "N/A"}</strong></div>
         <div style={kpiCardStyle}><div style={kpiTitleStyle}>Completion Date</div><strong>{formatDateTime(assignment.completed_at)}</strong></div>
-        <div style={kpiCardStyle}><div style={kpiTitleStyle}>Effectiveness</div><strong>{assignment.effectiveness_required ? (assignment.effectiveness_status || "Pending evaluator review").replaceAll("_", " ") : "Not required"}</strong></div>
+        <div style={kpiCardStyle}><div style={kpiTitleStyle}>Effectiveness</div><strong>{assignment.effectiveness_required ? trainingEffectivenessLabel(assignment.effectiveness_status) : "Not required"}</strong></div>
       </section>
 
       {canManage ? (
@@ -563,7 +562,7 @@ export default function TrainingAssignmentDetailPage() {
         {assignment.effectiveness_required ? (
           <>
             <div style={gridStyle}>
-              <Field label="Effectiveness Status"><div>{assignment.effectiveness_status || "pending"}</div></Field>
+              <Field label="Effectiveness Status"><div>{trainingEffectivenessLabel(assignment.effectiveness_status)}</div></Field>
               <Field label="Supervisor Verification">
                 <div>
                   {assignment.supervisor_verification_required
@@ -722,3 +721,10 @@ const warningStyle: React.CSSProperties = { color: "#b45309", background: "#fffb
 const tableStyle: React.CSSProperties = { width: "100%", borderCollapse: "collapse" };
 const thStyle: React.CSSProperties = { textAlign: "left", borderBottom: "1px solid #d1d5db", padding: "10px" };
 const tdStyle: React.CSSProperties = { borderBottom: "1px solid #e5e7eb", padding: "10px", verticalAlign: "top" };
+
+function trainingEffectivenessLabel(status?: string | null) {
+  if (!status || status === "effectiveness_pending") return "Pending Evaluation";
+  if (status === "effectiveness_complete") return "Evaluation Completed";
+  if (status === "not_required") return "Not Required";
+  return status.replaceAll("_", " ");
+}
