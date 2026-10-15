@@ -6,6 +6,7 @@ type Props = {
   open: boolean;
   title: string;
   actionLabel: string;
+  fixedMeaning?: string;
   onSubmit: (data: {
     meaning: string;
     reason: string;
@@ -17,6 +18,7 @@ export default function ESignatureModal({
   open,
   title,
   actionLabel,
+  fixedMeaning,
   onSubmit,
   onClose,
 }: Props) {
@@ -33,7 +35,7 @@ export default function ESignatureModal({
 
         <label>
           Signature Meaning
-          <select
+          {fixedMeaning ? <div style={{ ...inputStyle, padding: "8px 0", fontWeight: 600 }}>{fixedMeaning}</div> : <select
             value={meaning}
             onChange={(e) => setMeaning(e.target.value)}
             style={inputStyle}
@@ -44,7 +46,7 @@ export default function ESignatureModal({
             <option>Verify</option>
             <option>Acknowledge Training</option>
             <option>Authorize Release</option>
-          </select>
+          </select>}
         </label>
 
         <label>
@@ -63,7 +65,7 @@ export default function ESignatureModal({
               setSaving(true);
 
               await onSubmit({
-                meaning,
+                meaning: fixedMeaning || meaning,
                 reason,
               });
 
