@@ -520,8 +520,8 @@ export default function TrainingManagementPage() {
       training_description: newAssignment.training_description || null,
       due_date: newAssignment.due_date || null,
       status: "assigned",
-      effectiveness_required: newAssignment.effectiveness_required,
-      effectiveness_status: newAssignment.effectiveness_required
+      effectiveness_required: newAssignment.training_category === "certification" || newAssignment.effectiveness_required,
+      effectiveness_status: (newAssignment.training_category === "certification" || newAssignment.effectiveness_required)
         ? "effectiveness_pending"
         : "not_required",
       supervisor_verification_required:
@@ -759,10 +759,6 @@ export default function TrainingManagementPage() {
       .from("training_assignments")
       .update({
         effectiveness_status: "effectiveness_complete",
-        status:
-          assignment.status === "completed"
-            ? "effectiveness_complete"
-            : assignment.status,
       })
       .eq("id", assignment.id);
 
@@ -1036,8 +1032,8 @@ export default function TrainingManagementPage() {
                   </td>
                   <td style={tdStyle}>
                     {assignment.effectiveness_required
-                      ? assignment.effectiveness_status || "pending"
-                      : "Not required"}
+                      ? trainingEffectivenessLabel(assignment.effectiveness_status)
+                      : "Not Required"}
                   </td>
                   <td style={tdStyle}>
                     {assignment.supervisor_verification_required
@@ -1166,7 +1162,7 @@ export default function TrainingManagementPage() {
         <p style={subtleText}>Certification training assigns required learning and competency assessment. It does not certify the employee; QA-approved certification evidence must be registered separately.</p>
 
         <div style={gridStyle}>
-          <Field label="Training Type"><select value={newAssignment.training_category} onChange={(e) => setNewAssignment({ ...newAssignment, training_category: e.target.value })} style={inputStyle}><option value="standard">Read &amp; Understand / Standard Training</option><option value="certification">Certification Training</option><option value="recurring">Recurring Training</option></select></Field>
+          <Field label="Training Type"><select value={newAssignment.training_category} onChange={(e) => setNewAssignment({ ...newAssignment, training_category: e.target.value, effectiveness_required: e.target.value === "certification" ? true : newAssignment.training_category === "certification" ? false : newAssignment.effectiveness_required })} style={inputStyle}><option value="standard">Read &amp; Understand / Standard Training</option><option value="certification">Certification Training</option><option value="recurring">Recurring Training</option></select></Field>
           {newAssignment.training_category === "recurring" ? <>
             <Field label="Repeat Every (Months)"><input type="number" min={1} max={120} value={newAssignment.recurrence_months} onChange={(e) => setNewAssignment({ ...newAssignment, recurrence_months: e.target.value })} style={inputStyle} /></Field>
             <Field label="Recurrence Basis"><select value={newAssignment.recurrence_basis} onChange={(e) => setNewAssignment({ ...newAssignment, recurrence_basis: e.target.value })} style={inputStyle}><option value="completion">Last Completion Date</option><option value="calendar">Fixed Calendar Schedule</option></select></Field>
@@ -1293,7 +1289,8 @@ export default function TrainingManagementPage() {
           <label>
             <input
               type="checkbox"
-              checked={newAssignment.effectiveness_required}
+              checked={newAssignment.training_category === "certification" || newAssignment.effectiveness_required}
+              disabled={newAssignment.training_category === "certification"}
               onChange={(e) =>
                 setNewAssignment({
                   ...newAssignment,
@@ -1301,7 +1298,7 @@ export default function TrainingManagementPage() {
                 })
               }
             />{" "}
-            Effectiveness Required
+            Effectiveness Required {newAssignment.training_category === "certification" ? "(required for certification)" : "(optional assessment)"}
           </label>
 
           <label>
@@ -1763,3 +1760,10 @@ const smallTextStyle: React.CSSProperties = {
   color: "#6b7280",
 };
 const warningTextStyle: React.CSSProperties = { color: "#b45309", fontWeight: 700 };
+
+function trainingEffectivenessLabel(status?: string | null) {
+  if (!status || status === "effectiveness_pending") return "Pending Evaluation";
+  if (status === "effectiveness_complete") return "Evaluation Completed";
+  if (status === "not_required") return "Not Required";
+  return status.replaceAll("_", " ");
+}
