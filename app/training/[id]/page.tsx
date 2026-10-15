@@ -32,6 +32,11 @@ type TrainingAssignment = {
   signature_id?: string | null;
   training_comments: string | null;
   created_at: string | null;
+  tenant_id?: string | null;
+  training_evidence_storage_path?: string | null;
+  training_evidence_file_name?: string | null;
+  training_category?: string | null;
+  recurring_evidence_mode?: string | null;
 };
 
 type ControlledDocument = {
@@ -89,6 +94,7 @@ export default function TrainingAssignmentDetailPage() {
   const [userRole, setUserRole] = useState("");
 
   const [showSignatureModal, setShowSignatureModal] = useState(false);
+  const [evidenceFile, setEvidenceFile] = useState<File | null>(null);
   const [effectivenessMethod, setEffectivenessMethod] = useState("");
   const [effectivenessResult, setEffectivenessResult] = useState("");
   const [effectivenessComments, setEffectivenessComments] = useState("");
@@ -188,6 +194,7 @@ export default function TrainingAssignmentDetailPage() {
     const loadedAssignment = assignmentRes.data as TrainingAssignment | null;
     setAssignment(loadedAssignment);
     setTrainingComments(loadedAssignment?.training_comments || "");
+    setEvidenceFile(null);
 
     if (loadedAssignment?.document_id) {
       const docRes = await supabase
@@ -285,6 +292,16 @@ export default function TrainingAssignmentDetailPage() {
     setBusy(true);
 
     try {
+      if (evidenceFile) {
+        if (!assignment.tenant_id) throw new Error("Training tenant is missing.");
+        if (evidenceFile.size > 10485760) throw new Error("Maximum evidence file size is 10 MB.");
+        const extension = evidenceFile.name.split(".").pop()?.toLowerCase() || "bin";
+        const path = `${assignment.tenant_id}/${assignment.id}/${crypto.randomUUID()}.${extension}`;
+        const uploaded = await supabase.storage.from("training-completion-evidence").upload(path, evidenceFile, { upsert: false });
+        if (uploaded.error) throw uploaded.error;
+        const saved = await supabase.from("training_assignments").update({ training_evidence_storage_path: path, training_evidence_file_name: evidenceFile.name }).eq("id", assignment.id);
+        if (saved.error) throw saved.error;
+      }
       await acknowledgeTraining({
         assignmentId: assignment.id,
         documentId: assignment.document_id,
@@ -295,6 +312,7 @@ export default function TrainingAssignmentDetailPage() {
       });
 
       setShowSignatureModal(false);
+      setEvidenceFile(null);
       await fetchData();
       alert("Training completed and electronically signed.");
     } catch (error: any) {
@@ -414,48 +432,30 @@ export default function TrainingAssignmentDetailPage() {
       </header>
 
       <section style={kpiGridStyle}>
-        <div style={kpiCardStyle}>
-          <div style={kpiTitleStyle}>Status</div>
-          <StatusBadge status={isOverdue ? "overdue" : assignment.status || "assigned"} />
-        </div>
-        <KpiCard title="Signatures" value={signatures.length} color="#2563eb" />
-        <KpiCard title="Effectiveness Checks" value={effectivenessChecks.length} color="#7c3aed" />
-        <div style={kpiCardStyle}>
-          <div style={kpiTitleStyle}>Due Date</div>
-          <div style={{ fontSize: "22px", fontWeight: 800, color: isOverdue ? "#dc2626" : "#111827" }}>
-            {assignment.due_date || "N/A"}
+        <div style={kpiCardStyle}><div style={kpiTitleStyle}>Training Status</div><StatusBadge status={isOverdue ? "overdue" : assignment.status || "assigned"} /></div>
+        <div style={kpiCardStyle}><div style={kpiTitleStyle}>Due Date</div><strong>{assignment.due_date || "N/A"}</strong></div>
+        <div style={kpiCardStyle}><div style={kpiTitleStyle}>Completion Date</div><strong>{formatDateTime(assignment.completed_at)}</strong></div>
+        <div style={kpiCardStyle}><div style={kpiTitleStyle}>Effectiveness</div><strong>{assignment.effectiveness_required ? (assignment.effectiveness_status || "Pending evaluator review").replaceAll("_", " ") : "Not required"}</strong></div>
+      </section>
+
+      {canManage ? (
+        <section style={cardStyle}>
+          <h2 style={{ marginTop: 0 }}>Administrative Assignment Details</h2>
+          <div style={gridStyle}>
+            <Field label="Assigned To"><div>{assignment.assigned_to_email}</div></Field>
+            <Field label="Assigned By"><div>{assignment.assigned_by_email || "N/A"}</div></Field>
+            <Field label="Role"><div>{assignment.role_name || "N/A"}</div></Field>
+            <Field label="Department"><div>{assignment.department || "N/A"}</div></Field>
+            <Field label="Assignment Source"><div>{assignment.assignment_source || "N/A"}</div></Field>
+            <Field label="Acknowledgement Required"><div>{assignment.acknowledgement_required ? "Yes" : "No"}</div></Field>
+            <Field label="Completed By"><div>{assignment.completed_by || "N/A"}</div></Field>
+            <Field label="Acknowledged By"><div>{assignment.acknowledged_by || "N/A"}</div></Field>
           </div>
-        </div>
-      </section>
+        </section>
+      ) : null}
 
       <section style={cardStyle}>
-        <h2 style={{ marginTop: 0 }}>Assignment Details</h2>
-        <div style={gridStyle}>
-          <Field label="Assigned To"><div>{assignment.assigned_to_email}</div></Field>
-          <Field label="Assigned By"><div>{assignment.assigned_by_email || "N/A"}</div></Field>
-          <Field label="Role"><div>{assignment.role_name || "N/A"}</div></Field>
-          <Field label="Department"><div>{assignment.department || "N/A"}</div></Field>
-          <Field label="Assignment Source"><div>{assignment.assignment_source || "N/A"}</div></Field>
-          <Field label="Acknowledgement Required"><div>{assignment.acknowledgement_required ? "Yes" : "No"}</div></Field>
-          <Field label="Completed At"><div>{formatDateTime(assignment.completed_at)}</div></Field>
-          <Field label="Completed By"><div>{assignment.completed_by || "N/A"}</div></Field>
-          <Field label="Acknowledged At"><div>{formatDateTime(assignment.acknowledged_at)}</div></Field>
-          <Field label="Acknowledged By"><div>{assignment.acknowledged_by || "N/A"}</div></Field>
-        </div>
-
-        <Field label="Training Comments">
-          <textarea
-            value={trainingComments}
-            onChange={(e) => setTrainingComments(e.target.value)}
-            rows={3}
-            style={textareaStyle}
-            disabled={assignment.status === "completed"}
-          />
-        </Field>
-      </section>
-
-      <section style={cardStyle}>
-        <h2 style={{ marginTop: 0 }}>Controlled Document</h2>
+        <h2 style={{ marginTop: 0 }}>Training Materials</h2>
 
         {documentRecord ? (
           <>
@@ -484,9 +484,7 @@ export default function TrainingAssignmentDetailPage() {
                 <span style={warningStyle}>No document file attached.</span>
               )}
 
-              <a href={`/documents/${documentRecord.id}`} style={darkButtonStyle}>
-                Open Document Workflow
-              </a>
+              {canManage ? <a href={`/documents/${documentRecord.id}`} style={darkButtonStyle}>Open Document Workflow</a> : null}
             </div>
           </>
         ) : (
@@ -495,9 +493,10 @@ export default function TrainingAssignmentDetailPage() {
       </section>
 
       <section style={cardStyle}>
-        <h2 style={{ marginTop: 0 }}>Training Actions</h2>
+        <h2 style={{ marginTop: 0 }}>Complete Training</h2>
+        {canCompleteTraining ? <div style={{ marginBottom: 16 }}><label style={labelStyle}>Supporting Training Evidence (optional upload)</label><input type="file" onChange={(e) => setEvidenceFile(e.target.files?.[0] || null)} disabled={busy} style={{ display: "block", marginTop: 8 }} /><p style={subtleText}>{assignment.training_evidence_file_name ? `Existing evidence: ${assignment.training_evidence_file_name}` : "Attach a training form, examination result, or practical assessment if available."}</p></div> : null}
         <div style={actionStackStyle}>
-          {assignment.status === "assigned" ? (
+          {isAssignedUser && assignment.status === "assigned" ? (
             <button disabled={busy} onClick={() => updateAssignmentStatus("in_progress")} style={primaryButtonStyle}>
               Start Training
             </button>
@@ -505,7 +504,7 @@ export default function TrainingAssignmentDetailPage() {
 
           {canCompleteTraining ? (
             <button disabled={busy} onClick={() => setShowSignatureModal(true)} style={primaryButtonStyle}>
-              Electronic Signature Required - Complete Training
+              Approve & Complete Training
             </button>
           ) : null}
 
@@ -627,8 +626,9 @@ export default function TrainingAssignmentDetailPage() {
 
       <ESignatureModal
         open={showSignatureModal}
-        title="Training Acknowledgement Signature"
-        actionLabel="Sign & Complete Training"
+        title="Training Approval Signature"
+        actionLabel="Approve & Complete Training"
+        fixedMeaning="Approve Training"
         onSubmit={handleTrainingSignatureSubmit}
         onClose={() => setShowSignatureModal(false)}
       />
