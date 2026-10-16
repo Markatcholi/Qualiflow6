@@ -734,6 +734,11 @@ export default function TrainingManagementPage() {
       return;
     }
 
+    if (!assignment.effectiveness_required || assignment.effectiveness_status === "effectiveness_complete") {
+      alert("This training evaluation is already completed or not required.");
+      return;
+    }
+
     if (!effectivenessMethod.trim() || !effectivenessResult.trim()) {
       alert("Effectiveness method and result are required.");
       return;
@@ -1096,7 +1101,7 @@ export default function TrainingManagementPage() {
                         </button>
                       ) : null}
 
-                      {canManage && assignment.effectiveness_required ? (
+                      {canManage && assignment.effectiveness_required && assignment.effectiveness_status !== "effectiveness_complete" ? (
                         <details>
                           <summary>Training Evaluation</summary>
                           <input
