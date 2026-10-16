@@ -358,6 +358,11 @@ export default function TrainingAssignmentDetailPage() {
       return;
     }
 
+    if (!assignment.effectiveness_required || assignment.effectiveness_status === "effectiveness_complete") {
+      alert("This training evaluation is already completed or not required.");
+      return;
+    }
+
     if (!effectivenessMethod.trim() || !effectivenessResult.trim()) {
       alert("Effectiveness method and result are required.");
       return;
@@ -574,7 +579,7 @@ export default function TrainingAssignmentDetailPage() {
               </Field>
             </div>
 
-            {canManage ? (
+            {canManage && assignment.effectiveness_status !== "effectiveness_complete" ? (
               <div style={trainingCardStyle}>
                 <h3 style={{ marginTop: 0 }}>Complete Training Evaluation</h3>
                 <input
@@ -604,7 +609,7 @@ export default function TrainingAssignmentDetailPage() {
 
             <h3>Evaluation History</h3>
             {effectivenessChecks.length === 0 ? (
-              <p style={subtleText}>No effectiveness checks recorded.</p>
+              <p style={subtleText}>No training evaluations recorded.</p>
             ) : (
               <div style={{ display: "grid", gap: "10px" }}>
                 {effectivenessChecks.map((check) => (
@@ -619,7 +624,7 @@ export default function TrainingAssignmentDetailPage() {
             )}
           </>
         ) : (
-          <p style={subtleText}>Effectiveness check is not required for this assignment.</p>
+          <p style={subtleText}>Training evaluation is not required for this assignment.</p>
         )}
       </section>
 
