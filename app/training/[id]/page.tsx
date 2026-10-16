@@ -435,6 +435,13 @@ export default function TrainingAssignmentDetailPage() {
         </div>
       </header>
 
+      {canManage && documentRecord ? (
+        <div style={{ ...gridStyle, marginBottom: 16 }}>
+          <Field label="SOP Number"><strong>{documentRecord.document_number}</strong></Field>
+          <Field label="Revision"><strong>{documentRecord.revision}</strong></Field>
+        </div>
+      ) : null}
+
       <section style={kpiGridStyle}>
         <div style={kpiCardStyle}><div style={kpiTitleStyle}>Training Status</div><StatusBadge status={isOverdue ? "overdue" : assignment.status || "assigned"} /></div>
         <div style={kpiCardStyle}><div style={kpiTitleStyle}>Due Date</div><strong>{assignment.due_date || "N/A"}</strong></div>
@@ -458,12 +465,7 @@ export default function TrainingAssignmentDetailPage() {
         </section>
       ) : null}
 
-      {canManage ? (
-        <section style={cardStyle}>
-          <h2 style={{ marginTop: 0 }}>Training Material</h2>
-          <div>{documentRecord ? `${documentRecord.document_number} Rev ${documentRecord.revision}` : "No controlled document linked"}</div>
-        </section>
-      ) : <section style={cardStyle}>
+      {!canManage ? <section style={cardStyle}>
         <h2 style={{ marginTop: 0 }}>Training Materials</h2>
 
         {documentRecord ? (
