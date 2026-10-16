@@ -458,7 +458,12 @@ export default function TrainingAssignmentDetailPage() {
         </section>
       ) : null}
 
-      <section style={cardStyle}>
+      {canManage ? (
+        <section style={cardStyle}>
+          <h2 style={{ marginTop: 0 }}>Training Material</h2>
+          <div>{documentRecord ? `${documentRecord.document_number} Rev ${documentRecord.revision}` : "No controlled document linked"}</div>
+        </section>
+      ) : <section style={cardStyle}>
         <h2 style={{ marginTop: 0 }}>Training Materials</h2>
 
         {documentRecord ? (
@@ -494,7 +499,7 @@ export default function TrainingAssignmentDetailPage() {
         ) : (
           <p style={subtleText}>No controlled document is linked to this training assignment.</p>
         )}
-      </section>
+      </section>}
 
       {(canCompleteTraining || (isAssignedUser && assignment.status === "assigned") || (canManage && assignment.supervisor_verification_required && !assignment.supervisor_verified_at) || (canManage && assignment.status !== "completed" && assignment.status !== "waived")) ? <section style={cardStyle}>
         <h2 style={{ marginTop: 0 }}>Complete Training</h2>
@@ -525,41 +530,6 @@ export default function TrainingAssignmentDetailPage() {
           ) : null}
         </div>
       </section> : null}
-
-      <section style={cardStyle}>
-        <h2 style={{ marginTop: 0 }}>Electronic Signature Record</h2>
-
-        {signatures.length === 0 ? (
-          <p style={subtleText}>No electronic signature has been recorded for this training assignment.</p>
-        ) : (
-          <div style={{ overflowX: "auto" }}>
-            <table style={tableStyle}>
-              <thead>
-                <tr>
-                  <th style={thStyle}>Signed By</th>
-                  <th style={thStyle}>Role</th>
-                  <th style={thStyle}>Action</th>
-                  <th style={thStyle}>Meaning</th>
-                  <th style={thStyle}>Reason</th>
-                  <th style={thStyle}>Signed At</th>
-                </tr>
-              </thead>
-              <tbody>
-                {signatures.map((signature) => (
-                  <tr key={signature.id}>
-                    <td style={tdStyle}>{signature.signed_by}</td>
-                    <td style={tdStyle}>{signature.signer_role || "N/A"}</td>
-                    <td style={tdStyle}>{signature.action_type}</td>
-                    <td style={tdStyle}>{signature.signature_meaning}</td>
-                    <td style={tdStyle}>{signature.signature_reason || "N/A"}</td>
-                    <td style={tdStyle}>{formatDateTime(signature.signed_at)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
 
       <section style={cardStyle}>
         <h2 style={{ marginTop: 0 }}>Training Evaluation</h2>
@@ -638,6 +608,41 @@ export default function TrainingAssignmentDetailPage() {
           </>
         ) : (
           <p style={subtleText}>Training evaluation is not required for this assignment.</p>
+        )}
+      </section>
+
+      <section style={cardStyle}>
+        <h2 style={{ marginTop: 0 }}>Electronic Signature Record</h2>
+
+        {signatures.length === 0 ? (
+          <p style={subtleText}>No electronic signature has been recorded for this training assignment.</p>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table style={tableStyle}>
+              <thead>
+                <tr>
+                  <th style={thStyle}>Signed By</th>
+                  <th style={thStyle}>Role</th>
+                  <th style={thStyle}>Action</th>
+                  <th style={thStyle}>Meaning</th>
+                  <th style={thStyle}>Reason</th>
+                  <th style={thStyle}>Signed At</th>
+                </tr>
+              </thead>
+              <tbody>
+                {signatures.map((signature) => (
+                  <tr key={signature.id}>
+                    <td style={tdStyle}>{signature.signed_by}</td>
+                    <td style={tdStyle}>{signature.signer_role || "N/A"}</td>
+                    <td style={tdStyle}>{signature.action_type}</td>
+                    <td style={tdStyle}>{signature.signature_meaning}</td>
+                    <td style={tdStyle}>{signature.signature_reason || "N/A"}</td>
+                    <td style={tdStyle}>{formatDateTime(signature.signed_at)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </section>
 
