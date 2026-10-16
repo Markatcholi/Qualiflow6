@@ -496,7 +496,7 @@ export default function TrainingAssignmentDetailPage() {
         )}
       </section>
 
-      <section style={cardStyle}>
+      {(canCompleteTraining || (isAssignedUser && assignment.status === "assigned") || (canManage && assignment.supervisor_verification_required && !assignment.supervisor_verified_at) || (canManage && assignment.status !== "completed" && assignment.status !== "waived")) ? <section style={cardStyle}>
         <h2 style={{ marginTop: 0 }}>Complete Training</h2>
         {canCompleteTraining ? <div style={{ marginBottom: 16 }}><label style={labelStyle}>Supporting Training Evidence (optional upload)</label><input type="file" onChange={(e) => setEvidenceFile(e.target.files?.[0] || null)} disabled={busy} style={{ display: "block", marginTop: 8 }} /><p style={subtleText}>{assignment.training_evidence_file_name ? `Existing evidence: ${assignment.training_evidence_file_name}` : "Attach a training form, examination result, or practical assessment if available."}</p></div> : null}
         <div style={actionStackStyle}>
@@ -524,7 +524,7 @@ export default function TrainingAssignmentDetailPage() {
             </button>
           ) : null}
         </div>
-      </section>
+      </section> : null}
 
       <section style={cardStyle}>
         <h2 style={{ marginTop: 0 }}>Electronic Signature Record</h2>
@@ -604,6 +604,19 @@ export default function TrainingAssignmentDetailPage() {
                 <button disabled={busy} onClick={completeEffectiveness} style={primaryButtonStyle}>
                   Complete Evaluation
                 </button>
+              </div>
+            ) : null}
+
+            {assignment.effectiveness_status === "effectiveness_complete" && effectivenessChecks.length > 0 ? (
+              <div style={trainingCardStyle}>
+                <h3 style={{ marginTop: 0 }}>Completed Evaluation (Read Only)</h3>
+                <div style={gridStyle}>
+                  <Field label="Evaluation Method"><div>{effectivenessChecks[0].effectiveness_method || "N/A"}</div></Field>
+                  <Field label="Evaluation Result"><div>{effectivenessChecks[0].effectiveness_result || "N/A"}</div></Field>
+                  <Field label="Evaluated By"><div>{effectivenessChecks[0].verified_by || "N/A"}</div></Field>
+                  <Field label="Evaluation Date"><div>{formatDateTime(effectivenessChecks[0].verified_at)}</div></Field>
+                  <Field label="Comments"><div>{effectivenessChecks[0].comments || "None"}</div></Field>
+                </div>
               </div>
             ) : null}
 
