@@ -493,6 +493,19 @@ export default function TrainingManagementPage() {
   };
 
   const createAssignment = async () => {
+    // Verify the selected revision again at submission time; the dropdown alone is not a security boundary.
+    if (newAssignment.document_id) {
+      const { data: currentDocument, error: documentError } = await supabase
+        .from("controlled_documents")
+        .select("id,status")
+        .eq("id", newAssignment.document_id)
+        .maybeSingle();
+      if (documentError || !currentDocument || !["release", "effective"].includes(String(currentDocument.status || "").toLowerCase())) {
+        alert("Select a currently released, effective controlled document. Superseded and unreleased revisions cannot be assigned to new training.");
+        await fetchData();
+        return;
+      }
+    }
     if (!normalizeEmail(newAssignment.assigned_to_email)) {
       alert("Assigned-to email is required.");
       return;
@@ -1186,7 +1199,7 @@ export default function TrainingManagementPage() {
               style={inputStyle}
             >
               <option value="">No linked document</option>
-              {documents.map((doc) => (
+              {documents.filter((doc) => ["release", "effective"].includes(String(doc.status || "").toLowerCase())).map((doc) => (
                 <option key={doc.id} value={doc.id}>
                   {doc.document_number} Rev {doc.revision} — {doc.title}
                 </option>
