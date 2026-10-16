@@ -493,6 +493,7 @@ export default function TrainingManagementPage() {
   };
 
   const createAssignment = async () => {
+    if (newAssignment.training_category === "certification") { alert("Use the Certification Register to record externally approved signed certifications. Certification training is not an employee acknowledgement assignment."); return; }
     // Verify the selected revision again at submission time; the dropdown alone is not a security boundary.
     if (newAssignment.document_id) {
       const { data: currentDocument, error: documentError } = await supabase
@@ -1177,10 +1178,10 @@ export default function TrainingManagementPage() {
           {canManage ? <button onClick={sendTrainingDueNotices} disabled={sendingTrainingNotices} style={primaryButtonStyle}>{sendingTrainingNotices ? "Sending Notices..." : "Send Due Training Notices"}</button> : null}
         </div>
         <p style={subtleText}>Recurring cycles are generated when due, based on the previous completed cycle. Each new cycle retains its own assignment, evidence and history. Uncompleted cycles remain open.</p>
-        <p style={subtleText}>Certification training assigns required learning and competency assessment. It does not certify the employee; QA-approved certification evidence must be registered separately.</p>
+        <p style={subtleText}>Completed certification is registered individually with an externally approved signed form. <a href="/training/certifications" style={{ textDecoration: "underline" }}>Open Certification Register</a>.</p>
 
         <div style={gridStyle}>
-          <Field label="Training Type"><select value={newAssignment.training_category} onChange={(e) => setNewAssignment({ ...newAssignment, training_category: e.target.value, effectiveness_required: e.target.value === "certification" ? true : newAssignment.training_category === "certification" ? false : newAssignment.effectiveness_required })} style={inputStyle}><option value="standard">Read &amp; Understand / Standard Training</option><option value="certification">Certification Training</option><option value="recurring">Recurring Training</option></select></Field>
+          <Field label="Training Type"><select value={newAssignment.training_category} onChange={(e) => setNewAssignment({ ...newAssignment, training_category: e.target.value, effectiveness_required: e.target.value === "certification" ? true : newAssignment.training_category === "certification" ? false : newAssignment.effectiveness_required })} style={inputStyle}><option value="standard">Read &amp; Understand / Standard Training</option><option value="recurring">Recurring Training</option></select></Field>
           {newAssignment.training_category === "recurring" ? <>
             <Field label="Repeat Every (Months)"><input type="number" min={1} max={120} value={newAssignment.recurrence_months} onChange={(e) => setNewAssignment({ ...newAssignment, recurrence_months: e.target.value })} style={inputStyle} /></Field>
             <Field label="Recurrence Basis"><select value={newAssignment.recurrence_basis} onChange={(e) => setNewAssignment({ ...newAssignment, recurrence_basis: e.target.value })} style={inputStyle}><option value="completion">Last Completion Date</option><option value="calendar">Fixed Calendar Schedule</option></select></Field>
