@@ -446,7 +446,7 @@ export default function TrainingAssignmentDetailPage() {
         <div style={kpiCardStyle}><div style={kpiTitleStyle}>Training Status</div><StatusBadge status={isOverdue ? "overdue" : assignment.status || "assigned"} /></div>
         <div style={kpiCardStyle}><div style={kpiTitleStyle}>Due Date</div><strong>{assignment.due_date || "N/A"}</strong></div>
         <div style={kpiCardStyle}><div style={kpiTitleStyle}>Completion Date</div><strong>{formatDateTime(assignment.completed_at)}</strong></div>
-        <div style={kpiCardStyle}><div style={kpiTitleStyle}>Effectiveness</div><strong>{assignment.effectiveness_required ? trainingEffectivenessLabel(assignment.effectiveness_status) : "Not required"}</strong></div>
+        <div style={kpiCardStyle}><div style={kpiTitleStyle}>Evaluation Status</div><strong>{assignment.effectiveness_required ? trainingEffectivenessLabel(assignment.effectiveness_status) : "Not required"}</strong></div>
       </section>
 
       {canManage ? (
