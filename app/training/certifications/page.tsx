@@ -142,17 +142,15 @@ export default function CertificationRegister() {
   return <main style={{ maxWidth: 1160, margin: "24px auto", padding: 20 }}>
     <Link href="/training">← Training</Link>
     <h1>Certification Register</h1>
-    <p>Approved individual certifications by employee and controlled SOP revision. Historical revisions remain visible.</p>
     {error && <p role="alert" style={{ color: "#b91c1c" }}>{error}</p>}
     {coordinator && <section style={box}>
       <h2>Register approved certification</h2>
-      <p>Register approved, externally signed certifications only. Completed registrations are read-only; corrections must preserve an audit trail.</p>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))", gap: 12 }}>
         <label style={label}>Released SOP<select style={field} value={documentId} onChange={e => setDocumentId(e.target.value)}><option value="">Select SOP</option>{docs.filter(d => released(d.status)).map(d => <option key={d.id} value={d.id}>{d.document_number} Rev {d.revision} — {d.title}</option>)}</select></label>
         <label style={label}>Description<input style={field} value={selectedDoc?.title || ""} readOnly /></label>
         <label style={label}>Revision<input style={field} value={selectedDoc?.revision || ""} readOnly /></label>
         <label style={label}>Employee<select style={field} value={employeeEmail} onChange={e => setEmployeeEmail(e.target.value)}><option value="">Select employee</option>{employees.map(e => <option key={e.user_email} value={e.user_email}>{e.user_email}</option>)}</select></label>
-        <label style={label}>Certification Title (optional)<input style={field} value={title} onChange={e => setTitle(e.target.value)} /></label>
+        <label style={label}>Process (optional)<input style={field} value={title} onChange={e => setTitle(e.target.value)} /></label>
         <label style={label}>Certification Date<input style={field} type="date" value={date} onChange={e => setDate(e.target.value)} /></label>
         <label style={label}>Expiration Date (optional)<input style={field} type="date" value={expiry} onChange={e => setExpiry(e.target.value)} /></label>
         <label style={label}>Approved Certification Form (PDF)<input style={field} type="file" accept=".pdf,application/pdf" onChange={e => setEvidence(e.target.files?.[0] || null)} /></label>
@@ -162,8 +160,8 @@ export default function CertificationRegister() {
     </section>}
     <section style={box}>
       <h2>Registered Certifications — Read Only</h2>
-      <label style={label}>Search employee, SOP number, revision, or title<input style={field} value={search} onChange={e => setSearch(e.target.value)} placeholder="e.g. SOP-0001 or Rev A" /></label>
-      {loading ? <p>Loading...</p> : <div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left" }}><thead><tr>{["Released SOP","Description","Revision","Employee","Certification Title","Certification Date","Expiration Date","Approved Form","Comments","Action"].map(h => <th key={h} style={{ padding: 8, borderBottom: "1px solid #aaa" }}>{h}</th>)}</tr></thead><tbody>
+      <label style={label}>Search employee, SOP number, revision, or process<input style={field} value={search} onChange={e => setSearch(e.target.value)} placeholder="e.g. SOP-0001 or Rev A" /></label>
+      {loading ? <p>Loading...</p> : <div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left" }}><thead><tr>{["Released SOP","Description","Revision","Employee","Process","Certification Date","Expiration Date","Approved Form","Comments","Action"].map(h => <th key={h} style={{ padding: 8, borderBottom: "1px solid #aaa" }}>{h}</th>)}</tr></thead><tbody>
         {filtered.map(r => { const d = r.document_id ? docMap.get(r.document_id) : null; return <tr key={r.id}>
           <td style={{ padding: 8 }}>{d?.document_number || "—"}</td>
           <td style={{ padding: 8 }}>{d?.title || "—"}</td>
