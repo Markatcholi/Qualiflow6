@@ -438,7 +438,7 @@ export default function TrainingAssignmentDetailPage() {
         <div>
           <div style={eyebrowStyle}>TRAINING RECORD</div>
           <h1 style={{ margin: "6px 0" }}>{isRegisteredCertification && documentRecord ? `${documentRecord.document_number} — ${documentRecord.title} — Rev ${documentRecord.revision}` : assignment.training_title || "Training Assignment"}</h1>
-          {isRegisteredCertification ? <p style={subtleText}>Certification: {assignment.training_title || "Approved certification"}</p> : <p style={subtleText}>{assignment.training_description || "Controlled document training record."}</p>}
+          {isRegisteredCertification ? <p style={subtleText}>Process: {assignment.training_title || "Approved certification"}</p> : <p style={subtleText}>{assignment.training_description || "Controlled document training record."}</p>}
         </div>
 
         <div style={buttonRowStyle}>
@@ -487,7 +487,7 @@ export default function TrainingAssignmentDetailPage() {
         </section>
       ) : null}
 
-      {!canManage && (
+      {!canManage && !isRegisteredCertification && (
       <section style={cardStyle}>
         <h2 style={{ marginTop: 0 }}>Training Materials</h2>
 
@@ -528,7 +528,7 @@ export default function TrainingAssignmentDetailPage() {
 
       )}
 
-      {(canCompleteTraining || (isAssignedUser && assignment.status === "assigned") || (canManage && assignment.supervisor_verification_required && !assignment.supervisor_verified_at) || (canManage && assignment.status !== "completed" && assignment.status !== "waived")) ? <section style={cardStyle}>
+      {!isRegisteredCertification && (canCompleteTraining || (isAssignedUser && assignment.status === "assigned") || (canManage && assignment.supervisor_verification_required && !assignment.supervisor_verified_at) || (canManage && assignment.status !== "completed" && assignment.status !== "waived")) ? <section style={cardStyle}>
         <h2 style={{ marginTop: 0 }}>Complete Training</h2>
         {canCompleteTraining ? <div style={{ marginBottom: 16 }}><label style={labelStyle}>Supporting Training Evidence (optional upload)</label><input type="file" onChange={(e) => setEvidenceFile(e.target.files?.[0] || null)} disabled={busy} style={{ display: "block", marginTop: 8 }} /><p style={subtleText}>{assignment.training_evidence_file_name ? `Existing evidence: ${assignment.training_evidence_file_name}` : "Attach a training form, examination result, or practical assessment if available."}</p></div> : null}
         <div style={actionStackStyle}>
