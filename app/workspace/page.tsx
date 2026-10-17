@@ -605,50 +605,6 @@ export default function HomePage() {
       </header>
 
       <section style={workspaceGridStyle}>
-        <aside style={leftPanelStyle}>
-          <h2 style={panelTitleStyle}>Modules</h2>
-          {!isInternalTenant ? (
-            <p style={subscriptionNoteStyle}>
-              Showing modules activated by QualiSphere for this Company Account.
-            </p>
-          ) : null}
-
-          {qualityModules.length > 0 ? (
-            <ModuleGroup
-              title="Quality Management"
-              isOpen={openGroups.quality}
-              onToggle={() => toggleGroup("quality")}
-              items={qualityModules}
-              role={role}
-              canManageDocuments={isCompanyAdministrator || /document control coordinator|quality system admin|qms admin|administrator/i.test(role)}
-            />
-          ) : null}
-
-          {analyticsModules.length > 0 ? (
-            <ModuleGroup
-              title="Analytics"
-              isOpen={openGroups.analytics}
-              onToggle={() => toggleGroup("analytics")}
-              items={analyticsModules}
-            />
-          ) : null}
-
-          {administrationItems.length > 0 ? (
-            <ModuleGroup
-              title="Administration"
-              isOpen={openGroups.administration}
-              onToggle={() => toggleGroup("administration")}
-              items={administrationItems}
-            />
-          ) : null}
-
-          {!isInternalTenant && qualityModules.length === 0 && analyticsModules.length === 0 ? (
-            <div style={emptyModuleStyle}>
-              No subscribed modules are currently enabled for this Company Account.
-            </div>
-          ) : null}
-        </aside>
-
         <section style={rightPanelStyle}>
           <div style={rightPanelHeaderStyle}>
             <div>
@@ -1530,7 +1486,7 @@ const notificationButtonStyle: React.CSSProperties = { position: "relative", dis
 const companyAdminButtonStyle: React.CSSProperties = { display: "inline-flex", alignItems: "center", background: "#eff6ff", color: "#1d4ed8", border: "1px solid #93c5fd", borderRadius: "10px", padding: "10px 14px", textDecoration: "none", fontWeight: 900 };
 const notificationBadgeStyle: React.CSSProperties = { minWidth: "22px", height: "22px", borderRadius: "999px", display: "inline-flex", alignItems: "center", justifyContent: "center", background: "#dc2626", color: "#ffffff", fontSize: "12px", padding: "0 5px" };
 const refreshButtonStyle: React.CSSProperties = { background: "#2563eb", color: "white", border: "none", borderRadius: "10px", padding: "10px 14px", fontWeight: 900, cursor: "pointer" };
-const workspaceGridStyle: React.CSSProperties = { display: "grid", gridTemplateColumns: "minmax(280px, 360px) minmax(0, 1fr)", gap: "22px", alignItems: "start" };
+const workspaceGridStyle: React.CSSProperties = { display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: "22px", alignItems: "start" };
 const leftPanelStyle: React.CSSProperties = { background: "white", border: "1px solid #d1d5db", borderRadius: "18px", padding: "18px", boxShadow: "0 10px 28px rgba(15,23,42,0.06)" };
 const rightPanelStyle: React.CSSProperties = { minWidth: 0, background: "white", border: "1px solid #d1d5db", borderRadius: "18px", padding: "18px", boxShadow: "0 10px 28px rgba(15,23,42,0.06)" };
 const rightPanelHeaderStyle: React.CSSProperties = { display: "flex", justifyContent: "space-between", gap: "14px", alignItems: "center", marginBottom: "12px" };
