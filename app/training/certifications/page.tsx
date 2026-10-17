@@ -10,7 +10,7 @@ type RecordRow = {
   id: string; tenant_id: string; document_id: string | null; assigned_to_email: string;
   training_title: string | null; training_completed_on: string | null;
   training_valid_until: string | null; training_evidence_storage_path: string | null;
-  training_evidence_file_name: string | null; department: string | null;
+  training_evidence_file_name: string | null; training_description: string | null; department: string | null;
   completed_by: string | null; created_at: string;
 };
 const box: React.CSSProperties = { border: "1px solid #d1d5db", borderRadius: 8, padding: 16, marginBottom: 18 };
@@ -53,7 +53,7 @@ export default function CertificationRegister() {
       const [d, e, r] = await Promise.all([
         supabase.from("controlled_documents").select("id,document_number,title,revision,status").eq("tenant_id", t.data),
         supabase.from("employee_profiles").select("user_email,full_name,department,role_name").eq("tenant_id", t.data).eq("active", true),
-        supabase.from("training_assignments").select("id,tenant_id,document_id,assigned_to_email,training_title,training_completed_on,training_valid_until,training_evidence_storage_path,training_evidence_file_name,department,completed_by,created_at").eq("tenant_id", t.data).eq("training_category", "certification").eq("status", "completed").order("created_at", { ascending: false })
+        supabase.from("training_assignments").select("id,tenant_id,document_id,assigned_to_email,training_title,training_description,training_completed_on,training_valid_until,training_evidence_storage_path,training_evidence_file_name,department,completed_by,created_at").eq("tenant_id", t.data).eq("training_category", "certification").eq("status", "completed").order("created_at", { ascending: false })
       ]);
       if (d.error) throw d.error;
       if (e.error) throw e.error;
@@ -70,6 +70,7 @@ export default function CertificationRegister() {
   useEffect(() => { void load(); }, [load]);
   const docMap = useMemo(() => new Map(docs.map(d => [d.id, d])), [docs]);
   const employeeMap = useMemo(() => new Map(employees.map(e => [e.user_email.toLowerCase(), e])), [employees]);
+  const selectedDoc = docs.find(d => d.id === documentId);
   const filtered = records.filter(r => {
     const d = r.document_id ? docMap.get(r.document_id) : null;
     const person = employeeMap.get(r.assigned_to_email.toLowerCase());
@@ -145,24 +146,37 @@ export default function CertificationRegister() {
     {error && <p role="alert" style={{ color: "#b91c1c" }}>{error}</p>}
     {coordinator && <section style={box}>
       <h2>Register approved certification</h2>
-      <p>Register only after practical assessment has passed and the trainer, trainee, and QA have signed the certification form outside QualiSphere. Do not record failed attempts as completed certifications.</p>
+      <p>Register approved, externally signed certifications only. Completed registrations are read-only; corrections must preserve an audit trail.</p>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))", gap: 12 }}>
-        <label style={label}>Released SOP revision<select style={field} value={documentId} onChange={e => setDocumentId(e.target.value)}><option value="">Select SOP</option>{docs.filter(d => released(d.status)).map(d => <option key={d.id} value={d.id}>{d.document_number} Rev {d.revision} — {d.title}</option>)}</select></label>
-        <label style={label}>Certified employee<select style={field} value={employeeEmail} onChange={e => setEmployeeEmail(e.target.value)}><option value="">Select employee</option>{employees.map(e => <option key={e.user_email} value={e.user_email}>{e.user_email}</option>)}</select></label>
-        <label style={label}>Certification title (optional)<input style={field} value={title} onChange={e => setTitle(e.target.value)} /></label>
-        <label style={label}>Certification date<input style={field} type="date" value={date} onChange={e => setDate(e.target.value)} /></label>
-        <label style={label}>Expiration (optional)<input style={field} type="date" value={expiry} onChange={e => setExpiry(e.target.value)} /></label>
-        <label style={label}>Approved signed certification form (PDF)<input style={field} type="file" accept=".pdf,application/pdf" onChange={e => setEvidence(e.target.files?.[0] || null)} /></label>
+        <label style={label}>Released SOP<select style={field} value={documentId} onChange={e => setDocumentId(e.target.value)}><option value="">Select SOP</option>{docs.filter(d => released(d.status)).map(d => <option key={d.id} value={d.id}>{d.document_number} Rev {d.revision} — {d.title}</option>)}</select></label>
+        <label style={label}>Description<input style={field} value={selectedDoc?.title || ""} readOnly /></label>
+        <label style={label}>Revision<input style={field} value={selectedDoc?.revision || ""} readOnly /></label>
+        <label style={label}>Employee<select style={field} value={employeeEmail} onChange={e => setEmployeeEmail(e.target.value)}><option value="">Select employee</option>{employees.map(e => <option key={e.user_email} value={e.user_email}>{e.user_email}</option>)}</select></label>
+        <label style={label}>Certification Title (optional)<input style={field} value={title} onChange={e => setTitle(e.target.value)} /></label>
+        <label style={label}>Certification Date<input style={field} type="date" value={date} onChange={e => setDate(e.target.value)} /></label>
+        <label style={label}>Expiration Date (optional)<input style={field} type="date" value={expiry} onChange={e => setExpiry(e.target.value)} /></label>
+        <label style={label}>Approved Certification Form (PDF)<input style={field} type="file" accept=".pdf,application/pdf" onChange={e => setEvidence(e.target.files?.[0] || null)} /></label>
       </div>
       <label style={label}>Comments (optional)<textarea style={field} value={comments} onChange={e => setComments(e.target.value)} /></label>
       <button type="button" disabled={saving} onClick={register} style={{ padding: "10px 18px" }}>{saving ? "Registering..." : "Register Certification"}</button>
     </section>}
     <section style={box}>
-      <h2>Certification history</h2>
+      <h2>Registered Certifications — Read Only</h2>
       <label style={label}>Search employee, SOP number, revision, or title<input style={field} value={search} onChange={e => setSearch(e.target.value)} placeholder="e.g. SOP-0001 or Rev A" /></label>
-      {loading ? <p>Loading...</p> : <div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left" }}><thead><tr>{["Employee","Department","SOP / Revision","Certified","Expires","Evidence"].map(h => <th key={h} style={{ padding: 8, borderBottom: "1px solid #aaa" }}>{h}</th>)}</tr></thead><tbody>
-        {filtered.map(r => { const d = r.document_id ? docMap.get(r.document_id) : null; const p = employeeMap.get(r.assigned_to_email.toLowerCase()); return <tr key={r.id}><td style={{ padding: 8 }}>{p?.full_name || r.assigned_to_email}</td><td style={{ padding: 8 }}>{r.department || p?.department || "—"}</td><td style={{ padding: 8 }}>{d ? `${d.document_number} Rev ${d.revision} — ${d.title}` : "Unlinked legacy record"}</td><td style={{ padding: 8 }}>{r.training_completed_on || "—"}</td><td style={{ padding: 8 }}>{r.training_valid_until || "—"}</td><td style={{ padding: 8 }}>{r.training_evidence_storage_path ? <button type="button" onClick={() => void openEvidence(r.training_evidence_storage_path!)}>View signed form</button> : "Not attached"}</td></tr>; })}
-        {!filtered.length && <tr><td colSpan={6} style={{ padding: 12 }}>No completed certification records match.</td></tr>}
+      {loading ? <p>Loading...</p> : <div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left" }}><thead><tr>{["Released SOP","Description","Revision","Employee","Certification Title","Certification Date","Expiration Date","Approved Form","Comments","Action"].map(h => <th key={h} style={{ padding: 8, borderBottom: "1px solid #aaa" }}>{h}</th>)}</tr></thead><tbody>
+        {filtered.map(r => { const d = r.document_id ? docMap.get(r.document_id) : null; return <tr key={r.id}>
+          <td style={{ padding: 8 }}>{d?.document_number || "—"}</td>
+          <td style={{ padding: 8 }}>{d?.title || "—"}</td>
+          <td style={{ padding: 8 }}>{d?.revision || "—"}</td>
+          <td style={{ padding: 8 }}>{r.assigned_to_email}</td>
+          <td style={{ padding: 8 }}>{r.training_title || "—"}</td>
+          <td style={{ padding: 8 }}>{r.training_completed_on || "—"}</td>
+          <td style={{ padding: 8 }}>{r.training_valid_until || "—"}</td>
+          <td style={{ padding: 8 }}>{r.training_evidence_storage_path ? <button type="button" onClick={() => void openEvidence(r.training_evidence_storage_path!)}>View Signed Form</button> : "Not attached"}</td>
+          <td style={{ padding: 8 }}>{r.training_description || "—"}</td>
+          <td style={{ padding: 8 }}><Link href={`/training/${r.id}`}>Open Record</Link></td>
+        </tr>; })}
+        {!filtered.length && <tr><td colSpan={10} style={{ padding: 12 }}>No completed certification records match.</td></tr>}
       </tbody></table></div>}
     </section>
   </main>;
