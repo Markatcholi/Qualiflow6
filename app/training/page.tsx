@@ -991,186 +991,26 @@ export default function TrainingManagementPage() {
 
         <div style={{ overflowX: "auto" }}>
           <table style={tableStyle}>
-            <thead>
-              <tr>
-                <th style={thStyle}>Training</th>
-                <th style={thStyle}>Document</th>
-                <th style={thStyle}>Assigned To</th>
-                <th style={thStyle}>Due Date</th>
-                <th style={thStyle}>Status</th>
-                <th style={thStyle}>Effectiveness</th>
-                <th style={thStyle}>Supervisor</th>
-                <th style={thStyle}>Signature</th>
-                <th style={thStyle}>Actions</th>
-              </tr>
-            </thead>
-
+            <thead><tr>
+              {["Document", "Description", "Revision", "Training Type", "Assigned To", "Due Date", "Status", "Action"].map(heading => <th key={heading} style={thStyle}>{heading}</th>)}
+            </tr></thead>
             <tbody>
-              {filteredAssignments.map((assignment) => {
-                const linkedDocument = getDocumentForAssignment(assignment);
-                const signature = getSignatureForAssignment(assignment);
-
-                return (
-                <tr key={assignment.id}>
-                  <td style={tdStyle}>
-                    <strong>
-                      {assignment.training_title || "Untitled Training"}
-                    </strong>
-                    <div style={smallTextStyle}>
-                      {assignment.training_description || "No description"}
-                    </div>
-                    <div style={smallTextStyle}>
-                      Source: {assignment.assignment_source || "N/A"}
-                    </div>
-                  </td>
-
-                  <td style={tdStyle}>
-                    {linkedDocument ? (
-                      <>
-                        <strong>{linkedDocument.document_number} Rev {linkedDocument.revision}</strong>
-                        <div style={smallTextStyle}>{linkedDocument.title}</div>
-                        {linkedDocument.file_url ? (
-                          <a href={linkedDocument.file_url} target="_blank" rel="noreferrer">
-                            Open Training Document
-                          </a>
-                        ) : (
-                          <div style={smallTextStyle}>No document file attached</div>
-                        )}
-                      </>
-                    ) : (
-                      "No linked document"
-                    )}
-                  </td>
-
+              {filteredAssignments.map(assignment => {
+                const doc = getDocumentForAssignment(assignment);
+                const trainingType = assignment.training_category === "certification" ? "Certification" : assignment.training_category === "recurring" ? "Recurring Training" : "Read & Understand";
+                const displayStatus = assignment.status !== "completed" && assignment.due_date && assignment.due_date < today ? "overdue" : assignment.status || "assigned";
+                return <tr key={assignment.id}>
+                  <td style={tdStyle}>{doc?.document_number || "—"}</td>
+                  <td style={tdStyle}>{doc?.title || assignment.training_title || "—"}</td>
+                  <td style={tdStyle}>{doc?.revision || "—"}</td>
+                  <td style={tdStyle}>{trainingType}</td>
                   <td style={tdStyle}>{assignment.assigned_to_email}</td>
                   <td style={tdStyle}>{assignment.due_date || "N/A"}</td>
-                  <td style={tdStyle}>
-                    <StatusBadge
-                      status={
-                        assignment.status !== "completed" &&
-                        assignment.due_date &&
-                        assignment.due_date < today
-                          ? "overdue"
-                          : assignment.status || "assigned"
-                      }
-                    />
-                  </td>
-                  <td style={tdStyle}>
-                    {assignment.effectiveness_required
-                      ? trainingEffectivenessLabel(assignment.effectiveness_status)
-                      : "Not Required"}
-                  </td>
-                  <td style={tdStyle}>
-                    {assignment.supervisor_verification_required
-                      ? assignment.supervisor_verified_at
-                        ? "Verified"
-                        : "Required"
-                      : "Not required"}
-                  </td>
-
-                  <td style={tdStyle}>
-                    {signature ? (
-                      <>
-                        <StatusBadge status="completed" />
-                        <div style={smallTextStyle}>
-                          {signature.signed_by}
-                        </div>
-                        <div style={smallTextStyle}>
-                          {formatDateTime(signature.signed_at)}
-                        </div>
-                      </>
-                    ) : assignment.acknowledgement_required ? (
-                      <span style={warningTextStyle}>Signature required</span>
-                    ) : (
-                      "Not required"
-                    )}
-                  </td>
-
-                  <td style={tdStyle}>
-                    <div style={actionStackStyle}>
-                      <a href={`/training/${assignment.id}`} style={darkButtonStyle}>
-                        Open Training Record
-                      </a>
-
-                      {assignment.status === "assigned" && assignment.assigned_to_email.trim().toLowerCase() === userEmail.trim().toLowerCase() ? (
-                        <button
-                          onClick={() =>
-                            updateAssignmentStatus(assignment, "in_progress")
-                          }
-                        >
-                          Start
-                        </button>
-                      ) : null}
-
-                      {assignment.status !== "completed" &&
-                      assignment.status !== "waived" &&
-                      (assignment.assigned_to_email === userEmail || canManage) ? (
-                        <button
-                          onClick={() => {
-                            beginCompletion(assignment);
-                          }}
-                        >
-                          Record Training Completion
-                        </button>
-                      ) : null}
-
-                      {canManage &&
-                      assignment.supervisor_verification_required ? (
-                        <button onClick={() => verifySupervisor(assignment)}>
-                          Supervisor Verify
-                        </button>
-                      ) : null}
-
-                      {canManage && assignment.effectiveness_required && assignment.effectiveness_status !== "effectiveness_complete" ? (
-                        <details>
-                          <summary>Training Evaluation</summary>
-                          <input
-                            placeholder="Evaluation Method"
-                            value={effectivenessMethod}
-                            onChange={(e) =>
-                              setEffectivenessMethod(e.target.value)
-                            }
-                            style={inputStyle}
-                          />
-                          <input
-                            placeholder="Evaluation Result"
-                            value={effectivenessResult}
-                            onChange={(e) =>
-                              setEffectivenessResult(e.target.value)
-                            }
-                            style={inputStyle}
-                          />
-                          <textarea
-                            placeholder="Comments"
-                            value={effectivenessComments}
-                            onChange={(e) =>
-                              setEffectivenessComments(e.target.value)
-                            }
-                            rows={3}
-                            style={textareaStyle}
-                          />
-                          <button
-                            onClick={() => completeEffectiveness(assignment)}
-                          >
-                            Complete Evaluation
-                          </button>
-                        </details>
-                      ) : null}
-
-                      {canManage && assignment.status !== "completed" ? (
-                        <button
-                          onClick={() =>
-                            updateAssignmentStatus(assignment, "waived")
-                          }
-                        >
-                          Waive
-                        </button>
-                      ) : null}
-                    </div>
-                  </td>
-                </tr>
-                );
+                  <td style={tdStyle}><StatusBadge status={displayStatus} /></td>
+                  <td style={tdStyle}><a href={`/training/${assignment.id}`} style={darkButtonStyle}>Open Record</a></td>
+                </tr>;
               })}
+              {filteredAssignments.length === 0 && <tr><td colSpan={8} style={tdStyle}>No training assignments match the selected filters.</td></tr>}
             </tbody>
           </table>
         </div>
