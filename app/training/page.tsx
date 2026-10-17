@@ -120,7 +120,7 @@ export default function TrainingManagementPage() {
   const [activeTrainingSection, setActiveTrainingSection] = useState("overview");
   useEffect(() => {
     const requested = new URLSearchParams(window.location.search).get("section");
-    if (requested && ["overview", "assignments", "administration", "employees", "history"].includes(requested)) {
+    if (requested && ["overview", "assignments", "administration", "employees", "history", "due"].includes(requested)) {
       setActiveTrainingSection(requested);
     }
   }, []);
@@ -1014,10 +1014,7 @@ export default function TrainingManagementPage() {
 <section style={{ ...cardStyle, display: activeTrainingSection === "administration" ? undefined : "none" }}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
           <h2 style={{ marginTop: 0 }}>Create Training Assignment</h2>
-          {canManage ? <button onClick={generateRecurringCycles} disabled={generatingRecurring} style={primaryButtonStyle}>{generatingRecurring ? "Checking Cycles..." : "Generate Due Recurring Cycles"}</button> : null}
-          {canManage ? <button onClick={sendTrainingDueNotices} disabled={sendingTrainingNotices} style={primaryButtonStyle}>{sendingTrainingNotices ? "Sending Notices..." : "Send Due Training Notices"}</button> : null}
         </div>
-        <p style={subtleText}>Recurring cycles are generated when due, based on the previous completed cycle. Each new cycle retains its own assignment, evidence and history. Uncompleted cycles remain open.</p>
         <p style={subtleText}>Completed certification is registered individually with an externally approved signed form. <a href="/training/certifications" style={{ textDecoration: "underline" }}>Open Certification Register</a>.</p>
 
         <div style={gridStyle}>
@@ -1276,6 +1273,32 @@ export default function TrainingManagementPage() {
       </section>
 
 ) : null}
+
+      {canManage && activeTrainingSection === "due" && <section style={cardStyle}>
+        <h2 style={{ marginTop: 0 }}>Generate Due Training</h2>
+        <p style={subtleText}>Generate eligible recurring cycles, then review existing due and overdue Recurring Training and Read &amp; Acknowledge assignments. Reviewing this list does not send notifications.</p>
+        <div style={buttonRowStyle}>
+          <button type="button" onClick={generateRecurringCycles} disabled={generatingRecurring} style={primaryButtonStyle}>{generatingRecurring ? "Generating..." : "Generate Due Training"}</button>
+          <button type="button" onClick={sendTrainingDueNotices} disabled={sendingTrainingNotices} style={secondaryButtonStyle}>{sendingTrainingNotices ? "Sending..." : "Send Due Training Notices"}</button>
+        </div>
+        <p style={subtleText}>The notice action uses the existing due-training notification rules and duplicate protection. It does not send notices for completed certifications.</p>
+        <div style={{ overflowX: "auto" }}>
+          <table style={tableStyle}>
+            <thead><tr>{["Training Type","Document","Employee","Due Date","Status","Action"].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
+            <tbody>
+              {assignments.filter(a => (a.training_category === "recurring" || (a.training_category !== "certification" && a.training_category !== "recurring")) && a.status !== "completed" && a.status !== "waived" && !!a.due_date && a.due_date <= today).map(a => { const d = getDocumentForAssignment(a); return <tr key={a.id}>
+                <td style={tdStyle}>{a.training_category === "recurring" ? "Recurring Training" : "Read & Acknowledge"}</td>
+                <td style={tdStyle}>{d ? `${d.document_number} Rev ${d.revision}` : a.training_title}</td>
+                <td style={tdStyle}>{a.assigned_to_email}</td>
+                <td style={tdStyle}>{a.due_date}</td>
+                <td style={tdStyle}>{a.due_date! < today ? "Overdue" : "Due"}</td>
+                <td style={tdStyle}><a href={`/training/${a.id}`}>Open Record</a></td>
+              </tr>; })}
+              {!assignments.some(a => a.training_category !== "certification" && a.status !== "completed" && a.status !== "waived" && !!a.due_date && a.due_date <= today) && <tr><td colSpan={6} style={tdStyle}>No due or overdue training assignments found.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </section>
 
       <section style={{ ...cardStyle, display: activeTrainingSection === "administration" && canManage ? undefined : "none" }}>
         <h2 style={{ marginTop: 0 }}>
