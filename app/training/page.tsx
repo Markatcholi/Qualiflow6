@@ -117,6 +117,7 @@ export default function TrainingManagementPage() {
   const [userRole, setUserRole] = useState("");
   const [trainingCoordinator, setTrainingCoordinator] = useState(false);
 
+  const [activeTrainingSection, setActiveTrainingSection] = useState("overview");
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterMine, setFilterMine] = useState(false);
   const [showTrainingSignature, setShowTrainingSignature] = useState(false);
@@ -914,14 +915,26 @@ export default function TrainingManagementPage() {
             Training Intelligence Dashboard
           </a>
 
-          <a href="/dashboard" style={secondaryButtonStyle}>
-            Enterprise Dashboard
-          </a>
+
         </div>
       </header>
 
       
-      <section style={cardStyle}>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 20, flexWrap: "wrap" }}>
+        <aside aria-label="Training Management navigation" style={{ width: 224, flex: "0 0 224px", position: "sticky", top: 12, alignSelf: "flex-start", background: "#fff", border: "1px solid #d1d5db", borderRadius: 12, padding: 12 }}>
+          <strong style={{ display: "block", padding: "8px 10px 14px" }}>Training Navigation</strong>
+          {[
+            { id: "overview", label: "Overview" },
+            { id: "assignments", label: "Training Assignments" },
+            ...(canManage ? [{ id: "administration", label: "Training Administration" }, { id: "employees", label: "Employee Profiles" }] : []),
+            { id: "history", label: "Signature History" }
+          ].map(item => <button key={item.id} type="button" onClick={() => setActiveTrainingSection(item.id)} aria-current={activeTrainingSection === item.id ? "page" : undefined} style={{ display: "block", width: "100%", padding: "11px 10px", marginBottom: 4, textAlign: "left", borderRadius: 7, border: "none", cursor: "pointer", background: activeTrainingSection === item.id ? "#dbeafe" : "transparent", color: "#111827", fontWeight: activeTrainingSection === item.id ? 700 : 500 }}>{item.label}</button>)}
+          <a href="/training/certifications" style={{ display: "block", padding: "11px 10px" }}>Certification Register</a>
+          <a href="/training/compliance" style={{ display: canManage ? "block" : "none", padding: "11px 10px" }}>Compliance Report</a>
+          <a href="/training/dashboard" style={{ display: "block", padding: "11px 10px" }}>Training Intelligence</a>
+        </aside>
+        <div style={{ flex: "1 1 680px", minWidth: 0 }}>
+      <section style={{ ...cardStyle, display: activeTrainingSection === "overview" ? undefined : "none" }}>
         <h2 style={{ marginTop: 0 }}>My Training Queue</h2>
         <p style={subtleText}>
           Your open training, overdue training, and training assignments awaiting electronic signature.
@@ -950,13 +963,14 @@ export default function TrainingManagementPage() {
           onClick={() => {
             setFilterMine(true);
             setFilterStatus("all");
+            setActiveTrainingSection("assignments");
           }}
         >
           Open My Training
         </button>
       </section>
 
-      <section style={cardStyle}>
+      <section style={{ ...cardStyle, display: activeTrainingSection === "assignments" ? undefined : "none" }}>
         <h2 style={{ marginTop: 0 }}>Training Assignments</h2>
 
         <div style={filterRowStyle}>
@@ -1171,7 +1185,7 @@ export default function TrainingManagementPage() {
       </section>
 
 {canManage ? (
-<section style={cardStyle}>
+<section style={{ ...cardStyle, display: activeTrainingSection === "administration" ? undefined : "none" }}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
           <h2 style={{ marginTop: 0 }}>Create Training Assignment</h2>
           {canManage ? <button onClick={generateRecurringCycles} disabled={generatingRecurring} style={primaryButtonStyle}>{generatingRecurring ? "Checking Cycles..." : "Generate Due Recurring Cycles"}</button> : null}
@@ -1343,7 +1357,7 @@ export default function TrainingManagementPage() {
 ) : null}
 
 {canManage ? (
-      <section style={cardStyle}>
+      <section style={{ ...cardStyle, display: activeTrainingSection === "employees" ? undefined : "none" }}>
         <h2 style={{ marginTop: 0 }}>Employee Profiles</h2>
 
         <p style={subtleText}>
@@ -1437,7 +1451,7 @@ export default function TrainingManagementPage() {
 
 ) : null}
 
-      <section style={cardStyle}>
+      <section style={{ ...cardStyle, display: activeTrainingSection === "administration" && canManage ? undefined : "none" }}>
         <h2 style={{ marginTop: 0 }}>
           Auto-Assign Training From Effective Documents
         </h2>
@@ -1464,7 +1478,7 @@ export default function TrainingManagementPage() {
         ) : null}
       </section>
 
-      <section style={cardStyle}>
+      <section style={{ ...cardStyle, display: activeTrainingSection === "history" ? undefined : "none" }}>
         <h2 style={{ marginTop: 0 }}>Electronic Signature Records</h2>
         {signatures.length === 0 ? (
           <p style={subtleText}>No electronic signature records found yet.</p>
@@ -1495,6 +1509,9 @@ export default function TrainingManagementPage() {
           </div>
         )}
       </section>
+
+        </div>
+      </div>
 
       {completionAssignment ? (
         <div role="dialog" aria-modal="true" aria-label="Record Training Completion" style={{position:"fixed",inset:0,background:"rgba(0,0,0,.55)",display:"grid",placeItems:"center",zIndex:1000}}>
