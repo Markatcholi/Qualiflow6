@@ -926,20 +926,6 @@ export default function TrainingManagementPage() {
       </header>
 
       
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 20, flexWrap: "wrap" }}>
-        <aside aria-label="Training Management navigation" style={{ width: 224, flex: "0 0 224px", position: "sticky", top: 12, alignSelf: "flex-start", background: "#fff", border: "1px solid #d1d5db", borderRadius: 12, padding: 12 }}>
-          <strong style={{ display: "block", padding: "8px 10px 14px" }}>Training Navigation</strong>
-          {[
-            { id: "overview", label: "Overview" },
-            { id: "assignments", label: "Training Assignments" },
-            ...(canManage ? [{ id: "administration", label: "Training Administration" }, { id: "employees", label: "Employee Profiles" }] : []),
-            { id: "history", label: "Signature History" }
-          ].map(item => <button key={item.id} type="button" onClick={() => setActiveTrainingSection(item.id)} aria-current={activeTrainingSection === item.id ? "page" : undefined} style={{ display: "block", width: "100%", padding: "11px 10px", marginBottom: 4, textAlign: "left", borderRadius: 7, border: "none", cursor: "pointer", background: activeTrainingSection === item.id ? "#dbeafe" : "transparent", color: "#111827", fontWeight: activeTrainingSection === item.id ? 700 : 500 }}>{item.label}</button>)}
-          <a href="/training/certifications" style={{ display: "block", padding: "11px 10px" }}>Certification Register</a>
-          <a href="/training/compliance" style={{ display: canManage ? "block" : "none", padding: "11px 10px" }}>Compliance Report</a>
-          <a href="/training/dashboard" style={{ display: "block", padding: "11px 10px" }}>Training Intelligence</a>
-        </aside>
-        <div style={{ flex: "1 1 680px", minWidth: 0 }}>
       <section style={{ ...cardStyle, display: activeTrainingSection === "overview" ? undefined : "none" }}>
         <h2 style={{ marginTop: 0 }}>My Training Queue</h2>
         <p style={subtleText}>
@@ -1515,9 +1501,6 @@ export default function TrainingManagementPage() {
           </div>
         )}
       </section>
-
-        </div>
-      </div>
 
       {completionAssignment ? (
         <div role="dialog" aria-modal="true" aria-label="Record Training Completion" style={{position:"fixed",inset:0,background:"rgba(0,0,0,.55)",display:"grid",placeItems:"center",zIndex:1000}}>
