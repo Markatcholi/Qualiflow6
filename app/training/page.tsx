@@ -1298,7 +1298,7 @@ export default function TrainingManagementPage() {
             </tbody>
           </table>
         </div>
-      </section>
+      </section>}
 
       <section style={{ ...cardStyle, display: activeTrainingSection === "administration" && canManage ? undefined : "none" }}>
         <h2 style={{ marginTop: 0 }}>
