@@ -60,6 +60,8 @@ export default function PersistentAppShell({ children }: { children: React.React
   const [enabled, setEnabled] = useState<Set<string>>(new Set());
   const [coordinator, setCoordinator] = useState(false);
   const [docManager, setDocManager] = useState(false);
+  const [companyAdmin, setCompanyAdmin] = useState(false);
+  const [legacyInternalAdmin, setLegacyInternalAdmin] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const publicPage = pathname === "/" || pathname === "/login" || pathname.startsWith("/signup") || pathname.startsWith("/sign-up") || pathname.startsWith("/auth/") || pathname.startsWith("/platform-admin") || pathname.startsWith("/admin/companies");
   useEffect(() => {
@@ -81,15 +83,20 @@ export default function PersistentAppShell({ children }: { children: React.React
       if (!m) { if (!cancelled) { setVisible(false); setLoaded(true); } return; }
       const t = Array.isArray(m.tenants) ? m.tenants[0] : m.tenants;
       const tenant = String(m.tenant_id);
-      const [access,training,roles] = await Promise.all([
+      const [access,training,roles,admin,legacy] = await Promise.all([
         supabase.from("tenant_module_access").select("module_code,is_enabled").eq("tenant_id",tenant),
         supabase.rpc("qualisphere_training_is_coordinator",{p_tenant:tenant}),
-        supabase.from("tenant_user_role_assignments").select("customer_roles(role_name,is_active)").eq("tenant_id",tenant).ilike("user_email",email).eq("is_active",true)
+        supabase.from("tenant_user_role_assignments").select("customer_roles(role_name,is_active)").eq("tenant_id",tenant).ilike("user_email",email).eq("is_active",true),
+        supabase.rpc("qualisphere_is_company_admin",{p_tenant_id:tenant}),
+        supabase.from("user_roles").select("role").eq("user_email",email).maybeSingle()
       ]);
       if (cancelled) return;
       setInternal(t?.is_internal === true);
       setEnabled(new Set((access.data || []).filter((x:any)=>x.is_enabled).map((x:any)=>String(x.module_code).toLowerCase())));
       setCoordinator(training.data === true);
+      setCompanyAdmin(admin.data === true);
+      const legacyRole = String(legacy.data?.role || "").toLowerCase().replace(/_/g," ").trim();
+      setLegacyInternalAdmin(["admin","administrator","coordinator","approver","vp quality","quality manager"].includes(legacyRole));
       setDocManager((roles.data || []).some((x:any)=>{
         const role = Array.isArray(x.customer_roles) ? x.customer_roles[0] : x.customer_roles;
         return role?.is_active !== false && /document control|vp quality|vice president.*quality/i.test(String(role?.role_name || ""));
@@ -102,6 +109,21 @@ export default function PersistentAppShell({ children }: { children: React.React
     if (pathname.startsWith("/training")) setExpanded(x=>({...x,Training:true}));
     if (pathname.startsWith("/documents")) setExpanded(x=>({...x,"Controlled Documents":true}));
   },[pathname]);
+  const administration: Entry[] = internal && legacyInternalAdmin
+    ? [
+        { name: "Master Data", href: "/admin/master-data" },
+        { name: "Approval Matrix", href: "/approval-matrix" },
+        { name: "Company Settings", href: "/admin/company-settings" }
+      ]
+    : companyAdmin
+      ? [
+          { name: "Company Administration", href: "/company-administration" },
+          { name: "Admin Master Data", href: "/company-administration/master-data" },
+          { name: "Approval Matrix", href: "/company-administration/approval-matrix" },
+          { name: "Company Settings", href: "/company-administration/settings" },
+          { name: "NCMR Risk & CAPA Governance", href: "/company-administration/ncmr-risk-governance" }
+        ]
+      : [];
   const allowed = (e:Entry) => !e.code || internal || (aliases[e.code] || [e.code]).some(code=>enabled.has(code));
   const childAllowed = (parent:string,e:Entry) => {
     if (parent==="Training" && ["Training Administration","Employee Profiles","Compliance Report"].includes(e.name)) return coordinator;
@@ -125,6 +147,10 @@ export default function PersistentAppShell({ children }: { children: React.React
         {renderEntries(quality)}
         <h3 style={{fontSize:13,margin:"18px 8px 8px"}}>Analytics</h3>
         {renderEntries(analytics)}
+        {administration.length > 0 && <>
+          <h3 style={{fontSize:13,margin:"18px 8px 8px"}}>Administration</h3>
+          {renderEntries(administration)}
+        </>}
       </>}
     </aside>
     <div style={{flex:"1 1 0",minWidth:0}}>{children}</div>
