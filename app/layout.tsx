@@ -1,5 +1,6 @@
 import "./globals.css";
 import HeaderWrapper from "./components/HeaderWrapper";
+import PersistentAppShell from "./components/PersistentAppShell";
 
 export const metadata = {
   title: "QualiSphere",
@@ -15,7 +16,7 @@ export default function RootLayout({
     <html lang="en">
       <body>
         <HeaderWrapper />
-        {children}
+        <PersistentAppShell>{children}</PersistentAppShell>
       </body>
     </html>
   );
