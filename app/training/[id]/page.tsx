@@ -437,8 +437,8 @@ export default function TrainingAssignmentDetailPage() {
       <header style={headerStyle}>
         <div>
           <div style={eyebrowStyle}>TRAINING RECORD</div>
-          <h1 style={{ margin: "6px 0" }}>{assignment.training_title || "Training Assignment"}</h1>
-          <p style={subtleText}>{assignment.training_description || "Controlled document training record."}</p>
+          <h1 style={{ margin: "6px 0" }}>{isRegisteredCertification && documentRecord ? `${documentRecord.document_number} — ${documentRecord.title} — Rev ${documentRecord.revision}` : assignment.training_title || "Training Assignment"}</h1>
+          {isRegisteredCertification ? <p style={subtleText}>Certification: {assignment.training_title || "Approved certification"}</p> : <p style={subtleText}>{assignment.training_description || "Controlled document training record."}</p>}
         </div>
 
         <div style={buttonRowStyle}>
@@ -447,7 +447,7 @@ export default function TrainingAssignmentDetailPage() {
         </div>
       </header>
 
-      {canManage && documentRecord && (
+      {canManage && documentRecord && !isRegisteredCertification && (
         <div style={{ ...gridStyle, marginBottom: 16 }}>
           <Field label="SOP Number"><strong>{documentRecord.document_number}</strong></Field>
           <Field label="Revision"><strong>{documentRecord.revision}</strong></Field>
@@ -456,7 +456,7 @@ export default function TrainingAssignmentDetailPage() {
 
       <section style={kpiGridStyle}>
         <div style={kpiCardStyle}><div style={kpiTitleStyle}>Training Status</div><StatusBadge status={isOverdue ? "overdue" : assignment.status || "assigned"} /></div>
-        <div style={kpiCardStyle}><div style={kpiTitleStyle}>Due Date</div><strong>{assignment.due_date || "N/A"}</strong></div>
+        {!isRegisteredCertification && <div style={kpiCardStyle}><div style={kpiTitleStyle}>Due Date</div><strong>{assignment.due_date || "N/A"}</strong></div>}
         <div style={kpiCardStyle}><div style={kpiTitleStyle}>{isRegisteredCertification ? "Certification Date" : "Completion Date"}</div><strong>{isRegisteredCertification ? (assignment.training_completed_on || "N/A") : formatDateTime(assignment.completed_at)}</strong></div>
         {isRegisteredCertification ? <div style={kpiCardStyle}><div style={kpiTitleStyle}>Expiration Date</div><strong>{assignment.training_valid_until || "No expiration"}</strong></div> : <div style={kpiCardStyle}><div style={kpiTitleStyle}>Evaluation Status</div><strong>{assignment.effectiveness_required ? trainingEffectivenessLabel(assignment.effectiveness_status) : "Not required"}</strong></div>}
       </section>
@@ -465,11 +465,8 @@ export default function TrainingAssignmentDetailPage() {
         <h2 style={{ marginTop: 0 }}>Approved Certification</h2>
         <div style={gridStyle}>
           <Field label="Certified Employee"><div>{assignment.assigned_to_email}</div></Field>
-          <Field label="SOP / Revision"><div>{documentRecord ? `${documentRecord.document_number} Rev ${documentRecord.revision}` : "N/A"}</div></Field>
-          <Field label="Certification Date"><div>{assignment.training_completed_on || "N/A"}</div></Field>
-          <Field label="Expiration Date"><div>{assignment.training_valid_until || "No expiration"}</div></Field>
           <Field label="Registered By"><div>{assignment.completed_by || assignment.assigned_by_email || "N/A"}</div></Field>
-          <Field label="Signed Certification Form"><div>{assignment.training_evidence_storage_path ? <button type="button" onClick={() => void openCertificateEvidence()}>View Signed PDF{assignment.training_evidence_file_name ? ` — ${assignment.training_evidence_file_name}` : ""}</button> : "No signed form attached"}</div></Field>
+          <Field label="Signed Certification Form"><div>{assignment.training_evidence_storage_path ? <button type="button" onClick={() => void openCertificateEvidence()}>View Signed Form</button> : "No signed form attached"}</div></Field>
         </div>
         {assignment.training_description && <p><strong>Registration Comments:</strong> {assignment.training_description}</p>}
         {certificateEvidenceError && <p role="alert" style={warningStyle}>{certificateEvidenceError}</p>}
