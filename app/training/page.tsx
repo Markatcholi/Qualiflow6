@@ -348,8 +348,12 @@ export default function TrainingManagementPage() {
     const reportEmails = new Set(employees.filter((e) => e.manager_email?.toLowerCase() === userEmail.toLowerCase()).map((e) => e.user_email.toLowerCase()));
     return assignments.filter((item) => {
       if (!canManage && item.assigned_to_email.toLowerCase() !== userEmail.toLowerCase() && !reportEmails.has(item.assigned_to_email.toLowerCase())) return false;
-      const matchesStatus =
-        filterStatus === "all" || item.status === filterStatus;
+      const matchesStatus = filterStatus === "all" ||
+        (filterStatus === "certification" ? item.training_category === "certification" :
+        filterStatus === "recurring" ? item.training_category === "recurring" :
+        filterStatus === "standard" ? item.training_category !== "certification" && item.training_category !== "recurring" :
+        filterStatus === "overdue" ? item.status !== "completed" && item.due_date != null && item.due_date < today :
+        item.status === filterStatus);
 
       const matchesMine =
         !filterMine || item.assigned_to_email === userEmail;
@@ -911,18 +915,7 @@ export default function TrainingManagementPage() {
           </p>
         </div>
 
-        <div style={buttonRowStyle}>
-          {canManage && (
-            <a href="/training/compliance" style={darkButtonStyle}>
-              Training Compliance Report
-            </a>
-          )}
-          <a href="/training/dashboard" style={darkButtonStyle}>
-            Training Intelligence Dashboard
-          </a>
 
-
-        </div>
       </header>
 
       
@@ -972,11 +965,12 @@ export default function TrainingManagementPage() {
             style={inputStyle}
           >
             <option value="all">All Statuses</option>
-            {TRAINING_STATUSES.map((status) => (
+            <optgroup label="Training Type"><option value="certification">Certification</option><option value="recurring">Recurring Training</option><option value="standard">Read &amp; Acknowledge</option></optgroup>
+          <optgroup label="Status">{TRAINING_STATUSES.map((status) => (
               <option key={status} value={status}>
                 {status}
               </option>
-            ))}
+            ))}</optgroup>
           </select>
 
           <label>
