@@ -1017,6 +1017,22 @@ function ModuleGroup({
                 </ul>
               </details>
             </li>
+          ) : item.label === "Training" ? (
+            <li key={item.href} style={moduleListItemStyle}>
+              <details>
+                <summary style={{ cursor: "pointer", fontWeight: 700 }}>Training</summary>
+                <ul style={{ paddingLeft: 18, margin: "8px 0", lineHeight: 1.9 }}>
+                  <li><a href="/training?section=overview" style={moduleLinkStyle}>Training Overview</a></li>
+                  <li><a href="/training?section=assignments" style={moduleLinkStyle}>Training Assignments</a></li>
+                  <li><a href="/training/certifications" style={moduleLinkStyle}>Certification Register</a></li>
+                  <li><a href="/training?section=administration" style={moduleLinkStyle}>Training Administration</a></li>
+                  <li><a href="/training?section=employees" style={moduleLinkStyle}>Employee Profiles</a></li>
+                  <li><a href="/training/compliance" style={moduleLinkStyle}>Compliance Report</a></li>
+                  <li><a href="/training/dashboard" style={moduleLinkStyle}>Training Intelligence Dashboard</a></li>
+                  <li><a href="/training?section=history" style={moduleLinkStyle}>Signature History</a></li>
+                </ul>
+              </details>
+            </li>
           ) : (
             <li key={item.href} style={moduleListItemStyle}>
               <a href={item.href} style={moduleLinkStyle}>{item.label}</a>
