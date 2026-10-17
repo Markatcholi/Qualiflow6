@@ -125,6 +125,7 @@ export default function TrainingManagementPage() {
     }
   }, []);
   const [filterStatus, setFilterStatus] = useState("all");
+  const [filterType, setFilterType] = useState("all");
   const [filterMine, setFilterMine] = useState(false);
   const [showTrainingSignature, setShowTrainingSignature] = useState(false);
   const [pendingSignatureAssignment, setPendingSignatureAssignment] =
@@ -354,9 +355,10 @@ export default function TrainingManagementPage() {
       const matchesMine =
         !filterMine || item.assigned_to_email === userEmail;
 
-      return matchesStatus && matchesMine;
+      const matchesType = filterType === "all" || (filterType === "certification" ? item.training_category === "certification" : filterType === "recurring" ? item.training_category === "recurring" : item.training_category !== "certification" && item.training_category !== "recurring");
+      return matchesStatus && matchesMine && matchesType;
     });
-  }, [assignments, employees, canManage, filterStatus, filterMine, userEmail]);
+  }, [assignments, employees, canManage, filterStatus, filterType, filterMine, userEmail]);
 
   const metrics = useMemo(() => {
     const open = assignments.filter(
@@ -978,6 +980,8 @@ export default function TrainingManagementPage() {
               </option>
             ))}
           </select>
+
+          <label>Training Type <select value={filterType} onChange={(e) => setFilterType(e.target.value)} style={inputStyle}><option value="all">All Types</option><option value="certification">Certification</option><option value="recurring">Recurring Training</option><option value="standard">Read &amp; Acknowledge</option></select></label>
 
           <label>
             <input
