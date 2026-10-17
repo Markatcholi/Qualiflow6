@@ -88,31 +88,46 @@ export default function CertificationRegister() {
     if (evidence.size > 10485760 || !/\.pdf$/i.test(evidence.name)) { alert("Upload an approved signed PDF form (maximum 10 MB)."); return; }
     setSaving(true);
     let uploadedPath: string | null = null;
+    let createdId: string | null = null;
     try {
-      // Recheck the revision at submission time. Server-side enforcement remains a separate hardening step.
       const check = await supabase.from("controlled_documents").select("id,status,tenant_id").eq("id", doc.id).eq("tenant_id", tenant).maybeSingle();
       if (check.error || !check.data || !released(check.data.status)) throw new Error("This SOP revision is no longer released.");
       const id = crypto.randomUUID();
-      uploadedPath = `${tenant}/${id}/${crypto.randomUUID()}.pdf`;
-      const upload = await supabase.storage.from("training-completion-evidence").upload(uploadedPath, evidence, { upsert: false, contentType: "application/pdf" });
-      if (upload.error) throw upload.error;
-      const result = await supabase.from("training_assignments").insert({
+      // Storage RLS requires the matching assignment row to exist before upload.
+      // Keep the row incomplete until signed evidence has been uploaded successfully.
+      const pending = await supabase.from("training_assignments").insert({
         id, tenant_id: tenant, document_id: doc.id, assigned_to_email: person.user_email.toLowerCase(),
         assigned_by_email: email, assignment_source: "certification_register",
         training_category: "certification", training_title: title.trim() || `Certification: ${doc.document_number} Rev ${doc.revision}`,
         training_description: comments.trim() || null, department: person.department, role_name: person.role_name,
-        status: "completed", training_completed_on: date, training_valid_until: expiry || null,
-        training_evidence_storage_path: uploadedPath, training_evidence_file_name: evidence.name,
-        completed_at: new Date().toISOString(), completed_by: email,
+        status: "assigned", training_completed_on: null, training_valid_until: expiry || null,
+        completed_at: null, completed_by: null,
         effectiveness_required: false, effectiveness_status: "not_required",
         acknowledgement_required: false, supervisor_verification_required: false
       });
-      if (result.error) throw result.error;
+      if (pending.error) throw pending.error;
+      createdId = id;
+      uploadedPath = `${tenant}/${id}/${crypto.randomUUID()}.pdf`;
+      const upload = await supabase.storage.from("training-completion-evidence").upload(uploadedPath, evidence, { upsert: false, contentType: "application/pdf" });
+      if (upload.error) throw upload.error;
+      const completed = await supabase.from("training_assignments").update({
+        status: "completed", training_completed_on: date,
+        training_evidence_storage_path: uploadedPath, training_evidence_file_name: evidence.name,
+        completed_at: new Date().toISOString(), completed_by: email
+      }).eq("id", id).eq("tenant_id", tenant).select("id").single();
+      if (completed.error) throw completed.error;
+      createdId = null;
       setDocumentId(""); setEmployeeEmail(""); setTitle(""); setDate(""); setExpiry(""); setComments(""); setEvidence(null);
       await load();
       alert("Approved certification registered.");
     } catch (err: unknown) {
       if (uploadedPath) await supabase.storage.from("training-completion-evidence").remove([uploadedPath]);
+      if (createdId) {
+        const cleanup = await supabase.from("training_assignments").delete().eq("id", createdId).eq("tenant_id", tenant);
+        if (cleanup.error) {
+          alert("Registration failed and a pending record could not be removed. Please contact the administrator. " + cleanup.error.message);
+        }
+      }
       alert(err instanceof Error ? err.message : "Could not register certification.");
     } finally { setSaving(false); }
   };
