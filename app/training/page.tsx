@@ -118,6 +118,12 @@ export default function TrainingManagementPage() {
   const [trainingCoordinator, setTrainingCoordinator] = useState(false);
 
   const [activeTrainingSection, setActiveTrainingSection] = useState("overview");
+  useEffect(() => {
+    const requested = new URLSearchParams(window.location.search).get("section");
+    if (requested && ["overview", "assignments", "administration", "employees", "history"].includes(requested)) {
+      setActiveTrainingSection(requested);
+    }
+  }, []);
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterMine, setFilterMine] = useState(false);
   const [showTrainingSignature, setShowTrainingSignature] = useState(false);
