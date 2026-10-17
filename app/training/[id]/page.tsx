@@ -36,6 +36,8 @@ type TrainingAssignment = {
   training_evidence_storage_path?: string | null;
   training_evidence_file_name?: string | null;
   training_category?: string | null;
+  training_completed_on?: string | null;
+  training_valid_until?: string | null;
   recurring_evidence_mode?: string | null;
 };
 
@@ -99,6 +101,18 @@ export default function TrainingAssignmentDetailPage() {
   const [effectivenessResult, setEffectivenessResult] = useState("");
   const [effectivenessComments, setEffectivenessComments] = useState("");
   const [trainingComments, setTrainingComments] = useState("");
+
+  const isRegisteredCertification = assignment?.training_category === "certification" && assignment?.assignment_source === "certification_register";
+  const [certificateEvidenceUrl, setCertificateEvidenceUrl] = useState<string | null>(null);
+  const [certificateEvidenceError, setCertificateEvidenceError] = useState("");
+  const openCertificateEvidence = async () => {
+    if (!assignment?.training_evidence_storage_path) return;
+    const result = await supabase.storage.from("training-completion-evidence").createSignedUrl(assignment.training_evidence_storage_path, 60);
+    if (result.error || !result.data?.signedUrl) { setCertificateEvidenceError(result.error?.message || "Signed form unavailable."); return; }
+    setCertificateEvidenceError("");
+    setCertificateEvidenceUrl(result.data.signedUrl);
+    window.open(result.data.signedUrl, "_blank", "noopener,noreferrer");
+  };
 
   const canManage =
     userRole === "admin" ||
@@ -445,11 +459,24 @@ export default function TrainingAssignmentDetailPage() {
       <section style={kpiGridStyle}>
         <div style={kpiCardStyle}><div style={kpiTitleStyle}>Training Status</div><StatusBadge status={isOverdue ? "overdue" : assignment.status || "assigned"} /></div>
         <div style={kpiCardStyle}><div style={kpiTitleStyle}>Due Date</div><strong>{assignment.due_date || "N/A"}</strong></div>
-        <div style={kpiCardStyle}><div style={kpiTitleStyle}>Completion Date</div><strong>{formatDateTime(assignment.completed_at)}</strong></div>
-        <div style={kpiCardStyle}><div style={kpiTitleStyle}>Evaluation Status</div><strong>{assignment.effectiveness_required ? trainingEffectivenessLabel(assignment.effectiveness_status) : "Not required"}</strong></div>
+        <div style={kpiCardStyle}><div style={kpiTitleStyle}>{isRegisteredCertification ? "Certification Date" : "Completion Date"}</div><strong>{isRegisteredCertification ? (assignment.training_completed_on || "N/A") : formatDateTime(assignment.completed_at)}</strong></div>
+        {isRegisteredCertification ? <div style={kpiCardStyle}><div style={kpiTitleStyle}>Expiration Date</div><strong>{assignment.training_valid_until || "No expiration"}</strong></div> : <div style={kpiCardStyle}><div style={kpiTitleStyle}>Evaluation Status</div><strong>{assignment.effectiveness_required ? trainingEffectivenessLabel(assignment.effectiveness_status) : "Not required"}</strong></div>}
       </section>
 
-      {canManage ? (
+      {isRegisteredCertification && <section style={cardStyle}>
+        <h2 style={{ marginTop: 0 }}>Approved Certification</h2>
+        <div style={gridStyle}>
+          <Field label="Certified Employee"><div>{assignment.assigned_to_email}</div></Field>
+          <Field label="SOP / Revision"><div>{documentRecord ? `${documentRecord.document_number} Rev ${documentRecord.revision}` : "N/A"}</div></Field>
+          <Field label="Certification Date"><div>{assignment.training_completed_on || "N/A"}</div></Field>
+          <Field label="Expiration Date"><div>{assignment.training_valid_until || "No expiration"}</div></Field>
+          <Field label="Registered By"><div>{assignment.completed_by || assignment.assigned_by_email || "N/A"}</div></Field>
+          <Field label="Signed Certification Form"><div>{assignment.training_evidence_storage_path ? <button type="button" onClick={() => void openCertificateEvidence()}>View Signed PDF{assignment.training_evidence_file_name ? ` — ${assignment.training_evidence_file_name}` : ""}</button> : "No signed form attached"}</div></Field>
+        </div>
+        {assignment.training_description && <p><strong>Registration Comments:</strong> {assignment.training_description}</p>}
+        {certificateEvidenceError && <p role="alert" style={warningStyle}>{certificateEvidenceError}</p>}
+      </section>}
+      {canManage && !isRegisteredCertification ? (
         <section style={cardStyle}>
           <h2 style={{ marginTop: 0 }}>Administrative Assignment Details</h2>
           <div style={gridStyle}>
@@ -536,7 +563,7 @@ export default function TrainingAssignmentDetailPage() {
         </div>
       </section> : null}
 
-      <section style={cardStyle}>
+      {!isRegisteredCertification && <section style={cardStyle}>
         <h2 style={{ marginTop: 0 }}>Training Evaluation</h2>
 
         {assignment.effectiveness_required ? (
@@ -616,7 +643,7 @@ export default function TrainingAssignmentDetailPage() {
         )}
       </section>
 
-      <section style={cardStyle}>
+      {!isRegisteredCertification && <section style={cardStyle}>
         <h2 style={{ marginTop: 0 }}>Electronic Signature Record</h2>
 
         {signatures.length === 0 ? (
@@ -649,7 +676,7 @@ export default function TrainingAssignmentDetailPage() {
             </table>
           </div>
         )}
-      </section>
+      </section>}
 
       <ESignatureModal
         open={showSignatureModal}
