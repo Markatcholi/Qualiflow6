@@ -21,6 +21,7 @@ const quality: Entry[] = [
     { name: "Training Assignments", href: "/training?section=assignments" },
     { name: "Certification Register", href: "/training/certifications" },
     { name: "Training Administration", href: "/training?section=administration" },
+    { name: "Generate Due Training", href: "/training?section=due" },
     { name: "Employee Profiles", href: "/training?section=employees" },
     { name: "Compliance Report", href: "/training/compliance" },
     { name: "Training Intelligence", href: "/training/dashboard" },
@@ -126,7 +127,7 @@ export default function PersistentAppShell({ children }: { children: React.React
       : [];
   const allowed = (e:Entry) => !e.code || internal || (aliases[e.code] || [e.code]).some(code=>enabled.has(code));
   const childAllowed = (parent:string,e:Entry) => {
-    if (parent==="Training" && ["Certification Register","Training Administration","Employee Profiles","Compliance Report","Training Intelligence","Signature History"].includes(e.name)) return coordinator;
+    if (parent==="Training" && ["Certification Register","Training Administration","Generate Due Training","Employee Profiles","Compliance Report","Training Intelligence","Signature History"].includes(e.name)) return coordinator;
     if (parent==="Controlled Documents" && e.name==="Documents Dashboard") return docManager;
     return true;
   };
