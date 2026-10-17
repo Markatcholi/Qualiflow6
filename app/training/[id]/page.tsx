@@ -103,14 +103,12 @@ export default function TrainingAssignmentDetailPage() {
   const [trainingComments, setTrainingComments] = useState("");
 
   const isRegisteredCertification = assignment?.training_category === "certification" && assignment?.assignment_source === "certification_register";
-  const [certificateEvidenceUrl, setCertificateEvidenceUrl] = useState<string | null>(null);
   const [certificateEvidenceError, setCertificateEvidenceError] = useState("");
   const openCertificateEvidence = async () => {
     if (!assignment?.training_evidence_storage_path) return;
     const result = await supabase.storage.from("training-completion-evidence").createSignedUrl(assignment.training_evidence_storage_path, 60);
     if (result.error || !result.data?.signedUrl) { setCertificateEvidenceError(result.error?.message || "Signed form unavailable."); return; }
     setCertificateEvidenceError("");
-    setCertificateEvidenceUrl(result.data.signedUrl);
     window.open(result.data.signedUrl, "_blank", "noopener,noreferrer");
   };
 
