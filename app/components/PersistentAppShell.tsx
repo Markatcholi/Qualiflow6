@@ -126,7 +126,7 @@ export default function PersistentAppShell({ children }: { children: React.React
       : [];
   const allowed = (e:Entry) => !e.code || internal || (aliases[e.code] || [e.code]).some(code=>enabled.has(code));
   const childAllowed = (parent:string,e:Entry) => {
-    if (parent==="Training" && ["Training Administration","Employee Profiles","Compliance Report"].includes(e.name)) return coordinator;
+    if (parent==="Training" && ["Certification Register","Training Administration","Employee Profiles","Compliance Report","Training Intelligence","Signature History"].includes(e.name)) return coordinator;
     if (parent==="Controlled Documents" && e.name==="Documents Dashboard") return docManager;
     return true;
   };
