@@ -639,7 +639,7 @@ export default function TrainingAssignmentDetailPage() {
         ) : (
           <p style={subtleText}>Training evaluation is not required for this assignment.</p>
         )}
-      </section>
+      </section>}
 
       {!isRegisteredCertification && <section style={cardStyle}>
         <h2 style={{ marginTop: 0 }}>Electronic Signature Record</h2>
