@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "../../../lib/supabaseClient";
 import TrainingConfigurationManager from "../../../components/TrainingConfigurationManager";
 import TrainingMatrixMasterData from "../../../components/TrainingMatrixMasterData";
+import UserExcelImport from "../../../components/UserExcelImport";
 import DocumentImpactAreaConfigurationManager from "../../../components/DocumentImpactAreaConfigurationManager";
 
 type SimpleItem = {
@@ -1130,6 +1131,7 @@ export default function MasterDataPage() {
           </p>
         ) : (
           <>
+            <UserExcelImport tenantId={tenantId} onImported={fetchUserAdministration} />
             <h3>Add or Update User Profile</h3>
             <input value={newUserFullName} onChange={(event) => setNewUserFullName(event.target.value)} placeholder="Employee name" style={inputStyle} />
             <input
