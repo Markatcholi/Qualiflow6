@@ -1131,13 +1131,13 @@ export default function MasterDataPage() {
         ) : (
           <>
             <h3>Add or Update User Profile</h3>
+            <input value={newUserFullName} onChange={(event) => setNewUserFullName(event.target.value)} placeholder="Employee name" style={inputStyle} />
             <input
               value={newUserEmail}
               onChange={(event) => setNewUserEmail(event.target.value)}
               placeholder="User email"
               style={inputStyle}
             />
-            <input value={newUserFullName} onChange={(event) => setNewUserFullName(event.target.value)} placeholder="Employee name" style={inputStyle} />
             <input
               value={newUserJobTitle}
               onChange={(event) => setNewUserJobTitle(event.target.value)}
