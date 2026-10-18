@@ -100,6 +100,7 @@ export default function MasterDataPage() {
   const [tenantId, setTenantId] = useState("");
   const [securityRoles, setSecurityRoles] = useState<SecurityRoleDefinition[]>([]);
   const [userDirectory, setUserDirectory] = useState<UserDirectoryItem[]>([]);
+  const [tenantMemberEmails, setTenantMemberEmails] = useState<string[]>([]);
   const [userRoleAssignments, setUserRoleAssignments] = useState<UserRoleAssignment[]>([]);
   const [selectedUserEmail, setSelectedUserEmail] = useState("");
   const [selectedSecurityRole, setSelectedSecurityRole] = useState("");
@@ -228,7 +229,7 @@ export default function MasterDataPage() {
   };
 
   const fetchUserAdministration = async () => {
-    const [roleDefinitionsRes, usersRes, assignmentsRes, profilesRes] = await Promise.all([
+    const [roleDefinitionsRes, usersRes, assignmentsRes, profilesRes, membersRes] = await Promise.all([
       supabase
         .from("security_roles")
         .select("code,label,category,description,is_assignable")
@@ -244,6 +245,7 @@ export default function MasterDataPage() {
         .order("user_email")
         .order("role_code"),
       tenantId ? supabase.from("employee_profiles").select("user_email,full_name,manager_email").eq("tenant_id", tenantId) : Promise.resolve({ data: [], error: null }),
+      tenantId ? supabase.from("tenant_memberships").select("user_email").eq("tenant_id", tenantId).eq("membership_status", "active") : Promise.resolve({ data: [], error: null }),
     ]);
 
     if (roleDefinitionsRes.error) {
@@ -253,12 +255,15 @@ export default function MasterDataPage() {
     }
 
     if (profilesRes.error) console.warn("Unable to load employee profiles:", profilesRes.error.message);
+    if (membersRes.error) console.warn("Unable to load tenant members:", membersRes.error.message);
+    const memberEmails = new Set(((membersRes.data || []) as {user_email:string}[]).map(m => m.user_email.trim().toLowerCase()));
+    setTenantMemberEmails([...memberEmails]);
     const profileByEmail = new Map(((profilesRes.data || []) as {user_email:string;full_name:string|null;manager_email:string|null}[]).map(p => [p.user_email.toLowerCase(),p]));
     if (usersRes.error) {
       console.warn("Unable to load user directory:", usersRes.error.message);
     } else {
       setUserDirectory(
-        (usersRes.data || []).map((item: any) => ({
+        (usersRes.data || []).filter((item: any) => memberEmails.has(String(item.user_email || "").trim().toLowerCase())).map((item: any) => ({
           user_email: String(item.user_email || "").trim().toLowerCase(),
           primary_role: String(item.role || "user"),
           job_title: String(item.job_title || ""),
@@ -635,7 +640,7 @@ export default function MasterDataPage() {
     if (!tenantId) { alert("Select a tenant before editing employee profiles."); return; }
     const manager = newUserManagerEmail.trim().toLowerCase();
     if (manager === normalizedEmail) { alert("An employee cannot be their own manager."); return; }
-    if (manager && !userDirectory.some(u => u.user_email === manager && u.account_status === "active")) {
+    if (manager && (!tenantMemberEmails.includes(manager) || !userDirectory.some(u => u.user_email === manager && u.account_status === "active"))) {
       alert("Select an active manager from this tenant's user directory."); return;
     }
     // Prevent cycles in the reporting hierarchy.
@@ -1143,7 +1148,7 @@ export default function MasterDataPage() {
             />
             <select value={newUserManagerEmail} onChange={(event) => setNewUserManagerEmail(event.target.value)} style={selectStyle}>
               <option value="">No manager assigned</option>
-              {userDirectory.filter(u => u.account_status === "active" && u.user_email !== newUserEmail.trim().toLowerCase()).map(u => (
+              {userDirectory.filter(u => tenantMemberEmails.includes(u.user_email) && u.account_status === "active" && u.user_email !== newUserEmail.trim().toLowerCase()).map(u => (
                 <option key={u.user_email} value={u.user_email}>{u.full_name ? u.full_name + " — " : ""}{u.user_email} ({u.department || "No department"})</option>
               ))}
             </select>
