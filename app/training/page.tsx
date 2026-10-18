@@ -567,6 +567,7 @@ export default function TrainingManagementPage() {
       recurrence_months: "12",
       recurrence_basis: "completion",
       recurring_evidence_mode: "attachment",
+      approved_evaluation_attachment_required: false,
       assigned_to_email: "",
       training_title: "",
       training_description: "",
