@@ -1015,16 +1015,9 @@ export default function TrainingManagementPage() {
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
           <h2 style={{ marginTop: 0 }}>Create Training Assignment</h2>
         </div>
-        <p style={subtleText}>Completed certification is registered individually with an externally approved signed form. <a href="/training/certifications" style={{ textDecoration: "underline" }}>Open Certification Register</a>.</p>
 
-        <div style={gridStyle}>
-          <Field label="Training Type"><select value={newAssignment.training_category} onChange={(e) => setNewAssignment({ ...newAssignment, training_category: e.target.value, effectiveness_required: e.target.value === "certification" ? true : newAssignment.training_category === "certification" ? false : newAssignment.effectiveness_required })} style={inputStyle}><option value="standard">Read &amp; Understand / Standard Training</option><option value="recurring">Recurring Training</option></select></Field>
-          {newAssignment.training_category === "recurring" ? <>
-            <Field label="Repeat Every (Months)"><input type="number" min={1} max={120} value={newAssignment.recurrence_months} onChange={(e) => setNewAssignment({ ...newAssignment, recurrence_months: e.target.value })} style={inputStyle} /></Field>
-            <Field label="Recurrence Basis"><select value={newAssignment.recurrence_basis} onChange={(e) => setNewAssignment({ ...newAssignment, recurrence_basis: e.target.value })} style={inputStyle}><option value="completion">Last Completion Date</option><option value="calendar">Fixed Calendar Schedule</option></select></Field>
-            <Field label="Required Completion Evidence"><select value={newAssignment.recurring_evidence_mode} onChange={(e) => setNewAssignment({ ...newAssignment, recurring_evidence_mode: e.target.value })} style={inputStyle}><option value="signature">Electronic Acknowledgement</option><option value="attachment">Training Evidence Attachment</option><option value="both">Both</option></select></Field>
-            <p style={subtleText}>Recurring configuration is saved for planning. Automatic future assignments and attachment enforcement will be enabled in the next phase.</p>
-          </> : null}
+        <div style={{ ...cardStyle, marginBottom: 16, padding: 16 }}>
+          <h3 style={{ marginTop: 0 }}>Controlled Document</h3>
           <Field label="Controlled Document">
             <select
               value={newAssignment.document_id}
@@ -1044,7 +1037,27 @@ export default function TrainingManagementPage() {
               ))}
             </select>
           </Field>
-
+        </div>
+        <div style={{ ...cardStyle, marginBottom: 16, padding: 16 }}>
+          <h3 style={{ marginTop: 0 }}>Document Details</h3>
+          {(() => {
+            const selectedDocument = documents.find((doc) => String(doc.id) === String(newAssignment.document_id));
+            return (
+              <div style={gridStyle}>
+                <Field label="Document Number"><input value={selectedDocument?.document_number || ""} readOnly style={inputStyle} /></Field>
+                <Field label="Description"><input value={selectedDocument?.title || ""} readOnly style={inputStyle} /></Field>
+                <Field label="Revision"><input value={selectedDocument?.revision || ""} readOnly style={inputStyle} /></Field>
+              </div>
+            );
+          })()}
+        </div>
+        <div style={gridStyle}>
+          <Field label="Training Type"><select value={newAssignment.training_category} onChange={(e) => setNewAssignment({ ...newAssignment, training_category: e.target.value, effectiveness_required: false })} style={inputStyle}><option value="standard">Read &amp; Understand / Standard Training</option><option value="recurring">Recurring Training</option></select></Field>
+          {newAssignment.training_category === "recurring" ? <>
+            <Field label="Repeat Every (Months)"><input type="number" min={1} max={120} value={newAssignment.recurrence_months} onChange={(e) => setNewAssignment({ ...newAssignment, recurrence_months: e.target.value })} style={inputStyle} /></Field>
+            <Field label="Recurrence Basis"><select value={newAssignment.recurrence_basis} onChange={(e) => setNewAssignment({ ...newAssignment, recurrence_basis: e.target.value })} style={inputStyle}><option value="completion">Last Completion Date</option><option value="calendar">Fixed Calendar Schedule</option></select></Field>
+            <Field label="Required Completion Evidence"><select value={newAssignment.recurring_evidence_mode} onChange={(e) => setNewAssignment({ ...newAssignment, recurring_evidence_mode: e.target.value })} style={inputStyle}><option value="signature">Electronic Acknowledgement</option><option value="attachment">Training Evidence Attachment</option><option value="both">Both</option></select></Field>
+          </> : null}
           <Field label="Assigned To Email">
             <input
               type="email"
@@ -1142,20 +1155,7 @@ export default function TrainingManagementPage() {
             Acknowledgement Required
           </label>
 
-          <label>
-            <input
-              type="checkbox"
-              checked={newAssignment.training_category === "certification" || newAssignment.effectiveness_required}
-              disabled={newAssignment.training_category === "certification"}
-              onChange={(e) =>
-                setNewAssignment({
-                  ...newAssignment,
-                  effectiveness_required: e.target.checked,
-                })
-              }
-            />{" "}
-            Effectiveness Required {newAssignment.training_category === "certification" ? "(required for certification)" : "(optional assessment)"}
-          </label>
+
 
           <label>
             <input
@@ -1175,6 +1175,7 @@ export default function TrainingManagementPage() {
         <button onClick={createAssignment} style={primaryButtonStyle}>
           Create Assignment
         </button>
+        {newAssignment.training_category === "recurring" && <p style={{ ...subtleText, marginTop: 12 }}>Recurring training configuration is saved with this assignment. Eligible future assignments are generated automatically when due; use Generate Due Training in the sidebar for manual backup.</p>}
       </section>
 
 ) : null}
