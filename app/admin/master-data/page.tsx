@@ -76,6 +76,8 @@ type UserDirectoryItem = {
   job_title: string;
   department: string;
   account_status: string;
+  full_name: string;
+  manager_email: string;
 };
 
 type OosLimitItem = {
@@ -102,6 +104,8 @@ export default function MasterDataPage() {
   const [selectedUserEmail, setSelectedUserEmail] = useState("");
   const [selectedSecurityRole, setSelectedSecurityRole] = useState("");
   const [newUserEmail, setNewUserEmail] = useState("");
+  const [newUserFullName, setNewUserFullName] = useState("");
+  const [newUserManagerEmail, setNewUserManagerEmail] = useState("");
   const [newUserJobTitle, setNewUserJobTitle] = useState("");
   const [newUserDepartment, setNewUserDepartment] = useState("");
   const [newUserStatus, setNewUserStatus] = useState("active");
@@ -224,7 +228,7 @@ export default function MasterDataPage() {
   };
 
   const fetchUserAdministration = async () => {
-    const [roleDefinitionsRes, usersRes, assignmentsRes] = await Promise.all([
+    const [roleDefinitionsRes, usersRes, assignmentsRes, profilesRes] = await Promise.all([
       supabase
         .from("security_roles")
         .select("code,label,category,description,is_assignable")
@@ -239,6 +243,7 @@ export default function MasterDataPage() {
         .select("id,user_email,role_code,assigned_by,assigned_at")
         .order("user_email")
         .order("role_code"),
+      tenantId ? supabase.from("employee_profiles").select("user_email,full_name,manager_email").eq("tenant_id", tenantId) : Promise.resolve({ data: [], error: null }),
     ]);
 
     if (roleDefinitionsRes.error) {
@@ -247,6 +252,8 @@ export default function MasterDataPage() {
       setSecurityRoles((roleDefinitionsRes.data as SecurityRoleDefinition[]) || []);
     }
 
+    if (profilesRes.error) console.warn("Unable to load employee profiles:", profilesRes.error.message);
+    const profileByEmail = new Map(((profilesRes.data || []) as {user_email:string;full_name:string|null;manager_email:string|null}[]).map(p => [p.user_email.toLowerCase(),p]));
     if (usersRes.error) {
       console.warn("Unable to load user directory:", usersRes.error.message);
     } else {
@@ -257,6 +264,8 @@ export default function MasterDataPage() {
           job_title: String(item.job_title || ""),
           department: String(item.department || ""),
           account_status: String(item.account_status || "active"),
+          full_name: profileByEmail.get(String(item.user_email || "").toLowerCase())?.full_name || "",
+          manager_email: profileByEmail.get(String(item.user_email || "").toLowerCase())?.manager_email || "",
         }))
       );
     }
@@ -620,6 +629,21 @@ export default function MasterDataPage() {
       return;
     }
 
+    if (!tenantId) { alert("Select a tenant before editing employee profiles."); return; }
+    const manager = newUserManagerEmail.trim().toLowerCase();
+    if (manager === normalizedEmail) { alert("An employee cannot be their own manager."); return; }
+    if (manager && !userDirectory.some(u => u.user_email === manager && u.account_status === "active")) {
+      alert("Select an active manager from this tenant's user directory."); return;
+    }
+    // Prevent cycles in the reporting hierarchy.
+    let ancestor = manager;
+    const seen = new Set<string>();
+    while (ancestor) {
+      if (ancestor === normalizedEmail || seen.has(ancestor)) { alert("Circular reporting relationships are not allowed."); return; }
+      seen.add(ancestor);
+      ancestor = userDirectory.find(u => u.user_email === ancestor)?.manager_email || "";
+    }
+
     const existingUser = userDirectory.find(
       (user) => user.user_email.toLowerCase() === normalizedEmail
     );
@@ -640,7 +664,18 @@ export default function MasterDataPage() {
       return;
     }
 
+    const { error: profileError } = await supabase.from("employee_profiles").upsert({
+      tenant_id: tenantId, user_email: normalizedEmail,
+      full_name: newUserFullName.trim() || null,
+      manager_email: manager || null,
+      department: newUserDepartment.trim() || null,
+      active: newUserStatus === "active"
+    }, { onConflict: "tenant_id,user_email" });
+    if (profileError) { alert("User saved, but employee profile could not be saved: " + profileError.message); return; }
+
     setNewUserEmail("");
+    setNewUserFullName("");
+    setNewUserManagerEmail("");
     setNewUserJobTitle("");
     setNewUserDepartment("");
     setNewUserStatus("active");
@@ -1090,6 +1125,7 @@ export default function MasterDataPage() {
               placeholder="User email"
               style={inputStyle}
             />
+            <input value={newUserFullName} onChange={(event) => setNewUserFullName(event.target.value)} placeholder="Employee name" style={inputStyle} />
             <input
               value={newUserJobTitle}
               onChange={(event) => setNewUserJobTitle(event.target.value)}
@@ -1102,6 +1138,12 @@ export default function MasterDataPage() {
               placeholder="Department"
               style={inputStyle}
             />
+            <select value={newUserManagerEmail} onChange={(event) => setNewUserManagerEmail(event.target.value)} style={selectStyle}>
+              <option value="">No manager assigned</option>
+              {userDirectory.filter(u => u.account_status === "active" && u.user_email !== newUserEmail.trim().toLowerCase()).map(u => (
+                <option key={u.user_email} value={u.user_email}>{u.full_name ? u.full_name + " — " : ""}{u.user_email} ({u.department || "No department"})</option>
+              ))}
+            </select>
             <select
               value={newUserStatus}
               onChange={(event) => setNewUserStatus(event.target.value)}
@@ -1175,8 +1217,10 @@ export default function MasterDataPage() {
             <thead>
               <tr>
                 <th style={{ textAlign: "left", padding: "10px", borderBottom: "1px solid #d1d5db" }}>User</th>
+                <th style={{ textAlign: "left", padding: "10px", borderBottom: "1px solid #d1d5db" }}>Employee Name</th>
                 <th style={{ textAlign: "left", padding: "10px", borderBottom: "1px solid #d1d5db" }}>Job Title</th>
                 <th style={{ textAlign: "left", padding: "10px", borderBottom: "1px solid #d1d5db" }}>Department</th>
+                <th style={{ textAlign: "left", padding: "10px", borderBottom: "1px solid #d1d5db" }}>Manager</th>
                 <th style={{ textAlign: "left", padding: "10px", borderBottom: "1px solid #d1d5db" }}>Status</th>
                 <th style={{ textAlign: "left", padding: "10px", borderBottom: "1px solid #d1d5db" }}>Module Access</th>
                 <th style={{ textAlign: "left", padding: "10px", borderBottom: "1px solid #d1d5db" }}>Action</th>
@@ -1186,12 +1230,14 @@ export default function MasterDataPage() {
               {userDirectory.map((user) => (
                 <tr key={user.user_email}>
                   <td style={{ padding: "10px", borderBottom: "1px solid #e5e7eb" }}>{user.user_email}</td>
+                  <td style={{ padding: "10px", borderBottom: "1px solid #e5e7eb" }}>{user.full_name || "Not specified"}</td>
                   <td style={{ padding: "10px", borderBottom: "1px solid #e5e7eb" }}>
                     {user.job_title || "Not specified"}
                   </td>
                   <td style={{ padding: "10px", borderBottom: "1px solid #e5e7eb" }}>
                     {user.department || "Not specified"}
                   </td>
+                  <td style={{ padding: "10px", borderBottom: "1px solid #e5e7eb" }}>{user.manager_email ? (userDirectory.find(u => u.user_email === user.manager_email)?.full_name || user.manager_email) : "Not assigned"}</td>
                   <td style={{ padding: "10px", borderBottom: "1px solid #e5e7eb" }}>
                     {user.account_status === "active"
                       ? "Active"
@@ -1238,6 +1284,8 @@ export default function MasterDataPage() {
                       <button
                         onClick={() => {
                           setNewUserEmail(user.user_email);
+                          setNewUserFullName(user.full_name);
+                          setNewUserManagerEmail(user.manager_email);
                           setNewUserJobTitle(user.job_title);
                           setNewUserDepartment(user.department);
                           setNewUserStatus(user.account_status || "active");
