@@ -1017,34 +1017,22 @@ export default function TrainingManagementPage() {
         </div>
 
         <div style={{ ...cardStyle, marginBottom: 16, padding: 16 }}>
-          <h3 style={{ marginTop: 0 }}>Controlled Document</h3>
-          <Field label="Controlled Document">
-            <select
-              value={newAssignment.document_id}
-              onChange={(e) =>
-                setNewAssignment({
-                  ...newAssignment,
-                  document_id: e.target.value,
-                })
-              }
-              style={inputStyle}
-            >
-              <option value="">No linked document</option>
-              {documents.filter((doc) => ["release", "effective"].includes(String(doc.status || "").toLowerCase())).map((doc) => (
-                <option key={doc.id} value={doc.id}>
-                  {doc.document_number} Rev {doc.revision} — {doc.title}
-                </option>
-              ))}
-            </select>
-          </Field>
-        </div>
-        <div style={{ ...cardStyle, marginBottom: 16, padding: 16 }}>
-          <h3 style={{ marginTop: 0 }}>Document Details</h3>
           {(() => {
             const selectedDocument = documents.find((doc) => String(doc.id) === String(newAssignment.document_id));
             return (
               <div style={gridStyle}>
-                <Field label="Document Number"><input value={selectedDocument?.document_number || ""} readOnly style={inputStyle} /></Field>
+                <Field label="Released SOP">
+                  <select
+                    value={newAssignment.document_id}
+                    onChange={(e) => setNewAssignment({ ...newAssignment, document_id: e.target.value })}
+                    style={inputStyle}
+                  >
+                    <option value="">Select SOP</option>
+                    {documents.filter((doc) => ["release", "effective"].includes(String(doc.status || "").toLowerCase())).map((doc) => (
+                      <option key={doc.id} value={doc.id}>{doc.document_number}</option>
+                    ))}
+                  </select>
+                </Field>
                 <Field label="Description"><input value={selectedDocument?.title || ""} readOnly style={inputStyle} /></Field>
                 <Field label="Revision"><input value={selectedDocument?.revision || ""} readOnly style={inputStyle} /></Field>
               </div>
