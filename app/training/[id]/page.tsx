@@ -436,7 +436,7 @@ export default function TrainingAssignmentDetailPage() {
     return (
       <main style={pageStyle}>
         <h1>Training assignment not found</h1>
-        <a href="/training" style={darkButtonStyle}>Back to Training</a>
+        <a href="/" style={darkButtonStyle}>Return to Workspace</a>
       </main>
     );
   }
@@ -451,7 +451,7 @@ export default function TrainingAssignmentDetailPage() {
         </div>
 
         <div style={buttonRowStyle}>
-          <a href="/training" style={darkButtonStyle}>Back to Training</a>
+          <a href="/" style={darkButtonStyle}>Return to Workspace</a>
         </div>
       </header>
 
