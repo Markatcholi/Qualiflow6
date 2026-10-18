@@ -10,6 +10,7 @@ type TrainingAssignment = {
   tenant_id?: string | null;
   training_category?: string | null;
   recurring_evidence_mode?: string | null;
+  approved_evaluation_attachment_required?: boolean | null;
   training_evidence_storage_path?: string | null;
   training_evidence_file_name?: string | null;
   training_completed_on?: string | null;
@@ -190,6 +191,7 @@ export default function TrainingManagementPage() {
     recurrence_months: "12",
     recurrence_basis: "completion",
     recurring_evidence_mode: "attachment",
+    approved_evaluation_attachment_required: false,
     assigned_to_email: "",
     training_title: "",
     training_description: "",
@@ -539,6 +541,7 @@ export default function TrainingManagementPage() {
       recurrence_months: newAssignment.training_category === "recurring" ? Number(newAssignment.recurrence_months) : null,
       recurrence_basis: newAssignment.training_category === "recurring" ? newAssignment.recurrence_basis : null,
       recurring_evidence_mode: newAssignment.training_category === "recurring" ? newAssignment.recurring_evidence_mode : null,
+      approved_evaluation_attachment_required: newAssignment.training_category === "recurring" && !!newAssignment.approved_evaluation_attachment_required,
       role_name: newAssignment.role_name || null,
       department: newAssignment.department || null,
       training_title: newAssignment.training_title,
@@ -549,8 +552,7 @@ export default function TrainingManagementPage() {
       effectiveness_status: (newAssignment.training_category === "certification" || newAssignment.effectiveness_required)
         ? "effectiveness_pending"
         : "not_required",
-      supervisor_verification_required:
-        newAssignment.supervisor_verification_required,
+      supervisor_verification_required: false,
       acknowledgement_required: newAssignment.acknowledgement_required,
     });
 
@@ -1045,6 +1047,7 @@ export default function TrainingManagementPage() {
             <Field label="Repeat Every (Months)"><input type="number" min={1} max={120} value={newAssignment.recurrence_months} onChange={(e) => setNewAssignment({ ...newAssignment, recurrence_months: e.target.value })} style={inputStyle} /></Field>
             <Field label="Recurrence Basis"><select value={newAssignment.recurrence_basis} onChange={(e) => setNewAssignment({ ...newAssignment, recurrence_basis: e.target.value })} style={inputStyle}><option value="completion">Last Completion Date</option><option value="calendar">Fixed Calendar Schedule</option></select></Field>
             <Field label="Required Completion Evidence"><select value={newAssignment.recurring_evidence_mode} onChange={(e) => setNewAssignment({ ...newAssignment, recurring_evidence_mode: e.target.value })} style={inputStyle}><option value="signature">Electronic Acknowledgement</option><option value="attachment">Training Evidence Attachment</option><option value="both">Both</option></select></Field>
+            <Field label="Evaluation Requirement"><select value={newAssignment.approved_evaluation_attachment_required ? "approved_attachment" : "none"} onChange={(e) => setNewAssignment({ ...newAssignment, approved_evaluation_attachment_required: e.target.value === "approved_attachment", supervisor_verification_required: false })} style={inputStyle}><option value="none">Not Required</option><option value="approved_attachment">Approved Evaluation Attachment Required</option></select></Field>
           </> : null}
           <Field label="Assigned To Email">
             <input
@@ -1145,19 +1148,7 @@ export default function TrainingManagementPage() {
 
 
 
-          <label>
-            <input
-              type="checkbox"
-              checked={newAssignment.supervisor_verification_required}
-              onChange={(e) =>
-                setNewAssignment({
-                  ...newAssignment,
-                  supervisor_verification_required: e.target.checked,
-                })
-              }
-            />{" "}
-            Supervisor Verification Required
-          </label>
+
         </div>
 
         <button onClick={createAssignment} style={primaryButtonStyle}>
