@@ -192,6 +192,7 @@ export default function TrainingManagementPage() {
     recurrence_basis: "completion",
     recurring_evidence_mode: "attachment",
     approved_evaluation_attachment_required: false,
+    supervisor_designee_evidence_approval_required: false,
     assigned_to_email: "",
     training_title: "",
     training_description: "",
@@ -542,6 +543,7 @@ export default function TrainingManagementPage() {
       recurrence_basis: newAssignment.training_category === "recurring" ? newAssignment.recurrence_basis : null,
       recurring_evidence_mode: newAssignment.training_category === "recurring" ? newAssignment.recurring_evidence_mode : null,
       approved_evaluation_attachment_required: newAssignment.training_category === "recurring" && !!newAssignment.approved_evaluation_attachment_required,
+      supervisor_designee_evidence_approval_required: !!newAssignment.supervisor_designee_evidence_approval_required,
       role_name: newAssignment.role_name || null,
       department: newAssignment.department || null,
       training_title: newAssignment.training_title,
@@ -568,6 +570,7 @@ export default function TrainingManagementPage() {
       recurrence_basis: "completion",
       recurring_evidence_mode: "attachment",
       approved_evaluation_attachment_required: false,
+    supervisor_designee_evidence_approval_required: false,
       assigned_to_email: "",
       training_title: "",
       training_description: "",
@@ -1145,6 +1148,14 @@ export default function TrainingManagementPage() {
               }
             />{" "}
             Acknowledgement Required
+          </label>
+          <label>
+            <input
+              type="checkbox"
+              checked={newAssignment.supervisor_designee_evidence_approval_required}
+              onChange={(e) => setNewAssignment({ ...newAssignment, supervisor_designee_evidence_approval_required: e.target.checked })}
+            />{" "}
+            Supervisor/Designee Evidence Approval Required
           </label>
 
 
