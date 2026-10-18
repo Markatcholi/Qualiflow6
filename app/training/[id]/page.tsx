@@ -39,6 +39,7 @@ type TrainingAssignment = {
   training_completed_on?: string | null;
   training_valid_until?: string | null;
   recurring_evidence_mode?: string | null;
+  approved_evaluation_attachment_required?: boolean | null;
 };
 
 type ControlledDocument = {
@@ -301,6 +302,14 @@ export default function TrainingAssignmentDetailPage() {
       return;
     }
 
+    const approvedFormRequired = assignment.training_category === "recurring" && assignment.approved_evaluation_attachment_required;
+    const evidenceMode = assignment.training_category === "recurring" ? (assignment.recurring_evidence_mode || "attachment") : "signature";
+    const attachmentRequired = approvedFormRequired || evidenceMode === "attachment" || evidenceMode === "both";
+    if (attachmentRequired && !evidenceFile && !assignment.training_evidence_storage_path) {
+      alert(approvedFormRequired ? "Upload the supervisor-approved evaluation form before completing training." : "Required training evidence must be attached before completion.");
+      return;
+    }
+
     setBusy(true);
 
     try {
@@ -458,7 +467,7 @@ export default function TrainingAssignmentDetailPage() {
         <div style={kpiCardStyle}><div style={kpiTitleStyle}>Training Status</div><StatusBadge status={isOverdue ? "overdue" : assignment.status || "assigned"} /></div>
         {!isRegisteredCertification && <div style={kpiCardStyle}><div style={kpiTitleStyle}>Due Date</div><strong>{assignment.due_date || "N/A"}</strong></div>}
         <div style={kpiCardStyle}><div style={kpiTitleStyle}>{isRegisteredCertification ? "Certification Date" : "Completion Date"}</div><strong>{isRegisteredCertification ? (assignment.training_completed_on || "N/A") : formatDateTime(assignment.completed_at)}</strong></div>
-        {isRegisteredCertification ? <div style={kpiCardStyle}><div style={kpiTitleStyle}>Expiration Date</div><strong>{assignment.training_valid_until || "No expiration"}</strong></div> : <div style={kpiCardStyle}><div style={kpiTitleStyle}>Evaluation Status</div><strong>{assignment.effectiveness_required ? trainingEffectivenessLabel(assignment.effectiveness_status) : "Not required"}</strong></div>}
+        {isRegisteredCertification ? <div style={kpiCardStyle}><div style={kpiTitleStyle}>Expiration Date</div><strong>{assignment.training_valid_until || "No expiration"}</strong></div> : <div style={kpiCardStyle}><div style={kpiTitleStyle}>Evaluation Status</div><strong>{assignment.training_category === "recurring" && assignment.approved_evaluation_attachment_required ? (assignment.training_evidence_storage_path ? "Approved form attached" : "Approved form required") : assignment.effectiveness_required ? trainingEffectivenessLabel(assignment.effectiveness_status) : "Not required"}</strong></div>}
       </section>
 
       {isRegisteredCertification && <section style={cardStyle}>
@@ -530,7 +539,7 @@ export default function TrainingAssignmentDetailPage() {
 
       {(canCompleteTraining || (isAssignedUser && assignment.status === "assigned") || (canManage && assignment.supervisor_verification_required && !assignment.supervisor_verified_at) || (canManage && assignment.status !== "completed" && assignment.status !== "waived")) ? <section style={cardStyle}>
         <h2 style={{ marginTop: 0 }}>Complete Training</h2>
-        {canCompleteTraining ? <div style={{ marginBottom: 16 }}><label style={labelStyle}>Supporting Training Evidence (optional upload)</label><input type="file" onChange={(e) => setEvidenceFile(e.target.files?.[0] || null)} disabled={busy} style={{ display: "block", marginTop: 8 }} /><p style={subtleText}>{assignment.training_evidence_file_name ? `Existing evidence: ${assignment.training_evidence_file_name}` : "Attach a training form, examination result, or practical assessment if available."}</p></div> : null}
+        {canCompleteTraining ? <div style={{ marginBottom: 16 }}><label style={labelStyle}>{assignment.training_category === "recurring" && assignment.approved_evaluation_attachment_required ? "Supervisor-Approved Evaluation Form (required upload)" : assignment.training_category === "recurring" && ["attachment", "both"].includes(assignment.recurring_evidence_mode || "attachment") ? "Supporting Training Evidence (required upload)" : "Supporting Training Evidence (optional upload)"}</label><input type="file" onChange={(e) => setEvidenceFile(e.target.files?.[0] || null)} disabled={busy} style={{ display: "block", marginTop: 8 }} /><p style={subtleText}>{assignment.training_evidence_file_name ? `Existing evidence: ${assignment.training_evidence_file_name}` : assignment.training_category === "recurring" && assignment.approved_evaluation_attachment_required ? "Upload the form already approved by your supervisor outside QualiSphere. No separate supervisor approval task is generated." : "Attach a training form, examination result, or practical assessment if available."}</p></div> : null}
         <div style={actionStackStyle}>
           {isAssignedUser && assignment.status === "assigned" ? (
             <button disabled={busy} onClick={() => updateAssignmentStatus("in_progress")} style={primaryButtonStyle}>
@@ -634,7 +643,7 @@ export default function TrainingAssignmentDetailPage() {
             )}
           </>
         ) : (
-          <p style={subtleText}>Training evaluation is not required for this assignment.</p>
+          <p style={subtleText}>{assignment.training_category === "recurring" && assignment.approved_evaluation_attachment_required ? "Supervisor-approved evaluation form required as an attachment before training completion. Supervisor approval occurs outside QualiSphere." : "Training evaluation is not required for this assignment."}</p>
         )}
       </section>}
 
