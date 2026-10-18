@@ -452,7 +452,6 @@ export default function TrainingAssignmentDetailPage() {
 
         <div style={buttonRowStyle}>
           <a href="/training" style={darkButtonStyle}>Back to Training</a>
-          <a href="/dashboard" style={darkButtonStyle}>Dashboard</a>
         </div>
       </header>
 
