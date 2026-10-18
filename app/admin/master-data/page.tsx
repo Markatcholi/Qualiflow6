@@ -638,6 +638,10 @@ export default function MasterDataPage() {
     }
 
     if (!tenantId) { alert("Select a tenant before editing employee profiles."); return; }
+    if (!tenantMemberEmails.includes(normalizedEmail)) {
+      alert("This employee must first have an active membership in the current tenant.");
+      return;
+    }
     const manager = newUserManagerEmail.trim().toLowerCase();
     if (manager === normalizedEmail) { alert("An employee cannot be their own manager."); return; }
     if (manager && (!tenantMemberEmails.includes(manager) || !userDirectory.some(u => u.user_email === manager && u.account_status === "active"))) {
