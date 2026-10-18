@@ -332,8 +332,11 @@ export default function MasterDataPage() {
   useEffect(() => {
     fetchUserRole();
     fetchAll();
-    fetchUserAdministration();
   }, []);
+
+  useEffect(() => {
+    if (tenantId) fetchUserAdministration();
+  }, [tenantId]);
 
   const insertProductPart = async () => {
     const partNumber = newPartCode.trim();
