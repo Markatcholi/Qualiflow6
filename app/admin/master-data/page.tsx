@@ -1156,6 +1156,7 @@ export default function MasterDataPage() {
           <>
             <UserExcelImport tenantId={tenantId} onImported={fetchUserAdministration} />
             <h3>Add or Update User Profile</h3>
+            <p style={{ color: "#4b5563", marginTop: 0 }}>Select Edit below to update an employee. Type a manager email or choose a suggestion; leave blank for no manager.</p>
             <input value={newUserFullName} onChange={(event) => setNewUserFullName(event.target.value)} placeholder="Employee name" style={inputStyle} />
             <input
               value={newUserEmail}
@@ -1175,12 +1176,17 @@ export default function MasterDataPage() {
               placeholder="Department"
               style={inputStyle}
             />
-            <select value={newUserManagerEmail} onChange={(event) => setNewUserManagerEmail(event.target.value)} style={selectStyle}>
-              <option value="">No manager assigned</option>
-              {userDirectory.filter(u => tenantMemberEmails.includes(u.user_email) && u.account_status === "active" && u.user_email !== newUserEmail.trim().toLowerCase()).map(u => (
-                <option key={u.user_email} value={u.user_email}>{u.full_name ? u.full_name + " — " : ""}{u.user_email} ({u.department || "No department"})</option>
-              ))}
-            </select>
+            <label style={{ display: "inline-flex", flexDirection: "column", gap: 4, verticalAlign: "middle" }}>
+              <span style={{ fontSize: 12, fontWeight: 600 }}>Manager Email (optional)</span>
+              <input type="email" list="manager-email-suggestions" value={newUserManagerEmail}
+                onChange={(event) => setNewUserManagerEmail(event.target.value)}
+                placeholder="manager@company.com" style={inputStyle} aria-label="Manager email" />
+              <datalist id="manager-email-suggestions">
+                {userDirectory.filter(u => tenantMemberEmails.includes(u.user_email) && u.account_status === "active" && u.user_email !== newUserEmail.trim().toLowerCase()).map(u => (
+                  <option key={u.user_email} value={u.user_email}>{u.full_name || u.job_title || u.user_email}</option>
+                ))}
+              </datalist>
+            </label>
             <select
               value={newUserStatus}
               onChange={(event) => setNewUserStatus(event.target.value)}
@@ -1257,7 +1263,7 @@ export default function MasterDataPage() {
                 <th style={{ textAlign: "left", padding: "10px", borderBottom: "1px solid #d1d5db" }}>Employee Name</th>
                 <th style={{ textAlign: "left", padding: "10px", borderBottom: "1px solid #d1d5db" }}>Job Title</th>
                 <th style={{ textAlign: "left", padding: "10px", borderBottom: "1px solid #d1d5db" }}>Department</th>
-                <th style={{ textAlign: "left", padding: "10px", borderBottom: "1px solid #d1d5db" }}>Manager</th>
+                <th style={{ textAlign: "left", padding: "10px", borderBottom: "1px solid #d1d5db" }}>Manager Email</th>
                 <th style={{ textAlign: "left", padding: "10px", borderBottom: "1px solid #d1d5db" }}>Status</th>
                 <th style={{ textAlign: "left", padding: "10px", borderBottom: "1px solid #d1d5db" }}>Module Access</th>
                 <th style={{ textAlign: "left", padding: "10px", borderBottom: "1px solid #d1d5db" }}>Action</th>
@@ -1274,7 +1280,7 @@ export default function MasterDataPage() {
                   <td style={{ padding: "10px", borderBottom: "1px solid #e5e7eb" }}>
                     {user.department || "Not specified"}
                   </td>
-                  <td style={{ padding: "10px", borderBottom: "1px solid #e5e7eb" }}>{user.manager_email ? (userDirectory.find(u => u.user_email === user.manager_email)?.full_name || user.manager_email) : "Not assigned"}</td>
+                  <td style={{ padding: "10px", borderBottom: "1px solid #e5e7eb" }}>{user.manager_email || "Not assigned"}</td>
                   <td style={{ padding: "10px", borderBottom: "1px solid #e5e7eb" }}>
                     {user.account_status === "active"
                       ? "Active"
