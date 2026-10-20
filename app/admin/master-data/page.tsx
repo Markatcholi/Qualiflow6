@@ -246,7 +246,7 @@ export default function MasterDataPage() {
         .order("user_email")
         .order("role_code"),
       tenantId ? supabase.from("employee_profiles").select("user_email,full_name,manager_email").eq("tenant_id", tenantId) : Promise.resolve({ data: [], error: null }),
-      tenantId ? supabase.from("tenant_memberships").select("user_email").eq("tenant_id", tenantId).eq("membership_status", "active") : Promise.resolve({ data: [], error: null }),
+      tenantId ? supabase.from("tenant_memberships").select("user_email").eq("tenant_id", tenantId).in("membership_status", ["active", "invited"]) : Promise.resolve({ data: [], error: null }),
     ]);
 
     if (roleDefinitionsRes.error) {
@@ -263,17 +263,35 @@ export default function MasterDataPage() {
     if (usersRes.error) {
       console.warn("Unable to load user directory:", usersRes.error.message);
     } else {
-      setUserDirectory(
-        (usersRes.data || []).filter((item: any) => memberEmails.has(String(item.user_email || "").trim().toLowerCase())).map((item: any) => ({
-          user_email: String(item.user_email || "").trim().toLowerCase(),
+      const directoryByEmail = new Map<string, UserDirectoryItem>();
+      for (const item of usersRes.data || []) {
+        const email = String(item.user_email || "").trim().toLowerCase();
+        if (!memberEmails.has(email)) continue;
+        directoryByEmail.set(email, {
+          user_email: email,
           primary_role: String(item.role || "user"),
           job_title: String(item.job_title || ""),
           department: String(item.department || ""),
           account_status: String(item.account_status || "active"),
-          full_name: profileByEmail.get(String(item.user_email || "").toLowerCase())?.full_name || "",
-          manager_email: profileByEmail.get(String(item.user_email || "").toLowerCase())?.manager_email || "",
-        }))
-      );
+          full_name: profileByEmail.get(email)?.full_name || "",
+          manager_email: profileByEmail.get(email)?.manager_email || "",
+        });
+      }
+      // Excel imports create tenant-scoped employee profiles before a legacy user_roles row exists.
+      // Include those invited, inactive employees for role assignment without activating them.
+      for (const [email, profile] of profileByEmail) {
+        if (!memberEmails.has(email) || directoryByEmail.has(email)) continue;
+        directoryByEmail.set(email, {
+          user_email: email,
+          primary_role: "user",
+          job_title: "",
+          department: "",
+          account_status: "inactive",
+          full_name: profile.full_name || "",
+          manager_email: profile.manager_email || "",
+        });
+      }
+      setUserDirectory([...directoryByEmail.values()].sort((a, b) => a.user_email.localeCompare(b.user_email)));
     }
 
     if (assignmentsRes.error) {
