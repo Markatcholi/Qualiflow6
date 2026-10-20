@@ -245,7 +245,7 @@ export default function MasterDataPage() {
         .select("id,user_email,role_code,assigned_by,assigned_at")
         .order("user_email")
         .order("role_code"),
-      tenantId ? supabase.from("employee_profiles").select("user_email,full_name,manager_email").eq("tenant_id", tenantId) : Promise.resolve({ data: [], error: null }),
+      tenantId ? supabase.from("employee_profiles").select("user_email,full_name,manager_email,department").eq("tenant_id", tenantId) : Promise.resolve({ data: [], error: null }),
       tenantId ? supabase.from("tenant_memberships").select("user_email").eq("tenant_id", tenantId).in("membership_status", ["active", "invited"]) : Promise.resolve({ data: [], error: null }),
     ]);
 
@@ -257,9 +257,14 @@ export default function MasterDataPage() {
 
     if (profilesRes.error) console.warn("Unable to load employee profiles:", profilesRes.error.message);
     if (membersRes.error) console.warn("Unable to load tenant members:", membersRes.error.message);
+    const { data: tenantProfiles, error: tenantProfilesError } = tenantId
+      ? await supabase.from("tenant_user_profiles").select("user_email,job_title,department,account_status").eq("tenant_id", tenantId)
+      : { data: [], error: null };
+    if (tenantProfilesError) console.warn("Unable to load tenant user profiles:", tenantProfilesError.message);
+    const tenantProfileByEmail = new Map(((tenantProfiles || []) as {user_email:string;job_title:string|null;department:string|null;account_status:string|null}[]).map(p => [p.user_email.trim().toLowerCase(), p]));
     const memberEmails = new Set(((membersRes.data || []) as {user_email:string}[]).map(m => m.user_email.trim().toLowerCase()));
     setTenantMemberEmails([...memberEmails]);
-    const profileByEmail = new Map(((profilesRes.data || []) as {user_email:string;full_name:string|null;manager_email:string|null}[]).map(p => [p.user_email.toLowerCase(),p]));
+    const profileByEmail = new Map(((profilesRes.data || []) as {user_email:string;full_name:string|null;manager_email:string|null;department:string|null}[]).map(p => [p.user_email.toLowerCase(),p]));
     if (usersRes.error) {
       console.warn("Unable to load user directory:", usersRes.error.message);
     } else {
@@ -270,9 +275,9 @@ export default function MasterDataPage() {
         directoryByEmail.set(email, {
           user_email: email,
           primary_role: String(item.role || "user"),
-          job_title: String(item.job_title || ""),
-          department: String(item.department || ""),
-          account_status: String(item.account_status || "active"),
+          job_title: String(tenantProfileByEmail.get(email)?.job_title || item.job_title || ""),
+          department: String(tenantProfileByEmail.get(email)?.department || item.department || profileByEmail.get(email)?.department || ""),
+          account_status: String(tenantProfileByEmail.get(email)?.account_status || item.account_status || "active"),
           full_name: profileByEmail.get(email)?.full_name || "",
           manager_email: profileByEmail.get(email)?.manager_email || "",
         });
@@ -284,9 +289,9 @@ export default function MasterDataPage() {
         directoryByEmail.set(email, {
           user_email: email,
           primary_role: "user",
-          job_title: "",
-          department: "",
-          account_status: "inactive",
+          job_title: tenantProfileByEmail.get(email)?.job_title || "",
+          department: tenantProfileByEmail.get(email)?.department || profile.department || "",
+          account_status: tenantProfileByEmail.get(email)?.account_status || "inactive",
           full_name: profile.full_name || "",
           manager_email: profile.manager_email || "",
         });
