@@ -127,6 +127,7 @@ export default function TrainingManagementPage() {
   }, []);
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterMine, setFilterMine] = useState(false);
+  const [filterTeamPending, setFilterTeamPending] = useState(false);
   const [showTrainingSignature, setShowTrainingSignature] = useState(false);
   const [pendingSignatureAssignment, setPendingSignatureAssignment] =
     useState<TrainingAssignment | null>(null);
@@ -347,10 +348,12 @@ export default function TrainingManagementPage() {
 
   const today = new Date().toISOString().slice(0, 10);
 
+  const directReportEmails = useMemo(() => new Set(employees.filter((e) => normalizeEmail(e.manager_email || "") === normalizeEmail(userEmail)).map((e) => normalizeEmail(e.user_email))), [employees, userEmail]);
   const filteredAssignments = useMemo(() => {
-    const reportEmails = new Set(employees.filter((e) => e.manager_email?.toLowerCase() === userEmail.toLowerCase()).map((e) => e.user_email.toLowerCase()));
+    const reportEmails = directReportEmails;
     return assignments.filter((item) => {
       if (!canManage && item.assigned_to_email.toLowerCase() !== userEmail.toLowerCase() && !reportEmails.has(item.assigned_to_email.toLowerCase())) return false;
+      if (filterTeamPending && (!reportEmails.has(normalizeEmail(item.assigned_to_email)) || ["completed", "waived"].includes(item.status || ""))) return false;
       const matchesStatus = filterStatus === "all" ||
         (filterStatus === "certification" ? item.training_category === "certification" :
         filterStatus === "recurring" ? item.training_category === "recurring" :
@@ -363,7 +366,7 @@ export default function TrainingManagementPage() {
 
       return matchesStatus && matchesMine;
     });
-  }, [assignments, employees, canManage, filterStatus, filterMine, userEmail]);
+  }, [assignments, directReportEmails, canManage, filterStatus, filterMine, filterTeamPending, userEmail]);
 
   const metrics = useMemo(() => {
     const open = assignments.filter(
@@ -953,16 +956,29 @@ export default function TrainingManagementPage() {
           style={primaryButtonStyle}
           onClick={() => {
             setFilterMine(true);
+            setFilterTeamPending(false);
             setFilterStatus("all");
             setActiveTrainingSection("assignments");
           }}
         >
           Open My Training
         </button>
+        {directReportEmails.size > 0 && <button
+          style={{ ...primaryButtonStyle, marginLeft: 12 }}
+          onClick={() => {
+            setFilterMine(false);
+            setFilterTeamPending(true);
+            setFilterStatus("all");
+            setActiveTrainingSection("assignments");
+          }}
+        >
+          View My Team Pending Training
+        </button>}
       </section>
 
       <section style={{ ...cardStyle, display: activeTrainingSection === "assignments" ? undefined : "none" }}>
-        <h2 style={{ marginTop: 0 }}>Training Assignments</h2>
+        <h2 style={{ marginTop: 0 }}>{filterTeamPending ? "My Team Pending Training" : "Training Assignments"}</h2>
+        {filterTeamPending && <button type="button" onClick={() => setFilterTeamPending(false)}>Show All Accessible Training</button>}
 
         <div style={filterRowStyle}>
           <select
@@ -983,7 +999,7 @@ export default function TrainingManagementPage() {
             <input
               type="checkbox"
               checked={filterMine}
-              onChange={(e) => setFilterMine(e.target.checked)}
+              onChange={(e) => { setFilterMine(e.target.checked); if (e.target.checked) setFilterTeamPending(false); }}
             />{" "}
             My Training Only
           </label>
