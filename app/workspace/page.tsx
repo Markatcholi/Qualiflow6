@@ -895,7 +895,7 @@ async function fetchTrainingItems(userEmail: string) {
     return [];
   }
 
-  const terminal = new Set(["completed", "effectiveness_complete", "waived", "cancelled", "canceled"]);
+  const terminal = new Set(["completed", "effectiveness_complete", "waived", "cancelled", "canceled", "withdrawn"]);
 
   return (data || [])
     .filter((assignment: any) => !terminal.has(String(assignment.status || "").trim().toLowerCase()))
