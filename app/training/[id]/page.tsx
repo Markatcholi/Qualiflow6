@@ -136,8 +136,7 @@ export default function TrainingAssignmentDetailPage() {
   );
 
   const isOverdue = Boolean(
-    assignment?.status !== "completed" &&
-      assignment?.status !== "waived" &&
+    !isTerminalTraining &&
       assignment?.due_date &&
       assignment.due_date < new Date().toISOString().slice(0, 10)
   );
@@ -564,7 +563,7 @@ export default function TrainingAssignmentDetailPage() {
 
       )}
 
-      {(canCompleteTraining || (isAssignedUser && assignment.status === "assigned") || (canManage && assignment.supervisor_verification_required && !assignment.supervisor_verified_at) || (canManage && isAssignedUser && assignment.status !== "completed" && assignment.status !== "waived")) ? <section style={cardStyle}>
+      {(canCompleteTraining || (isAssignedUser && assignment.status === "assigned") || (canManage && !isTerminalTraining && assignment.supervisor_verification_required && !assignment.supervisor_verified_at)) ? <section style={cardStyle}>
         <h2 style={{ marginTop: 0 }}>Complete Training</h2>
         {canCompleteTraining ? <div style={{ marginBottom: 16 }}><label style={labelStyle}>{assignment.training_category === "recurring" && assignment.approved_evaluation_attachment_required ? "Supervisor-Approved Evaluation Form (required upload)" : assignment.training_category === "recurring" && ["attachment", "both"].includes(assignment.recurring_evidence_mode || "attachment") ? "Supporting Training Evidence (required upload)" : "Supporting Training Evidence (optional upload)"}</label><input type="file" onChange={(e) => setEvidenceFile(e.target.files?.[0] || null)} disabled={busy} style={{ display: "block", marginTop: 8 }} /><p style={subtleText}>{assignment.training_evidence_file_name ? `Existing evidence: ${assignment.training_evidence_file_name}` : assignment.training_category === "recurring" && assignment.approved_evaluation_attachment_required ? "Upload the form already approved by your supervisor outside QualiSphere. No separate supervisor approval task is generated." : "Attach a training form, examination result, or practical assessment if available."}</p></div> : null}
         <div style={actionStackStyle}>
