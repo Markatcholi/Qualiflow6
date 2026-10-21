@@ -128,7 +128,7 @@ export default function TrainingAssignmentDetailPage() {
     assignment &&
       assignment.status !== "completed" &&
       assignment.status !== "waived" &&
-      (isAssignedUser || canManage)
+      isAssignedUser
   );
 
   const isOverdue = Boolean(
@@ -257,8 +257,8 @@ export default function TrainingAssignmentDetailPage() {
     }
 
     if (status === "waived") {
-      if (!canManage) {
-        alert("Only training admin, quality, approver, admin, or VP Quality can waive training.");
+      if (!canManage || !isAssignedUser) {
+        alert("Training waiver is not available from another employee\'s record.");
         return;
       }
 
@@ -293,7 +293,7 @@ export default function TrainingAssignmentDetailPage() {
     if (!assignment) return;
 
     if (!canCompleteTraining) {
-      alert("Only the assigned trainee or training administrator can complete this training.");
+      alert("Only the assigned trainee can complete and electronically acknowledge this training.");
       return;
     }
 
@@ -536,7 +536,7 @@ export default function TrainingAssignmentDetailPage() {
 
       )}
 
-      {(canCompleteTraining || (isAssignedUser && assignment.status === "assigned") || (canManage && assignment.supervisor_verification_required && !assignment.supervisor_verified_at) || (canManage && assignment.status !== "completed" && assignment.status !== "waived")) ? <section style={cardStyle}>
+      {(canCompleteTraining || (isAssignedUser && assignment.status === "assigned") || (canManage && assignment.supervisor_verification_required && !assignment.supervisor_verified_at) || (canManage && isAssignedUser && assignment.status !== "completed" && assignment.status !== "waived")) ? <section style={cardStyle}>
         <h2 style={{ marginTop: 0 }}>Complete Training</h2>
         {canCompleteTraining ? <div style={{ marginBottom: 16 }}><label style={labelStyle}>{assignment.training_category === "recurring" && assignment.approved_evaluation_attachment_required ? "Supervisor-Approved Evaluation Form (required upload)" : assignment.training_category === "recurring" && ["attachment", "both"].includes(assignment.recurring_evidence_mode || "attachment") ? "Supporting Training Evidence (required upload)" : "Supporting Training Evidence (optional upload)"}</label><input type="file" onChange={(e) => setEvidenceFile(e.target.files?.[0] || null)} disabled={busy} style={{ display: "block", marginTop: 8 }} /><p style={subtleText}>{assignment.training_evidence_file_name ? `Existing evidence: ${assignment.training_evidence_file_name}` : assignment.training_category === "recurring" && assignment.approved_evaluation_attachment_required ? "Upload the form already approved by your supervisor outside QualiSphere. No separate supervisor approval task is generated." : "Attach a training form, examination result, or practical assessment if available."}</p></div> : null}
         <div style={actionStackStyle}>
@@ -558,7 +558,7 @@ export default function TrainingAssignmentDetailPage() {
             </button>
           ) : null}
 
-          {canManage && assignment.status !== "completed" && assignment.status !== "waived" ? (
+          {canManage && isAssignedUser && assignment.status !== "completed" && assignment.status !== "waived" ? (
             <button disabled={busy} onClick={() => updateAssignmentStatus("waived")} style={dangerButtonStyle}>
               Waive Training
             </button>
