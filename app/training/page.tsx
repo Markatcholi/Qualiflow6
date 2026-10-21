@@ -92,6 +92,8 @@ const TRAINING_STATUSES = [
   "effectiveness_pending",
   "effectiveness_complete",
   "waived",
+  "cancelled",
+  "withdrawn",
 ];
 
 export default function TrainingManagementPage() {
@@ -353,12 +355,12 @@ export default function TrainingManagementPage() {
     const reportEmails = directReportEmails;
     return assignments.filter((item) => {
       if (!canManage && item.assigned_to_email.toLowerCase() !== userEmail.toLowerCase() && !reportEmails.has(item.assigned_to_email.toLowerCase())) return false;
-      if (filterTeamPending && (!reportEmails.has(normalizeEmail(item.assigned_to_email)) || ["completed", "waived"].includes(item.status || ""))) return false;
+      if (filterTeamPending && (!reportEmails.has(normalizeEmail(item.assigned_to_email)) || ["completed", "waived", "cancelled", "withdrawn"].includes(item.status || ""))) return false;
       const matchesStatus = filterStatus === "all" ||
         (filterStatus === "certification" ? item.training_category === "certification" :
         filterStatus === "recurring" ? item.training_category === "recurring" :
         filterStatus === "standard" ? item.training_category !== "certification" && item.training_category !== "recurring" :
-        filterStatus === "overdue" ? item.status !== "completed" && item.due_date != null && item.due_date < today :
+        filterStatus === "overdue" ? !["completed", "waived", "cancelled", "withdrawn"].includes(item.status || "") && item.due_date != null && item.due_date < today :
         item.status === filterStatus);
 
       const matchesMine =
@@ -370,7 +372,7 @@ export default function TrainingManagementPage() {
 
   const metrics = useMemo(() => {
     const open = assignments.filter(
-      (a) => a.status !== "completed" && a.status !== "waived"
+      (a) => !["completed", "waived", "cancelled", "withdrawn"].includes(a.status || "")
     );
 
     const overdue = open.filter((a) => a.due_date && a.due_date < today);
@@ -381,13 +383,13 @@ export default function TrainingManagementPage() {
     const awaitingSignature = assignments.filter(
       (a) =>
         a.acknowledgement_required &&
-        a.status !== "completed" &&
-        a.status !== "waived" &&
+        !["completed", "waived", "cancelled", "withdrawn"].includes(a.status || "") &&
         !a.signature_id
     );
 
     const effectivenessPending = assignments.filter(
       (a) =>
+        !["waived", "cancelled", "withdrawn"].includes(a.status || "") &&
         a.effectiveness_required &&
         a.effectiveness_status !== "effectiveness_complete"
     );
