@@ -95,6 +95,7 @@ export default function TrainingAssignmentDetailPage() {
   const [busy, setBusy] = useState(false);
   const [userEmail, setUserEmail] = useState("");
   const [userRole, setUserRole] = useState("");
+  const [isTrainingCoordinator, setIsTrainingCoordinator] = useState(false);
 
   const [showSignatureModal, setShowSignatureModal] = useState(false);
   const [evidenceFile, setEvidenceFile] = useState<File | null>(null);
@@ -124,10 +125,13 @@ export default function TrainingAssignmentDetailPage() {
     return normalizeEmail(assignment?.assigned_to_email) === normalizeEmail(userEmail);
   }, [assignment, userEmail]);
 
+  const isTerminalTraining = ["completed", "waived", "cancelled", "withdrawn"].includes(assignment?.status || "");
+  const canAdminDisposition = isTrainingCoordinator && !isTerminalTraining;
+
   const canCompleteTraining = Boolean(
     assignment &&
       assignment.status !== "completed" &&
-      assignment.status !== "waived" &&
+      !isTerminalTraining &&
       isAssignedUser
   );
 
@@ -186,6 +190,11 @@ export default function TrainingAssignmentDetailPage() {
       .maybeSingle();
 
     setUserRole(data?.role || "user");
+    const { data: tenant } = await supabase.rpc("qualisphere_resolve_training_tenant");
+    if (tenant) {
+      const { data: permitted } = await supabase.rpc("qualisphere_training_is_coordinator", { p_tenant: tenant });
+      setIsTrainingCoordinator(permitted === true);
+    } else setIsTrainingCoordinator(false);
   };
 
   const fetchData = async () => {
@@ -246,6 +255,25 @@ export default function TrainingAssignmentDetailPage() {
   useEffect(() => {
     if (assignmentId) fetchData();
   }, [assignmentId]);
+
+  const administrativelyCloseTraining = async (status: "waived" | "cancelled" | "withdrawn") => {
+    if (!assignment || !isTrainingCoordinator || isTerminalTraining) return;
+    const reason = window.prompt("Reason for " + status + " training (required):");
+    if (reason === null) return;
+    if (!reason.trim()) { alert("A reason is required."); return; }
+    setBusy(true);
+    const { error } = await supabase.from("training_assignments")
+      .update({
+        status,
+        training_comments: [assignment.training_comments, "Administrative action: " + status + " by " + userEmail + " on " + new Date().toISOString() + ". Reason: " + reason.trim()].filter(Boolean).join("\n")
+      })
+      .eq("id", assignment.id)
+      .eq("tenant_id", assignment.tenant_id)
+      .not("status", "in", '("completed","waived","cancelled","withdrawn")');
+    setBusy(false);
+    if (error) { alert(error.message); return; }
+    await fetchData();
+  };
 
   const updateAssignmentStatus = async (status: string) => {
     if (!assignment) return;
@@ -558,13 +586,20 @@ export default function TrainingAssignmentDetailPage() {
             </button>
           ) : null}
 
-          {canManage && isAssignedUser && assignment.status !== "completed" && assignment.status !== "waived" ? (
-            <button disabled={busy} onClick={() => updateAssignmentStatus("waived")} style={dangerButtonStyle}>
-              Waive Training
-            </button>
-          ) : null}
         </div>
       </section> : null}
+
+      {canAdminDisposition && (
+        <section style={cardStyle}>
+          <h2 style={{ marginTop: 0 }}>Training Administration</h2>
+          <p style={subtleText}>Coordinator actions require a reason and do not count as employee completion.</p>
+          <div style={actionStackStyle}>
+            <button disabled={busy} onClick={() => administrativelyCloseTraining("waived")} style={secondaryButtonStyle}>Waive Training</button>
+            <button disabled={busy} onClick={() => administrativelyCloseTraining("cancelled")} style={secondaryButtonStyle}>Cancel Training</button>
+            <button disabled={busy} onClick={() => administrativelyCloseTraining("withdrawn")} style={dangerButtonStyle}>Withdraw Training</button>
+          </div>
+        </section>
+      )}
 
       {!isRegisteredCertification && <section style={cardStyle}>
         <h2 style={{ marginTop: 0 }}>Training Evaluation</h2>
