@@ -450,8 +450,7 @@ export default function TrainingManagementPage() {
         ).length;
         const overdue = docAssignments.filter(
           (assignment) =>
-            assignment.status !== "completed" &&
-            assignment.status !== "waived" &&
+            !["completed", "waived", "cancelled", "withdrawn"].includes(assignment.status || "") &&
             assignment.due_date &&
             assignment.due_date < today
         ).length;
@@ -459,8 +458,7 @@ export default function TrainingManagementPage() {
           (assignment) =>
             assignment.acknowledgement_required &&
             !assignment.signature_id &&
-            assignment.status !== "completed" &&
-            assignment.status !== "waived"
+            !["completed", "waived", "cancelled", "withdrawn"].includes(assignment.status || "")
         ).length;
 
         return {
@@ -472,7 +470,7 @@ export default function TrainingManagementPage() {
           completed,
           open: docAssignments.filter(
             (assignment) =>
-              assignment.status !== "completed" && assignment.status !== "waived"
+              !["completed", "waived", "cancelled", "withdrawn"].includes(assignment.status || "")
           ).length,
           overdue,
           awaitingSignature,
@@ -1016,7 +1014,7 @@ export default function TrainingManagementPage() {
               {filteredAssignments.map(assignment => {
                 const doc = getDocumentForAssignment(assignment);
                 const trainingType = assignment.training_category === "certification" ? "Certification" : assignment.training_category === "recurring" ? "Recurring Training" : "Read & Understand";
-                const displayStatus = assignment.status !== "completed" && assignment.due_date && assignment.due_date < today ? "overdue" : assignment.status || "assigned";
+                const displayStatus = !["completed", "effectiveness_complete", "waived", "cancelled", "withdrawn"].includes(assignment.status || "") && assignment.due_date && assignment.due_date < today ? "overdue" : assignment.status || "assigned";
                 return <tr key={assignment.id}>
                   <td style={tdStyle}>{doc?.document_number || "—"}</td>
                   <td style={tdStyle}>{doc?.title || assignment.training_title || "—"}</td>
@@ -1475,7 +1473,7 @@ function StatusBadge({ status }: { status: string }) {
       ? "#15803d"
       : status === "overdue"
       ? "#dc2626"
-      : status === "waived"
+      : ["waived", "cancelled", "withdrawn"].includes(status)
       ? "#6b7280"
       : status === "in_progress"
       ? "#2563eb"
