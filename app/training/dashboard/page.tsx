@@ -233,12 +233,6 @@ export default function TrainingIntelligenceDashboardPage() {
         isOpen(assignment) &&
         !assignment.signature_id,
     );
-    const effectivenessRequired = assignments.filter((assignment) => Boolean(assignment.effectiveness_required));
-    const effectivenessPending = effectivenessRequired.filter(
-      (assignment) =>
-        assignment.effectiveness_status !== "effectiveness_complete" &&
-        assignment.status !== "effectiveness_complete",
-    );
     const supervisorVerificationRequired = assignments.filter((assignment) =>
       Boolean(assignment.supervisor_verification_required),
     );
@@ -258,12 +252,6 @@ export default function TrainingIntelligenceDashboardPage() {
     );
     const onTimeStatus = getSlaStatus(onTimeCompletionRate);
 
-    const effectivenessCompletionRate = percentage(
-      effectivenessRequired.length - effectivenessPending.length,
-      effectivenessRequired.length,
-    );
-    const effectivenessStatus = getSlaStatus(effectivenessCompletionRate);
-
     const completionDurations = completedTraining
       .filter((assignment) => assignment.completed_at)
       .map((assignment) => daysBetween(assignment.created_at, assignment.completed_at));
@@ -281,16 +269,12 @@ export default function TrainingIntelligenceDashboardPage() {
       waivedTraining,
       inProgressTraining,
       awaitingSignature,
-      effectivenessRequired,
-      effectivenessPending,
       supervisorVerificationRequired,
       supervisorVerificationPending,
       completionRate,
       completionStatus,
       onTimeCompletionRate,
       onTimeStatus,
-      effectivenessCompletionRate,
-      effectivenessStatus,
       averageCompletionTime: averageDays(completionDurations),
       oldestOpenTraining,
       trainingSignatures: signatures.filter((signature) => signature.module_name === "training"),
@@ -304,14 +288,12 @@ export default function TrainingIntelligenceDashboardPage() {
     { title: "Completed Retraining Cycles", value: metrics.recurringCyclesCompleted.length, color: "#15803d" },
     { title: "Training Completion Rate", value: metrics.completionRate, suffix: "%", color: metrics.completionStatus.color, target: "Target: 90%", statusLabel: metrics.completionStatus.label, statusIcon: metrics.completionStatus.icon, statusColor: metrics.completionStatus.color },
     { title: "On-Time Completion", value: metrics.onTimeCompletionRate, suffix: "%", color: metrics.onTimeStatus.color, target: "Target: 90%", statusLabel: metrics.onTimeStatus.label, statusIcon: metrics.onTimeStatus.icon, statusColor: metrics.onTimeStatus.color },
-    { title: "Effectiveness Completion", value: metrics.effectivenessCompletionRate, suffix: "%", color: metrics.effectivenessStatus.color, target: "Target: 90%", statusLabel: metrics.effectivenessStatus.label, statusIcon: metrics.effectivenessStatus.icon, statusColor: metrics.effectivenessStatus.color },
     { title: "Total Assignments", value: assignments.length, color: "#2563eb" },
     { title: "Expired Certifications", value: certificationStatus.expired.length, color: certificationStatus.expired.length ? "#dc2626" : "#15803d" },
     { title: "Certifications Expiring Soon", value: certificationStatus.expiring.length, color: certificationStatus.expiring.length ? "#d97706" : "#15803d" },
     { title: "Open Training", value: metrics.openTraining.length, color: metrics.openTraining.length > 0 ? "#d97706" : "#15803d" },
     { title: "Overdue Training", value: metrics.overdueTraining.length, color: metrics.overdueTraining.length > 0 ? "#dc2626" : "#15803d" },
     { title: "Awaiting Signature", value: metrics.awaitingSignature.length, color: metrics.awaitingSignature.length > 0 ? "#d97706" : "#15803d" },
-    { title: "Effectiveness Pending", value: metrics.effectivenessPending.length, color: metrics.effectivenessPending.length > 0 ? "#d97706" : "#15803d" },
     { title: "Supervisor Verification Pending", value: metrics.supervisorVerificationPending.length, color: metrics.supervisorVerificationPending.length > 0 ? "#d97706" : "#15803d" },
     { title: "Average Completion Time", value: metrics.averageCompletionTime, suffix: " days", color: metrics.averageCompletionTime > 14 ? "#d97706" : "#15803d" },
     { title: "Oldest Open Training", value: metrics.oldestOpenTraining, suffix: " days", color: metrics.oldestOpenTraining > 30 ? "#dc2626" : "#15803d" },
@@ -402,7 +384,7 @@ export default function TrainingIntelligenceDashboardPage() {
           <h1 style={{ margin: "6px 0" }}>Training Intelligence Dashboard</h1>
           <p style={subtleText}>
             Executive operational intelligence for training completion, overdue assignments,
-            electronic signatures, effectiveness checks, supervisor verification, role compliance,
+            electronic signatures, supervisor verification, role compliance,
             and document-to-training traceability.
           </p>
         </div>
@@ -426,14 +408,13 @@ export default function TrainingIntelligenceDashboardPage() {
           <h2 style={{ margin: "6px 0" }}>Action Required</h2>
           <p style={subtleText}>
             Prioritized training signals requiring trainee follow-up, manager verification,
-            effectiveness review, signature completion, or training administrator action.
+            signature completion, or training administrator action.
           </p>
         </div>
 
         <div style={escalationGridStyle}>
           <AssignmentEscalationCard title="Overdue Training" count={overdueAssignments.length} severity={overdueAssignments.length > 0 ? "high" : "controlled"} items={overdueAssignments} documentMap={documentMap} description="Open training assignments past due date." />
           <AssignmentEscalationCard title="Awaiting Signature" count={metrics.awaitingSignature.length} severity={metrics.awaitingSignature.length > 0 ? "medium" : "controlled"} items={metrics.awaitingSignature} documentMap={documentMap} description="Assignments requiring electronic acknowledgement signature." />
-          <AssignmentEscalationCard title="Effectiveness Pending" count={metrics.effectivenessPending.length} severity={metrics.effectivenessPending.length > 0 ? "medium" : "controlled"} items={metrics.effectivenessPending} documentMap={documentMap} description="Assignments requiring effectiveness completion." />
           <AssignmentEscalationCard title="Supervisor Verification Pending" count={metrics.supervisorVerificationPending.length} severity={metrics.supervisorVerificationPending.length > 0 ? "medium" : "controlled"} items={metrics.supervisorVerificationPending} documentMap={documentMap} description="Assignments requiring supervisor verification." />
         </div>
       </section>
@@ -441,8 +422,8 @@ export default function TrainingIntelligenceDashboardPage() {
       <section style={cardStyle}>
         <div>
           <div style={eyebrowStyle}>TRAINING SLA INTELLIGENCE</div>
-          <h2 style={{ margin: "6px 0" }}>Completion, Signature, and Effectiveness Performance</h2>
-          <p style={subtleText}>Measures training completion performance, overdue exposure, acknowledgement readiness, and effectiveness follow-up.</p>
+          <h2 style={{ margin: "6px 0" }}>Completion and Signature Performance</h2>
+          <p style={subtleText}>Measures training completion performance, overdue exposure, and acknowledgement readiness.</p>
         </div>
 
         <div style={kpiGridStyle}>

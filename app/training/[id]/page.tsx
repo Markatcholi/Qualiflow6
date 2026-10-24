@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "../../../lib/supabaseClient";
+import {trainingEvidenceMode} from "../../../lib/trainingMatrix";
 import ESignatureModal from "../../../components/ESignatureModal";
 import { acknowledgeTraining } from "../../../services/trainingService";
 import { resolveControlledDocumentFileUrl } from "../../../lib/controlledDocumentStorage";
@@ -72,15 +73,7 @@ type ElectronicSignature = {
   signed_at: string | null;
 };
 
-type EffectivenessCheck = {
-  id: string;
-  training_assignment_id: string;
-  effectiveness_method: string | null;
-  effectiveness_result: string | null;
-  verified_by: string | null;
-  verified_at: string | null;
-  comments: string | null;
-};
+
 
 export default function TrainingAssignmentDetailPage() {
   const params = useParams();
@@ -89,7 +82,6 @@ export default function TrainingAssignmentDetailPage() {
   const [assignment, setAssignment] = useState<TrainingAssignment | null>(null);
   const [documentRecord, setDocumentRecord] = useState<ControlledDocument | null>(null);
   const [signatures, setSignatures] = useState<ElectronicSignature[]>([]);
-  const [effectivenessChecks, setEffectivenessChecks] = useState<EffectivenessCheck[]>([]);
 
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -99,9 +91,6 @@ export default function TrainingAssignmentDetailPage() {
 
   const [showSignatureModal, setShowSignatureModal] = useState(false);
   const [evidenceFile, setEvidenceFile] = useState<File | null>(null);
-  const [effectivenessMethod, setEffectivenessMethod] = useState("");
-  const [effectivenessResult, setEffectivenessResult] = useState("");
-  const [effectivenessComments, setEffectivenessComments] = useState("");
   const [trainingComments, setTrainingComments] = useState("");
 
   const isRegisteredCertification = assignment?.training_category === "certification" && assignment?.assignment_source === "certification_register";
@@ -231,22 +220,8 @@ export default function TrainingAssignmentDetailPage() {
       setDocumentRecord(null);
     }
 
-    const [signatureRes, effectivenessRes] = await Promise.all([
-      supabase
-        .from("electronic_signatures")
-        .select("*")
-        .eq("module_name", "training")
-        .eq("record_id", assignmentId)
-        .order("signed_at", { ascending: false }),
-      supabase
-        .from("training_effectiveness_checks")
-        .select("*")
-        .eq("training_assignment_id", assignmentId)
-        .order("verified_at", { ascending: false }),
-    ]);
-
-    if (!signatureRes.error) setSignatures((signatureRes.data as ElectronicSignature[]) || []);
-    if (!effectivenessRes.error) setEffectivenessChecks((effectivenessRes.data as EffectivenessCheck[]) || []);
+    const signatureRes=await supabase.from("electronic_signatures").select("*").eq("module_name","training").eq("record_id",assignmentId).order("signed_at",{ascending:false});
+    if(!signatureRes.error)setSignatures((signatureRes.data as ElectronicSignature[])||[]);
 
     setLoading(false);
   };
@@ -330,7 +305,7 @@ export default function TrainingAssignmentDetailPage() {
     }
 
     const approvedFormRequired = assignment.training_category === "recurring" && assignment.approved_evaluation_attachment_required;
-    const evidenceMode = assignment.training_category === "recurring" ? (assignment.recurring_evidence_mode || "attachment") : "signature";
+    const evidenceMode = trainingEvidenceMode(assignment);
     const attachmentRequired = approvedFormRequired || evidenceMode === "attachment" || evidenceMode === "both";
     if (attachmentRequired && !evidenceFile && !assignment.training_evidence_storage_path) {
       alert(approvedFormRequired ? "Upload the supervisor-approved evaluation form before completing training." : "Required training evidence must be attached before completion.");
@@ -350,7 +325,10 @@ export default function TrainingAssignmentDetailPage() {
         const saved = await supabase.from("training_assignments").update({ training_evidence_storage_path: path, training_evidence_file_name: evidenceFile.name }).eq("id", assignment.id);
         if (saved.error) throw saved.error;
       }
-      await acknowledgeTraining({
+      if (evidenceMode === "attachment") {
+        const result=await supabase.from("training_assignments").update({status:"completed",training_completed_on:new Date().toISOString().slice(0,10),completed_at:new Date().toISOString(),completed_by:userEmail}).eq("id",assignment.id);
+        if(result.error)throw result.error;
+      } else await acknowledgeTraining({
         assignmentId: assignment.id,
         documentId: assignment.document_id,
         userEmail,
@@ -362,7 +340,7 @@ export default function TrainingAssignmentDetailPage() {
       setShowSignatureModal(false);
       setEvidenceFile(null);
       await fetchData();
-      alert("Training completed and electronically signed.");
+      alert("Training completion recorded.");
     } catch (error: any) {
       alert(error.message);
     }
@@ -398,62 +376,6 @@ export default function TrainingAssignmentDetailPage() {
     fetchData();
   };
 
-  const completeEffectiveness = async () => {
-    if (!assignment) return;
-
-    if (!canManage) {
-      alert("Only training admin, quality, approver, admin, or VP Quality can complete effectiveness checks.");
-      return;
-    }
-
-    if (!assignment.effectiveness_required || assignment.effectiveness_status === "effectiveness_complete") {
-      alert("This training evaluation is already completed or not required.");
-      return;
-    }
-
-    if (!effectivenessMethod.trim() || !effectivenessResult.trim()) {
-      alert("Effectiveness method and result are required.");
-      return;
-    }
-
-    setBusy(true);
-
-    const { error: checkError } = await supabase
-      .from("training_effectiveness_checks")
-      .insert({
-        training_assignment_id: assignment.id,
-        effectiveness_method: effectivenessMethod,
-        effectiveness_result: effectivenessResult,
-        verified_by: userEmail,
-        verified_at: new Date().toISOString(),
-        comments: effectivenessComments || null,
-      });
-
-    if (checkError) {
-      alert(checkError.message);
-      setBusy(false);
-      return;
-    }
-
-    const { error } = await supabase
-      .from("training_assignments")
-      .update({
-        effectiveness_status: "effectiveness_complete",
-      })
-      .eq("id", assignment.id);
-
-    setBusy(false);
-
-    if (error) {
-      alert(error.message);
-      return;
-    }
-
-    setEffectivenessMethod("");
-    setEffectivenessResult("");
-    setEffectivenessComments("");
-    fetchData();
-  };
 
   if (loading) {
     return <main style={pageStyle}>Loading Training Record...</main>;
@@ -493,7 +415,7 @@ export default function TrainingAssignmentDetailPage() {
         <div style={kpiCardStyle}><div style={kpiTitleStyle}>Training Status</div><StatusBadge status={isOverdue ? "overdue" : assignment.status || "assigned"} /></div>
         {!isRegisteredCertification && <div style={kpiCardStyle}><div style={kpiTitleStyle}>Due Date</div><strong>{assignment.due_date || "N/A"}</strong></div>}
         <div style={kpiCardStyle}><div style={kpiTitleStyle}>{isRegisteredCertification ? "Certification Date" : "Completion Date"}</div><strong>{isRegisteredCertification ? (assignment.training_completed_on || "N/A") : formatDateTime(assignment.completed_at)}</strong></div>
-        {isRegisteredCertification ? <div style={kpiCardStyle}><div style={kpiTitleStyle}>Expiration Date</div><strong>{assignment.training_valid_until || "No expiration"}</strong></div> : <div style={kpiCardStyle}><div style={kpiTitleStyle}>Evaluation Status</div><strong>{assignment.training_category === "recurring" && assignment.approved_evaluation_attachment_required ? (assignment.training_evidence_storage_path ? "Approved form attached" : "Approved form required") : assignment.effectiveness_required ? trainingEffectivenessLabel(assignment.effectiveness_status) : "Not required"}</strong></div>}
+        {isRegisteredCertification && <div style={kpiCardStyle}><div style={kpiTitleStyle}>Expiration Date</div><strong>{assignment.training_valid_until || "No expiration"}</strong></div>}
       </section>
 
       {isRegisteredCertification && <section style={cardStyle}>
@@ -565,7 +487,7 @@ export default function TrainingAssignmentDetailPage() {
 
       {(canCompleteTraining || (isAssignedUser && assignment.status === "assigned") || (canManage && !isTerminalTraining && assignment.supervisor_verification_required && !assignment.supervisor_verified_at)) ? <section style={cardStyle}>
         <h2 style={{ marginTop: 0 }}>Complete Training</h2>
-        {canCompleteTraining ? <div style={{ marginBottom: 16 }}><label style={labelStyle}>{assignment.training_category === "recurring" && assignment.approved_evaluation_attachment_required ? "Supervisor-Approved Evaluation Form (required upload)" : assignment.training_category === "recurring" && ["attachment", "both"].includes(assignment.recurring_evidence_mode || "attachment") ? "Supporting Training Evidence (required upload)" : "Supporting Training Evidence (optional upload)"}</label><input type="file" onChange={(e) => setEvidenceFile(e.target.files?.[0] || null)} disabled={busy} style={{ display: "block", marginTop: 8 }} /><p style={subtleText}>{assignment.training_evidence_file_name ? `Existing evidence: ${assignment.training_evidence_file_name}` : assignment.training_category === "recurring" && assignment.approved_evaluation_attachment_required ? "Upload the form already approved by your supervisor outside QualiSphere. No separate supervisor approval task is generated." : "Attach a training form, examination result, or practical assessment if available."}</p></div> : null}
+        {canCompleteTraining ? <div style={{ marginBottom: 16 }}><label style={labelStyle}>{assignment.training_category === "recurring" && assignment.approved_evaluation_attachment_required ? "Supervisor-Approved Evaluation Form (required upload)" : ["attachment", "both"].includes(trainingEvidenceMode(assignment)) ? "Supporting Training Evidence (required upload)" : "Supporting Training Evidence (optional upload)"}</label><input type="file" onChange={(e) => setEvidenceFile(e.target.files?.[0] || null)} disabled={busy} style={{ display: "block", marginTop: 8 }} /><p style={subtleText}>{assignment.training_evidence_file_name ? `Existing evidence: ${assignment.training_evidence_file_name}` : assignment.training_category === "recurring" && assignment.approved_evaluation_attachment_required ? "Upload the form already approved by your supervisor outside QualiSphere. No separate supervisor approval task is generated." : "Attach a training form, examination result, or practical assessment if available."}</p></div> : null}
         <div style={actionStackStyle}>
           {isAssignedUser && assignment.status === "assigned" ? (
             <button disabled={busy} onClick={() => updateAssignmentStatus("in_progress")} style={primaryButtonStyle}>
@@ -574,8 +496,8 @@ export default function TrainingAssignmentDetailPage() {
           ) : null}
 
           {canCompleteTraining ? (
-            <button disabled={busy} onClick={() => setShowSignatureModal(true)} style={primaryButtonStyle}>
-              Approve & Complete Training
+            <button disabled={busy} onClick={() => trainingEvidenceMode(assignment)==="attachment" ? void handleTrainingSignatureSubmit({meaning:"",reason:""}) : setShowSignatureModal(true)} style={primaryButtonStyle}>
+              Complete Training
             </button>
           ) : null}
 
@@ -599,86 +521,6 @@ export default function TrainingAssignmentDetailPage() {
           </div>
         </section>
       )}
-
-      {!isRegisteredCertification && <section style={cardStyle}>
-        <h2 style={{ marginTop: 0 }}>Training Evaluation</h2>
-
-        {assignment.effectiveness_required ? (
-          <>
-            <div style={gridStyle}>
-              <Field label="Evaluation Status"><div>{trainingEffectivenessLabel(assignment.effectiveness_status)}</div></Field>
-              <Field label="Supervisor Verification">
-                <div>
-                  {assignment.supervisor_verification_required
-                    ? assignment.supervisor_verified_at
-                      ? `Verified by ${assignment.supervisor_verified_by || "unknown"} on ${formatDateTime(assignment.supervisor_verified_at)}`
-                      : "Required"
-                    : "Not required"}
-                </div>
-              </Field>
-            </div>
-
-            {canManage && assignment.effectiveness_status !== "effectiveness_complete" ? (
-              <div style={trainingCardStyle}>
-                <h3 style={{ marginTop: 0 }}>Complete Training Evaluation</h3>
-                <input
-                  placeholder="Evaluation Method"
-                  value={effectivenessMethod}
-                  onChange={(e) => setEffectivenessMethod(e.target.value)}
-                  style={inputStyle}
-                />
-                <input
-                  placeholder="Evaluation Result"
-                  value={effectivenessResult}
-                  onChange={(e) => setEffectivenessResult(e.target.value)}
-                  style={inputStyle}
-                />
-                <textarea
-                  placeholder="Comments"
-                  value={effectivenessComments}
-                  onChange={(e) => setEffectivenessComments(e.target.value)}
-                  rows={3}
-                  style={textareaStyle}
-                />
-                <button disabled={busy} onClick={completeEffectiveness} style={primaryButtonStyle}>
-                  Complete Evaluation
-                </button>
-              </div>
-            ) : null}
-
-            {assignment.effectiveness_status === "effectiveness_complete" && effectivenessChecks.length > 0 ? (
-              <div style={trainingCardStyle}>
-                <h3 style={{ marginTop: 0 }}>Completed Evaluation (Read Only)</h3>
-                <div style={gridStyle}>
-                  <Field label="Evaluation Method"><div>{effectivenessChecks[0].effectiveness_method || "N/A"}</div></Field>
-                  <Field label="Evaluation Result"><div>{effectivenessChecks[0].effectiveness_result || "N/A"}</div></Field>
-                  <Field label="Evaluated By"><div>{effectivenessChecks[0].verified_by || "N/A"}</div></Field>
-                  <Field label="Evaluation Date"><div>{formatDateTime(effectivenessChecks[0].verified_at)}</div></Field>
-                  <Field label="Comments"><div>{effectivenessChecks[0].comments || "None"}</div></Field>
-                </div>
-              </div>
-            ) : null}
-
-            <h3>Evaluation History</h3>
-            {effectivenessChecks.length === 0 ? (
-              <p style={subtleText}>No training evaluations recorded.</p>
-            ) : (
-              <div style={{ display: "grid", gap: "10px" }}>
-                {effectivenessChecks.map((check) => (
-                  <div key={check.id} style={trainingCardStyle}>
-                    <strong>{check.effectiveness_result || "Result not specified"}</strong>
-                    <div style={smallTextStyle}>Method: {check.effectiveness_method || "N/A"}</div>
-                    <div style={smallTextStyle}>Verified by {check.verified_by || "unknown"} • {formatDateTime(check.verified_at)}</div>
-                    {check.comments ? <p>{check.comments}</p> : null}
-                  </div>
-                ))}
-              </div>
-            )}
-          </>
-        ) : (
-          <p style={subtleText}>{assignment.training_category === "recurring" && assignment.approved_evaluation_attachment_required ? "Supervisor-approved evaluation form required as an attachment before training completion. Supervisor approval occurs outside QualiSphere." : "Training evaluation is not required for this assignment."}</p>
-        )}
-      </section>}
 
       {!isRegisteredCertification && <section style={cardStyle}>
         <h2 style={{ marginTop: 0 }}>Electronic Signature Record</h2>
@@ -718,7 +560,7 @@ export default function TrainingAssignmentDetailPage() {
       <ESignatureModal
         open={showSignatureModal}
         title="Training Approval Signature"
-        actionLabel="Approve & Complete Training"
+        actionLabel="Complete Training"
         fixedMeaning="Approve Training"
         onSubmit={handleTrainingSignatureSubmit}
         onClose={() => setShowSignatureModal(false)}
@@ -813,10 +655,3 @@ const warningStyle: React.CSSProperties = { color: "#b45309", background: "#fffb
 const tableStyle: React.CSSProperties = { width: "100%", borderCollapse: "collapse" };
 const thStyle: React.CSSProperties = { textAlign: "left", borderBottom: "1px solid #d1d5db", padding: "10px" };
 const tdStyle: React.CSSProperties = { borderBottom: "1px solid #e5e7eb", padding: "10px", verticalAlign: "top" };
-
-function trainingEffectivenessLabel(status?: string | null) {
-  if (!status || status === "effectiveness_pending") return "Pending Evaluation";
-  if (status === "effectiveness_complete") return "Evaluation Completed";
-  if (status === "not_required") return "Not Required";
-  return status.replaceAll("_", " ");
-}

@@ -38,15 +38,7 @@ export default function TrainingConfigurationManager({ tenantId }:{ tenantId:str
     if(!methodToRemove) return;
     if(!confirm(`Remove training method "${methodToRemove.label}"? It will no longer be available for new training requirements.`)) return;
     setBusy(true);
-    const {count,error:usageError}=await supabase.from("document_training_requirements").select("id",{count:"exact",head:true}).eq("training_method_id",id);
-    if(usageError){setBusy(false);return alert(usageError.message);}
-    if((count||0)>0){
-      const {error}=await supabase.from("training_methods").update({is_active:false}).eq("id",id);
-      setBusy(false); if(error)return alert(error.message);
-      alert("This method is already referenced by document training records, so it was deactivated instead of deleted. Existing records are preserved.");
-      return load();
-    }
-    const {error}=await supabase.from("training_methods").delete().eq("id",id);
+    const {error}=await supabase.from("training_methods").update({is_active:false}).eq("id",id).eq("tenant_id",tenantId);
     setBusy(false); if(error)return alert(error.message); await load();
   };
   const addGroup=async()=>{
@@ -76,7 +68,7 @@ export default function TrainingConfigurationManager({ tenantId }:{ tenantId:str
       <label><input type="checkbox" checked={method.evidence_required} onChange={e=>setMethod({...method,evidence_required:e.target.checked})}/> Completion evidence required</label>
     </div>
     <button disabled={busy} onClick={addMethod} style={button}>Add Training Method</button>
-    <div style={{marginTop:10}}>{methods.map(m=><div key={m.id} style={{display:"flex",justifyContent:"space-between",gap:12,padding:"8px 0",borderBottom:"1px solid #e5e7eb"}}><span><strong>{m.label}</strong> — {m.release_blocking?"Release prerequisite":"Post-release completion permitted"}</span><button disabled={busy} onClick={()=>removeMethod(m.id)} style={linkButton}>Remove</button></div>)}</div>
+    <div style={{marginTop:10}}>{methods.filter(m=>m.is_active!==false).map(m=><div key={m.id} style={{display:"flex",justifyContent:"space-between",gap:12,padding:"8px 0",borderBottom:"1px solid #e5e7eb"}}><span><strong>{m.label}</strong> — {m.release_blocking?"Release prerequisite":"Post-release completion permitted"}</span><button disabled={busy} onClick={()=>removeMethod(m.id)} style={linkButton}>Remove</button></div>)}</div>
 
     <hr style={{margin:"22px 0"}}/>
     <h3>Training Groups</h3>

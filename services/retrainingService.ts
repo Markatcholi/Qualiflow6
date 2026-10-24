@@ -81,14 +81,8 @@ export async function processRetrainingForDocument(
         department:
           previousAssignment.department || null,
 
-        effectiveness_required:
-          previousAssignment.effectiveness_required ||
-          false,
-
-        effectiveness_status:
-          previousAssignment.effectiveness_required
-            ? "effectiveness_pending"
-            : "not_required",
+        effectiveness_required: false,
+        effectiveness_status: "not_required",
 
         supervisor_verification_required:
           previousAssignment.supervisor_verification_required ||
