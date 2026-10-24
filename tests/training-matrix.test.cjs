@@ -1,6 +1,6 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
-const {trainingAudienceMatches:matches,trainingAssignmentState:state,trainingEvidenceMode:evidence}=require(process.env.TRAINING_TEST_MODULE);
+const {trainingAudienceMatches:matches,trainingAssignmentState:state,trainingEvidenceMode:evidence,buildTrainingAudienceTargets:targets}=require(process.env.TRAINING_TEST_MODULE);
 const person={user_email:'inspector@example.test',role_name:'Quality Inspection',department:'Quality',active:true};
 const row={document_number:'SOP-001',role_name:null,department:null,required_training:true};
 test('all employees includes active employees without a role or department',()=>{
@@ -33,4 +33,11 @@ test('one-time evidence methods and existing recurring/certification records kee
  assert.equal(evidence({training_category:'recurring'}),'attachment');
  assert.equal(evidence({training_category:'recurring',recurring_evidence_mode:'both'}),'both');
  assert.equal(evidence({training_category:'certification'}),'attachment');
+});
+
+test('specific role audiences cannot silently broaden to all department employees',()=>{
+ assert.throws(()=>targets(false,[{department:'Manufacturing',allRoles:false,roles:[]}]),/Add at least one role/);
+ assert.deepEqual(targets(false,[{department:'Manufacturing',allRoles:true,roles:[]}]),[{department:'Manufacturing',role_name:null}]);
+ assert.deepEqual(targets(false,[{department:'Manufacturing',allRoles:false,roles:[' Operator ','operator','Supervisor']}]),[{department:'Manufacturing',role_name:'operator'},{department:'Manufacturing',role_name:'Supervisor'}]);
+ assert.deepEqual(targets(true,[]),[{department:null,role_name:null}]);
 });
