@@ -1,4 +1,5 @@
 import "./globals.css";
+import DeploymentEnvironmentBanner from "../components/DeploymentEnvironmentBanner";
 import HeaderWrapper from "./components/HeaderWrapper";
 import PersistentAppShell from "./components/PersistentAppShell";
 
@@ -15,6 +16,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
+        <DeploymentEnvironmentBanner />
         <HeaderWrapper />
         <PersistentAppShell>{children}</PersistentAppShell>
       </body>
