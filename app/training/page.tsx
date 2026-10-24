@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
+import TrainingMethodsManager from "../../components/TrainingMethodsManager";
 import TrainingEmployeeProfiles from "../../components/TrainingEmployeeProfiles";
 import TrainingMatrixAssignment from "../../components/TrainingMatrixAssignment";
 import {trainingEvidenceMode} from "../../lib/trainingMatrix";
@@ -112,6 +113,14 @@ export default function TrainingManagementPage() {
   const [trainingCoordinator, setTrainingCoordinator] = useState(false);
   const [trainingMethods,setTrainingMethods]=useState<{id:string;label:string;acknowledgement_required:boolean;evidence_required:boolean}[]>([]);
   const [manualMethod,setManualMethod]=useState("");
+  const [trainingTenant,setTrainingTenant]=useState("");
+  const [showManualMethods,setShowManualMethods]=useState(false);
+  const refreshManualMethods=async(id?:string)=>{
+    const r=await supabase.from("training_methods").select("id,label,acknowledgement_required,evidence_required").eq("tenant_id",trainingTenant).eq("is_active",true).order("label");
+    if(r.error){alert(r.error.message);return;}setTrainingMethods(r.data||[]);
+    setManualMethod(current=>id&&r.data?.some(m=>m.id===id)?id:r.data?.some(m=>m.id===current)?current:"");
+    if(id){const m=r.data?.find(m=>m.id===id);if(m)setNewAssignment(current=>({...current,recurring_evidence_mode:m.evidence_required?(m.acknowledgement_required?"both":"attachment"):"signature"}));}
+  };
   const [creatingAssignment,setCreatingAssignment]=useState(false);
 
   const [activeTrainingSection, setActiveTrainingSection] = useState("overview");
@@ -217,6 +226,7 @@ export default function TrainingManagementPage() {
     setUserRole(data?.role || "user");
     const { data: tenant } = await supabase.rpc("qualisphere_resolve_training_tenant");
     if (tenant) {
+      setTrainingTenant(tenant);
       const { data: allowed } = await supabase.rpc("qualisphere_training_is_coordinator", {p_tenant:tenant});
       setTrainingCoordinator(allowed === true);
       const result=await supabase.from("training_methods").select("id,label,acknowledgement_required,evidence_required").eq("tenant_id",tenant).eq("is_active",true).order("label");
@@ -787,8 +797,10 @@ export default function TrainingManagementPage() {
 <section style={{ ...cardStyle, display: activeTrainingSection === "administration" ? undefined : "none" }}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
           <h2 style={{ marginTop: 0 }}>Create Training Assignment</h2>
+          <button type="button" disabled={!trainingTenant||creatingAssignment} onClick={()=>setShowManualMethods(!showManualMethods)}>{showManualMethods?"Close Method Settings":"Manage Training Methods"}</button>
         </div>
 
+        {showManualMethods&&trainingTenant&&<TrainingMethodsManager tenantId={trainingTenant} onChanged={id=>void refreshManualMethods(id)}/>}
         <div style={{ ...cardStyle, marginBottom: 16, padding: 16 }}>
           {(() => {
             const selectedDocument = documents.find((doc) => String(doc.id) === String(newAssignment.document_id));
