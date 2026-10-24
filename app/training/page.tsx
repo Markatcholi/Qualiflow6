@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
+import TrainingEmployeeProfiles from "../../components/TrainingEmployeeProfiles";
 import TrainingMatrixAssignment from "../../components/TrainingMatrixAssignment";
 import {trainingEvidenceMode} from "../../lib/trainingMatrix";
 import ESignatureModal from "../../components/ESignatureModal";
@@ -104,14 +105,6 @@ export default function TrainingManagementPage() {
   const [signatures, setSignatures] = useState<ElectronicSignature[]>([]);
   const [generatingRecurring, setGeneratingRecurring] = useState(false);
   const [sendingTrainingNotices, setSendingTrainingNotices] = useState(false);
-
-  const [newEmployee, setNewEmployee] = useState({
-    user_email: "",
-    full_name: "",
-    department: "",
-    role_name: "",
-    manager_email: "",
-  });
 
   const [loading, setLoading] = useState(true);
   const [userEmail, setUserEmail] = useState("");
@@ -293,49 +286,6 @@ export default function TrainingManagementPage() {
     if (!text || !text.includes("@")) return "";
     return text;
   };
-
-  const addDays = (days: number) => {
-    const date = new Date();
-    date.setDate(date.getDate() + days);
-    return date.toISOString().slice(0, 10);
-  };
-
-  const createEmployeeProfile = async () => {
-    const email = normalizeEmail(newEmployee.user_email);
-
-    if (!email) {
-      alert("Employee email is required.");
-      return;
-    }
-
-    const { error } = await supabase.from("employee_profiles").upsert(
-      {
-        user_email: email,
-        full_name: newEmployee.full_name || null,
-        department: newEmployee.department || null,
-        role_name: newEmployee.role_name || null,
-        manager_email: normalizeEmail(newEmployee.manager_email) || null,
-        active: true,
-      },
-      { onConflict: "user_email" }
-    );
-
-    if (error) {
-      alert(error.message);
-      return;
-    }
-
-    setNewEmployee({
-      user_email: "",
-      full_name: "",
-      department: "",
-      role_name: "",
-      manager_email: "",
-    });
-
-    fetchData();
-  };
-
 
   const today = new Date().toISOString().slice(0, 10);
 
@@ -976,100 +926,7 @@ export default function TrainingManagementPage() {
 
 ) : null}
 
-{canManage ? (
-      <section style={{ ...cardStyle, display: activeTrainingSection === "employees" ? undefined : "none" }}>
-        <h2 style={{ marginTop: 0 }}>Employee Profiles</h2>
-
-        <p style={subtleText}>
-          Employee profiles are used for automatic training assignment from the training matrix.
-        </p>
-
-        <div style={gridStyle}>
-          <Field label="Employee Email">
-            <input
-              value={newEmployee.user_email}
-              onChange={(e) =>
-                setNewEmployee({
-                  ...newEmployee,
-                  user_email: e.target.value,
-                })
-              }
-              style={inputStyle}
-            />
-          </Field>
-
-          <Field label="Full Name">
-            <input
-              value={newEmployee.full_name}
-              onChange={(e) =>
-                setNewEmployee({
-                  ...newEmployee,
-                  full_name: e.target.value,
-                })
-              }
-              style={inputStyle}
-            />
-          </Field>
-
-          <Field label="Role">
-            <input
-              value={newEmployee.role_name}
-              onChange={(e) =>
-                setNewEmployee({
-                  ...newEmployee,
-                  role_name: e.target.value,
-                })
-              }
-              style={inputStyle}
-            />
-          </Field>
-
-          <Field label="Department">
-            <input
-              value={newEmployee.department}
-              onChange={(e) =>
-                setNewEmployee({
-                  ...newEmployee,
-                  department: e.target.value,
-                })
-              }
-              style={inputStyle}
-            />
-          </Field>
-
-          <Field label="Manager Email">
-            <input
-              value={newEmployee.manager_email}
-              onChange={(e) =>
-                setNewEmployee({
-                  ...newEmployee,
-                  manager_email: e.target.value,
-                })
-              }
-              style={inputStyle}
-            />
-          </Field>
-        </div>
-
-        <button
-          onClick={createEmployeeProfile}
-          style={primaryButtonStyle}
-        >
-          Add / Update Employee
-        </button>
-
-        <ul>
-          {employees.map((employee) => (
-            <li key={employee.id}>
-              {employee.user_email} —{" "}
-              {employee.role_name || "No Role"} —{" "}
-              {employee.department || "No Department"}
-            </li>
-          ))}
-        </ul>
-      </section>
-
-) : null}
+{canManage && activeTrainingSection === "employees" && <TrainingEmployeeProfiles onChanged={()=>{void supabase.from("employee_profiles").select("*").order("user_email",{ascending:true}).then(({data,error})=>{if(error)alert(error.message);else setEmployees(data||[]);});}}/>}
 
       {canManage && activeTrainingSection === "due" && <section style={cardStyle}>
         <h2 style={{ marginTop: 0 }}>Generate Due Training</h2>
