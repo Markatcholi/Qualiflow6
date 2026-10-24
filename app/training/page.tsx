@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
+import TrainingMatrixAssignment from "../../components/TrainingMatrixAssignment";
+import {trainingEvidenceMode} from "../../lib/trainingMatrix";
 import ESignatureModal from "../../components/ESignatureModal";
 import { acknowledgeTraining } from "../../services/trainingService";
 
@@ -89,8 +91,6 @@ const TRAINING_STATUSES = [
   "in_progress",
   "completed",
   "overdue",
-  "effectiveness_pending",
-  "effectiveness_complete",
   "waived",
   "cancelled",
   "withdrawn",
@@ -102,10 +102,8 @@ export default function TrainingManagementPage() {
   const [documents, setDocuments] = useState<ControlledDocument[]>([]);
   const [employees, setEmployees] = useState<EmployeeProfile[]>([]);
   const [signatures, setSignatures] = useState<ElectronicSignature[]>([]);
-  const [autoAssigning, setAutoAssigning] = useState(false);
   const [generatingRecurring, setGeneratingRecurring] = useState(false);
   const [sendingTrainingNotices, setSendingTrainingNotices] = useState(false);
-  const [autoAssignResult, setAutoAssignResult] = useState<any>(null);
 
   const [newEmployee, setNewEmployee] = useState({
     user_email: "",
@@ -119,6 +117,9 @@ export default function TrainingManagementPage() {
   const [userEmail, setUserEmail] = useState("");
   const [userRole, setUserRole] = useState("");
   const [trainingCoordinator, setTrainingCoordinator] = useState(false);
+  const [trainingMethods,setTrainingMethods]=useState<{id:string;label:string;acknowledgement_required:boolean;evidence_required:boolean}[]>([]);
+  const [manualMethod,setManualMethod]=useState("");
+  const [creatingAssignment,setCreatingAssignment]=useState(false);
 
   const [activeTrainingSection, setActiveTrainingSection] = useState("overview");
   useEffect(() => {
@@ -140,9 +141,7 @@ export default function TrainingManagementPage() {
   const [validUntil, setValidUntil] = useState("");
   const [retrainingDue, setRetrainingDue] = useState("");
   const [savingCompletion, setSavingCompletion] = useState(false);
-  const evidenceMode = (assignment: TrainingAssignment) =>
-    assignment.training_category === "certification" ? "attachment" :
-    assignment.training_category === "recurring" ? (assignment.recurring_evidence_mode || "attachment") : "signature";
+  const evidenceMode = trainingEvidenceMode;
   const beginCompletion = (assignment: TrainingAssignment) => {
     setCompletionAssignment(assignment);
     setCompletionFile(null);
@@ -207,18 +206,6 @@ export default function TrainingManagementPage() {
     acknowledgement_required: true,
   });
 
-  const [newMatrix, setNewMatrix] = useState({
-    role_name: "",
-    department: "",
-    document_number: "",
-    required_training: true,
-    effectiveness_required: false,
-  });
-
-  const [effectivenessMethod, setEffectivenessMethod] = useState("");
-  const [effectivenessResult, setEffectivenessResult] = useState("");
-  const [effectivenessComments, setEffectivenessComments] = useState("");
-
   const canManage = trainingCoordinator;
 
   const fetchUser = async () => {
@@ -239,6 +226,8 @@ export default function TrainingManagementPage() {
     if (tenant) {
       const { data: allowed } = await supabase.rpc("qualisphere_training_is_coordinator", {p_tenant:tenant});
       setTrainingCoordinator(allowed === true);
+      const result=await supabase.from("training_methods").select("id,label,acknowledgement_required,evidence_required").eq("tenant_id",tenant).eq("is_active",true).order("label");
+      if(result.error) alert(result.error.message); else setTrainingMethods(result.data||[]);
     } else setTrainingCoordinator(false);
 
   };
@@ -387,13 +376,6 @@ export default function TrainingManagementPage() {
         !a.signature_id
     );
 
-    const effectivenessPending = assignments.filter(
-      (a) =>
-        !["waived", "cancelled", "withdrawn"].includes(a.status || "") &&
-        a.effectiveness_required &&
-        a.effectiveness_status !== "effectiveness_complete"
-    );
-
     return {
       total: assignments.length,
       open: open.length,
@@ -401,7 +383,6 @@ export default function TrainingManagementPage() {
       completed: completed.length,
       trainingSignatures: trainingSignatures.length,
       awaitingSignature: awaitingSignature.length,
-      effectivenessPending: effectivenessPending.length,
       matrixRows: matrixRows.length,
       completionRate:
         assignments.length === 0
@@ -536,6 +517,11 @@ export default function TrainingManagementPage() {
 
     if (newAssignment.training_category === "recurring" && (!Number.isInteger(Number(newAssignment.recurrence_months)) || Number(newAssignment.recurrence_months) < 1 || Number(newAssignment.recurrence_months) > 120)) { alert("Recurrence must be between 1 and 120 months."); return; }
 
+    if(!canManage||creatingAssignment)return;
+    const method=trainingMethods.find(m=>m.id===manualMethod);
+    if(!method||!newAssignment.due_date){alert("Select a training method and due date.");return;}
+    const mode=method.evidence_required?(method.acknowledgement_required?"both":"attachment"):"signature";
+    setCreatingAssignment(true);
     const { error } = await supabase.from("training_assignments").insert({
       document_id: newAssignment.document_id || null,
       assigned_to_email: normalizeEmail(newAssignment.assigned_to_email),
@@ -544,7 +530,8 @@ export default function TrainingManagementPage() {
       training_category: newAssignment.training_category,
       recurrence_months: newAssignment.training_category === "recurring" ? Number(newAssignment.recurrence_months) : null,
       recurrence_basis: newAssignment.training_category === "recurring" ? newAssignment.recurrence_basis : null,
-      recurring_evidence_mode: newAssignment.training_category === "recurring" ? newAssignment.recurring_evidence_mode : null,
+      recurring_evidence_mode: newAssignment.training_category === "recurring" ? newAssignment.recurring_evidence_mode : mode,
+      training_method_id: method.id,
       approved_evaluation_attachment_required: newAssignment.training_category === "recurring" && !!newAssignment.approved_evaluation_attachment_required,
       supervisor_designee_evidence_approval_required: !!newAssignment.supervisor_designee_evidence_approval_required,
       role_name: newAssignment.role_name || null,
@@ -553,14 +540,13 @@ export default function TrainingManagementPage() {
       training_description: newAssignment.training_description || null,
       due_date: newAssignment.due_date || null,
       status: "assigned",
-      effectiveness_required: newAssignment.training_category === "certification" || newAssignment.effectiveness_required,
-      effectiveness_status: (newAssignment.training_category === "certification" || newAssignment.effectiveness_required)
-        ? "effectiveness_pending"
-        : "not_required",
+      effectiveness_required: false,
+      effectiveness_status: "not_required",
       supervisor_verification_required: false,
-      acknowledgement_required: newAssignment.acknowledgement_required,
+      acknowledgement_required: newAssignment.training_category === "recurring" ? ["signature","both"].includes(newAssignment.recurring_evidence_mode) : ["signature","both"].includes(mode),
     });
 
+    setCreatingAssignment(false);
     if (error) {
       alert(error.message);
       return;
@@ -585,41 +571,7 @@ export default function TrainingManagementPage() {
       acknowledgement_required: true,
     });
 
-    fetchData();
-  };
-
-  const createMatrixRow = async () => {
-    if (!newMatrix.role_name.trim() && !newMatrix.department.trim()) {
-      alert("Role or department is required.");
-      return;
-    }
-
-    if (!newMatrix.document_number.trim()) {
-      alert("Document number is required.");
-      return;
-    }
-
-    const { error } = await supabase.from("training_matrix").insert({
-      role_name: newMatrix.role_name || null,
-      department: newMatrix.department || null,
-      document_number: newMatrix.document_number,
-      required_training: newMatrix.required_training,
-      effectiveness_required: newMatrix.effectiveness_required,
-    });
-
-    if (error) {
-      alert(error.message);
-      return;
-    }
-
-    setNewMatrix({
-      role_name: "",
-      department: "",
-      document_number: "",
-      required_training: true,
-      effectiveness_required: false,
-    });
-
+    setManualMethod("");
     fetchData();
   };
 
@@ -713,9 +665,6 @@ export default function TrainingManagementPage() {
         payload.acknowledged_by = userEmail;
       }
 
-      if (assignment.effectiveness_required) {
-        payload.effectiveness_status = "effectiveness_pending";
-      }
     }
 
     if (status === "waived") {
@@ -756,154 +705,6 @@ export default function TrainingManagementPage() {
       alert(error.message);
       return;
     }
-
-    fetchData();
-  };
-
-  const completeEffectiveness = async (assignment: TrainingAssignment) => {
-    if (!canManage) {
-      alert(
-        "Only training admin, quality, approver, admin, or VP Quality can complete effectiveness checks."
-      );
-      return;
-    }
-
-    if (!assignment.effectiveness_required || assignment.effectiveness_status === "effectiveness_complete") {
-      alert("This training evaluation is already completed or not required.");
-      return;
-    }
-
-    if (!effectivenessMethod.trim() || !effectivenessResult.trim()) {
-      alert("Effectiveness method and result are required.");
-      return;
-    }
-
-    const { error: checkError } = await supabase
-      .from("training_effectiveness_checks")
-      .insert({
-        training_assignment_id: assignment.id,
-        effectiveness_method: effectivenessMethod,
-        effectiveness_result: effectivenessResult,
-        verified_by: userEmail,
-        verified_at: new Date().toISOString(),
-        comments: effectivenessComments || null,
-      });
-
-    if (checkError) {
-      alert(checkError.message);
-      return;
-    }
-
-    const { error } = await supabase
-      .from("training_assignments")
-      .update({
-        effectiveness_status: "effectiveness_complete",
-      })
-      .eq("id", assignment.id);
-
-    if (error) {
-      alert(error.message);
-      return;
-    }
-
-    setEffectivenessMethod("");
-    setEffectivenessResult("");
-    setEffectivenessComments("");
-    fetchData();
-  };
-
-  const autoAssignFromMatrix = async () => {
-    if (!canManage) {
-      alert(
-        "Only training admin, quality, approver, admin, or VP Quality can auto-assign training."
-      );
-      return;
-    }
-
-    setAutoAssigning(true);
-    setAutoAssignResult(null);
-
-    const effectiveDocs = documents.filter(
-      (doc) => doc.status === "effective"
-    );
-
-    let created = 0;
-    let skipped = 0;
-
-    for (const doc of effectiveDocs) {
-      const matchingMatrixRows = matrixRows.filter(
-        (row) =>
-          String(row.document_number || "").trim().toLowerCase() ===
-          String(doc.document_number || "").trim().toLowerCase()
-      );
-
-      for (const row of matchingMatrixRows) {
-        const matchingEmployees = employees.filter((employee) => {
-          const roleMatch =
-            !row.role_name ||
-            String(employee.role_name || "").trim().toLowerCase() ===
-              String(row.role_name || "").trim().toLowerCase();
-
-          const departmentMatch =
-            !row.department ||
-            String(employee.department || "").trim().toLowerCase() ===
-              String(row.department || "").trim().toLowerCase();
-
-          return roleMatch && departmentMatch;
-        });
-
-        for (const employee of matchingEmployees) {
-          const existing = assignments.find(
-            (assignment) =>
-              assignment.document_id === doc.id &&
-              assignment.assigned_to_email === employee.user_email
-          );
-
-          if (existing) {
-            skipped += 1;
-            continue;
-          }
-
-          const { error } = await supabase
-            .from("training_assignments")
-            .insert({
-              document_id: doc.id,
-              assigned_to_email: employee.user_email,
-              assigned_by_email: userEmail || "system",
-              assignment_source:
-                "training_matrix_document_effective",
-              role_name: employee.role_name || null,
-              department: employee.department || null,
-              training_title: `${doc.document_number} Rev ${doc.revision} Training`,
-              training_description:
-                `Training auto-assigned because ${doc.document_number} Rev ${doc.revision} is effective.`,
-              due_date: addDays(14),
-              status: "assigned",
-              effectiveness_required:
-                row.effectiveness_required || false,
-              effectiveness_status:
-                row.effectiveness_required
-                  ? "effectiveness_pending"
-                  : "not_required",
-              supervisor_verification_required:
-                row.effectiveness_required || false,
-              acknowledgement_required: true,
-            });
-
-          if (!error) {
-            created += 1;
-          }
-        }
-      }
-    }
-
-    setAutoAssignResult({
-      created,
-      skipped,
-      effectiveDocuments: effectiveDocs.length,
-    });
-
-    setAutoAssigning(false);
 
     fetchData();
   };
@@ -1062,12 +863,13 @@ export default function TrainingManagementPage() {
           })()}
         </div>
         <div style={gridStyle}>
-          <Field label="Training Type"><select value={newAssignment.training_category} onChange={(e) => setNewAssignment({ ...newAssignment, training_category: e.target.value, effectiveness_required: false })} style={inputStyle}><option value="standard">Read &amp; Understand / Standard Training</option><option value="recurring">Recurring Training</option></select></Field>
+          <Field label="Training Method"><select value={manualMethod} onChange={e=>{setManualMethod(e.target.value);const m=trainingMethods.find(m=>m.id===e.target.value);setNewAssignment({...newAssignment,recurring_evidence_mode:m?.evidence_required?(m.acknowledgement_required?"both":"attachment"):"signature"});}} style={inputStyle}><option value="">Select configured method</option>{trainingMethods.map(m=><option key={m.id} value={m.id}>{m.label}</option>)}</select></Field>
+          <Field label="Training Frequency"><select value={newAssignment.training_category} onChange={e=>setNewAssignment({...newAssignment,training_category:e.target.value})} style={inputStyle}><option value="standard">One-time</option><option value="recurring">Recurring</option></select></Field>
           {newAssignment.training_category === "recurring" ? <>
             <Field label="Repeat Every (Months)"><input type="number" min={1} max={120} value={newAssignment.recurrence_months} onChange={(e) => setNewAssignment({ ...newAssignment, recurrence_months: e.target.value })} style={inputStyle} /></Field>
             <Field label="Recurrence Basis"><select value={newAssignment.recurrence_basis} onChange={(e) => setNewAssignment({ ...newAssignment, recurrence_basis: e.target.value })} style={inputStyle}><option value="completion">Last Completion Date</option><option value="calendar">Fixed Calendar Schedule</option></select></Field>
             <Field label="Required Completion Evidence"><select value={newAssignment.recurring_evidence_mode} onChange={(e) => setNewAssignment({ ...newAssignment, recurring_evidence_mode: e.target.value })} style={inputStyle}><option value="signature">Electronic Acknowledgement</option><option value="attachment">Training Evidence Attachment</option><option value="both">Both</option></select></Field>
-            <Field label="Evaluation Requirement"><select value={newAssignment.approved_evaluation_attachment_required ? "approved_attachment" : "none"} onChange={(e) => setNewAssignment({ ...newAssignment, approved_evaluation_attachment_required: e.target.value === "approved_attachment", supervisor_verification_required: false })} style={inputStyle}><option value="none">Not Required</option><option value="approved_attachment">Approved Evaluation Attachment Required</option></select></Field>
+
           </> : null}
           <Field label="Assigned To Email">
             <input
@@ -1155,19 +957,6 @@ export default function TrainingManagementPage() {
           <label>
             <input
               type="checkbox"
-              checked={newAssignment.acknowledgement_required}
-              onChange={(e) =>
-                setNewAssignment({
-                  ...newAssignment,
-                  acknowledgement_required: e.target.checked,
-                })
-              }
-            />{" "}
-            Acknowledgement Required
-          </label>
-          <label>
-            <input
-              type="checkbox"
               checked={newAssignment.supervisor_designee_evidence_approval_required}
               onChange={(e) => setNewAssignment({ ...newAssignment, supervisor_designee_evidence_approval_required: e.target.checked })}
             />{" "}
@@ -1179,7 +968,7 @@ export default function TrainingManagementPage() {
 
         </div>
 
-        <button onClick={createAssignment} style={primaryButtonStyle}>
+        <button disabled={creatingAssignment||!manualMethod} onClick={createAssignment} style={primaryButtonStyle}>
           Create Assignment
         </button>
         {newAssignment.training_category === "recurring" && <p style={{ ...subtleText, marginTop: 12 }}>Recurring training configuration is saved with this assignment. Eligible future assignments are generated automatically when due; use Generate Due Training in the sidebar for manual backup.</p>}
@@ -1308,32 +1097,7 @@ export default function TrainingManagementPage() {
         </div>
       </section>}
 
-      <section style={{ ...cardStyle, display: activeTrainingSection === "administration" && canManage ? undefined : "none" }}>
-        <h2 style={{ marginTop: 0 }}>
-          Auto-Assign Training From Effective Documents
-        </h2>
-
-        <p style={subtleText}>
-          This scans effective controlled documents, matches them to the training matrix,
-          finds matching employees, and automatically creates training assignments.
-        </p>
-
-        <button
-          onClick={autoAssignFromMatrix}
-          style={autoAssigning ? secondaryButtonStyle : primaryButtonStyle}
-        >
-          {autoAssigning ? "Auto-Assigning..." : "Run Auto-Assignment"}
-        </button>
-
-        {autoAssignResult ? (
-          <div style={{ marginTop: "12px" }}>
-            <strong>Results:</strong>
-            <div>Effective Documents: {autoAssignResult.effectiveDocuments}</div>
-            <div>Assignments Created: {autoAssignResult.created}</div>
-            <div>Duplicates Skipped: {autoAssignResult.skipped}</div>
-          </div>
-        ) : null}
-      </section>
+      {canManage && activeTrainingSection === "administration" && <TrainingMatrixAssignment onAssigned={()=>{void supabase.from("training_assignments").select("*").order("created_at",{ascending:false}).then(({data,error})=>{if(error)alert(error.message);else setAssignments(data||[]);});}}/>}
 
       <section style={{ ...cardStyle, display: activeTrainingSection === "history" ? undefined : "none" }}>
         <h2 style={{ marginTop: 0 }}>Electronic Signature Records</h2>
@@ -1650,10 +1414,3 @@ const smallTextStyle: React.CSSProperties = {
   color: "#6b7280",
 };
 const warningTextStyle: React.CSSProperties = { color: "#b45309", fontWeight: 700 };
-
-function trainingEffectivenessLabel(status?: string | null) {
-  if (!status || status === "effectiveness_pending") return "Pending Evaluation";
-  if (status === "effectiveness_complete") return "Evaluation Completed";
-  if (status === "not_required") return "Not Required";
-  return status.replaceAll("_", " ");
-}
