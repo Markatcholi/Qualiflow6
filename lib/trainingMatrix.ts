@@ -27,3 +27,16 @@ export function trainingEvidenceMode(assignment: {training_category?: string | n
   return assignment.training_category === "certification" ? "attachment" :
     assignment.recurring_evidence_mode || (assignment.training_category === "recurring" ? "attachment" : "signature");
 }
+
+export type TrainingAudience = { department: string; roles: string[]; allRoles: boolean };
+export function buildTrainingAudienceTargets(allEmployees: boolean, audiences: TrainingAudience[]) {
+  if (allEmployees) return [{department:null,role_name:null}];
+  if (!audiences.length) throw new Error("Add at least one department, or select All employees.");
+  return audiences.flatMap(a => {
+    const department = a.department.trim() || null;
+    if (a.allRoles) return [{department,role_name:null}];
+    const roles = Array.from(new Map(a.roles.map(r=>r.trim()).filter(Boolean).map(r=>[normalizeTrainingValue(r),r])).values());
+    if (!roles.length) throw new Error(`Add at least one role for ${department || "all departments"}, or choose All roles.`);
+    return roles.map(role_name=>({department,role_name}));
+  });
+}

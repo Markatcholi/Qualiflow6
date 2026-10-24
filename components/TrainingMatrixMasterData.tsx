@@ -1,9 +1,9 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
-import { MatrixRequirement, normalizeTrainingValue as norm } from "../lib/trainingMatrix";
+import { MatrixRequirement, TrainingAudience, buildTrainingAudienceTargets, normalizeTrainingValue as norm } from "../lib/trainingMatrix";
 
-type Audience = { department: string; roles: string[] };
+type Audience = TrainingAudience & { roleDraft?: string };
 type Procedure = { document_number: string; title: string };
 export default function TrainingMatrixMasterData({tenantId}:{tenantId:string}) {
  const [rows,setRows]=useState<MatrixRequirement[]>([]);
@@ -34,9 +34,9 @@ export default function TrainingMatrixMasterData({tenantId}:{tenantId:string}) {
  const edit=(number:string)=>{
   const selected=rows.filter(r=>norm(r.document_number)===norm(number)&&r.required_training);
   setDocumentNumber(number);setAllEmployees(selected.some(r=>!norm(r.department)&&!norm(r.role_name)));
-  setAudiences(unique(selected.map(r=>r.department||"")).map(dep=>({department:dep,roles:selected.some(r=>norm(r.department)===norm(dep)&&!norm(r.role_name))?[]:unique(selected.filter(r=>norm(r.department)===norm(dep)).map(r=>r.role_name))})));
+  setAudiences(unique(selected.map(r=>r.department||"")).map(dep=>({department:dep,allRoles:selected.some(r=>norm(r.department)===norm(dep)&&!norm(r.role_name)),roles:selected.some(r=>norm(r.department)===norm(dep)&&!norm(r.role_name))?[]:unique(selected.filter(r=>norm(r.department)===norm(dep)).map(r=>r.role_name))})));
   // Preserve legacy role-only rows, which apply across departments.
-  if(selected.some(r=>!norm(r.department)&&norm(r.role_name))) setAudiences(a=>[...a,{department:"",roles:unique(selected.filter(r=>!norm(r.department)).map(r=>r.role_name))}]);
+  if(selected.some(r=>!norm(r.department)&&norm(r.role_name))) setAudiences(a=>[...a,{department:"",allRoles:false,roles:unique(selected.filter(r=>!norm(r.department)).map(r=>r.role_name))}]);
   setMessage("");
  };
  const save=async(disable=false)=>{
@@ -44,7 +44,8 @@ export default function TrainingMatrixMasterData({tenantId}:{tenantId:string}) {
   if(!disable&&!allEmployees&&!audiences.length)return setMessage("Add at least one department, or select All employees.");
   setSaving(true);setMessage("");
   try{
-   const targets=disable?[]:allEmployees?[{department:null,role_name:null}]:audiences.flatMap(a=>a.roles.length?a.roles.map(role=>({department:a.department||null,role_name:role})):[{department:a.department||null,role_name:null}]);
+   if(!disable&&!allEmployees&&audiences.some(a=>a.roleDraft?.trim()))throw new Error("Click Add Role to include the entered role, or clear the role field before saving.");
+   const targets=disable?[]:buildTrainingAudienceTargets(allEmployees,audiences);
    const {error}=await supabase.rpc("qualisphere_save_training_matrix_audience",{p_document_number:documentNumber,p_targets:targets});
    if(error)throw error;await load();setMessage(disable?"Requirement disabled. Existing training records are preserved.":"Procedure audience saved. Use Training Management to review and assign training.");
   }catch(e:any){setMessage(e.message);}finally{setSaving(false);}
@@ -55,14 +56,28 @@ export default function TrainingMatrixMasterData({tenantId}:{tenantId:string}) {
   <label>Procedure<select disabled={saving} value={documentNumber} onChange={e=>{setDocumentNumber(e.target.value);setAudiences([]);setAllEmployees(false);if(e.target.value)edit(e.target.value);}} style={input}><option value="">Select procedure</option>{procedureOptions.map(d=><option key={d.document_number} value={d.document_number}>{d.document_number}{d.title?` — ${d.title}`:""}</option>)}</select></label>
   <label><input disabled={saving} type="checkbox" checked={allEmployees} onChange={e=>setAllEmployees(e.target.checked)}/> All active employees in this company</label>
   {!allEmployees&&<>
-   <div style={{display:"flex",gap:10,margin:"14px 0"}}><select aria-label="Add department" value={department} onChange={e=>setDepartment(e.target.value)} style={input}><option value="">Select department</option>{departments.map(d=><option key={d} value={d}>{d}</option>)}</select><button disabled={saving||!department} onClick={()=>{if(!audiences.some(a=>norm(a.department)===norm(department)))setAudiences([...audiences,{department,roles:[]}]);setDepartment("");}}>Add Department</button></div>
-   {audiences.map((a,index)=>{const roles=unique([...employees.filter(e=>!a.department||norm(e.department)===norm(a.department)).map(e=>e.role_name),...a.roles]);return <fieldset key={index} disabled={saving} style={{marginBottom:10,border:"1px solid #d1d5db"}}><legend>{a.department||"All departments (existing mapping)"}</legend>
-    <label><input type="checkbox" checked={!a.roles.length} onChange={()=>setAudiences(audiences.map((x,i)=>i===index?{...x,roles:[]}:x))}/> All roles in this department</label>
-    <div style={{display:"flex",gap:14,flexWrap:"wrap",marginTop:10}}>{roles.map(role=><label key={role}><input type="checkbox" checked={a.roles.includes(role)} onChange={e=>setAudiences(audiences.map((x,i)=>i===index?{...x,roles:e.target.checked?[...x.roles,role]:x.roles.filter(r=>r!==role)}:x))}/>{role}</label>)}</div>
-    <button onClick={()=>setAudiences(audiences.filter((_,i)=>i!==index))}>Remove Department</button>
-   </fieldset>;})}
+   <div style={{display:"flex",gap:10,margin:"14px 0"}}><select aria-label="Add department" value={department} onChange={e=>setDepartment(e.target.value)} style={input}><option value="">Select department</option>{departments.map(d=><option key={d} value={d}>{d}</option>)}</select><button disabled={saving||!department} onClick={()=>{if(!audiences.some(a=>norm(a.department)===norm(department)))setAudiences([...audiences,{department,roles:[],allRoles:false}]);setDepartment("");}}>Add Department</button></div>
+   {audiences.map((a,index)=>{
+    const roles=unique([...employees.map(e=>e.role_name),...rows.map(r=>r.role_name),...a.roles]);
+    const patch=(values:Partial<Audience>)=>setAudiences(current=>current.map((x,i)=>i===index?{...x,...values}:x));
+    const addRole=()=>{const role=(a.roleDraft||"").trim();if(!role)return;patch({allRoles:false,roles:a.roles.some(r=>norm(r)===norm(role))?a.roles:[...a.roles,role],roleDraft:""});};
+    return <fieldset key={a.department} disabled={saving} style={{marginBottom:10,border:"1px solid #d1d5db",padding:14}}>
+     <legend>{a.department||"All departments (existing mapping)"}</legend>
+     <label>Employees to include<select aria-label={`Roles in ${a.department||"all departments"}`} value={a.allRoles?"all":"specific"} onChange={e=>patch({allRoles:e.target.value==="all"})} style={input}><option value="all">All roles in this department</option><option value="specific">Specific roles</option></select></label>
+     <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
+      <label style={{flex:"1 1 220px"}}>Role<input aria-label={`Add role in ${a.department||"all departments"}`} list={`training-role-options-${index}`} value={a.roleDraft||""} onChange={e=>patch({roleDraft:e.target.value})} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();addRole();}}} placeholder="Select or enter a training role" style={input}/></label>
+      <datalist id={`training-role-options-${index}`}>{roles.map(role=><option key={role} value={role}/>)}</datalist>
+      <button type="button" disabled={!a.roleDraft?.trim()} onClick={addRole}>Add Role</button>
+     </div>
+     {a.allRoles?<p>All active employees in this department are included. Adding a role switches to specific roles.</p>:<>
+      {!a.roles.length&&<p role="status">Add at least one role, or choose All roles in this department.</p>}
+      <ul>{a.roles.map(role=><li key={role}>{role} <button type="button" aria-label={`Remove ${role} from ${a.department||"all departments"}`} onClick={()=>patch({roles:a.roles.filter(r=>r!==role)})}>Remove Role</button></li>)}</ul>
+     </>}
+     <button type="button" onClick={()=>setAudiences(audiences.filter((_,i)=>i!==index))}>Remove Department</button>
+    </fieldset>;
+   })}
   </>}
-  <p>Role choices come from employee profiles. No roles selected within a department means all its roles.</p>
+  <p>Select an existing role or enter one to configure training before employees are added. Role names must match employee training profiles.</p>
   <button disabled={saving} onClick={()=>void save()} style={button}>{saving?"Saving…":"Save Procedure Audience"}</button>
   {documentNumber&&rows.some(r=>norm(r.document_number)===norm(documentNumber)&&r.required_training)&&<button disabled={saving} onClick={()=>void save(true)}>Disable Requirement</button>}
   {message&&<p role="status">{message}</p>}
