@@ -1,46 +1,29 @@
 "use client";
 
+import TrainingMethodsManager from "./TrainingMethodsManager";
 import React, { useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 
-type Method = { id:string; code:string; label:string; release_blocking:boolean; acknowledgement_required:boolean; evidence_required:boolean; is_active:boolean };
 type Group = { id:string; group_name:string; description:string|null; is_active:boolean };
 type Member = { id:string; training_group_id:string; user_email:string };
 
 export default function TrainingConfigurationManager({ tenantId }:{ tenantId:string }) {
-  const [methods,setMethods]=useState<Method[]>([]);
   const [groups,setGroups]=useState<Group[]>([]);
   const [members,setMembers]=useState<Member[]>([]);
-  const [method,setMethod]=useState({code:"",label:"",release_blocking:false,acknowledgement_required:true,evidence_required:false});
   const [group,setGroup]=useState({group_name:"",description:""});
   const [member,setMember]=useState({training_group_id:"",user_email:""});
   const [busy,setBusy]=useState(false);
 
   const load=async()=>{
-    const [m,g,gm]=await Promise.all([
-      supabase.from("training_methods").select("*").eq("tenant_id",tenantId).order("label"),
+    const [g,gm]=await Promise.all([
       supabase.from("training_groups").select("*").eq("tenant_id",tenantId).order("group_name"),
       supabase.from("training_group_members").select("*").eq("tenant_id",tenantId).order("user_email"),
     ]);
-    if(m.error) throw new Error(m.error.message); if(g.error) throw new Error(g.error.message); if(gm.error) throw new Error(gm.error.message);
-    setMethods((m.data||[]) as Method[]); setGroups((g.data||[]) as Group[]); setMembers((gm.data||[]) as Member[]);
+    if(g.error) throw new Error(g.error.message); if(gm.error) throw new Error(gm.error.message);
+    setGroups((g.data||[]) as Group[]); setMembers((gm.data||[]) as Member[]);
   };
   useEffect(()=>{ if(tenantId) load().catch(e=>alert(e.message)); },[tenantId]);
 
-  const addMethod=async()=>{
-    if(!method.code.trim()||!method.label.trim()) return alert("Training method code and label are required.");
-    setBusy(true);
-    const {error}=await supabase.from("training_methods").insert({tenant_id:tenantId,code:method.code.trim().toUpperCase().replace(/\s+/g,"_"),label:method.label.trim(),release_blocking:method.release_blocking,acknowledgement_required:method.acknowledgement_required,evidence_required:method.evidence_required});
-    setBusy(false); if(error) return alert(error.message); setMethod({code:"",label:"",release_blocking:false,acknowledgement_required:true,evidence_required:false}); await load();
-  };
-  const removeMethod=async(id:string)=>{
-    const methodToRemove=methods.find(m=>m.id===id);
-    if(!methodToRemove) return;
-    if(!confirm(`Remove training method "${methodToRemove.label}"? It will no longer be available for new training requirements.`)) return;
-    setBusy(true);
-    const {error}=await supabase.from("training_methods").update({is_active:false}).eq("id",id).eq("tenant_id",tenantId);
-    setBusy(false); if(error)return alert(error.message); await load();
-  };
   const addGroup=async()=>{
     if(!group.group_name.trim()) return alert("Training group name is required.");
     setBusy(true); const {error}=await supabase.from("training_groups").insert({tenant_id:tenantId,group_name:group.group_name.trim(),description:group.description.trim()||null});
@@ -57,18 +40,7 @@ export default function TrainingConfigurationManager({ tenantId }:{ tenantId:str
   return <section style={card}>
     <h2 style={{marginTop:0}}>Training Configuration</h2>
     <p style={subtle}>Configure the training methods and reusable employee groups required by your Quality System. QualiSphere does not prescribe due dates or training populations.</p>
-    <h3>Training Methods</h3>
-    <div style={grid}>
-      <input placeholder="Code (e.g. READ_UNDERSTAND)" value={method.code} onChange={e=>setMethod({...method,code:e.target.value})} style={input}/>
-      <input placeholder="Method label" value={method.label} onChange={e=>setMethod({...method,label:e.target.value})} style={input}/>
-    </div>
-    <div style={row}>
-      <label><input type="checkbox" checked={method.release_blocking} onChange={e=>setMethod({...method,release_blocking:e.target.checked})}/> Must be completed before document release</label>
-      <label><input type="checkbox" checked={method.acknowledgement_required} onChange={e=>setMethod({...method,acknowledgement_required:e.target.checked})}/> Acknowledgement / signature required</label>
-      <label><input type="checkbox" checked={method.evidence_required} onChange={e=>setMethod({...method,evidence_required:e.target.checked})}/> Completion evidence required</label>
-    </div>
-    <button disabled={busy} onClick={addMethod} style={button}>Add Training Method</button>
-    <div style={{marginTop:10}}>{methods.filter(m=>m.is_active!==false).map(m=><div key={m.id} style={{display:"flex",justifyContent:"space-between",gap:12,padding:"8px 0",borderBottom:"1px solid #e5e7eb"}}><span><strong>{m.label}</strong> — {m.release_blocking?"Release prerequisite":"Post-release completion permitted"}</span><button disabled={busy} onClick={()=>removeMethod(m.id)} style={linkButton}>Remove</button></div>)}</div>
+    <TrainingMethodsManager tenantId={tenantId}/>
 
     <hr style={{margin:"22px 0"}}/>
     <h3>Training Groups</h3>

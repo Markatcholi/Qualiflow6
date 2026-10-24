@@ -1,5 +1,6 @@
 "use client";
 import {useEffect,useState} from "react";
+import TrainingMethodsManager from "./TrainingMethodsManager";
 import {supabase} from "../lib/supabaseClient";
 import {MatrixRequirement,TrainingEmployee,trainingAudienceMatches,trainingAssignmentState} from "../lib/trainingMatrix";
 
@@ -9,6 +10,7 @@ type Method={id:string;label:string;acknowledgement_required:boolean;evidence_re
 type Existing={document_id:string|null;assigned_to_email:string;status:string|null;source_document_revision:string|null};
 type Candidate={key:string;doc:Doc;employee:Employee;state:string};
 export default function TrainingMatrixAssignment({onAssigned}:{onAssigned:()=>void}) {
+ const [showMethods,setShowMethods]=useState(false);
  const [tenant,setTenant]=useState("");const [rows,setRows]=useState<MatrixRequirement[]>([]);
  const [employees,setEmployees]=useState<Employee[]>([]);const [docs,setDocs]=useState<Doc[]>([]);
  const [methods,setMethods]=useState<Method[]>([]);const [existing,setExisting]=useState<Existing[]>([]);
@@ -30,6 +32,10 @@ export default function TrainingMatrixAssignment({onAssigned}:{onAssigned:()=>vo
   return {rows:(r.data||[]) as MatrixRequirement[],employees:(e.data||[]) as Employee[],docs:(d.data||[]) as Doc[],existing:(a.data||[]) as Existing[]};
  };
  useEffect(()=>{void load().catch(e=>setMessage(e.message));},[]);
+ const refreshMethods=async(selectedId?:string)=>{
+  const r=await supabase.from("training_methods").select("id,label,acknowledgement_required,evidence_required").eq("tenant_id",tenant).eq("is_active",true).order("label");
+  if(r.error){setMessage(r.error.message);return;}setMethods(r.data||[]);setMethod(current=>selectedId&&r.data?.some(m=>m.id===selectedId)?selectedId:r.data?.some(m=>m.id===current)?current:"");
+ };
  const invalidate=()=>{setPreview(null);setSelected([]);setMessage("");};
  const find=async()=>{
   setBusy(true);setMessage("");try{
@@ -52,6 +58,8 @@ export default function TrainingMatrixAssignment({onAssigned}:{onAssigned:()=>vo
  };
  return <section style={card}>
   <h2 style={{marginTop:0}}>Assign Training From Matrix</h2>
+  <button type="button" disabled={!tenant||busy} onClick={()=>setShowMethods(!showMethods)}>{showMethods?"Close Method Settings":"Manage Training Methods"}</button>
+  {showMethods&&tenant&&<TrainingMethodsManager tenantId={tenant} onChanged={id=>void refreshMethods(id)}/>}
   <p>Find required employees for one procedure, or required procedures for one employee. Review the list before assigning.</p>
   <div style={grid}>
    <label>Find by<select disabled={busy} value={mode} onChange={e=>{setMode(e.target.value);invalidate();}} style={input}><option value="procedure">Procedure</option><option value="employee">Employee</option></select></label>
