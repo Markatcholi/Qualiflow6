@@ -6,11 +6,13 @@ import { supabase } from "../../../lib/supabaseClient";
 import {trainingEvidenceMode} from "../../../lib/trainingMatrix";
 import ESignatureModal from "../../../components/ESignatureModal";
 import { acknowledgeTraining } from "../../../services/trainingService";
-import { resolveControlledDocumentFileUrl } from "../../../lib/controlledDocumentStorage";
+import {resolveTrainingMaterial} from "../../../lib/trainingMaterial";
+import { createControlledDocumentSignedUrl } from "../../../lib/controlledDocumentStorage";
 
 type TrainingAssignment = {
   id: string;
   document_id: string | null;
+  source_document_revision?: string | null;
   assigned_to_email: string;
   assigned_by_email: string | null;
   assignment_source: string | null;
@@ -131,38 +133,23 @@ export default function TrainingAssignmentDetailPage() {
   );
 
   const [trainingDocumentUrl, setTrainingDocumentUrl] = useState<string | null>(null);
+  const [trainingDocumentSource,setTrainingDocumentSource]=useState("");
+  const [trainingDocumentError,setTrainingDocumentError]=useState("");
+  const [loadingTrainingDocument,setLoadingTrainingDocument]=useState(false);
 
   useEffect(() => {
-    let active = true;
-    const resolveTrainingDocument = async () => {
-      if (!documentRecord) {
-        if (active) setTrainingDocumentUrl(null);
-        return;
-      }
-      const isReleased = documentRecord.status === "release" || documentRecord.status === "effective";
-      try {
-        const resolved = isReleased
-          ? await resolveControlledDocumentFileUrl({
-              filePath: documentRecord.controlled_copy_file_path,
-              legacyUrl: documentRecord.controlled_copy_file_url,
-            })
-          : documentRecord.file_url || null;
-        if (active) setTrainingDocumentUrl(resolved);
-      } catch (error: any) {
-        console.warn("Unable to resolve training document URL:", error?.message || error);
-        if (active) setTrainingDocumentUrl(null);
-      }
-    };
-    resolveTrainingDocument();
-    return () => { active = false; };
-  }, [documentRecord]);
+    let active=true;
+    setTrainingDocumentUrl(null);setTrainingDocumentError("");setTrainingDocumentSource("");
+    if(!documentRecord){setLoadingTrainingDocument(false);return;}
+    setLoadingTrainingDocument(true);
+    void resolveTrainingMaterial(documentRecord,process.env.NEXT_PUBLIC_SUPABASE_URL||"",createControlledDocumentSignedUrl,assignment?.source_document_revision)
+      .then(result=>{if(active){setTrainingDocumentUrl(result.url);setTrainingDocumentSource(result.source);}})
+      .catch(error=>{if(active)setTrainingDocumentError(error?.message||"Unable to access the training file. Contact your training coordinator.");})
+      .finally(()=>{if(active)setLoadingTrainingDocument(false);});
+    return ()=>{active=false;};
+  },[documentRecord,assignment?.source_document_revision]);
 
-  const trainingDocumentLabel =
-    documentRecord &&
-    (documentRecord.status === "release" || documentRecord.status === "effective") &&
-    documentRecord.controlled_copy_file_url
-      ? "Open Controlled Copy"
-      : "Open Training Document";
+  const trainingDocumentLabel=trainingDocumentSource==="Controlled Copy"?"Open Controlled Copy":"Open Training Document";
 
   const fetchUser = async () => {
     const { data: userData } = await supabase.auth.getUser();
@@ -444,7 +431,7 @@ export default function TrainingAssignmentDetailPage() {
         </section>
       ) : null}
 
-      {!canManage && (
+      {!isRegisteredCertification && (
       <section style={cardStyle}>
         <h2 style={{ marginTop: 0 }}>Training Materials</h2>
 
@@ -459,9 +446,7 @@ export default function TrainingAssignmentDetailPage() {
               <Field label="Effective Date"><div>{documentRecord.effective_date || "N/A"}</div></Field>
               <Field label="Training Document Source">
                 <div>
-                  {(documentRecord.status === "release" || documentRecord.status === "effective") && documentRecord.controlled_copy_file_url
-                    ? "Controlled Copy"
-                    : "Working Copy"}
+                  {trainingDocumentSource || (loadingTrainingDocument ? "Loading…" : "Unavailable")}
                 </div>
               </Field>
             </div>
@@ -472,7 +457,7 @@ export default function TrainingAssignmentDetailPage() {
                   {trainingDocumentLabel}
                 </a>
               ) : (
-                <span style={warningStyle}>No document file attached.</span>
+                <span role={trainingDocumentError?"alert":"status"} style={warningStyle}>{loadingTrainingDocument?"Loading training document…":trainingDocumentError||"No file is linked to this document revision. Contact your training coordinator."}</span>
               )}
 
               {canManage ? <a href={`/documents/${documentRecord.id}`} style={darkButtonStyle}>Open Document Workflow</a> : null}
