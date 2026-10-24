@@ -142,12 +142,12 @@ export default function TrainingAssignmentDetailPage() {
     setTrainingDocumentUrl(null);setTrainingDocumentError("");setTrainingDocumentSource("");
     if(!documentRecord){setLoadingTrainingDocument(false);return;}
     setLoadingTrainingDocument(true);
-    void resolveTrainingMaterial(documentRecord,process.env.NEXT_PUBLIC_SUPABASE_URL||"",createControlledDocumentSignedUrl,assignment?.source_document_revision)
+    void resolveTrainingMaterial(documentRecord,process.env.NEXT_PUBLIC_SUPABASE_URL||"",createControlledDocumentSignedUrl,assignment?.source_document_revision,assignment?.acknowledgement_required===true)
       .then(result=>{if(active){setTrainingDocumentUrl(result.url);setTrainingDocumentSource(result.source);}})
       .catch(error=>{if(active)setTrainingDocumentError(error?.message||"Unable to access the training file. Contact your training coordinator.");})
       .finally(()=>{if(active)setLoadingTrainingDocument(false);});
     return ()=>{active=false;};
-  },[documentRecord,assignment?.source_document_revision]);
+  },[documentRecord,assignment?.source_document_revision,assignment?.acknowledgement_required]);
 
   const trainingDocumentLabel=trainingDocumentSource==="Controlled Copy"?"Open Controlled Copy":"Open Training Document";
 
@@ -457,7 +457,7 @@ export default function TrainingAssignmentDetailPage() {
                   {trainingDocumentLabel}
                 </a>
               ) : (
-                <span role={trainingDocumentError?"alert":"status"} style={warningStyle}>{loadingTrainingDocument?"Loading training document…":trainingDocumentError||"No file is linked to this document revision. Contact your training coordinator."}</span>
+                <span role={trainingDocumentError?"alert":"status"} style={warningStyle}>{loadingTrainingDocument?"Loading training document…":trainingDocumentError||"No controlled copy is available for this assigned revision. Contact Document Control before completing training."}</span>
               )}
 
               {canManage ? <a href={`/documents/${documentRecord.id}`} style={darkButtonStyle}>Open Document Workflow</a> : null}

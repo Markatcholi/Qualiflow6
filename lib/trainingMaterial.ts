@@ -7,13 +7,15 @@ export function controlledDocumentPath(url:string,projectUrl:string) {
   return match?decodeURIComponent(match[1]):null;
  } catch {return null;}
 }
-export async function resolveTrainingMaterial(doc:TrainingDocument,projectUrl:string,sign:(path:string)=>Promise<string|null>,assignedRevision?:string|null) {
+export async function resolveTrainingMaterial(doc:TrainingDocument,projectUrl:string,sign:(path:string)=>Promise<string|null>,assignedRevision?:string|null,requireControlledCopy=false) {
  if(assignedRevision&&assignedRevision!==doc.revision)throw new Error(`This assignment requires revision ${assignedRevision}, but the linked document is revision ${doc.revision}. Contact your training coordinator.`);
  const released=["release","effective"].includes(doc.status.toLowerCase());
- const hasControlledCopy=released&&!!(doc.controlled_copy_file_path||doc.controlled_copy_file_url);
+ const controlledRequired=released||requireControlledCopy;
+ const hasControlledCopy=controlledRequired&&!!(doc.controlled_copy_file_path||doc.controlled_copy_file_url);
  const path=hasControlledCopy?doc.controlled_copy_file_path:null;
  const url=hasControlledCopy?doc.controlled_copy_file_url:doc.file_url;
- const source=hasControlledCopy?"Controlled Copy":released?"Released procedure file":"Working Copy";
+ const source=controlledRequired?"Controlled Copy":"Working Copy";
+ if(controlledRequired&&!hasControlledCopy)return {url:null,source};
  if(!path&&!url)return {url:null,source};
  const storagePath=path||(url?controlledDocumentPath(url,projectUrl):null);
  const resolved=storagePath?await sign(storagePath):url||null;
