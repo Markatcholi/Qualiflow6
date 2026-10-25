@@ -4,7 +4,7 @@
 
 - Repository: Markatcholi/Qualiflow6; Vercel checks deploy changes from this repository. The connected tools cannot inspect or change Vercel environment-variable settings.
 - Working Supabase project: `cqowueogqykmdyxnkcmt`. It contains QualiSphere Internal (`87bdc084-e0c5-488f-a5a1-16dcd45be55c`), Acme Medical Devices Test, and QualiSphere Customer Test 2.
-- An existing separate Supabase project, QualiSphere Beta (`bveewtjluzpolhflosgv`), is active but has no public application tables. Its existence does not make it a usable application sandbox yet.
+- An existing separate Supabase project, QualiSphere Beta (`bveewtjluzpolhflosgv`), now has the verified structure baseline: 144 tables (all with RLS), 172 functions, 3 invoker-security views and 454 policies. It has no users, tenants or buckets. Its existence does not make it a usable application sandbox yet.
 - No environment-kind or environment-pair fields currently exist on tenants.
 - Company selection is stored in localStorage. The live Training and Controlled Documents tenant resolvers count enabled memberships, or fall back to the legacy Internal account; they do not consume that browser selection. A new sandbox membership could therefore cause the wrong tenant to resolve.
 
@@ -23,7 +23,7 @@ Only configuration will be promoted after validation and administrator approval.
 - An explicit deployment environment flag and a persistent SANDBOX banner.
 - A build/dev/start guard requiring sandbox to point at its approved separate project, with a different protected project reference. Legacy JWT API keys, when used, must match that sandbox reference. Keys are never logged.
 - Existing unconfigured deployments are unchanged.
-- No database provisioning, user access grants, record copying, reset or promotion action is implemented or enabled here.
+- The separate Beta database has received structure only. No user access grants, record copying, reset or promotion action is implemented or enabled here.
 
 ## Isolated deployment settings
 
@@ -56,3 +56,16 @@ Vercel preview deployments otherwise inherit their configured database credentia
 - The baseline provisions reliably; configuration promotion is explicitly reviewed and cannot include operational records.
 
 This first-phase PR does not meet all those criteria. It supplies deployment safeguards and records the prerequisites discovered during inspection.
+
+
+## Structure baseline applied — 24-Oct-2026
+
+The owner exported the working project's `public` schema with pg_dump 17.11 from Postgres 17.6. The complete export contains no table COPY/INSERT sections. The adapted baseline is `supabase/baselines/qualisphere_sandbox_structure.sql`; its header records the source SHA256. This file is intentionally outside automatic migrations and must never be run against the working project.
+
+Adaptations: remove psql-only restrict commands, tolerate the existing public schema, omit default-privilege changes owned by managed `supabase_admin`, and retain row security. The empty-target guard rejects existing application relations, auth users or buckets. The final statements revoke public-schema usage and all application function execution from PUBLIC, anon and authenticated while the environment is incomplete. Existing object policies and grants are captured, but activation must explicitly restore only reviewed access.
+
+Applied only to Beta `bveewtjluzpolhflosgv`, in migrations `qualisphere_sandbox_structure_baseline` and `keep_unconfigured_sandbox_functions_inaccessible`. No source-project mutation or record export/import was performed. Verification: 144 tables, 144 RLS-enabled tables, 172 functions, 3 views, 454 policies; zero auth users, tenants, training assignments and buckets; client schema usage denied. Local PGlite import with mocked Supabase platform objects passed, including rejection of a nonempty destination. This validates DDL compatibility, not end-to-end Supabase behavior.
+
+Security review found inherited mutable search paths in 11 functions and 10 tables with RLS but no policies. Those tables remain default-deny; do not add broad access policies to silence advisory notices. Function execution is deliberately blocked for client roles until review. Auth/storage policies and auth triggers are outside this public-only export and require separate inventory; no files, users, cron schedules, outbound integrations or environment settings were copied.
+
+Next: review the inherited privileged functions and tenant selection, capture required auth/storage hooks, provision a clean configuration baseline and sandbox-only identity, then configure a dedicated Vercel deployment. Keep this PR in draft and the sandbox unavailable until that work and isolation checks pass.
