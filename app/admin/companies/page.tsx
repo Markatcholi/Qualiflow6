@@ -45,6 +45,7 @@ const emptyForm = {
 };
 
 export default function CompanyRegistryPage() {
+  const sandbox = process.env.NEXT_PUBLIC_QUALISPHERE_ENVIRONMENT === "sandbox";
   const [loading, setLoading] = useState(true);
   const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
   const [userEmail, setUserEmail] = useState("");
@@ -298,14 +299,15 @@ export default function CompanyRegistryPage() {
           </p>
         </div>
         <div style={headerActionsStyle}>
-          <Link href="/admin/company-settings" style={linkButtonStyle}>Company Settings</Link>
+          <Link href={sandbox ? "/company-administration/settings" : "/admin/company-settings"} style={linkButtonStyle}>Company Settings</Link>
           <Link href="/" style={linkButtonStyle}>Home</Link>
-          <button style={primaryButtonStyle} onClick={() => setShowCreate((value) => !value)}>
+          <button disabled={sandbox} title={sandbox ? "Additional company provisioning is unavailable during sandbox preparation" : undefined} style={primaryButtonStyle} onClick={() => setShowCreate((value) => !value)}>
             {showCreate ? "Cancel" : "Create Customer Company"}
           </button>
         </div>
       </div>
 
+      {sandbox && <div style={messageStyle}>SANDBOX — Use the company details to assign Company Administrators. Additional company provisioning and module activation remain unavailable during preparation. <Link href="/sandbox-access">Sandbox Home</Link></div>}
       <div style={identityBarStyle}><strong>Platform Administrator:</strong> {userEmail}</div>
       {message ? <div style={messageStyle}>{message}</div> : null}
       {errorMessage ? <div style={warningStyle}>{errorMessage}</div> : null}
