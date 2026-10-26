@@ -66,7 +66,7 @@ export default function PersistentAppShell({ children }: { children: React.React
   const [loaded, setLoaded] = useState(false);
   const publicPage = pathname === "/" || pathname === "/login" || pathname.startsWith("/signup") || pathname.startsWith("/sign-up") || pathname.startsWith("/auth/") || pathname.startsWith("/platform-admin") || pathname.startsWith("/admin/companies");
   useEffect(() => {
-    if (publicPage) return;
+    if (publicPage || process.env.NEXT_PUBLIC_QUALISPHERE_ENVIRONMENT === "sandbox") return;
     let cancelled = false;
     (async () => {
       const { data: auth } = await supabase.auth.getUser();
@@ -138,7 +138,7 @@ export default function PersistentAppShell({ children }: { children: React.React
     </div> : <a href={e.href} style={{...linkStyle,background:pathname===e.href?"#dbeafe":undefined}}>{e.name}</a>}
     {e.children && expanded[e.name] ? <div style={{paddingLeft:19}}>{e.children.filter(x=>childAllowed(e.name,x)).map(x=><a key={x.href} href={x.href} style={{...linkStyle,fontSize:13,background:pathname===x.href?"#dbeafe":undefined}}>{x.name}</a>)}</div> : null}
   </div>);
-  if (publicPage || !loaded || !visible) return <>{children}</>;
+  if (publicPage || process.env.NEXT_PUBLIC_QUALISPHERE_ENVIRONMENT === "sandbox" || !loaded || !visible) return <>{children}</>;
   return <div style={{display:"flex",alignItems:"flex-start",gap:16}}>
     <aside aria-label="QualiSphere module navigation" style={{width:collapsed?54:246,flexShrink:0,position:"sticky",top:0,height:"calc(100vh - 64px)",overflowY:"auto",borderRight:"1px solid #d1d5db",background:"#f9fafb",padding:collapsed?7:12,boxSizing:"border-box"}}>
       <button type="button" onClick={()=>setCollapsed(x=>!x)} aria-label={collapsed?"Expand module navigation":"Collapse module navigation"} style={{border:"1px solid #cbd5e1",borderRadius:6,background:"white",padding:7,cursor:"pointer",marginBottom:12}}>{collapsed?"☰":"☰ Modules"}</button>

@@ -8,7 +8,7 @@ export default function HeaderWrapper() {
 
   const publicRoutes = ["/", "/login"];
 
-  if (publicRoutes.includes(pathname)) {
+  if (publicRoutes.includes(pathname) || (process.env.NEXT_PUBLIC_QUALISPHERE_ENVIRONMENT === "sandbox" && pathname === "/sandbox-access")) {
     return null;
   }
 

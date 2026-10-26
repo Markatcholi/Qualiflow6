@@ -1,5 +1,6 @@
 import "./globals.css";
 import DeploymentEnvironmentBanner from "../components/DeploymentEnvironmentBanner";
+import SandboxAccessGate from "../components/SandboxAccessGate";
 import HeaderWrapper from "./components/HeaderWrapper";
 import PersistentAppShell from "./components/PersistentAppShell";
 
@@ -17,8 +18,10 @@ export default function RootLayout({
     <html lang="en">
       <body>
         <DeploymentEnvironmentBanner />
-        <HeaderWrapper />
-        <PersistentAppShell>{children}</PersistentAppShell>
+        <SandboxAccessGate>
+          <HeaderWrapper />
+          <PersistentAppShell>{children}</PersistentAppShell>
+        </SandboxAccessGate>
       </body>
     </html>
   );
