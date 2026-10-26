@@ -6,10 +6,12 @@ import { supabase } from "../../lib/supabaseClient";
 type Membership = {
   tenant_id: string;
   user_email: string;
+  membership_role: string;
   tenants: { company_name: string; slug: string; status: string } | { company_name: string; slug: string; status: string }[] | null;
 };
 
 export default function SelectCompanyPage() {
+  const sandbox = process.env.NEXT_PUBLIC_QUALISPHERE_ENVIRONMENT === "sandbox";
   const [loading, setLoading] = useState(true);
   const [memberships, setMemberships] = useState<Membership[]>([]);
   const [message, setMessage] = useState("");
@@ -26,7 +28,7 @@ export default function SelectCompanyPage() {
 
       const { data, error } = await supabase
         .from("tenant_memberships")
-        .select("tenant_id,user_email,tenants(company_name,slug,status)")
+        .select("tenant_id,user_email,membership_role,tenants(company_name,slug,status)")
         .eq("membership_status", "active")
         .ilike("user_email", authenticatedEmail);
 
@@ -36,9 +38,15 @@ export default function SelectCompanyPage() {
         return;
       }
 
+      let registeredIds = new Set<string>();
+      if (sandbox) {
+        const registered = await supabase.from("sandbox_company_environments").select("tenant_id");
+        if (registered.error) { setMessage(registered.error.message); setLoading(false); return; }
+        registeredIds = new Set((registered.data || []).map(row => row.tenant_id));
+      }
       const active = ((data || []) as Membership[]).filter((membership) => {
         const tenant = Array.isArray(membership.tenants) ? membership.tenants[0] : membership.tenants;
-        return tenant?.status === "active";
+        return sandbox ? registeredIds.has(membership.tenant_id) && membership.membership_role === "company_admin" && ["provisioning", "active"].includes(tenant?.status || "") : tenant?.status === "active";
       });
 
       if (active.length === 1) {
@@ -60,7 +68,7 @@ export default function SelectCompanyPage() {
     window.localStorage.setItem("qualisphere_active_tenant_slug", tenant?.slug || "");
     window.localStorage.removeItem("qualisphere_active_tenant_role");
     window.sessionStorage.removeItem("qualisphere_membership_selection_required");
-    window.location.href = "/workspace";
+    window.location.href = sandbox ? "/sandbox-access" : "/workspace";
   };
 
   return (
@@ -78,7 +86,7 @@ export default function SelectCompanyPage() {
           return (
             <button key={membership.tenant_id} type="button" style={companyButtonStyle} onClick={() => choose(membership)}>
               <strong>{tenant?.company_name || "Company Account"}</strong>
-              <span style={smallStyle}>Open workspace</span>
+              <span style={smallStyle}>{sandbox ? "Open sandbox setup" : "Open workspace"}</span>
             </button>
           );
         })}

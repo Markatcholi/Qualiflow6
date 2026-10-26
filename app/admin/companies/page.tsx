@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../../../lib/supabaseClient";
 import { PLATFORM_MODULE_CATALOG } from "../../../lib/platformModuleCatalog";
 
@@ -46,6 +46,7 @@ const emptyForm = {
 
 export default function CompanyRegistryPage() {
   const sandbox = process.env.NEXT_PUBLIC_QUALISPHERE_ENVIRONMENT === "sandbox";
+  const provisionRequest = useRef<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
   const [userEmail, setUserEmail] = useState("");
@@ -140,6 +141,7 @@ export default function CompanyRegistryPage() {
   }, [modules]);
 
   const setField = (field: keyof typeof emptyForm, value: string) => {
+    provisionRequest.current = null;
     setForm((current) => ({ ...current, [field]: value }));
   };
 
@@ -211,13 +213,26 @@ export default function CompanyRegistryPage() {
     if (!form.slug.trim()) return setErrorMessage("Tenant slug is required.");
     if (!form.customerContactEmail.trim()) return setErrorMessage("Customer Contact email is required.");
     if (!form.initialCompanyAdminEmail.trim()) return setErrorMessage("Initial Company Administrator email is required.");
-    if (selectedModules.length === 0) return setErrorMessage("Select at least one subscribed QualiSphere module.");
+    if (!sandbox && selectedModules.length === 0) return setErrorMessage("Select at least one subscribed QualiSphere module.");
 
     setCreating(true);
 
     try {
       const contactEmail = form.customerContactEmail.trim().toLowerCase();
       const initialAdminEmail = form.initialCompanyAdminEmail.trim().toLowerCase();
+      if (sandbox) {
+        provisionRequest.current ||= crypto.randomUUID();
+        const { data, error } = await supabase.rpc("qualisphere_sandbox_create_company", {
+          p_request: provisionRequest.current, p_company_name: form.companyName.trim(), p_legal_name: form.legalName.trim(),
+          p_tenant_code: form.tenantCode.trim(), p_slug: form.slug.trim(), p_contact_email: contactEmail, p_admin_email: initialAdminEmail,
+          p_country: form.countryCode.trim() || "US", p_timezone: form.defaultTimezone.trim() || "America/Chicago"
+        });
+        if (error) throw error;
+        setForm(emptyForm); setSelectedModules([]); setShowCreate(false); provisionRequest.current = null;
+        setMessage(`Company sandbox created. Administrator access assigned to ${initialAdminEmail}. No login or email was created; modules remain disabled. Company ID: ${data}`);
+        await loadRegistry();
+        return;
+      }
       const { data, error } = await supabase.rpc("qualisphere_create_tenant", {
         p_company_name: form.companyName.trim(),
         p_legal_name: form.legalName.trim(),
@@ -295,19 +310,19 @@ export default function CompanyRegistryPage() {
           <div style={eyebrowStyle}>QUALISPHERE PLATFORM ADMINISTRATION</div>
           <h1 style={titleStyle}>Company Registry</h1>
           <p style={subtitleStyle}>
-            Manage customer Company Accounts separately from the preserved QualiSphere Development / Validation environment.
+            {sandbox ? "Create and administer isolated company sandboxes for configuration, evaluation and training." : "Manage customer Company Accounts separately from the preserved QualiSphere Development / Validation environment."}
           </p>
         </div>
         <div style={headerActionsStyle}>
-          <Link href={sandbox ? "/company-administration/settings" : "/admin/company-settings"} style={linkButtonStyle}>Company Settings</Link>
+          <Link href={sandbox ? "/sandbox-access" : "/admin/company-settings"} style={linkButtonStyle}>{sandbox ? "Company Sandbox Access" : "Company Settings"}</Link>
           <Link href="/" style={linkButtonStyle}>Home</Link>
-          <button disabled={sandbox} title={sandbox ? "Additional company provisioning is unavailable during sandbox preparation" : undefined} style={primaryButtonStyle} onClick={() => setShowCreate((value) => !value)}>
-            {showCreate ? "Cancel" : "Create Customer Company"}
+          <button style={primaryButtonStyle} onClick={() => setShowCreate((value) => !value)}>
+            {showCreate ? "Cancel" : sandbox ? "Create Company Sandbox" : "Create Customer Company"}
           </button>
         </div>
       </div>
 
-      {sandbox && <div style={messageStyle}>SANDBOX — Use the company details to assign Company Administrators. Additional company provisioning and module activation remain unavailable during preparation. <Link href="/sandbox-access">Sandbox Home</Link></div>}
+      {sandbox && <div style={messageStyle}>SANDBOX — Use the company details to assign Company Administrators. Create company sandboxes with configuration only and no operational records. Module activation remains disabled during preparation. <Link href="/sandbox-access">Sandbox Home</Link></div>}
       <div style={identityBarStyle}><strong>Platform Administrator:</strong> {userEmail}</div>
       {message ? <div style={messageStyle}>{message}</div> : null}
       {errorMessage ? <div style={warningStyle}>{errorMessage}</div> : null}
@@ -344,7 +359,7 @@ export default function CompanyRegistryPage() {
 
       {showCreate ? (
         <section style={cardStyle}>
-          <h2 style={sectionTitleStyle}>Create Customer Company Account</h2>
+          <h2 style={sectionTitleStyle}>{sandbox ? "Create Company Sandbox" : "Create Customer Company Account"}</h2>
           <p style={helperStyle}>
             Each new customer receives an independent Company Account provisioned from the controlled QualiSphere starter baseline. Development users, historical records, tasks, approvals, and validation transactions are never copied.
           </p>
@@ -364,7 +379,7 @@ export default function CompanyRegistryPage() {
               <strong>Administrative handoff:</strong> The Customer Contact is the relationship contact. The Initial Company Administrator receives tenant-scoped Master Data Administration authority. Customer users and assignments remain customer-specific.
             </div>
 
-            <div style={subscriptionSectionStyle}>
+            {sandbox ? <div style={handoffStyle}>This creates a separate sandbox company with starter roles, impact areas and training methods. Modules start disabled. No records, files or existing employee/user profiles are copied. The administrator signs in using a separate Beta authentication account; no email invitation is sent.</div> : <div style={subscriptionSectionStyle}>
               <div style={subscriptionHeaderStyle}>
                 <div>
                   <h3 style={subscriptionTitleStyle}>Subscribed Modules *</h3>
@@ -390,11 +405,11 @@ export default function CompanyRegistryPage() {
                 </div>
               ))}
               <div style={includedCoreStyle}><strong>Always included:</strong> Master Data Administration</div>
-            </div>
+            </div>}
 
             <div style={{ marginTop: 20 }}>
               <button type="submit" style={primaryButtonStyle} disabled={creating}>
-                {creating ? "Creating Customer Company..." : "Create Customer Company Account"}
+                {creating ? "Creating…" : sandbox ? "Create Company Sandbox" : "Create Customer Company Account"}
               </button>
             </div>
           </form>
@@ -404,7 +419,7 @@ export default function CompanyRegistryPage() {
       <section style={cardStyle}>
         <div style={sectionHeaderStyle}>
           <div>
-            <h2 style={sectionTitleStyle}>Customer Company Accounts</h2>
+            <h2 style={sectionTitleStyle}>{sandbox ? "Company Sandboxes" : "Customer Company Accounts"}</h2>
             <p style={helperStyle}>{customerTenants.length} customer company account{customerTenants.length === 1 ? "" : "s"} registered.</p>
           </div>
         </div>

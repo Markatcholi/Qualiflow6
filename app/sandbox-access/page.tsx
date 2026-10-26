@@ -20,6 +20,10 @@ export default function SandboxAccessPage() {
       if (!data.user || error) { window.location.replace("/login"); return; }
       const platform = await supabase.rpc("is_platform_admin");
       if (!cancelled) setPlatformAdmin(!platform.error && platform.data === true);
+      setEmail(data.user.email || "");
+      const registered = await supabase.from("sandbox_company_environments").select("tenant_id");
+      if (registered.error) throw registered.error;
+      const registeredIds = new Set((registered.data || []).map(row => row.tenant_id));
       const { data: rows, error: accessError } = await supabase.from("tenant_memberships")
         .select("tenant_id,user_email,membership_role,membership_status,tenants(company_name,tenant_code,status)")
         .eq("membership_status", "active");
@@ -29,11 +33,14 @@ export default function SandboxAccessPage() {
         const tenant = Array.isArray(row.tenants) ? row.tenants[0] : row.tenants;
         return row.user_email?.toLowerCase() === data.user!.email?.toLowerCase()
           && row.membership_role === "company_admin"
-          && tenant?.tenant_code === "QUALISPHERE-SANDBOX"
+          && registeredIds.has(row.tenant_id)
           && ["provisioning", "active"].includes(tenant?.status);
       });
-      if (matches.length !== 1) { setMessage("This login has no unique sandbox administrator membership. Contact your QualiSphere administrator."); return; }
-      const row: any = matches[0];
+      if (!matches.length) { setMessage("No company sandbox administrator membership is assigned to this login. Platform administrators can use the Company Registry below."); return; }
+      const selected = window.localStorage.getItem("qualisphere_active_tenant_id");
+      const chosen = matches.find((row: any) => row.tenant_id === selected);
+      if (matches.length > 1 && !chosen) { window.location.replace("/select-company"); return; }
+      const row: any = chosen || matches[0];
       const tenant = Array.isArray(row.tenants) ? row.tenants[0] : row.tenants;
       setCompany(tenant.company_name);
       setTenantId(row.tenant_id);
@@ -65,7 +72,7 @@ export default function SandboxAccessPage() {
         <p>Use the standard Company Admin Settings and Admin Master Data pages below. Quality modules and file uploads remain disabled during preparation. Your working QualiSphere account is separate.</p>
       </div>
       <nav style={{ display: "flex", flexWrap: "wrap", gap: 16, marginTop: 24 }}>
-        {tenantId && <><Link href="/company-administration/settings">Company Admin Settings</Link><Link href="/company-administration/master-data">Admin Master Data</Link></>}
+        {tenantId && <><Link href="/select-company">Choose Company Sandbox</Link><Link href="/company-administration/settings">Company Admin Settings</Link><Link href="/company-administration/master-data">Admin Master Data</Link></>}
         {platformAdmin && <Link href="/admin/companies">Platform Administration</Link>}
       </nav>
       <button type="button" disabled={busy} onClick={signOut} style={{ marginTop: 24, padding: "12px 24px", background: "#0f172a", color: "white", border: 0, borderRadius: 8, cursor: "pointer" }}>{busy ? "Signing out…" : "Sign out"}</button>
