@@ -3,9 +3,11 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
 import Link from "next/link";
+import { chooseSandboxSelection, readSandboxSelection } from "../../lib/sandboxSessionSelection";
 
 export default function SandboxAccessPage() {
   const sandbox = process.env.NEXT_PUBLIC_QUALISPHERE_ENVIRONMENT === "sandbox";
+  const sessionSelection = sandbox && process.env.NEXT_PUBLIC_SANDBOX_SESSION_SELECTION === "true";
   const [company, setCompany] = useState("");
   const [email, setEmail] = useState("");
   const [tenantId, setTenantId] = useState("");
@@ -37,10 +39,16 @@ export default function SandboxAccessPage() {
           && ["provisioning", "active"].includes(tenant?.status);
       });
       if (!matches.length) { setMessage("No company sandbox administrator membership is assigned to this login. Platform administrators can use the Company Registry below."); return; }
-      const selected = window.localStorage.getItem("qualisphere_active_tenant_id");
+      const selected = sessionSelection
+        ? await readSandboxSelection((name, args) => supabase.rpc(name, args))
+        : window.localStorage.getItem("qualisphere_active_tenant_id");
       const chosen = matches.find((row: any) => row.tenant_id === selected);
       if (matches.length > 1 && !chosen) { window.location.replace("/select-company"); return; }
       const row: any = chosen || matches[0];
+      if (sessionSelection && !chosen) {
+        await chooseSandboxSelection((name, args) => supabase.rpc(name, args), row.tenant_id);
+      }
+      if (cancelled) return;
       const tenant = Array.isArray(row.tenants) ? row.tenants[0] : row.tenants;
       setCompany(tenant.company_name);
       setTenantId(row.tenant_id);

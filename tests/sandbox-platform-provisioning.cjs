@@ -26,6 +26,8 @@ const read = name => fs.readFileSync(path.join(root, 'supabase/baselines', name)
     await db.exec('BEGIN;' + read('qualisphere_sandbox_basic_configuration.sql') + 'COMMIT;');
     await db.exec('BEGIN;' + read('qualisphere_sandbox_standard_administration.sql') + 'COMMIT;');
     await db.exec('BEGIN;' + read('qualisphere_sandbox_platform_provisioning.sql') + 'COMMIT;');
+    await db.exec('BEGIN;' + read('qualisphere_sandbox_session_company.sql') + 'COMMIT;');
+    await db.exec('BEGIN;' + read('qualisphere_sandbox_equipment_tenant_guard.sql') + 'COMMIT;');
     await db.exec(`INSERT INTO public.tenants(tenant_code,company_name,slug,status,is_internal)
       VALUES('OTHER-TEST','Other company','other-test','active',false);`);
     const claims = { sub: '00000000-0000-4000-8000-000000000001', email: 'owner@example.test', role: 'authenticated' };
@@ -154,6 +156,23 @@ const read = name => fs.readFileSync(path.join(root, 'supabase/baselines', name)
       assert.equal((await db.query('SELECT id FROM public.tenants')).rows.length,2);
       assert.equal((await db.query('SELECT tenant_id FROM public.sandbox_company_environments')).rows.length,2);
       assert.equal((await db.query('SELECT public.is_platform_admin() a')).rows[0].a,false);
+      const session1='30000000-0000-4000-8000-000000000001';
+      const session2='30000000-0000-4000-8000-000000000002';
+      await db.query("SELECT set_config('request.jwt.claims',$1,true)",[JSON.stringify({...claims,email:'admin-a@example.test',session_id:session1})]);
+      assert.equal((await db.query('SELECT public.sandbox_current_session_company() id')).rows[0].id,null);
+      assert.equal((await db.query('SELECT public.sandbox_select_session_company($1) id',[a])).rows[0].id,a);
+      await db.query("SELECT set_config('request.jwt.claims',$1,true)",[JSON.stringify({...claims,email:'admin-a@example.test',session_id:session2})]);
+      assert.equal((await db.query('SELECT public.sandbox_current_session_company() id')).rows[0].id,null);
+      await db.query('SELECT public.sandbox_select_session_company($1)',[b]);
+      await db.query("SELECT set_config('request.jwt.claims',$1,true)",[JSON.stringify({...claims,email:'admin-a@example.test',session_id:session1})]);
+      assert.equal((await db.query('SELECT public.sandbox_current_session_company() id')).rows[0].id,a);
+      await db.exec('SAVEPOINT session_table_denial');
+      await assert.rejects(db.query('SELECT * FROM qualisphere_sandbox_auth.session_company_selection'),/permission denied/);
+      await db.exec('ROLLBACK TO SAVEPOINT session_table_denial');
+      await db.query("SELECT set_config('request.jwt.claims',$1,true)",[JSON.stringify({...claims,email:'admin-b@example.test',session_id:session1})]);
+      await db.exec('SAVEPOINT session_foreign_company');
+      await assert.rejects(db.query('SELECT public.sandbox_select_session_company($1)',[a]),/Company selection is unavailable/);
+      await db.exec('ROLLBACK TO SAVEPOINT session_foreign_company');
     });
     console.log('Platform provisioning passed: clean companies, baseline roles/methods/impact areas, disabled modules, idempotent retry, duplicate rollback, administrator assignment, multiple memberships, cross-company isolation and platform privilege denial.');
     console.log('Standard administration passed: settings/timezone, department CRUD, company user setup, atomic KPI save, platform-only administrator assignment, tenant isolation, escalation denial, outbound-job and operational-write denial.');

@@ -1,0 +1,17 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const ts = require('typescript');
+const vm = require('node:vm');
+const source = fs.readFileSync('lib/sandboxModulePlan.ts', 'utf8');
+const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText;
+const exported = {};
+vm.runInNewContext(code, { exports: exported });
+const catalog = ['controlled_documents','training','ncmr','equipment','capa','new_module'].map(code => ({ code }));
+assert.deepEqual(Array.from(exported.suggestedSandboxModules('internal', catalog)), catalog.map(x => x.code));
+assert.deepEqual(Array.from(exported.suggestedSandboxModules('customer', catalog)), []);
+const beta = ['controlled_documents','training','ncmr','equipment'];
+assert.deepEqual(Array.from(exported.suggestedSandboxModules('customer', catalog, beta)), beta);
+assert.deepEqual(Array.from(exported.suggestedSandboxModules('customer', catalog, ['training','capa','training'])), ['training','capa']);
+assert.throws(() => exported.suggestedSandboxModules('customer', catalog, ['unknown']), /Unknown modules/);
+assert.deepEqual(Array.from(exported.suggestedSandboxModules('internal', [...catalog, { code: 'capa' }])), catalog.map(x => x.code));
+console.log('Sandbox module scope defaults passed.');
