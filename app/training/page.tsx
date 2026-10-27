@@ -512,7 +512,8 @@ export default function TrainingManagementPage() {
       return;
     }
 
-    setNewAssignment({
+    setNewAssignment((previous) => ({
+      ...previous,
       document_id: "",
       training_category: "standard",
       recurrence_months: "12",
@@ -529,7 +530,7 @@ export default function TrainingManagementPage() {
       effectiveness_required: false,
       supervisor_verification_required: false,
       acknowledgement_required: true,
-    });
+    }));
 
     setManualMethod("");
     fetchData();
