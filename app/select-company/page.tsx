@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
+import { chooseSandboxSelection } from "../../lib/sandboxSessionSelection";
 
 type Membership = {
   tenant_id: string;
@@ -12,9 +13,11 @@ type Membership = {
 
 export default function SelectCompanyPage() {
   const sandbox = process.env.NEXT_PUBLIC_QUALISPHERE_ENVIRONMENT === "sandbox";
+  const sessionSelection = sandbox && process.env.NEXT_PUBLIC_SANDBOX_SESSION_SELECTION === "true";
   const [loading, setLoading] = useState(true);
   const [memberships, setMemberships] = useState<Membership[]>([]);
   const [message, setMessage] = useState("");
+  const [choosing, setChoosing] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -50,7 +53,8 @@ export default function SelectCompanyPage() {
       });
 
       if (active.length === 1) {
-        choose(active[0]);
+        setMemberships(active);
+        await choose(active[0]);
         return;
       }
 
@@ -61,7 +65,13 @@ export default function SelectCompanyPage() {
     void load();
   }, []);
 
-  const choose = (membership: Membership) => {
+  const choose = async (membership: Membership) => {
+    setChoosing(true);
+    setMessage("");
+    try {
+      if (sessionSelection) {
+        await chooseSandboxSelection((name, args) => supabase.rpc(name, args), membership.tenant_id);
+      }
     const tenant = Array.isArray(membership.tenants) ? membership.tenants[0] : membership.tenants;
     window.localStorage.setItem("qualisphere_active_tenant_id", membership.tenant_id);
     window.localStorage.setItem("qualisphere_active_tenant_name", tenant?.company_name || "");
@@ -69,6 +79,11 @@ export default function SelectCompanyPage() {
     window.localStorage.removeItem("qualisphere_active_tenant_role");
     window.sessionStorage.removeItem("qualisphere_membership_selection_required");
     window.location.href = sandbox ? "/sandbox-access" : "/workspace";
+    } catch {
+      setMessage("Sandbox company access could not be verified. Please try again.");
+      setLoading(false);
+      setChoosing(false);
+    }
   };
 
   return (
@@ -84,7 +99,7 @@ export default function SelectCompanyPage() {
         {!loading && memberships.map((membership) => {
           const tenant = Array.isArray(membership.tenants) ? membership.tenants[0] : membership.tenants;
           return (
-            <button key={membership.tenant_id} type="button" style={companyButtonStyle} onClick={() => choose(membership)}>
+            <button key={membership.tenant_id} type="button" style={companyButtonStyle} disabled={choosing} onClick={() => void choose(membership)}>
               <strong>{tenant?.company_name || "Company Account"}</strong>
               <span style={smallStyle}>{sandbox ? "Open sandbox setup" : "Open workspace"}</span>
             </button>
