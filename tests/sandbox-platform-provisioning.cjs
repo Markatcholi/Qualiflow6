@@ -27,6 +27,7 @@ const read = name => fs.readFileSync(path.join(root, 'supabase/baselines', name)
     await db.exec('BEGIN;' + read('qualisphere_sandbox_standard_administration.sql') + 'COMMIT;');
     await db.exec('BEGIN;' + read('qualisphere_sandbox_platform_provisioning.sql') + 'COMMIT;');
     await db.exec('BEGIN;' + read('qualisphere_sandbox_session_company.sql') + 'COMMIT;');
+    await db.exec('BEGIN;' + read('qualisphere_sandbox_equipment_tenant_guard.sql') + 'COMMIT;');
     await db.exec(`INSERT INTO public.tenants(tenant_code,company_name,slug,status,is_internal)
       VALUES('OTHER-TEST','Other company','other-test','active',false);`);
     const claims = { sub: '00000000-0000-4000-8000-000000000001', email: 'owner@example.test', role: 'authenticated' };
