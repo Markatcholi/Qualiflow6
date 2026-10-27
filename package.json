@@ -5,7 +5,10 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "prebuild": "node scripts/check-sandbox-environment.cjs",
+    "predev": "node scripts/check-sandbox-environment.cjs",
+    "prestart": "node scripts/check-sandbox-environment.cjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.43.0",

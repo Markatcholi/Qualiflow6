@@ -6,6 +6,7 @@ import { supabase } from "../../lib/supabaseClient";
 
 export default function AppHeader() {
   const pathname = usePathname();
+  const sandbox = process.env.NEXT_PUBLIC_QUALISPHERE_ENVIRONMENT === "sandbox";
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("");
   const [companyName, setCompanyName] = useState("");
@@ -140,7 +141,7 @@ export default function AppHeader() {
     void fetchUser();
   }, [pathname]);
 
-  const homeHref = isPlatformContext ? "/admin/companies" : "/workspace";
+  const homeHref = isPlatformContext ? "/admin/companies" : sandbox ? "/sandbox-access" : "/workspace";
   const brandSubtext = isPlatformContext
     ? "Platform Administration"
     : companyName || "Enterprise QMS";
@@ -162,7 +163,7 @@ export default function AppHeader() {
         </a>
 
         {!isPlatformContext && isCompanyAdministrator ? (
-          <a href="/company-administration" style={headerLinkStyle}>
+          <a href={sandbox ? "/company-administration/settings" : "/company-administration"} style={headerLinkStyle}>
             Company Administration
           </a>
         ) : null}

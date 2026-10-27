@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../../../lib/supabaseClient";
 import { PLATFORM_MODULE_CATALOG } from "../../../lib/platformModuleCatalog";
+import { isQualiSphereInternalSandbox } from "../../../lib/sandboxRegistry";
 
 type Tenant = {
   id: string;
@@ -45,12 +46,15 @@ const emptyForm = {
 };
 
 export default function CompanyRegistryPage() {
+  const sandbox = process.env.NEXT_PUBLIC_QUALISPHERE_ENVIRONMENT === "sandbox";
+  const provisionRequest = useRef<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
   const [userEmail, setUserEmail] = useState("");
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [memberships, setMemberships] = useState<Membership[]>([]);
   const [modules, setModules] = useState<ModuleAccess[]>([]);
+  const [registeredSandboxIds, setRegisteredSandboxIds] = useState<Set<string>>(new Set());
   const [showCreate, setShowCreate] = useState(false);
   const [creating, setCreating] = useState(false);
   const [message, setMessage] = useState("");
@@ -95,19 +99,22 @@ export default function CompanyRegistryPage() {
   };
 
   const loadRegistry = async () => {
-    const [tenantResult, membershipResult, moduleResult] = await Promise.all([
+    const [tenantResult, membershipResult, moduleResult, sandboxResult] = await Promise.all([
       supabase.from("tenants").select("*").order("company_name"),
       supabase.from("tenant_memberships").select("tenant_id,user_email,membership_role,membership_status"),
       supabase.from("tenant_module_access").select("id,tenant_id,module_code,is_enabled"),
+      sandbox ? supabase.from("sandbox_company_environments").select("tenant_id") : Promise.resolve({ data: [], error: null }),
     ]);
 
     if (tenantResult.error) throw tenantResult.error;
     if (membershipResult.error) throw membershipResult.error;
     if (moduleResult.error) throw moduleResult.error;
+    if (sandboxResult.error) throw sandboxResult.error;
 
     setTenants((tenantResult.data || []) as Tenant[]);
     setMemberships((membershipResult.data || []) as Membership[]);
     setModules((moduleResult.data || []) as ModuleAccess[]);
+    setRegisteredSandboxIds(new Set((sandboxResult.data || []).map((row: { tenant_id: string }) => row.tenant_id)));
   };
 
   const developmentEnvironments = useMemo(
@@ -116,8 +123,13 @@ export default function CompanyRegistryPage() {
   );
 
   const customerTenants = useMemo(
-    () => tenants.filter((tenant) => !tenant.is_internal),
-    [tenants],
+    () => tenants.filter((tenant) => !tenant.is_internal && !isQualiSphereInternalSandbox(sandbox, tenant, registeredSandboxIds)),
+    [tenants, sandbox, registeredSandboxIds],
+  );
+
+  const internalSandboxes = useMemo(
+    () => tenants.filter((tenant) => isQualiSphereInternalSandbox(sandbox, tenant, registeredSandboxIds)),
+    [tenants, sandbox, registeredSandboxIds],
   );
 
   const memberCounts = useMemo(() => {
@@ -139,6 +151,7 @@ export default function CompanyRegistryPage() {
   }, [modules]);
 
   const setField = (field: keyof typeof emptyForm, value: string) => {
+    provisionRequest.current = null;
     setForm((current) => ({ ...current, [field]: value }));
   };
 
@@ -210,13 +223,26 @@ export default function CompanyRegistryPage() {
     if (!form.slug.trim()) return setErrorMessage("Tenant slug is required.");
     if (!form.customerContactEmail.trim()) return setErrorMessage("Customer Contact email is required.");
     if (!form.initialCompanyAdminEmail.trim()) return setErrorMessage("Initial Company Administrator email is required.");
-    if (selectedModules.length === 0) return setErrorMessage("Select at least one subscribed QualiSphere module.");
+    if (!sandbox && selectedModules.length === 0) return setErrorMessage("Select at least one subscribed QualiSphere module.");
 
     setCreating(true);
 
     try {
       const contactEmail = form.customerContactEmail.trim().toLowerCase();
       const initialAdminEmail = form.initialCompanyAdminEmail.trim().toLowerCase();
+      if (sandbox) {
+        provisionRequest.current ||= crypto.randomUUID();
+        const { data, error } = await supabase.rpc("qualisphere_sandbox_create_company", {
+          p_request: provisionRequest.current, p_company_name: form.companyName.trim(), p_legal_name: form.legalName.trim(),
+          p_tenant_code: form.tenantCode.trim(), p_slug: form.slug.trim(), p_contact_email: contactEmail, p_admin_email: initialAdminEmail,
+          p_country: form.countryCode.trim() || "US", p_timezone: form.defaultTimezone.trim() || "America/Chicago"
+        });
+        if (error) throw error;
+        setForm(emptyForm); setSelectedModules([]); setShowCreate(false); provisionRequest.current = null;
+        setMessage(`Company sandbox created. Administrator access assigned to ${initialAdminEmail}. No login or email was created; modules remain disabled. Company ID: ${data}`);
+        await loadRegistry();
+        return;
+      }
       const { data, error } = await supabase.rpc("qualisphere_create_tenant", {
         p_company_name: form.companyName.trim(),
         p_legal_name: form.legalName.trim(),
@@ -294,21 +320,44 @@ export default function CompanyRegistryPage() {
           <div style={eyebrowStyle}>QUALISPHERE PLATFORM ADMINISTRATION</div>
           <h1 style={titleStyle}>Company Registry</h1>
           <p style={subtitleStyle}>
-            Manage customer Company Accounts separately from the preserved QualiSphere Development / Validation environment.
+            {sandbox ? "Create and administer isolated company sandboxes for configuration, evaluation and training." : "Manage customer Company Accounts separately from the preserved QualiSphere Development / Validation environment."}
           </p>
         </div>
         <div style={headerActionsStyle}>
-          <Link href="/admin/company-settings" style={linkButtonStyle}>Company Settings</Link>
+          <Link href={sandbox ? "/sandbox-access" : "/admin/company-settings"} style={linkButtonStyle}>{sandbox ? "Company Sandbox Access" : "Company Settings"}</Link>
           <Link href="/" style={linkButtonStyle}>Home</Link>
           <button style={primaryButtonStyle} onClick={() => setShowCreate((value) => !value)}>
-            {showCreate ? "Cancel" : "Create Customer Company"}
+            {showCreate ? "Cancel" : sandbox ? "Create Company Sandbox" : "Create Customer Company"}
           </button>
         </div>
       </div>
 
+      {sandbox && <div style={messageStyle}>SANDBOX — Use the company details to assign Company Administrators. Create company sandboxes with configuration only and no operational records. Module activation remains disabled during preparation. <Link href="/sandbox-access">Sandbox Home</Link></div>}
       <div style={identityBarStyle}><strong>Platform Administrator:</strong> {userEmail}</div>
       {message ? <div style={messageStyle}>{message}</div> : null}
       {errorMessage ? <div style={warningStyle}>{errorMessage}</div> : null}
+
+      {sandbox && internalSandboxes.length > 0 ? (
+        <section style={developmentCardStyle}>
+          <div style={developmentLabelStyle}>QUALISPHERE PRODUCT ENVIRONMENT</div>
+          <h2 style={sectionTitleStyle}>QualiSphere Internal Sandbox</h2>
+          <p style={helperStyle}>QualiSphere's own sandbox for development, validation and training. It is separate from customer company sandboxes.</p>
+          <div style={{ overflowX: "auto" }}>
+            <table style={tableStyle}>
+              <thead><tr><th style={thStyle}>Environment</th><th style={thStyle}>Code</th><th style={thStyle}>Status</th><th style={thStyle}>Active Members</th><th style={thStyle}>Action</th></tr></thead>
+              <tbody>{internalSandboxes.map((tenant) => (
+                <tr key={tenant.id}>
+                  <td style={tdStyle}><strong>{tenant.company_name}</strong><div style={smallStyle}>QualiSphere internal sandbox</div></td>
+                  <td style={tdStyle}>{tenant.tenant_code}</td>
+                  <td style={tdStyle}><StatusBadge status={tenant.status} /></td>
+                  <td style={tdStyle}>{memberCounts[tenant.id] || 0}</td>
+                  <td style={tdStyle}><Link href={`/admin/companies/${tenant.id}`} style={actionLinkStyle}>Open Sandbox</Link></td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
+        </section>
+      ) : null}
 
       {developmentEnvironments.length > 0 ? (
         <section style={developmentCardStyle}>
@@ -342,7 +391,7 @@ export default function CompanyRegistryPage() {
 
       {showCreate ? (
         <section style={cardStyle}>
-          <h2 style={sectionTitleStyle}>Create Customer Company Account</h2>
+          <h2 style={sectionTitleStyle}>{sandbox ? "Create Company Sandbox" : "Create Customer Company Account"}</h2>
           <p style={helperStyle}>
             Each new customer receives an independent Company Account provisioned from the controlled QualiSphere starter baseline. Development users, historical records, tasks, approvals, and validation transactions are never copied.
           </p>
@@ -362,7 +411,7 @@ export default function CompanyRegistryPage() {
               <strong>Administrative handoff:</strong> The Customer Contact is the relationship contact. The Initial Company Administrator receives tenant-scoped Master Data Administration authority. Customer users and assignments remain customer-specific.
             </div>
 
-            <div style={subscriptionSectionStyle}>
+            {sandbox ? <div style={handoffStyle}>This creates a separate sandbox company with starter roles, impact areas and training methods. Modules start disabled. No records, files or existing employee/user profiles are copied. The administrator signs in using a separate Beta authentication account; no email invitation is sent.</div> : <div style={subscriptionSectionStyle}>
               <div style={subscriptionHeaderStyle}>
                 <div>
                   <h3 style={subscriptionTitleStyle}>Subscribed Modules *</h3>
@@ -388,11 +437,11 @@ export default function CompanyRegistryPage() {
                 </div>
               ))}
               <div style={includedCoreStyle}><strong>Always included:</strong> Master Data Administration</div>
-            </div>
+            </div>}
 
             <div style={{ marginTop: 20 }}>
               <button type="submit" style={primaryButtonStyle} disabled={creating}>
-                {creating ? "Creating Customer Company..." : "Create Customer Company Account"}
+                {creating ? "Creating…" : sandbox ? "Create Company Sandbox" : "Create Customer Company Account"}
               </button>
             </div>
           </form>
@@ -402,8 +451,8 @@ export default function CompanyRegistryPage() {
       <section style={cardStyle}>
         <div style={sectionHeaderStyle}>
           <div>
-            <h2 style={sectionTitleStyle}>Customer Company Accounts</h2>
-            <p style={helperStyle}>{customerTenants.length} customer company account{customerTenants.length === 1 ? "" : "s"} registered.</p>
+            <h2 style={sectionTitleStyle}>{sandbox ? "Customer Company Sandboxes" : "Customer Company Accounts"}</h2>
+            <p style={helperStyle}>{customerTenants.length} customer {sandbox ? "company sandbox" : "company account"}{customerTenants.length === 1 ? "" : "s"} registered.</p>
           </div>
         </div>
 
@@ -424,7 +473,7 @@ export default function CompanyRegistryPage() {
                   <td style={tdStyle}><Link href={`/admin/companies/${tenant.id}`} style={actionLinkStyle}>Open Company</Link></td>
                 </tr>
               ))}
-              {customerTenants.length === 0 ? <tr><td style={tdStyle} colSpan={7}>No customer Company Accounts found.</td></tr> : null}
+              {customerTenants.length === 0 ? <tr><td style={tdStyle} colSpan={7}>No customer {sandbox ? "company sandboxes" : "company accounts"} found.</td></tr> : null}
             </tbody>
           </table>
         </div>

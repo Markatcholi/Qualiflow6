@@ -33,6 +33,11 @@ export default function LoginPage() {
         return;
       }
 
+      if (process.env.NEXT_PUBLIC_QUALISPHERE_ENVIRONMENT === "sandbox") {
+        window.location.href = "/sandbox-access";
+        return;
+      }
+
       const { data: memberships, error: membershipError } = await supabase
         .from("tenant_memberships")
         .select("tenant_id,membership_status,user_email,tenants(company_name,slug,status)")

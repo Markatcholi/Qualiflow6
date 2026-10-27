@@ -94,6 +94,7 @@ function labelModule(value: string) {
 }
 
 export default function CompanyAdministrationSettingsPage() {
+  const sandbox = process.env.NEXT_PUBLIC_QUALISPHERE_ENVIRONMENT === "sandbox";
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savingKpis, setSavingKpis] = useState(false);
@@ -286,6 +287,13 @@ export default function CompanyAdministrationSettingsPage() {
         updated_at: new Date().toISOString(),
       };
 
+      if (sandbox) {
+        const { error } = await supabase.rpc("qualisphere_sandbox_save_settings", { p_tenant: tenantId, p_settings: payload });
+        if (error) throw error;
+        await loadSettings(tenantId, companyName);
+        setMessage("Company Settings saved successfully in the sandbox.");
+        return;
+      }
       let error: any = null;
       if (settings.id) {
         ({ error } = await supabase.from("company_settings").update(payload).eq("id", settings.id).eq("tenant_id", tenantId));
@@ -308,6 +316,17 @@ export default function CompanyAdministrationSettingsPage() {
     setSavingKpis(true);
     setMessage("");
     try {
+      if (sandbox) {
+        const rows = kpiLibrary.map((item, index) => {
+          const config = kpiConfig[`${normalizeModule(item.module_name)}:${item.kpi_key}`];
+          return { module_name: normalizeModule(item.module_name), kpi_key: item.kpi_key, executive_dashboard: config?.executive_dashboard ?? false, management_review: config?.management_review ?? false, display_order: Number(config?.display_order || index + 1) };
+        });
+        const { error } = await supabase.rpc("qualisphere_sandbox_save_kpis", { p_tenant: tenantId, p_rows: rows });
+        if (error) throw error;
+        setMessage("Quality Intelligence Catalog configuration saved in the sandbox.");
+        await loadKpiConfiguration(tenantId);
+        return;
+      }
       const { error: deleteError } = await supabase
         .from("company_dashboard_kpi_configuration")
         .delete()
@@ -378,7 +397,7 @@ export default function CompanyAdministrationSettingsPage() {
       kpi_name: customName.trim(),
       kpi_description: customDescription.trim() || null,
       kpi_category: customCategory.trim() || "Custom",
-      data_source: null,
+      data_source: sandbox ? ({ change_control: "change_controls", ncmr: "ncmr", capa: "capa", scar: "scar", complaint: "complaints", audit: "audits", equipment: "equipment", training: "training_assignments" } as Record<string, string>)[customModule] || customModule : null,
       calculation_type: customCalculationType,
       filter_field: customFilterField.trim(),
       filter_operator: customFilterOperator,
@@ -461,10 +480,11 @@ export default function CompanyAdministrationSettingsPage() {
         </div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           <Link href="/company-administration/master-data" style={greenButton}>Admin Master Data</Link>
-          <Link href="/workspace" style={darkButton}>My Workspace</Link>
+          <Link href={sandbox ? "/sandbox-access" : "/workspace"} style={darkButton}>{sandbox ? "Sandbox Home" : "My Workspace"}</Link>
         </div>
       </header>
 
+      {sandbox && <div style={infoStyle}>SANDBOX — Standard company configuration. Outbound email and overdue jobs remain disabled during preparation.</div>}
       {message ? <div style={messageStyle}>{message}</div> : null}
 
       <section style={cardStyle}>
@@ -502,7 +522,7 @@ export default function CompanyAdministrationSettingsPage() {
         <h2>Notification Governance</h2>
         <div style={gridStyle}>
           <CheckCard label="Enable Notifications" checked={settings.enable_notifications} onChange={(v) => update("enable_notifications", v)} description="Master switch for in-app workflow notifications." />
-          <CheckCard label="Enable Email Notifications" checked={settings.enable_email_notifications} onChange={(v) => update("enable_email_notifications", v)} description="Enable company email workflow notifications." />
+          <CheckCard label="Enable Email Notifications" disabled={sandbox} checked={settings.enable_email_notifications} onChange={(v) => update("enable_email_notifications", v)} description="Enable company email workflow notifications." />
           <CheckCard label="Allow User Preference Overrides" checked={settings.allow_users_to_override_preferences} onChange={(v) => update("allow_users_to_override_preferences", v)} description="Allows users to choose immediate, daily, weekly, or off." />
           <div>
             <label style={labelStyle}>Default Notification Frequency</label>
@@ -516,10 +536,10 @@ export default function CompanyAdministrationSettingsPage() {
       <section style={cardStyle}>
         <h2>Overdue Governance</h2>
         <div style={gridStyle}>
-          <CheckCard label="Enable Overdue Task Scan" checked={settings.enable_overdue_scan} onChange={(v) => update("enable_overdue_scan", v)} description="Allows overdue task scanning for company workflows." />
+          <CheckCard label="Enable Overdue Task Scan" disabled={sandbox} checked={settings.enable_overdue_scan} onChange={(v) => update("enable_overdue_scan", v)} description="Allows overdue task scanning for company workflows." />
           <div>
             <label style={labelStyle}>Overdue Scan Mode</label>
-            <select value={settings.overdue_scan_mode} onChange={(e) => update("overdue_scan_mode", e.target.value as CompanySettings["overdue_scan_mode"])} style={inputStyle}>
+            <select disabled={sandbox} value={settings.overdue_scan_mode} onChange={(e) => update("overdue_scan_mode", e.target.value as CompanySettings["overdue_scan_mode"])} style={inputStyle}>
               <option value="manual">Manual</option><option value="scheduled">Scheduled</option><option value="disabled">Disabled</option>
             </select>
           </div>
@@ -599,8 +619,8 @@ export default function CompanyAdministrationSettingsPage() {
   );
 }
 
-function CheckCard({ label, checked, onChange, description }: { label: string; checked: boolean; onChange: (value: boolean) => void; description: string }) {
-  return <label style={checkCardStyle}><div style={{ display: "flex", gap: 10, alignItems: "center", fontWeight: 800 }}><input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />{label}</div><div style={helpStyle}>{description}</div></label>;
+function CheckCard({ label, checked, onChange, description, disabled = false }: { label: string; checked: boolean; onChange: (value: boolean) => void; description: string; disabled?: boolean }) {
+  return <label style={checkCardStyle}><div style={{ display: "flex", gap: 10, alignItems: "center", fontWeight: 800 }}><input type="checkbox" disabled={disabled} checked={checked} onChange={(e) => onChange(e.target.checked)} />{label}</div><div style={helpStyle}>{description}</div></label>;
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {

@@ -4,12 +4,14 @@ import { useState } from "react";
 import { supabase } from "../../../lib/supabaseClient";
 
 export default function PlatformAdminLoginPage() {
+  const sandbox = process.env.NEXT_PUBLIC_QUALISPHERE_ENVIRONMENT === "sandbox";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
 
   const login = async () => {
+    if (busy) return;
     if (!email || !password) {
       setMessage("Email and password are required.");
       return;
@@ -37,6 +39,8 @@ export default function PlatformAdminLoginPage() {
       window.localStorage.removeItem("qualisphere_active_tenant_slug");
       window.sessionStorage.setItem("qualisphere_access_context", "platform_admin");
       window.location.href = "/admin/companies";
+    } catch {
+      setMessage("Unable to complete platform sign-in. Please try again.");
     } finally {
       setBusy(false);
     }
@@ -46,22 +50,25 @@ export default function PlatformAdminLoginPage() {
     <main style={pageStyle}>
       <section style={cardStyle}>
         <div style={eyebrowStyle}>QUALISPHERE PLATFORM ADMINISTRATION</div>
-        <h1 style={titleStyle}>Enterprise Admin Sign In</h1>
+        <h1 style={titleStyle}>{sandbox ? "Platform Administrator Sign In" : "Enterprise Admin Sign In"}</h1>
+        {sandbox && <p style={messageStyle}>SANDBOX platform administration — manages Beta company sandboxes only. Your working QualiSphere environment is separate.</p>}
         <p style={subtleStyle}>
           Restricted to authorized QualiSphere Platform Administrators. Customer and internal QMS users should use the standard company sign-in.
         </p>
 
         {message ? <div style={messageStyle}>{message}</div> : null}
 
+        <form onSubmit={event => { event.preventDefault(); void login(); }}>
         <label style={labelStyle}>Email</label>
         <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Platform administrator email" style={inputStyle} />
 
         <label style={labelStyle}>Password</label>
         <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Password" style={inputStyle} />
 
-        <button type="button" onClick={login} disabled={busy} style={buttonStyle}>
+        <button type="submit" disabled={busy} style={buttonStyle}>
           {busy ? "Verifying Platform Access..." : "Enter Platform Administration"}
         </button>
+        </form>
 
         <div style={footerStyle}>
           <a href="/login" style={linkStyle}>Company QMS Sign In</a>

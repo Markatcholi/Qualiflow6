@@ -1,4 +1,5 @@
 export default function HomePage() {
+  const sandbox = process.env.NEXT_PUBLIC_QUALISPHERE_ENVIRONMENT === "sandbox";
   const capabilityGroups = [
     { title: "Quality Event Management", items: ["Nonconformance Management", "CAPA", "Change Control", "Supplier Quality / SCAR"] },
     { title: "Document & Training Control", items: ["Controlled Documents", "Revision Workflows", "Training Assignments", "Read & Acknowledge"] },
@@ -10,9 +11,11 @@ export default function HomePage() {
       <div style={techBackgroundStyle} />
       <section style={containerStyle}>
         <div style={topBarStyle}>
-          <a href="/login" style={signinButtonStyle}>Sign In</a>
+          <a href="/login" style={signinButtonStyle}>{sandbox ? "Company Sign In" : "Sign In"}</a>
+          {sandbox ? <a href="/platform-admin/login" style={createAccountButtonStyle}>Platform Admin Sign In</a> : <>
           <a href="/register-company" style={createAccountButtonStyle}>Register Company</a>
           <a href="/register-company?intent=demo" style={requestDemoButtonStyle}>Request Demo</a>
+          </>}
         </div>
 
         <section style={heroStyle}>
@@ -43,7 +46,7 @@ export default function HomePage() {
         <footer style={footerStyle}>
           <div>Built for regulated industries. Designed for quality leaders.</div>
           <div>© {new Date().getFullYear()} QualiSphere. All Rights Reserved.</div>
-          <div style={{ marginTop: 8 }}><a href="/platform-admin/login" style={adminLinkStyle}>QualiSphere Enterprise Admin</a></div>
+          <div style={{ marginTop: 8 }}><a href="/platform-admin/login" style={adminLinkStyle}>{sandbox ? "Platform Administration" : "QualiSphere Enterprise Admin"}</a></div>
         </footer>
       </section>
     </main>

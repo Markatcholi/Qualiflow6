@@ -21,6 +21,7 @@ function isAlreadyRegisteredError(message: string) {
 }
 
 export async function POST(request: NextRequest) {
+  if (process.env.NEXT_PUBLIC_QUALISPHERE_ENVIRONMENT === "sandbox") return NextResponse.json({ error: "This action is disabled during sandbox preparation." }, { status: 403 });
   try {
     if (!supabaseServiceRoleKey) {
       return NextResponse.json(
