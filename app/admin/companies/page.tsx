@@ -4,6 +4,7 @@ import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../../../lib/supabaseClient";
 import { PLATFORM_MODULE_CATALOG } from "../../../lib/platformModuleCatalog";
+import { isQualiSphereInternalSandbox } from "../../../lib/sandboxRegistry";
 
 type Tenant = {
   id: string;
@@ -53,6 +54,7 @@ export default function CompanyRegistryPage() {
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [memberships, setMemberships] = useState<Membership[]>([]);
   const [modules, setModules] = useState<ModuleAccess[]>([]);
+  const [registeredSandboxIds, setRegisteredSandboxIds] = useState<Set<string>>(new Set());
   const [showCreate, setShowCreate] = useState(false);
   const [creating, setCreating] = useState(false);
   const [message, setMessage] = useState("");
@@ -97,19 +99,22 @@ export default function CompanyRegistryPage() {
   };
 
   const loadRegistry = async () => {
-    const [tenantResult, membershipResult, moduleResult] = await Promise.all([
+    const [tenantResult, membershipResult, moduleResult, sandboxResult] = await Promise.all([
       supabase.from("tenants").select("*").order("company_name"),
       supabase.from("tenant_memberships").select("tenant_id,user_email,membership_role,membership_status"),
       supabase.from("tenant_module_access").select("id,tenant_id,module_code,is_enabled"),
+      sandbox ? supabase.from("sandbox_company_environments").select("tenant_id") : Promise.resolve({ data: [], error: null }),
     ]);
 
     if (tenantResult.error) throw tenantResult.error;
     if (membershipResult.error) throw membershipResult.error;
     if (moduleResult.error) throw moduleResult.error;
+    if (sandboxResult.error) throw sandboxResult.error;
 
     setTenants((tenantResult.data || []) as Tenant[]);
     setMemberships((membershipResult.data || []) as Membership[]);
     setModules((moduleResult.data || []) as ModuleAccess[]);
+    setRegisteredSandboxIds(new Set((sandboxResult.data || []).map((row: { tenant_id: string }) => row.tenant_id)));
   };
 
   const developmentEnvironments = useMemo(
@@ -118,8 +123,13 @@ export default function CompanyRegistryPage() {
   );
 
   const customerTenants = useMemo(
-    () => tenants.filter((tenant) => !tenant.is_internal),
-    [tenants],
+    () => tenants.filter((tenant) => !tenant.is_internal && !isQualiSphereInternalSandbox(sandbox, tenant, registeredSandboxIds)),
+    [tenants, sandbox, registeredSandboxIds],
+  );
+
+  const internalSandboxes = useMemo(
+    () => tenants.filter((tenant) => isQualiSphereInternalSandbox(sandbox, tenant, registeredSandboxIds)),
+    [tenants, sandbox, registeredSandboxIds],
   );
 
   const memberCounts = useMemo(() => {
@@ -327,6 +337,28 @@ export default function CompanyRegistryPage() {
       {message ? <div style={messageStyle}>{message}</div> : null}
       {errorMessage ? <div style={warningStyle}>{errorMessage}</div> : null}
 
+      {sandbox && internalSandboxes.length > 0 ? (
+        <section style={developmentCardStyle}>
+          <div style={developmentLabelStyle}>QUALISPHERE PRODUCT ENVIRONMENT</div>
+          <h2 style={sectionTitleStyle}>QualiSphere Internal Sandbox</h2>
+          <p style={helperStyle}>QualiSphere's own sandbox for development, validation and training. It is separate from customer company sandboxes.</p>
+          <div style={{ overflowX: "auto" }}>
+            <table style={tableStyle}>
+              <thead><tr><th style={thStyle}>Environment</th><th style={thStyle}>Code</th><th style={thStyle}>Status</th><th style={thStyle}>Active Members</th><th style={thStyle}>Action</th></tr></thead>
+              <tbody>{internalSandboxes.map((tenant) => (
+                <tr key={tenant.id}>
+                  <td style={tdStyle}><strong>{tenant.company_name}</strong><div style={smallStyle}>QualiSphere internal sandbox</div></td>
+                  <td style={tdStyle}>{tenant.tenant_code}</td>
+                  <td style={tdStyle}><StatusBadge status={tenant.status} /></td>
+                  <td style={tdStyle}>{memberCounts[tenant.id] || 0}</td>
+                  <td style={tdStyle}><Link href={`/admin/companies/${tenant.id}`} style={actionLinkStyle}>Open Sandbox</Link></td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
+        </section>
+      ) : null}
+
       {developmentEnvironments.length > 0 ? (
         <section style={developmentCardStyle}>
           <div style={sectionHeaderStyle}>
@@ -419,8 +451,8 @@ export default function CompanyRegistryPage() {
       <section style={cardStyle}>
         <div style={sectionHeaderStyle}>
           <div>
-            <h2 style={sectionTitleStyle}>{sandbox ? "Company Sandboxes" : "Customer Company Accounts"}</h2>
-            <p style={helperStyle}>{customerTenants.length} customer company account{customerTenants.length === 1 ? "" : "s"} registered.</p>
+            <h2 style={sectionTitleStyle}>{sandbox ? "Customer Company Sandboxes" : "Customer Company Accounts"}</h2>
+            <p style={helperStyle}>{customerTenants.length} customer {sandbox ? "company sandbox" : "company account"}{customerTenants.length === 1 ? "" : "s"} registered.</p>
           </div>
         </div>
 
@@ -441,7 +473,7 @@ export default function CompanyRegistryPage() {
                   <td style={tdStyle}><Link href={`/admin/companies/${tenant.id}`} style={actionLinkStyle}>Open Company</Link></td>
                 </tr>
               ))}
-              {customerTenants.length === 0 ? <tr><td style={tdStyle} colSpan={7}>No customer Company Accounts found.</td></tr> : null}
+              {customerTenants.length === 0 ? <tr><td style={tdStyle} colSpan={7}>No customer {sandbox ? "company sandboxes" : "company accounts"} found.</td></tr> : null}
             </tbody>
           </table>
         </div>
