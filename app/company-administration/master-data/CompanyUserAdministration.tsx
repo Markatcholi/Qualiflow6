@@ -3,7 +3,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../../lib/supabaseClient";
 
+import EmployeeProfileForm from "../../../components/EmployeeProfileForm";
+import UserExcelImport from "../../../components/UserExcelImport";
+
 type CustomerUser = {
+  full_name?: string | null;
+  manager_email?: string | null;
   id: string;
   tenant_id: string;
   user_email: string;
@@ -35,11 +40,14 @@ type Props = {
 };
 
 export default function CompanyUserAdministration({ tenantId, administratorEmail }: Props) {
+  const [managers,setManagers] = useState<{email:string;name?:string|null}[]>([]);
   const [users, setUsers] = useState<CustomerUser[]>([]);
   const [roles, setRoles] = useState<CustomerRole[]>([]);
   const [assignments, setAssignments] = useState<CustomerRoleAssignment[]>([]);
   const [message, setMessage] = useState("");
 
+  const [newUserFullName, setNewUserFullName] = useState("");
+  const [newUserManagerEmail, setNewUserManagerEmail] = useState("");
   const [newUserEmail, setNewUserEmail] = useState("");
   const [newUserJobTitle, setNewUserJobTitle] = useState("");
   const [newUserDepartment, setNewUserDepartment] = useState("");
@@ -56,7 +64,7 @@ export default function CompanyUserAdministration({ tenantId, administratorEmail
   const selectStyle: React.CSSProperties = { padding: 8, marginRight: 8, marginBottom: 8, minWidth: 190 };
 
   const load = async () => {
-    const [usersRes, rolesRes, assignmentsRes] = await Promise.all([
+    const [usersRes, rolesRes, assignmentsRes, employeesRes, membersRes] = await Promise.all([
       supabase.from("tenant_user_profiles").select("*").eq("tenant_id", tenantId).order("user_email"),
       supabase.from("customer_roles").select("id,tenant_id,role_name,description,is_active").eq("tenant_id", tenantId).order("role_name"),
       supabase
@@ -65,15 +73,19 @@ export default function CompanyUserAdministration({ tenantId, administratorEmail
         .eq("tenant_id", tenantId)
         .eq("is_active", true)
         .order("user_email"),
+      supabase.from("employee_profiles").select("user_email,full_name,manager_email").eq("tenant_id",tenantId),
+      supabase.from("tenant_memberships").select("user_email,membership_status").eq("tenant_id",tenantId).eq("membership_status","active"),
     ]);
 
-    const firstError = [usersRes, rolesRes, assignmentsRes].find((response) => response.error)?.error;
+    const firstError = [usersRes, rolesRes, assignmentsRes, employeesRes, membersRes].find((response) => response.error)?.error;
     if (firstError) {
       setMessage(firstError.message);
       return;
     }
 
-    setUsers((usersRes.data as CustomerUser[]) || []);
+    const profiles = new Map((employeesRes.data || []).map(p=>[p.user_email.toLowerCase(),p]));
+    setUsers(((usersRes.data as CustomerUser[]) || []).map(u=>({...u,...profiles.get(u.user_email.toLowerCase())})));
+    setManagers((membersRes.data || []).map(m=>({email:m.user_email,name:profiles.get(m.user_email.toLowerCase())?.full_name})));
     setRoles((rolesRes.data as CustomerRole[]) || []);
     setAssignments((assignmentsRes.data as CustomerRoleAssignment[]) || []);
   };
@@ -106,7 +118,9 @@ export default function CompanyUserAdministration({ tenantId, administratorEmail
     }
 
     setSavingUser(true);
-    const { error } = await supabase.rpc("qualisphere_set_company_user", {
+    const { error } = await supabase.rpc("qualisphere_save_company_employee", {
+      p_full_name: newUserFullName.trim() || null,
+      p_manager_email: newUserManagerEmail.trim().toLowerCase() || null,
       p_tenant_id: tenantId,
       p_user_email: normalizedEmail,
       p_job_title: newUserJobTitle.trim() || null,
@@ -120,6 +134,8 @@ export default function CompanyUserAdministration({ tenantId, administratorEmail
       return;
     }
 
+    setNewUserFullName("");
+    setNewUserManagerEmail("");
     setNewUserEmail("");
     setNewUserJobTitle("");
     setNewUserDepartment("");
@@ -232,15 +248,12 @@ export default function CompanyUserAdministration({ tenantId, administratorEmail
         </div>
       ) : null}
 
-      <h3>Add or Update User Profile</h3>
-      <input value={newUserEmail} onChange={(e) => setNewUserEmail(e.target.value)} placeholder="User email" style={inputStyle} />
-      <input value={newUserJobTitle} onChange={(e) => setNewUserJobTitle(e.target.value)} placeholder="Job title" style={inputStyle} />
-      <input value={newUserDepartment} onChange={(e) => setNewUserDepartment(e.target.value)} placeholder="Department" style={inputStyle} />
-      <select value={newUserStatus} onChange={(e) => setNewUserStatus(e.target.value)} style={selectStyle}>
-        <option value="active">Active</option>
-        <option value="inactive">Inactive</option>
-      </select>
-      <button onClick={saveUser} disabled={savingUser}>{savingUser ? "Saving..." : "Add / Update User"}</button>
+      <UserExcelImport customerAccount tenantId={tenantId} onImported={load} />
+      <EmployeeProfileForm
+        value={{fullName:newUserFullName,email:newUserEmail,jobTitle:newUserJobTitle,department:newUserDepartment,managerEmail:newUserManagerEmail,status:newUserStatus}}
+        onChange={v=>{setNewUserFullName(v.fullName);setNewUserEmail(v.email);setNewUserJobTitle(v.jobTitle);setNewUserDepartment(v.department);setNewUserManagerEmail(v.managerEmail);setNewUserStatus(v.status);}}
+        onSave={()=>void saveUser()} saving={savingUser} managers={managers}
+      />
 
       <h3 style={{ marginTop: 24 }}>Assign Module Access</h3>
       <select value={selectedUserEmail} onChange={(e) => setSelectedUserEmail(e.target.value)} style={selectStyle}>
@@ -280,9 +293,10 @@ export default function CompanyUserAdministration({ tenantId, administratorEmail
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
             <tr>
-              <th style={{ textAlign: "left", padding: 10, borderBottom: "1px solid #d1d5db" }}>User</th>
+              <th style={{ textAlign: "left", padding: 10, borderBottom: "1px solid #d1d5db" }}>Employee Name / Email</th>
               <th style={{ textAlign: "left", padding: 10, borderBottom: "1px solid #d1d5db" }}>Job Title</th>
               <th style={{ textAlign: "left", padding: 10, borderBottom: "1px solid #d1d5db" }}>Department</th>
+              <th style={{ textAlign: "left", padding: 10, borderBottom: "1px solid #d1d5db" }}>Manager Email</th>
               <th style={{ textAlign: "left", padding: 10, borderBottom: "1px solid #d1d5db" }}>Status</th>
               <th style={{ textAlign: "left", padding: 10, borderBottom: "1px solid #d1d5db" }}>Module Access</th>
               <th style={{ textAlign: "left", padding: 10, borderBottom: "1px solid #d1d5db" }}>Action</th>
@@ -293,9 +307,10 @@ export default function CompanyUserAdministration({ tenantId, administratorEmail
               const userAssignments = assignmentsByUser.get(user.user_email.toLowerCase()) || [];
               return (
                 <tr key={user.id}>
-                  <td style={{ padding: 10, borderBottom: "1px solid #e5e7eb" }}>{user.user_email}</td>
+                  <td style={{ padding: 10, borderBottom: "1px solid #e5e7eb" }}><strong>{user.full_name || "Not specified"}</strong><div>{user.user_email}</div></td>
                   <td style={{ padding: 10, borderBottom: "1px solid #e5e7eb" }}>{user.job_title || "Not specified"}</td>
                   <td style={{ padding: 10, borderBottom: "1px solid #e5e7eb" }}>{user.department || "Not specified"}</td>
+                  <td style={{ padding: 10, borderBottom: "1px solid #e5e7eb" }}>{user.manager_email || "No manager"}</td>
                   <td style={{ padding: 10, borderBottom: "1px solid #e5e7eb" }}>{user.account_status === "active" ? "Active" : "Inactive"}</td>
                   <td style={{ padding: 10, borderBottom: "1px solid #e5e7eb" }}>
                     {userAssignments.length === 0 ? (
@@ -313,6 +328,8 @@ export default function CompanyUserAdministration({ tenantId, administratorEmail
                   </td>
                   <td style={{ padding: 10, borderBottom: "1px solid #e5e7eb" }}>
                     <button onClick={() => {
+                      setNewUserFullName(user.full_name || "");
+                      setNewUserManagerEmail(user.manager_email || "");
                       setNewUserEmail(user.user_email);
                       setNewUserJobTitle(user.job_title || "");
                       setNewUserDepartment(user.department || "");

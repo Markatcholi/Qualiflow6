@@ -5,7 +5,7 @@ import { supabase } from "../lib/supabaseClient";
 type Row = { name:string; email:string; title:string; department:string; manager:string; status:string; error:string };
 const cols=["Employee Name","Employee Email","Job Title","Department","Manager Email","Account Status"];
 const emailOK=(v:string)=>/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
-export default function UserExcelImport({tenantId,onImported}:{tenantId:string;onImported:()=>Promise<void>|void}) {
+export default function UserExcelImport({tenantId,onImported,customerAccount=false}:{tenantId:string;onImported:()=>Promise<void>|void;customerAccount?:boolean}) {
  const fileRef=useRef<HTMLInputElement>(null);
  const [fileName,setFileName]=useState("");
  const [rows,setRows]=useState<Row[]>([]),[busy,setBusy]=useState(false),[message,setMessage]=useState(""),[overwrite,setOverwrite]=useState(false),[canImport,setCanImport]=useState(false);
@@ -25,9 +25,9 @@ export default function UserExcelImport({tenantId,onImported}:{tenantId:string;o
  setRows(data);
  }catch(e){setMessage(e instanceof Error?e.message:"Could not read file");}};
  const commit=async()=>{if(!tenantId||rows.some(r=>r.error)||!canImport)return;setBusy(true);setMessage("");try{
- const {data,error}=await supabase.rpc("qualisphere_import_employees",{p_tenant_id:tenantId,p_employees:rows.map(({name,email,title,department,manager})=>({name,email,title,department,manager})),p_overwrite:overwrite});
+ const {data,error}=await supabase.rpc(customerAccount?"qualisphere_import_company_employees":"qualisphere_import_employees",{p_tenant_id:tenantId,p_employees:rows.map(({name,email,title,department,manager})=>({name,email,title,department,manager})),p_overwrite:overwrite});
  if(error)throw error;
- setMessage(String(data)+" employee profiles imported atomically. New memberships are invited; no module roles were assigned.");
+ setMessage(String(data)+" employee profiles imported atomically. New profiles remain inactive; no invitations were sent and no module roles were assigned.");
  setRows([]);await onImported();
  }catch(e){const err=e as {message?:string;code?:string;details?:string;hint?:string}|null;const detail=[err?.message,err?.code&&"Code: "+err.code,err?.details,err?.hint].filter(Boolean).join(" — ");setMessage("Import not completed: "+(detail||String(e))+". No partial employee batch was saved.");}finally{setBusy(false);}};
  return <section style={{padding:16,marginTop:20,border:"1px solid #cbd5e1",borderRadius:8}}><h3>Excel Bulk User Import</h3>{!canImport&&<p>Import requires active Company Administrator membership in this tenant.</p>}<p>All employee fields are required. Enter TOP-LEVEL for employees without a manager. Imported accounts remain inactive until separately authorized; importing does not assign module access roles.</p><button type="button" onClick={template}>Download Excel Template</button>{" "}<label>Import Excel File <input ref={fileRef} type="file" accept=".xlsx,.xls" disabled={busy} onClick={e=>{e.currentTarget.value="";}} onChange={e=>void upload(e.target.files?.[0])}/></label>{fileName&&<><span style={{marginLeft:8}}>Selected: {fileName}</span>{" "}<button type="button" disabled={busy} onClick={clearFile}>Remove File</button></>}{rows.length>0&&<><p>{rows.length} rows; {rows.filter(r=>r.error).length} errors</p><div style={{maxHeight:320,overflow:"auto"}}><table><thead><tr>{["Name","Email","Job Title","Department","Manager","Status","Validation"].map(x=><th key={x} style={{padding:8}}>{x}</th>)}</tr></thead><tbody>{rows.map((r,i)=><tr key={i}>{[r.name,r.email,r.title,r.department,r.manager,r.status,r.error||"Valid"].map((v,j)=><td key={j} style={{padding:8,borderTop:"1px solid #ddd"}}>{v}</td>)}</tr>)}</tbody></table></div><label><input type="checkbox" checked={overwrite} onChange={e=>setOverwrite(e.target.checked)}/> Update existing employees</label>{" "}<button type="button" disabled={busy||!canImport||rows.some(r=>r.error)} onClick={()=>void commit()}>{busy?"Importing...":"Confirm Import"}</button></>}{message&&<p role="status">{message}</p>}</section>;
