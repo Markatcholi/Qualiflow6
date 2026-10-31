@@ -182,7 +182,7 @@ export default function CompanyAdministrationPage() {
             <h2 style={cardTitleStyle}>{area.title}</h2>
             <p style={cardDescriptionStyle}>{area.description}</p>
             <a href={area.href} style={primaryButtonStyle}>
-              Open {area.title}
+              {area.title}
             </a>
           </article>
         ))}
