@@ -34,12 +34,17 @@ type CustomerRoleAssignment = {
   customer_roles?: CustomerRole | CustomerRole[] | null;
 };
 
+type CompanyAccess = { user_email: string; membership_role: string; membership_status: string };
+
 type Props = {
   tenantId: string;
   administratorEmail: string;
 };
 
 export default function CompanyUserAdministration({ tenantId, administratorEmail }: Props) {
+  const [companyAccess,setCompanyAccess] = useState<CompanyAccess[]>([]);
+  const [administratorCandidate,setAdministratorCandidate] = useState("");
+  const [savingAuthority,setSavingAuthority] = useState(false);
   const [managers,setManagers] = useState<{email:string;name?:string|null}[]>([]);
   const [users, setUsers] = useState<CustomerUser[]>([]);
   const [roles, setRoles] = useState<CustomerRole[]>([]);
@@ -76,7 +81,7 @@ export default function CompanyUserAdministration({ tenantId, administratorEmail
         .eq("is_active", true)
         .order("user_email"),
       supabase.from("employee_profiles").select("user_email,full_name,manager_email").eq("tenant_id",tenantId),
-      supabase.from("tenant_memberships").select("user_email,membership_status").eq("tenant_id",tenantId).eq("membership_status","active"),
+      supabase.from("tenant_memberships").select("user_email,membership_role,membership_status").eq("tenant_id",tenantId).eq("membership_status","active"),
     ]);
 
     const firstError = [usersRes, rolesRes, assignmentsRes, employeesRes, membersRes].find((response) => response.error)?.error;
@@ -87,6 +92,7 @@ export default function CompanyUserAdministration({ tenantId, administratorEmail
 
     const profiles = new Map((employeesRes.data || []).map(p=>[p.user_email.toLowerCase(),p]));
     setUsers(((usersRes.data as CustomerUser[]) || []).map(u=>({...u,...profiles.get(u.user_email.toLowerCase())})));
+    setCompanyAccess((membersRes.data as CompanyAccess[]) || []);
     setManagers((membersRes.data || []).map(m=>({email:m.user_email,name:profiles.get(m.user_email.toLowerCase())?.full_name})));
     setRoles((rolesRes.data as CustomerRole[]) || []);
     setAssignments((assignmentsRes.data as CustomerRoleAssignment[]) || []);
@@ -148,6 +154,27 @@ export default function CompanyUserAdministration({ tenantId, administratorEmail
         : "Company user profile updated and Company Account access deactivated."
     );
     await load();
+  };
+
+  const changeCompanyAdministrator = async (email: string, isAdministrator: boolean) => {
+    if (!email) return;
+    if (!isAdministrator && !window.confirm(`Remove Company Administrator authority from ${email}? Their employee profile and QMS roles will remain.`)) return;
+    setSavingAuthority(true);
+    setMessage("");
+    try {
+      const {error} = await supabase.rpc("qualisphere_set_company_administrator", {
+        p_tenant_id:tenantId,p_user_email:email,p_is_administrator:isAdministrator
+      });
+      if (error) throw error;
+      if (!isAdministrator && email.toLowerCase() === administratorEmail.toLowerCase()) {
+        window.location.href="/workspace";
+        return;
+      }
+      setAdministratorCandidate("");
+      setMessage(isAdministrator ? `${email} now has Company Administrator authority. Refresh their workspace to show the administration links.` : `${email} no longer has Company Administrator authority.`);
+      await load();
+    } catch (error) { setMessage(error instanceof Error ? error.message : (error as {message?:string})?.message || "Unable to change company administration."); }
+    finally { setSavingAuthority(false); }
   };
 
   const sendInvitation = async (user: CustomerUser) => {
@@ -269,6 +296,21 @@ export default function CompanyUserAdministration({ tenantId, administratorEmail
         </div>
       ) : null}
 
+      <section style={{padding:16,border:"1px solid #cbd5e1",borderRadius:8,marginBottom:20}}>
+        <h3 style={{marginTop:0}}>Company Administrators</h3>
+        <p>Company Administrators manage this company's settings, employees, access and invitations. Assigning a QMS role named Administrator does not grant this authority.</p>
+        <ul>{companyAccess.filter(m=>m.membership_role==="company_admin").map(m=><li key={m.user_email} style={{marginBottom:8}}>
+          <strong>{m.user_email}</strong>{" "}
+          <button type="button" disabled={savingAuthority} onClick={()=>void changeCompanyAdministrator(m.user_email,false)}>Remove Administrator Authority</button>
+        </li>)}</ul>
+        <label>Employee to appoint{" "}<select aria-label="Employee to appoint as Company Administrator" value={administratorCandidate} onChange={e=>setAdministratorCandidate(e.target.value)} style={selectStyle}>
+          <option value="">Select active employee</option>
+          {companyAccess.filter(m=>m.membership_role!=="company_admin" && users.some(u=>u.user_email.toLowerCase()===m.user_email.toLowerCase()&&u.account_status==="active")).map(m=><option key={m.user_email} value={m.user_email}>{m.user_email}</option>)}
+        </select></label>
+        <button type="button" disabled={savingAuthority||!administratorCandidate} onClick={()=>void changeCompanyAdministrator(administratorCandidate,true)}>{savingAuthority?"Saving...":"Appoint Company Administrator"}</button>
+        <p style={{fontSize:13,color:"#4b5563"}}>To transfer responsibility, appoint the new administrator first, verify their access, then remove your own administrator authority. Removing the last active administrator here is blocked.</p>
+      </section>
+
       <UserExcelImport customerAccount tenantId={tenantId} onImported={load} />
       <EmployeeProfileForm
         value={{fullName:newUserFullName,email:newUserEmail,jobTitle:newUserJobTitle,department:newUserDepartment,managerEmail:newUserManagerEmail,status:newUserStatus}}
@@ -319,7 +361,7 @@ export default function CompanyUserAdministration({ tenantId, administratorEmail
               <th style={{ textAlign: "left", padding: 10, borderBottom: "1px solid #d1d5db" }}>Department</th>
               <th style={{ textAlign: "left", padding: 10, borderBottom: "1px solid #d1d5db" }}>Manager Email</th>
               <th style={{ textAlign: "left", padding: 10, borderBottom: "1px solid #d1d5db" }}>Status</th>
-              <th style={{ textAlign: "left", padding: 10, borderBottom: "1px solid #d1d5db" }}>Module Access</th>
+              <th style={{ textAlign: "left", padding: 10, borderBottom: "1px solid #d1d5db" }}>Company Authority / Module Access</th>
               <th style={{ textAlign: "left", padding: 10, borderBottom: "1px solid #d1d5db" }}>Action</th>
             </tr>
           </thead>
@@ -334,6 +376,7 @@ export default function CompanyUserAdministration({ tenantId, administratorEmail
                   <td style={{ padding: 10, borderBottom: "1px solid #e5e7eb" }}>{user.manager_email || "No manager"}</td>
                   <td style={{ padding: 10, borderBottom: "1px solid #e5e7eb" }}>{user.account_status === "active" ? "Active" : "Inactive"}</td>
                   <td style={{ padding: 10, borderBottom: "1px solid #e5e7eb" }}>
+                    <div style={{fontWeight:700,marginBottom:6}}>{companyAccess.some(m=>m.user_email.toLowerCase()===user.user_email.toLowerCase()&&m.membership_role==="company_admin") ? "Company Administrator" : "Company Member"}</div>
                     {userAssignments.length === 0 ? (
                       <span style={{ color: "#6b7280" }}>No module access assigned</span>
                     ) : (

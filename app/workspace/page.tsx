@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { companyAuthorityLabel } from "../../lib/companyAuthority";
 import { supabase } from "../../lib/supabaseClient";
 
 type ModuleGroupKey = "myWork" | "quality" | "analytics" | "administration";
@@ -201,7 +202,9 @@ export default function HomePage() {
         })
         .filter(Boolean);
 
-      if (roleNames.length > 0) {
+      if (!internalTenant) {
+        setRole(companyAuthorityLabel(companyAdminAuthority, roleNames));
+      } else if (roleNames.length > 0) {
         setRole(roleNames.join(", "));
       } else if (internalTenant && legacyRoleResponse.data?.role) {
         setRole(legacyRoleResponse.data.role);

@@ -187,7 +187,7 @@ export default function CompanyMasterDataPage() {
 
   return (
     <main style={{ padding: 20, fontFamily: "Arial, sans-serif" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}><div><h1 style={{ marginBottom: 8 }}>Admin Master Data</h1><p><strong>Company Account:</strong> {companyName}</p><p><strong>Company Administrator:</strong> {email}</p></div><Link href="/workspace" style={{ padding: "10px 14px", border: "1px solid #cbd5e1", borderRadius: 8, textDecoration: "none", fontWeight: 700 }}>Back to My Workspace</Link></div>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}><div><h1 style={{ marginBottom: 8 }}>Admin Master Data</h1><p><strong>Company Account:</strong> {companyName}</p><p><strong>Signed-in Company Administrator:</strong> {email}</p></div><Link href="/workspace" style={{ padding: "10px 14px", border: "1px solid #cbd5e1", borderRadius: 8, textDecoration: "none", fontWeight: 700 }}>Back to My Workspace</Link></div>
       <div style={{ padding: 14, background: "#ecfdf5", border: "1px solid #a7f3d0", borderRadius: 10, margin: "18px 0" }}>QualiSphere starter Master Data was provisioned from the controlled baseline when this Company Account was created. Changes made here belong only to <strong>{companyName}</strong>.</div>
       {message ? <div style={{ padding: 12, background: "#f8fafc", border: "1px solid #cbd5e1", borderRadius: 8, marginBottom: 18 }}>{message}</div> : null}
 
