@@ -109,6 +109,9 @@ export default function PersistentAppShell({ children }: { children: React.React
   useEffect(() => {
     if (pathname.startsWith("/training")) setExpanded(x=>({...x,Training:true}));
     if (pathname.startsWith("/documents")) setExpanded(x=>({...x,"Controlled Documents":true}));
+    if (pathname === "/company-administration" || pathname.startsWith("/company-administration/") || ["/admin/master-data", "/approval-matrix", "/admin/company-settings"].includes(pathname)) {
+      setExpanded(x=>({...x,Administration:true}));
+    }
   },[pathname]);
   const administration: Entry[] = internal && legacyInternalAdmin
     ? [
@@ -149,8 +152,11 @@ export default function PersistentAppShell({ children }: { children: React.React
         <h3 style={{fontSize:13,margin:"18px 8px 8px"}}>Analytics</h3>
         {renderEntries(analytics)}
         {administration.length > 0 && <>
-          <h3 style={{fontSize:13,margin:"18px 8px 8px"}}>Administration</h3>
-          {renderEntries(administration)}
+          <button type="button" aria-expanded={!!expanded.Administration} aria-controls="administration-navigation" onClick={()=>setExpanded(x=>({...x,Administration:!x.Administration}))} style={{...linkStyle,display:"flex",alignItems:"center",gap:8,width:"100%",border:0,background:"none",cursor:"pointer",fontWeight:600,textAlign:"left",marginTop:18}}>
+            <span aria-hidden="true">{expanded.Administration?"▾":"▸"}</span>
+            Administration
+          </button>
+          {expanded.Administration && <div id="administration-navigation" style={{paddingLeft:19}}>{renderEntries(administration)}</div>}
         </>}
       </>}
     </aside>
