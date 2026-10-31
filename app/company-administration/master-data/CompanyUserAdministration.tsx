@@ -56,6 +56,8 @@ export default function CompanyUserAdministration({ tenantId, administratorEmail
   const [selectedRoleId, setSelectedRoleId] = useState("");
   const [newRoleName, setNewRoleName] = useState("");
   const [newRoleDescription, setNewRoleDescription] = useState("");
+  const [sendingInvitation, setSendingInvitation] = useState("");
+  const [invitationResults, setInvitationResults] = useState<Record<string,string>>({});
   const [savingUser, setSavingUser] = useState(false);
   const [savingAssignment, setSavingAssignment] = useState(false);
   const [savingRole, setSavingRole] = useState(false);
@@ -146,6 +148,25 @@ export default function CompanyUserAdministration({ tenantId, administratorEmail
         : "Company user profile updated and Company Account access deactivated."
     );
     await load();
+  };
+
+  const sendInvitation = async (user: CustomerUser) => {
+    setSendingInvitation(user.user_email);
+    setMessage("");
+    try {
+      const {data,error} = await supabase.auth.getSession();
+      if (error || !data.session?.access_token) throw new Error("Your session has expired. Please sign in again.");
+      const response = await fetch("/api/company-administration/invite-employee", {
+        method:"POST", headers:{"Content-Type":"application/json",Authorization:`Bearer ${data.session.access_token}`},
+        body:JSON.stringify({tenantId,email:user.user_email})
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Unable to send employee invitation.");
+      setMessage(result.message);
+      setInvitationResults(previous=>({...previous,[user.user_email]:result.mode === "resent" ? "Account setup email resent" : "Invitation email sent"}));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to send employee invitation.");
+    } finally { setSendingInvitation(""); }
   };
 
   const saveRole = async () => {
@@ -239,7 +260,7 @@ export default function CompanyUserAdministration({ tenantId, administratorEmail
     <section id="user-administration" style={{ border: "1px solid #ccc", padding: 16, marginBottom: 20, borderRadius: 8 }}>
       <h2>User Administration</h2>
       <p style={{ color: "#4b5563" }}>
-        Maintain users for this Company Account and assign customer-controlled QualiSphere access roles. Users and assignments from other Company Accounts are never displayed here.
+        Maintain users for this Company Account and assign customer-controlled QualiSphere access roles. Save an active employee, then send their invitation below. Saving a profile does not send email. Users and assignments from other Company Accounts are never displayed here.
       </p>
 
       {message ? (
@@ -336,6 +357,10 @@ export default function CompanyUserAdministration({ tenantId, administratorEmail
                       setNewUserStatus(user.account_status || "active");
                       document.getElementById("user-administration")?.scrollIntoView({ behavior: "smooth" });
                     }}>Edit</button>
+                    {user.account_status === "active" && <button type="button" style={{marginLeft:8}} disabled={!!sendingInvitation} onClick={()=>void sendInvitation(user)}>
+                      {sendingInvitation===user.user_email ? "Sending..." : "Send / Resend Invitation"}
+                    </button>}
+                    {invitationResults[user.user_email] && <div role="status" style={{fontSize:12,marginTop:6}}>{invitationResults[user.user_email]}</div>}
                   </td>
                 </tr>
               );

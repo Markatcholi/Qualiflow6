@@ -82,7 +82,7 @@ export default function ActivateAccountPage() {
     <main style={pageStyle}>
       <section style={cardStyle}>
         <div style={eyebrowStyle}>QUALISPHERE ACCOUNT ACTIVATION</div>
-        <h1 style={titleStyle}>Activate Your Company Admin Account</h1>
+        <h1 style={titleStyle}>Activate Your QualiSphere Account</h1>
         <p style={subtitleStyle}>
           Step 1 verifies your email through the secure invitation link. Step 2 creates your private QualiSphere password.
         </p>
