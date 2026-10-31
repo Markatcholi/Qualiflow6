@@ -16,14 +16,17 @@ export default function TrainingMatrixMasterData({tenantId}:{tenantId:string}) {
  const [department,setDepartment]=useState("");
  const [message,setMessage]=useState("");
  const [saving,setSaving]=useState(false);
+ const [canManage,setCanManage]=useState(false);
  const load=async()=>{
-  const [m,d,e,departments]=await Promise.all([
+  const [m,d,e,departments,permission]=await Promise.all([
    supabase.from("training_matrix").select("id,role_name,department,document_number,required_training").eq("tenant_id",tenantId).order("document_number"),
    supabase.from("controlled_documents").select("document_number,title").eq("tenant_id",tenantId).order("document_number"),
    supabase.from("employee_profiles").select("department,role_name").eq("tenant_id",tenantId).eq("active",true),
-   supabase.from("md_departments").select("label").eq("tenant_id",tenantId).order("label")
+   supabase.from("md_departments").select("label").eq("tenant_id",tenantId).order("label"),
+   supabase.rpc("qualisphere_training_is_coordinator",{p_tenant:tenantId})
   ]);
-  for(const r of [m,d,e,departments]) if(r.error) throw r.error;
+  for(const r of [m,d,e,departments,permission]) if(r.error) throw r.error;
+  setCanManage(permission.data===true);
   setRows(m.data||[]);setProcedures(d.data||[]);setEmployees(e.data||[]);setDepartmentOptions((departments.data||[]).map(x=>x.label));
  };
  useEffect(()=>{setRows([]);setDocumentNumber("");setAudiences([]);setAllEmployees(false);void load().catch(e=>setMessage(e.message));},[tenantId]);
@@ -40,6 +43,7 @@ export default function TrainingMatrixMasterData({tenantId}:{tenantId:string}) {
   setMessage("");
  };
  const save=async(disable=false)=>{
+  if(!canManage)return setMessage("Training coordinator permission is required to change procedure audiences.");
   if(!documentNumber)return setMessage("Select a procedure.");
   if(!disable&&!allEmployees&&!audiences.length)return setMessage("Add at least one department, or select All employees.");
   setSaving(true);setMessage("");
@@ -52,16 +56,17 @@ export default function TrainingMatrixMasterData({tenantId}:{tenantId:string}) {
  };
  return <section style={card}>
   <h2 style={{marginTop:0}}>Training Matrix</h2>
+  {!canManage&&<p>Read only. A Training Coordinator or Document Control Coordinator may change procedure audiences.</p>}
   <p>Choose a procedure, then the employees who require it. Training is assigned separately by a coordinator.</p>
-  <label>Procedure<select disabled={saving} value={documentNumber} onChange={e=>{setDocumentNumber(e.target.value);setAudiences([]);setAllEmployees(false);if(e.target.value)edit(e.target.value);}} style={input}><option value="">Select procedure</option>{procedureOptions.map(d=><option key={d.document_number} value={d.document_number}>{d.document_number}{d.title?` — ${d.title}`:""}</option>)}</select></label>
-  <label><input disabled={saving} type="checkbox" checked={allEmployees} onChange={e=>setAllEmployees(e.target.checked)}/> All active employees in this company</label>
+  <label>Procedure<select disabled={saving||!canManage} value={documentNumber} onChange={e=>{setDocumentNumber(e.target.value);setAudiences([]);setAllEmployees(false);if(e.target.value)edit(e.target.value);}} style={input}><option value="">Select procedure</option>{procedureOptions.map(d=><option key={d.document_number} value={d.document_number}>{d.document_number}{d.title?` — ${d.title}`:""}</option>)}</select></label>
+  <label><input disabled={saving||!canManage} type="checkbox" checked={allEmployees} onChange={e=>setAllEmployees(e.target.checked)}/> All active employees in this company</label>
   {!allEmployees&&<>
-   <div style={{display:"flex",gap:10,margin:"14px 0"}}><select aria-label="Add department" value={department} onChange={e=>setDepartment(e.target.value)} style={input}><option value="">Select department</option>{departments.map(d=><option key={d} value={d}>{d}</option>)}</select><button disabled={saving||!department} onClick={()=>{if(!audiences.some(a=>norm(a.department)===norm(department)))setAudiences([...audiences,{department,roles:[],allRoles:false}]);setDepartment("");}}>Add Department</button></div>
+   <div style={{display:"flex",gap:10,margin:"14px 0"}}><select aria-label="Add department" value={department} onChange={e=>setDepartment(e.target.value)} style={input}><option value="">Select department</option>{departments.map(d=><option key={d} value={d}>{d}</option>)}</select><button disabled={saving||!canManage||!department} onClick={()=>{if(!audiences.some(a=>norm(a.department)===norm(department)))setAudiences([...audiences,{department,roles:[],allRoles:false}]);setDepartment("");}}>Add Department</button></div>
    {audiences.map((a,index)=>{
     const roles=unique([...employees.map(e=>e.role_name),...rows.map(r=>r.role_name),...a.roles]);
     const patch=(values:Partial<Audience>)=>setAudiences(current=>current.map((x,i)=>i===index?{...x,...values}:x));
     const addRole=()=>{const role=(a.roleDraft||"").trim();if(!role)return;patch({allRoles:false,roles:a.roles.some(r=>norm(r)===norm(role))?a.roles:[...a.roles,role],roleDraft:""});};
-    return <fieldset key={a.department} disabled={saving} style={{marginBottom:10,border:"1px solid #d1d5db",padding:14}}>
+    return <fieldset key={a.department} disabled={saving||!canManage} style={{marginBottom:10,border:"1px solid #d1d5db",padding:14}}>
      <legend>{a.department||"All departments (existing mapping)"}</legend>
      <label>Employees to include<select aria-label={`Roles in ${a.department||"all departments"}`} value={a.allRoles?"all":"specific"} onChange={e=>patch({allRoles:e.target.value==="all"})} style={input}><option value="all">All roles in this department</option><option value="specific">Specific roles</option></select></label>
      <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
@@ -78,12 +83,12 @@ export default function TrainingMatrixMasterData({tenantId}:{tenantId:string}) {
    })}
   </>}
   <p>Select an existing role or enter one to configure training before employees are added. Role names must match employee training profiles.</p>
-  <button disabled={saving} onClick={()=>void save()} style={button}>{saving?"Saving…":"Save Procedure Audience"}</button>
-  {documentNumber&&rows.some(r=>norm(r.document_number)===norm(documentNumber)&&r.required_training)&&<button disabled={saving} onClick={()=>void save(true)}>Disable Requirement</button>}
+  <button disabled={saving||!canManage} onClick={()=>void save()} style={button}>{saving?"Saving…":"Save Procedure Audience"}</button>
+  {documentNumber&&rows.some(r=>norm(r.document_number)===norm(documentNumber)&&r.required_training)&&<button disabled={saving||!canManage} onClick={()=>void save(true)}>Disable Requirement</button>}
   {message&&<p role="status">{message}</p>}
   <h3>Configured Procedures</h3>
   {!grouped.length&&<p>No required procedures configured.</p>}
-  {grouped.map(number=>{const selected=rows.filter(r=>r.document_number===number&&r.required_training);return <details key={number} style={{padding:10,borderBottom:"1px solid #e5e7eb"}}><summary>{number} — {selected.some(r=>!norm(r.role_name)&&!norm(r.department))?"All employees":`${selected.length} audience mapping(s)`}</summary><ul>{selected.map(r=><li key={r.id}>{r.department||"All departments"} → {r.role_name||"All roles"}</li>)}</ul><button disabled={saving} onClick={()=>edit(number)}>Edit Audience</button></details>;})}
+  {grouped.map(number=>{const selected=rows.filter(r=>r.document_number===number&&r.required_training);return <details key={number} style={{padding:10,borderBottom:"1px solid #e5e7eb"}}><summary>{number} — {selected.some(r=>!norm(r.role_name)&&!norm(r.department))?"All employees":`${selected.length} audience mapping(s)`}</summary><ul>{selected.map(r=><li key={r.id}>{r.department||"All departments"} → {r.role_name||"All roles"}</li>)}</ul><button disabled={saving||!canManage} onClick={()=>edit(number)}>Edit Audience</button></details>;})}
  </section>;
 }
 const card:React.CSSProperties={background:"white",border:"1px solid #d1d5db",borderRadius:12,padding:20,marginTop:20};

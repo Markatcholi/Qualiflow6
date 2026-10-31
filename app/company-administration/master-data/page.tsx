@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { supabase } from "../../../lib/supabaseClient";
 import CompanyUserAdministration from "./CompanyUserAdministration";
+import TrainingMatrixMasterData from "../../../components/TrainingMatrixMasterData";
 import TrainingConfigurationManager from "../../../components/TrainingConfigurationManager";
 
 type SimpleItem = { id: string; code: string; label: string };
@@ -193,6 +194,7 @@ export default function CompanyMasterDataPage() {
       <CompanyUserAdministration tenantId={tenantId} administratorEmail={email} />
 
       <TrainingConfigurationManager tenantId={tenantId} />
+      <TrainingMatrixMasterData tenantId={tenantId} />
 
       <div style={sectionStyle}>
         <h2>Controlled Document Impact Assessment Areas</h2>

@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "../../../lib/supabaseClient";
 import TrainingConfigurationManager from "../../../components/TrainingConfigurationManager";
 import TrainingMatrixMasterData from "../../../components/TrainingMatrixMasterData";
+import EmployeeProfileForm from "../../../components/EmployeeProfileForm";
 import UserExcelImport from "../../../components/UserExcelImport";
 import DocumentImpactAreaConfigurationManager from "../../../components/DocumentImpactAreaConfigurationManager";
 
@@ -1155,47 +1156,12 @@ export default function MasterDataPage() {
         ) : (
           <>
             <UserExcelImport tenantId={tenantId} onImported={fetchUserAdministration} />
-            <h3>Add or Update User Profile</h3>
-            <p style={{ color: "#4b5563", marginTop: 0 }}>Select Edit below to update an employee. Type a manager email or choose a suggestion; leave blank for no manager.</p>
-            <input value={newUserFullName} onChange={(event) => setNewUserFullName(event.target.value)} placeholder="Employee name" style={inputStyle} />
-            <input
-              value={newUserEmail}
-              onChange={(event) => setNewUserEmail(event.target.value)}
-              placeholder="User email"
-              style={inputStyle}
+            <EmployeeProfileForm
+              value={{fullName:newUserFullName,email:newUserEmail,jobTitle:newUserJobTitle,department:newUserDepartment,managerEmail:newUserManagerEmail,status:newUserStatus}}
+              onChange={v=>{setNewUserFullName(v.fullName);setNewUserEmail(v.email);setNewUserJobTitle(v.jobTitle);setNewUserDepartment(v.department);setNewUserManagerEmail(v.managerEmail);setNewUserStatus(v.status);}}
+              onSave={()=>void addUserToDirectory()}
+              managers={userDirectory.filter(u=>tenantMemberEmails.includes(u.user_email)&&u.account_status==="active").map(u=>({email:u.user_email,name:u.full_name||u.job_title}))}
             />
-            <input
-              value={newUserJobTitle}
-              onChange={(event) => setNewUserJobTitle(event.target.value)}
-              placeholder="Job title"
-              style={inputStyle}
-            />
-            <input
-              value={newUserDepartment}
-              onChange={(event) => setNewUserDepartment(event.target.value)}
-              placeholder="Department"
-              style={inputStyle}
-            />
-            <label style={{ display: "inline-flex", flexDirection: "column", gap: 4, verticalAlign: "middle" }}>
-              <span style={{ fontSize: 12, fontWeight: 600 }}>Manager Email (optional)</span>
-              <input type="email" list="manager-email-suggestions" value={newUserManagerEmail}
-                onChange={(event) => setNewUserManagerEmail(event.target.value)}
-                placeholder="manager@company.com" style={inputStyle} aria-label="Manager email" />
-              <datalist id="manager-email-suggestions">
-                {userDirectory.filter(u => tenantMemberEmails.includes(u.user_email) && u.account_status === "active" && u.user_email !== newUserEmail.trim().toLowerCase()).map(u => (
-                  <option key={u.user_email} value={u.user_email}>{u.full_name || u.job_title || u.user_email}</option>
-                ))}
-              </datalist>
-            </label>
-            <select
-              value={newUserStatus}
-              onChange={(event) => setNewUserStatus(event.target.value)}
-              style={selectStyle}
-            >
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-            </select>
-            <button onClick={addUserToDirectory}>Add / Update User</button>
 
             <h3 style={{ marginTop: "24px" }}>Assign Module Access</h3>
             <select
