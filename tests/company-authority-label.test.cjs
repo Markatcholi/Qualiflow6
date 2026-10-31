@@ -1,0 +1,11 @@
+const {test}=require('node:test');
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const vm=require('node:vm');
+const ts=require('typescript');
+const exportsObject={};
+vm.runInNewContext(ts.transpileModule(fs.readFileSync('lib/companyAuthority.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText,{exports:exportsObject});
+const label=exportsObject.companyAuthorityLabel;
+test('QMS role named Administrator does not impersonate Company Administrator authority',()=>assert.equal(label(false,['Administrator']),'Company Member · QMS roles: Administrator'));
+test('company administrative authority stays visible alongside QMS roles',()=>assert.equal(label(true,['Approver']),'Company Administrator · QMS roles: Approver'));
+test('unassigned member and company administrator have distinct labels',()=>{assert.equal(label(false,[]),'Company Member');assert.equal(label(true,[]),'Company Administrator');});

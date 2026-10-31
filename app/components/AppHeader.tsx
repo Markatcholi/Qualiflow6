@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
+import { companyAuthorityLabel } from "../../lib/companyAuthority";
 import { supabase } from "../../lib/supabaseClient";
 
 export default function AppHeader() {
@@ -104,6 +105,11 @@ export default function AppHeader() {
         return roleRow?.is_active === false ? "" : String(roleRow?.role_name || "").trim();
       })
       .filter(Boolean);
+
+    if (!isInternalTenant) {
+      setRole(companyAuthorityLabel(companyAdmin, assignedRoleNames));
+      return;
+    }
 
     if (assignedRoleNames.length > 0) {
       setRole(assignedRoleNames.join(", "));
