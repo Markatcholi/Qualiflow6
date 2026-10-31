@@ -167,36 +167,23 @@ export default function CompanyRegistryPage() {
   };
 
   const saveSubscriptionModules = async (tenantId: string) => {
-    const { data: existingRows, error: existingError } = await supabase
-      .from("tenant_module_access")
-      .select("id,module_code")
-      .eq("tenant_id", tenantId);
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+    const accessToken = sessionData.session?.access_token;
+    if (sessionError || !accessToken) {
+      throw new Error("Your Platform Administrator session has expired. Please sign in again.");
+    }
 
-    if (existingError) throw existingError;
-
-    const existingByCode = new Map((existingRows || []).map((row: any) => [String(row.module_code), row]));
-    const changedAt = new Date().toISOString();
-
-    for (const moduleDefinition of PLATFORM_MODULE_CATALOG) {
-      const enabled = selectedModules.includes(moduleDefinition.code);
-      const existing = existingByCode.get(moduleDefinition.code) as any;
-
-      if (existing?.id) {
-        const { error } = await supabase
-          .from("tenant_module_access")
-          .update({ is_enabled: enabled, enabled_by: userEmail, enabled_at: changedAt })
-          .eq("id", existing.id);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.from("tenant_module_access").insert({
-          tenant_id: tenantId,
-          module_code: moduleDefinition.code,
-          is_enabled: enabled,
-          enabled_by: userEmail,
-          enabled_at: changedAt,
-        });
-        if (error) throw error;
-      }
+    const response = await fetch("/api/platform/company-subscription", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ tenantId, enabledModuleCodes: selectedModules }),
+    });
+    const result = await response.json();
+    if (!response.ok) {
+      throw new Error(result?.error || "Unable to save the company subscription.");
     }
   };
 
