@@ -16,7 +16,7 @@ Existing browser pages can retain information already loaded, and previously iss
 
 ## Rollout
 
-Apply sql/platform_company_status.sql, then sql/company_status_rls_boundary.sql before deploying the new UI. Both are installed in Beta only. The protected Internal database has not been changed. No real company was deactivated during verification: all status transitions and audit events were inside a transaction that was rolled back.
+Apply sql/platform_company_status.sql, then sql/company_status_rls_boundary.sql before deploying the new UI. Both are now installed in Beta and production. Production tenant, membership and subscription records were verified unchanged during rollout; the installation changed schema, functions and policies only. No real company was deactivated during verification: all status transitions and audit events were inside a transaction that was rolled back.
 
 ## Verification
 
