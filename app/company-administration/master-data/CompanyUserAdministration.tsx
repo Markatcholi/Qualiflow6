@@ -67,6 +67,7 @@ export default function CompanyUserAdministration({ tenantId, administratorEmail
   const [savingAssignment, setSavingAssignment] = useState(false);
   const [savingRole, setSavingRole] = useState(false);
 
+  const actionButtonStyle: React.CSSProperties = { padding: "6px 10px", minHeight: 34, whiteSpace: "nowrap", cursor: "pointer" };
   const inputStyle: React.CSSProperties = { padding: 8, marginRight: 8, marginBottom: 8 };
   const selectStyle: React.CSSProperties = { padding: 8, marginRight: 8, marginBottom: 8, minWidth: 190 };
 
@@ -391,7 +392,8 @@ export default function CompanyUserAdministration({ tenantId, administratorEmail
                     )}
                   </td>
                   <td style={{ padding: 10, borderBottom: "1px solid #e5e7eb" }}>
-                    <button onClick={() => {
+                    <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"nowrap",width:"max-content"}}>
+                    <button type="button" style={actionButtonStyle} onClick={() => {
                       setNewUserFullName(user.full_name || "");
                       setNewUserManagerEmail(user.manager_email || "");
                       setNewUserEmail(user.user_email);
@@ -400,9 +402,10 @@ export default function CompanyUserAdministration({ tenantId, administratorEmail
                       setNewUserStatus(user.account_status || "active");
                       document.getElementById("user-administration")?.scrollIntoView({ behavior: "smooth" });
                     }}>Edit</button>
-                    {user.account_status === "active" && <button type="button" style={{marginLeft:8}} disabled={!!sendingInvitation} onClick={()=>void sendInvitation(user)}>
+                    {user.account_status === "active" && <button type="button" style={actionButtonStyle} disabled={!!sendingInvitation} onClick={()=>void sendInvitation(user)}>
                       {sendingInvitation===user.user_email ? "Sending..." : "Send / Resend Invitation"}
                     </button>}
+                    </div>
                     {invitationResults[user.user_email] && <div role="status" style={{fontSize:12,marginTop:6}}>{invitationResults[user.user_email]}</div>}
                   </td>
                 </tr>
