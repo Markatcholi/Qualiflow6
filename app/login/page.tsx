@@ -41,7 +41,9 @@ export default function LoginPage() {
 
       if (membershipError) {
         await supabase.auth.signOut();
-        alert(`Unable to resolve your company membership: ${membershipError.message}`);
+        alert(membershipError.message === "Your company account is inactive. Contact your company administrator."
+          ? membershipError.message
+          : `Unable to resolve your company membership: ${membershipError.message}`);
         return;
       }
 
@@ -55,6 +57,13 @@ export default function LoginPage() {
       window.localStorage.removeItem("qualisphere_active_tenant_role");
 
       if (activeMemberships.length === 0) {
+        const {data:accessState,error:accessStateError}=await supabase.rpc("qualisphere_company_access_state");
+        if (!accessStateError && accessState === "inactive_company") {
+          await supabase.auth.signOut();
+          alert("Your company account is inactive. Contact your company administrator.");
+          return;
+        }
+
         // QualiSphere Internal is the preserved QualiSphere 1.0 development /
         // validation environment, not a customer Company Account. Legacy active
         // users remain governed by the original user_roles administration. This
