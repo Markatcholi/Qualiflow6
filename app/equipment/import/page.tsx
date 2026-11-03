@@ -58,7 +58,7 @@ export default function EquipmentBulkImportPage(){
     if(fallbackTenant){
       const {data:m}=await supabase.from("equipment_governance_members").select("role")
         .eq("tenant_id",fallbackTenant).eq("user_email",userEmail).eq("is_active",true).maybeSingle();
-      setRole(m?.role || (mine ? "coordinator" : "viewer"));
+      setRole(m?.role || "viewer");
     }
   }
 

@@ -294,6 +294,7 @@ export default function EquipmentMasterPage() {
   const [savingOosLink, setSavingOosLink] = useState(false);
   const [auditRows, setAuditRows] = useState<AuditRow[]>([]);
   const [currentUserEmail,setCurrentUserEmail]=useState("");
+  const [isEquipmentOwner, setIsEquipmentOwner] = useState(false);
   const [governanceRole,setGovernanceRole]=useState<"viewer"|"coordinator"|"quality_approver"|"admin">("viewer");
   const [enterpriseApprovalAuthority,setEnterpriseApprovalAuthority]=useState<"none"|"quality_approver"|"equipment_approver"|"admin">("none");
   const [equipmentReleaseApprovers,setEquipmentReleaseApprovers]=useState<EquipmentReleaseApprover[]>([]);
@@ -664,10 +665,9 @@ export default function EquipmentMasterPage() {
       if(oosReferenceError)console.warn(oosReferenceError.message);
       setOosModuleEnabled(oosModuleRow?.is_enabled===true);
       setOosRecords(oosModuleRow?.is_enabled===true ? ((oosReferenceRows||[]) as OosReference[]) : []);
-      const fallbackCoordinator=[eq.owner_email,eq.created_by].filter(Boolean)
-        .map((v:any)=>String(v).toLowerCase()).includes(userEmail);
+      setIsEquipmentOwner(Boolean(userEmail) && String(eq.owner_email || "").trim().toLowerCase() === userEmail);
       const centralCoordinator=!!enterpriseAuthority?.is_equipment_coordinator;
-      setGovernanceRole((equipmentRoleRow?.role||(fallbackCoordinator||centralCoordinator?"coordinator":"viewer")) as any);
+      setGovernanceRole((equipmentRoleRow?.role||(centralCoordinator?"coordinator":"viewer")) as any);
       setEnterpriseApprovalAuthority(
         enterpriseAuthority?.is_admin
           ? "admin"
@@ -751,7 +751,7 @@ export default function EquipmentMasterPage() {
   };
 
   const saveMaster = async () => {
-    if (!record || governanceRole!=="coordinator") return;
+    if (!record || !canEditMaster) return;
 
     if (!form.equipment_name.trim()) {
       setSaveMessage("Equipment Name is required.");
@@ -800,10 +800,20 @@ export default function EquipmentMasterPage() {
         form.post_unplanned_maintenance_assessment,
     };
 
-    const { error } = await supabase
-      .from("equipment")
-      .update(updatePayload)
-      .eq("id", equipmentId);
+    let update = supabase.from("equipment").update(updatePayload).eq("id", equipmentId);
+    if (!canMaintain) {
+      const { data: pending, error: releaseError } = await supabase
+        .from("equipment_release_requests").select("id")
+        .eq("equipment_id", equipmentId).eq("status", "pending").limit(1);
+      if (releaseError || pending?.length) {
+        setSaveMessage(releaseError?.message || "Submitted equipment records cannot be edited by their owner.");
+        setSaving(false);
+        return;
+      }
+      update = update.eq("record_status", "draft").eq("owner_email", record.owner_email);
+    }
+    const { data: saved, error: updateError } = await update.select("id").maybeSingle();
+    const error = updateError || (!saved ? { message: "The record is no longer editable. Refresh and try again." } : null);
 
     if (error) {
       setSaveMessage(error.message);
@@ -2199,6 +2209,8 @@ export default function EquipmentMasterPage() {
   const canApproveRelease=enterpriseApprovalAuthority==="equipment_approver"||enterpriseApprovalAuthority==="quality_approver"||enterpriseApprovalAuthority==="admin";
   const recordIsReleased=record?.record_status==="released";
   const pendingRelease=releaseRequest?.status==="pending";
+  const canEditMaster = canMaintain || (isEquipmentOwner && record?.record_status === "draft" && !pendingRelease);
+  const equipmentAccess = canMaintain ? "Coordinator" : isEquipmentOwner ? "Equipment Owner" : "Read Only";
 
   const submitEquipmentForRelease=async()=>{
     if(!record||!canMaintain)return;
@@ -2289,7 +2301,7 @@ export default function EquipmentMasterPage() {
             Equipment Registry
           </Link>
           {!editing ? (
-            canMaintain ? (
+            canEditMaster ? (
               <button style={primaryButton} onClick={() => setEditing(true)}>Edit Master Record</button>
             ) : (
               <span style={{display:"inline-flex",alignItems:"center",padding:"8px 12px",borderRadius:999,border:"1px solid #cbd5e1",background:"#f1f5f9",color:"#475569",fontSize:13,fontWeight:700}}>Read Only</span>
@@ -2335,7 +2347,7 @@ export default function EquipmentMasterPage() {
 
       <section style={summaryGridStyle}>
         <Summary label="Record Governance" value={formatLabel(record.record_status||"draft")} tone={record.record_status==="released"?"success":record.record_status==="pending_release"?"warning":undefined} />
-        <Summary label="Access" value={canMaintain?formatLabel(governanceRole):"Read Only"} />
+        <Summary label="Access" value={equipmentAccess} />
         <Summary label="Lifecycle Phase" value={formatLifecyclePhase(record.lifecycle_phase)} />
         <Summary label="Equipment Status" value={formatEquipmentStatus(record.equipment_status)} />
         <Summary
@@ -3498,7 +3510,7 @@ export default function EquipmentMasterPage() {
           <div style={{...detailGridStyle,marginBottom:12}}>
             <Detail label="Record Status" value={formatLabel(record.record_status||"draft")} />
             <Detail label="Operational Authorization" value={recordIsReleased?"Authorized for Use":"Not Released / Use Restricted"} />
-            <Detail label="Your Equipment Role" value={canMaintain?"Coordinator / Owner":"Viewer / Read Only"} />
+            <Detail label="Your Equipment Role" value={equipmentAccess} />
             <Detail label="Release Approval Authority" value={releaseRequest?.status==="approved"?(releaseRequest.approver_job_title||releaseRequest.approver_department||"Equipment Approver"):(pendingRelease?(releaseRequest?.approver_job_title||releaseRequest?.approver_department||"Pending Approval"):"Not Yet Approved")} />
             <Detail label="Released By" value={record.released_by} />
             <Detail label="Released At" value={formatDateTime(record.released_at)} />
