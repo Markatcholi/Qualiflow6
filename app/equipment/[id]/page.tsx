@@ -2213,7 +2213,7 @@ export default function EquipmentMasterPage() {
     if(!department){setReleaseMessage("Select or enter the approving Department."); return;}
     if(!jobTitle){setReleaseMessage("Select or enter the approving Job Title."); return;}
     if(!approver||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(approver)){
-      setReleaseMessage("Select an authorized Equipment Approver."); return;
+      setReleaseMessage("Enter a valid Equipment Approver email address."); return;
     }
     if(!releaseApproveByDate){setReleaseMessage("Approve By Date is required."); return;}
     const pendingReadiness=lifecycleReadiness.filter(item=>item.required&&!item.complete);
@@ -3585,21 +3585,21 @@ export default function EquipmentMasterPage() {
                   </datalist>
                 </EditField>
                 <EditField label="Equipment Approver">
-                  <select value={releaseApproverEmail} onChange={e=>setReleaseApproverEmail(e.target.value)} style={input}>
-                    <option value="">Select authorized Equipment Approver...</option>
-                    {equipmentReleaseApprovers.map((approver)=>(
-                      <option key={approver.user_email} value={approver.user_email}>
-                        {approver.user_email}
-                      </option>
-                    ))}
-                  </select>
+                  <input
+                    type="email"
+                    value={releaseApproverEmail}
+                    onChange={e=>setReleaseApproverEmail(e.target.value)}
+                    placeholder="Enter approver email"
+                    autoComplete="off"
+                    style={input}
+                  />
                 </EditField>
                 <EditField label="Approve By Date">
                   <input type="date" value={releaseApproveByDate} onChange={e=>setReleaseApproveByDate(e.target.value)} style={input}/>
                 </EditField>
               </div>
               <div style={{fontSize:12,color:"#64748b",marginTop:6}}>
-                Approver list comes from active Equipment approval Module Access assignments in User Administration.
+                Enter the email of an Equipment Approver authorized in User Administration.
               </div>
               <div style={{display:"flex",justifyContent:"flex-end",marginTop:10}}>
                 <button
