@@ -1866,7 +1866,7 @@ export default function EquipmentMasterPage() {
   };
 
   const saveQualification=async()=>{
-    if(!record||!canMaintain)return;
+    if(!record||!canCompleteQualification)return;
     setQualificationMessage("");
 
     if(!qualificationForm.reason.trim()){
@@ -2200,6 +2200,7 @@ export default function EquipmentMasterPage() {
   const recordIsReleased=record?.record_status==="released";
   const pendingRelease=releaseRequest?.status==="pending";
   const canSubmitRelease = !recordIsReleased && !pendingRelease && (canMaintain || (isEquipmentOwner && record?.record_status === "draft"));
+  const canCompleteQualification = canMaintain || (isEquipmentOwner && record?.record_status === "draft" && !pendingRelease);
   const canEditMaster = canMaintain || (isEquipmentOwner && record?.record_status === "draft" && !pendingRelease);
   const equipmentAccess = canMaintain ? "Coordinator" : isEquipmentOwner ? "Equipment Owner" : "Read Only";
 
@@ -3152,7 +3153,7 @@ export default function EquipmentMasterPage() {
           title="6. Qualification / Requalification"
           subtitle="Equipment Management tracks qualification applicability, activity status, and released-document evidence. Document Control governs protocol and report approval/release."
           action={
-            record.qualification_required && canMaintain ? (
+            record.qualification_required && canCompleteQualification ? (
               <button type="button" style={primaryButton} onClick={()=>{
                 if(showQualificationForm){setShowQualificationForm(false);resetQualificationForm();}
                 else{
@@ -3317,7 +3318,7 @@ export default function EquipmentMasterPage() {
                           </div>
                           <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                             <button type="button" style={secondaryButton} onClick={()=>openQualificationAttachment(attachment)}>Open</button>
-                            {canMaintain ? <button type="button" style={secondaryButton} onClick={()=>removeQualificationAttachment("execution",index)}>Remove</button> : null}
+                            {canCompleteQualification ? <button type="button" style={secondaryButton} onClick={()=>removeQualificationAttachment("execution",index)}>Remove</button> : null}
                           </div>
                         </div>
                       ))}
@@ -3409,7 +3410,7 @@ export default function EquipmentMasterPage() {
                     ) : "None"}
                   </td>
                   <td style={tdMini}>{row.next_requalification_requirement==="na"?"N/A":formatDate(row.next_requalification_date)}</td>
-                  <td style={tdMini}>{canMaintain?<button type="button" style={secondaryButton} onClick={()=>editQualification(row)}>Edit</button>:"Read Only"}</td>
+                  <td style={tdMini}>{canCompleteQualification?<button type="button" style={secondaryButton} onClick={()=>editQualification(row)}>Edit</button>:"Read Only"}</td>
                 </tr>)}</tbody>
               </table>
             </div>
