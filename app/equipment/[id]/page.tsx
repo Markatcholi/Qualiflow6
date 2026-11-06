@@ -303,6 +303,7 @@ export default function EquipmentMasterPage() {
   const [releaseRequest,setReleaseRequest]=useState<EquipmentReleaseRequest | null>(null);
   const [releaseDepartment,setReleaseDepartment]=useState("");
   const [releaseJobTitle,setReleaseJobTitle]=useState("");
+  const [releaseApproverName,setReleaseApproverName]=useState("");
   const [releaseApproverEmail,setReleaseApproverEmail]=useState("");
   const [releaseApproveByDate,setReleaseApproveByDate]=useState("");
   const [releaseComment,setReleaseComment]=useState("");
@@ -2207,6 +2208,8 @@ export default function EquipmentMasterPage() {
   const submitEquipmentForRelease=async()=>{
     if(!record||!canSubmitRelease)return;
     setReleaseMessage("");
+    const approverName=releaseApproverName.trim();
+    if(!approverName){setReleaseMessage("Approver Name is required."); return;}
     const approver=releaseApproverEmail.trim().toLowerCase();
     const department=releaseDepartment.trim();
     const jobTitle=releaseJobTitle.trim();
@@ -2232,7 +2235,7 @@ export default function EquipmentMasterPage() {
       });
       if(error)throw new Error(error.message);
       if(!data)throw new Error("Release submission completed without returning a release request.");
-      await addAudit("equipment_release_submitted",`Equipment Master submitted for release to ${approver}.`);
+      await addAudit("equipment_release_submitted",`Equipment Master submitted for release to ${approverName} <${approver}>; Title: ${jobTitle}; Department: ${department}; Approve By: ${releaseApproveByDate}.`);
       setReleaseDepartment("");
       setReleaseJobTitle("");
       setReleaseApproverEmail("");
@@ -3560,6 +3563,21 @@ export default function EquipmentMasterPage() {
           {canSubmitRelease ? (
             <div>
               <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:10,alignItems:"end"}}>
+                <EditField label="Name">
+                  <input type="text" value={releaseApproverName} onChange={e=>setReleaseApproverName(e.target.value)} placeholder="Enter approver name" style={input}/>
+                </EditField>
+                <EditField label="Title">
+                  <input
+                    list="equipment-release-job-titles"
+                    value={releaseJobTitle}
+                    onChange={e=>setReleaseJobTitle(e.target.value)}
+                    placeholder="Select or enter job title"
+                    style={input}
+                  />
+                  <datalist id="equipment-release-job-titles">
+                    {releaseJobTitles.map(item=><option key={item} value={item}/>)}
+                  </datalist>
+                </EditField>
                 <EditField label="Department">
                   <input
                     list="equipment-release-departments"
@@ -3572,19 +3590,7 @@ export default function EquipmentMasterPage() {
                     {releaseDepartments.map(item=><option key={item} value={item}/>)}
                   </datalist>
                 </EditField>
-                <EditField label="Job Title">
-                  <input
-                    list="equipment-release-job-titles"
-                    value={releaseJobTitle}
-                    onChange={e=>setReleaseJobTitle(e.target.value)}
-                    placeholder="Select or enter job title"
-                    style={input}
-                  />
-                  <datalist id="equipment-release-job-titles">
-                    {releaseJobTitles.map(item=><option key={item} value={item}/>)}
-                  </datalist>
-                </EditField>
-                <EditField label="Equipment Approver">
+                <EditField label="Email Address">
                   <input
                     type="email"
                     value={releaseApproverEmail}
