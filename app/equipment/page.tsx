@@ -198,9 +198,7 @@ export default function EquipmentRegistryPage() {
         </div>
 
         <div style={headerActionsStyle}>
-          <Link href="/" style={secondaryButtonStyle}>
-            Home
-          </Link>
+          <Link href="/workspace" style={secondaryButtonStyle}>My Workspace</Link>
           <Link href="/equipment/import" style={secondaryButtonStyle}>
             Import Equipment Excel
           </Link>
