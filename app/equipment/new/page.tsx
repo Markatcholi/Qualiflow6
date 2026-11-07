@@ -253,7 +253,7 @@ export default function RegisterEquipmentPage() {
         </div>
         <div style={{display:"flex",gap:"10px",flexWrap:"wrap"}}>
           <Link href="/equipment" style={secondaryButtonStyle}>Equipment Registry</Link>
-          <Link href="/" style={secondaryButtonStyle}>Home</Link>
+          <Link href="/workspace" style={secondaryButtonStyle}>My Workspace</Link>
         </div>
       </div>
 
