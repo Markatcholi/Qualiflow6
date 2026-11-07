@@ -141,11 +141,19 @@ export default function RegisterEquipmentPage() {
       const user:any = userData?.user;
       if (!user?.id) throw new Error("You must be signed in to register equipment.");
 
-      // Prefer a company tenant UUID when present. The current NCMR creation
-      // page has no separate tenant resolver, so user.id is the Phase-1 fallback.
-      const resolvedTenantId =
-        user?.app_metadata?.tenant_id || user?.user_metadata?.tenant_id || user.id;
-      const email = user.email || "";
+      const email = (user.email || "").trim().toLowerCase();
+      const activeCompanyId = window.localStorage.getItem("qualisphere_active_tenant_id") || "";
+      let membershipQuery = supabase.from("tenant_memberships")
+        .select("tenant_id,tenants!inner(status)")
+        .eq("user_email", email).eq("membership_status", "active")
+        .eq("tenants.status", "active");
+      if (activeCompanyId) membershipQuery = membershipQuery.eq("tenant_id", activeCompanyId);
+      const { data: memberships, error: membershipError } = await membershipQuery;
+      if (membershipError) throw new Error(membershipError.message);
+      if (!memberships || memberships.length !== 1) {
+        throw new Error("Select an active Company Account in My Workspace before registering equipment.");
+      }
+      const resolvedTenantId = memberships[0].tenant_id;
 
       setTenantId(resolvedTenantId);
       setCurrentUserEmail(email);
