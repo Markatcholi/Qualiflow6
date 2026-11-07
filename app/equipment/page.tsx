@@ -413,7 +413,7 @@ export default function EquipmentRegistryPage() {
                             <div style={{ fontWeight: 700 }}>
                               {formatActivity(nextSchedule.activity_type)}
                             </div>
-                            <div>{formatDate(nextSchedule.scheduled_service_date)}</div>
+                            <div>{nextSchedule.scheduled_service_date ? "Service scheduled: " : "Due: "}{formatDate(getScheduleDate(nextSchedule))}</div>
                             <div style={{ marginTop: 4 }}>
                               <ScheduleStatusPill
                                 value={nextSchedule.schedule_status}
@@ -506,14 +506,18 @@ function ScheduleStatusPill({ value }: { value?: string | null }) {
   return <span style={style}>{formatLabel(value)}</span>;
 }
 
+function getScheduleDate(row: ScheduleRow) {
+  return row.scheduled_service_date || row.nominal_due_date || row.hard_due_date;
+}
+
 function getNextSchedule(rows: ScheduleRow[]) {
-  const active = rows.filter((row) => row.scheduled_service_date);
+  const active = rows.filter((row) => row.schedule_status !== "inactive" && getScheduleDate(row));
 
   if (active.length === 0) return null;
 
   return [...active].sort((a, b) => {
-    const aTime = new Date(a.scheduled_service_date || "9999-12-31").getTime();
-    const bTime = new Date(b.scheduled_service_date || "9999-12-31").getTime();
+    const aTime = new Date(getScheduleDate(a) || "9999-12-31").getTime();
+    const bTime = new Date(getScheduleDate(b) || "9999-12-31").getTime();
     return aTime - bTime;
   })[0];
 }
