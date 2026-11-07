@@ -828,6 +828,7 @@ export default function EquipmentMasterPage() {
   };
 
   const saveCalibrationConfiguration = async () => {
+    if (record?.record_status === "pending_release" || releaseRequest?.status === "pending") return;
     if (!record) return;
     setCalibrationConfigMessage("");
     if (!record.calibration_required) { setCalibrationConfigMessage("Calibration is currently marked Not Required on the Equipment Master."); return; }
@@ -1006,6 +1007,7 @@ export default function EquipmentMasterPage() {
   };
 
   const saveCalibrationEvent=async()=>{
+    if (record?.record_status === "pending_release" || releaseRequest?.status === "pending") return;
     if(!record)return;
     setCalibrationEventMessage("");
     if(!calibrationEvent.performed_date){setCalibrationEventMessage("Calibration Date is required.");return;}
@@ -1143,6 +1145,7 @@ export default function EquipmentMasterPage() {
   };
 
   const savePmConfiguration=async()=>{
+    if (record?.record_status === "pending_release" || releaseRequest?.status === "pending") return;
     if(!record)return;
     setPmConfigMessage("");
 
@@ -1386,6 +1389,7 @@ export default function EquipmentMasterPage() {
   };
 
   const saveMaintenanceEvent=async()=>{
+    if (record?.record_status === "pending_release" || releaseRequest?.status === "pending") return;
     if(!record)return;
     setMaintenanceEventMessage("");
     const nextMaintenanceDueDate = maintenanceEvent.next_due_date ||
@@ -2004,7 +2008,7 @@ export default function EquipmentMasterPage() {
     controlledDocuments.find(doc=>doc.id===documentId)||null;
 
   const linkControlledDocument=async()=>{
-    if(!record||!canMaintain)return;
+    if(!record||!canLinkDocuments)return;
     setDocumentLinkMessage("");
     if(!selectedDocumentId){
       setDocumentLinkMessage("Select an effective controlled document to link.");
@@ -2052,7 +2056,7 @@ export default function EquipmentMasterPage() {
   };
 
   const deactivateControlledDocumentLink=async(link:DocumentLink)=>{
-    if(!record||!canMaintain)return;
+    if(!record||!canLinkDocuments)return;
     const selected=controlledDocumentById(link.document_id);
     if(!window.confirm(`Remove the Equipment relationship to ${selected?.document_number||"this controlled document"}? The historical link record will be retained as inactive.`))return;
 
@@ -2187,10 +2191,12 @@ export default function EquipmentMasterPage() {
     );
   }
 
-  const canMaintain=governanceRole==="coordinator";
+  const releasePackageLocked = record?.record_status === "pending_release" || releaseRequest?.status === "pending";
+  const canMaintain=governanceRole==="coordinator" && !releasePackageLocked;
+  const canLinkDocuments = !releasePackageLocked && (governanceRole==="coordinator" || (isEquipmentOwner && record?.record_status==="draft"));
   const canApproveRelease=enterpriseApprovalAuthority==="equipment_approver"||enterpriseApprovalAuthority==="quality_approver"||enterpriseApprovalAuthority==="admin";
   const recordIsReleased=record?.record_status==="released";
-  const pendingRelease=releaseRequest?.status==="pending";
+  const pendingRelease=releasePackageLocked;
   const canSubmitRelease = !recordIsReleased && !pendingRelease && (canMaintain || (isEquipmentOwner && record?.record_status === "draft"));
   const canCompleteQualification = canMaintain || (isEquipmentOwner && record?.record_status === "draft" && !pendingRelease);
   const canEditMaster = canMaintain || (isEquipmentOwner && record?.record_status === "draft" && !pendingRelease);
@@ -2573,6 +2579,7 @@ export default function EquipmentMasterPage() {
         )}
       </section>
 
+      <fieldset disabled={releasePackageLocked} style={{border:0,padding:0,margin:0,minWidth:0}}>
       <section style={{ ...card, marginBottom: 16 }}>
         <SectionHeader
           title="4. Calibration Program"
@@ -2719,7 +2726,9 @@ export default function EquipmentMasterPage() {
           </div>}
         </div>
       </section>
+      </fieldset>
 
+      <fieldset disabled={releasePackageLocked} style={{border:0,padding:0,margin:0,minWidth:0}}>
       <section style={{ ...card, marginBottom: 16 }}>
         <SectionHeader
           title="5. Preventive / Unplanned Maintenance"
@@ -3136,7 +3145,9 @@ export default function EquipmentMasterPage() {
           )}
         </div>
       </section>
+      </fieldset>
 
+      <fieldset disabled={releasePackageLocked} style={{border:0,padding:0,margin:0,minWidth:0}}>
       <section style={{ ...card, marginBottom: 16 }}>
         <SectionHeader
           title="6. Qualification / Requalification"
@@ -3406,6 +3417,7 @@ export default function EquipmentMasterPage() {
           )}
         </div>
       </section>
+      </fieldset>
 
       <section style={{ ...card, marginBottom: 16 }}>
         <SectionHeader
@@ -3631,7 +3643,7 @@ export default function EquipmentMasterPage() {
           title="8. Related Controlled Documents — Optional"
           subtitle="Link one or more released controlled documents that support this equipment. Document Control remains the system of record; these relationships do not block Equipment Record Release."
           action={
-            canMaintain ? (
+            canLinkDocuments ? (
               <button
                 type="button"
                 style={showDocumentLinkForm?secondaryButton:primaryButton}
@@ -3650,7 +3662,7 @@ export default function EquipmentMasterPage() {
           }
         />
 
-        {showDocumentLinkForm && canMaintain ? (
+        {showDocumentLinkForm && canLinkDocuments ? (
           <div style={{border:"1px solid #bfdbfe",background:"#f8fbff",borderRadius:12,padding:16,marginBottom:16}}>
             <h3 style={{margin:"0 0 5px"}}>Link Existing Controlled Document</h3>
             <div style={{fontSize:13,color:"#64748b",lineHeight:1.5,marginBottom:14}}>
@@ -3793,7 +3805,7 @@ export default function EquipmentMasterPage() {
           <div style={{fontSize:13,color:"#64748b"}}>
             Active linked documents: <strong style={{color:"#0f172a"}}>{documents.filter(row=>row.is_active).length}</strong>
           </div>
-          {canMaintain && !showDocumentLinkForm ? (
+          {canLinkDocuments && !showDocumentLinkForm ? (
             <button
               type="button"
               style={secondaryButton}
@@ -3835,7 +3847,7 @@ export default function EquipmentMasterPage() {
                           {doc?.controlled_copy_file_url ? (
                             <a href={doc.controlled_copy_file_url} target="_blank" rel="noreferrer" style={secondaryButton}>Controlled Copy</a>
                           ) : null}
-                          {canMaintain ? (
+                          {canLinkDocuments ? (
                             <button
                               type="button"
                               style={secondaryButton}
