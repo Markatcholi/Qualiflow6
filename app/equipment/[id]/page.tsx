@@ -828,6 +828,7 @@ export default function EquipmentMasterPage() {
   };
 
   const saveCalibrationConfiguration = async () => {
+    if (record?.record_status !== "draft" && governanceRole !== "coordinator") return;
     if (record?.record_status === "pending_release" || releaseRequest?.status === "pending") return;
     if (!record) return;
     setCalibrationConfigMessage("");
@@ -1007,6 +1008,7 @@ export default function EquipmentMasterPage() {
   };
 
   const saveCalibrationEvent=async()=>{
+    if (record?.record_status !== "draft" && governanceRole !== "coordinator") return;
     if (record?.record_status === "pending_release" || releaseRequest?.status === "pending") return;
     if(!record)return;
     setCalibrationEventMessage("");
@@ -1145,6 +1147,7 @@ export default function EquipmentMasterPage() {
   };
 
   const savePmConfiguration=async()=>{
+    if (record?.record_status !== "draft" && governanceRole !== "coordinator") return;
     if (record?.record_status === "pending_release" || releaseRequest?.status === "pending") return;
     if(!record)return;
     setPmConfigMessage("");
@@ -1389,6 +1392,7 @@ export default function EquipmentMasterPage() {
   };
 
   const saveMaintenanceEvent=async()=>{
+    if (record?.record_status !== "draft" && governanceRole !== "coordinator") return;
     if (record?.record_status === "pending_release" || releaseRequest?.status === "pending") return;
     if(!record)return;
     setMaintenanceEventMessage("");
@@ -2193,6 +2197,7 @@ export default function EquipmentMasterPage() {
 
   const releasePackageLocked = record?.record_status === "pending_release" || releaseRequest?.status === "pending";
   const canMaintain=governanceRole==="coordinator" && !releasePackageLocked;
+  const serviceReadOnly = releasePackageLocked || !(governanceRole === "coordinator" || (isEquipmentOwner && record?.record_status === "draft"));
   const canLinkDocuments = !releasePackageLocked && (governanceRole==="coordinator" || (isEquipmentOwner && record?.record_status==="draft"));
   const canApproveRelease=enterpriseApprovalAuthority==="equipment_approver"||enterpriseApprovalAuthority==="quality_approver"||enterpriseApprovalAuthority==="admin";
   const recordIsReleased=record?.record_status==="released";
@@ -2580,12 +2585,12 @@ export default function EquipmentMasterPage() {
       </section>
 
       {releasePackageLocked ? <p role="status" style={{color:"#475569"}}>Read only while Equipment Record Release approval is pending. Calibration and maintenance changes resume if the record is returned.</p> : null}
-      <fieldset disabled={releasePackageLocked} style={{border:0,padding:0,margin:0,minWidth:0}}>
+      <fieldset disabled={serviceReadOnly} style={{border:0,padding:0,margin:0,minWidth:0}}>
       <section style={{ ...card, marginBottom: 16 }}>
         <SectionHeader
           title="4. Calibration Program"
           subtitle="Calibration scheduling and permanent calibration-event history."
-          action={!releasePackageLocked ? (
+          action={!serviceReadOnly ? (
             <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
               {record.calibration_required ? (
                 <>
@@ -2621,7 +2626,7 @@ export default function EquipmentMasterPage() {
           ) : null}
         />
 
-        {!releasePackageLocked && showCalibrationConfig && record.calibration_required ? (
+        {!serviceReadOnly && showCalibrationConfig && record.calibration_required ? (
           <div style={{border:"1px solid #bfdbfe",background:"#f8fbff",borderRadius:12,padding:16,marginBottom:20}}>
             <h3 style={{margin:"0 0 5px"}}>Calibration Configuration</h3>
             <p style={{margin:"0 0 14px",color:"#64748b",fontSize:13}}>Configure the recurring calibration requirement and scheduling rules. The customer's calibration procedure remains the controlling instruction.</p>
@@ -2720,7 +2725,7 @@ export default function EquipmentMasterPage() {
                   <td style={tdMini}>{formatDate(row.hard_due_date||getMonthEndDate(row.performed_date))}</td>
                   <td style={tdMini}>{a.length===0?"None":<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{a.map((x:any,i:number)=><button key={`${x?.path||x?.name||i}`} type="button" style={attachmentButton} onClick={()=>openCalibrationAttachment(x)}>{x?.name||`Attachment ${i+1}`}</button>)}</div>}</td>
                   <td style={tdMini}>{formatLabel(row.status)}</td>
-                  <td style={tdMini}>{!releasePackageLocked ? <button type="button" style={secondaryButton} onClick={()=>editCalibrationEvent(row)}>Edit</button> : "Read Only"}</td>
+                  <td style={tdMini}>{!serviceReadOnly ? <button type="button" style={secondaryButton} onClick={()=>editCalibrationEvent(row)}>Edit</button> : "Read Only"}</td>
                 </tr>
               })}</tbody>
             </table>
@@ -2729,12 +2734,12 @@ export default function EquipmentMasterPage() {
       </section>
       </fieldset>
 
-      <fieldset disabled={releasePackageLocked} style={{border:0,padding:0,margin:0,minWidth:0}}>
+      <fieldset disabled={serviceReadOnly} style={{border:0,padding:0,margin:0,minWidth:0}}>
       <section style={{ ...card, marginBottom: 16 }}>
         <SectionHeader
           title="5. Preventive / Unplanned Maintenance"
           subtitle="Preventive Maintenance uses controlled Fixed/Flexible scheduling. Unplanned Maintenance captures the issue, repair, major components replaced, and the optional post-maintenance calibration/requalification assessment."
-          action={!releasePackageLocked ? (
+          action={!serviceReadOnly ? (
             <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
               <button
                 type="button"
@@ -2767,7 +2772,7 @@ export default function EquipmentMasterPage() {
           ) : null}
         />
 
-        {!releasePackageLocked && showPmConfig && record.preventive_maintenance_required ? (
+        {!serviceReadOnly && showPmConfig && record.preventive_maintenance_required ? (
           <div style={{border:"1px solid #bfdbfe",background:"#f8fbff",borderRadius:12,padding:16,marginBottom:20}}>
             <h3 style={{margin:"0 0 5px"}}>Preventive Maintenance Configuration</h3>
             <p style={{margin:"0 0 14px",color:"#64748b",fontSize:13}}>
@@ -3135,7 +3140,7 @@ export default function EquipmentMasterPage() {
                         </td>
                         <td style={tdMini}>{formatLabel(row.status)}</td>
                         <td style={tdMini}>
-                          {!releasePackageLocked ? <button type="button" style={secondaryButton} onClick={()=>editMaintenanceEvent(row)}>Edit</button> : "Read Only"}
+                          {!serviceReadOnly ? <button type="button" style={secondaryButton} onClick={()=>editMaintenanceEvent(row)}>Edit</button> : "Read Only"}
                         </td>
                       </tr>
                     );
