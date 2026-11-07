@@ -1388,6 +1388,11 @@ export default function EquipmentMasterPage() {
   const saveMaintenanceEvent=async()=>{
     if(!record)return;
     setMaintenanceEventMessage("");
+    const nextMaintenanceDueDate = maintenanceEvent.next_due_date ||
+      (maintenanceEvent.maintenance_type === "preventive"
+        ? calculateRecurringDueDate(maintenanceEvent.performed_date, schedules.find(row=>row.activity_type==="preventive_maintenance" && row.is_active) || null)
+        : "");
+
 
     if(!maintenanceEvent.performed_date){
       setMaintenanceEventMessage("Performed Date is required.");
@@ -1493,7 +1498,7 @@ export default function EquipmentMasterPage() {
           maintenanceEvent.maintenance_type==="unplanned"
             ? (maintenanceEvent.product_impact.trim()||null)
             : null,
-        next_nominal_due_date:maintenanceEvent.next_due_date||null,
+        next_nominal_due_date:nextMaintenanceDueDate||null,
         result:maintenanceEvent.result,
         service_report_attachments:attachments,
         comments:maintenanceEvent.comments.trim()||null,
@@ -1649,16 +1654,16 @@ export default function EquipmentMasterPage() {
         }
       }
 
-      if(maintenanceEvent.next_due_date&&pmSchedule?.id){
+      if(nextMaintenanceDueDate&&pmSchedule?.id){
         const nextHardDue=getNextHardDueDate(
           pmSchedule.nominal_due_date,
           pmSchedule.hard_due_date,
-          maintenanceEvent.next_due_date
+          nextMaintenanceDueDate
         );
         const {error:scheduleAdvanceError}=await supabase
           .from("equipment_schedule_configurations")
           .update({
-            nominal_due_date:maintenanceEvent.next_due_date,
+            nominal_due_date:nextMaintenanceDueDate,
             scheduled_service_date:null,
             hard_due_date:nextHardDue
           })
@@ -3014,7 +3019,7 @@ export default function EquipmentMasterPage() {
 
             <div style={{marginTop:14,maxWidth:360}}>
               <EditField label="Next Maintenance Due Date">
-                <input type="date" value={maintenanceEvent.next_due_date} onChange={e=>setMaintenanceEvent({...maintenanceEvent,next_due_date:e.target.value})} style={input}/>
+                <input type="date" value={maintenanceEvent.next_due_date || (maintenanceEvent.maintenance_type==="preventive" ? calculateRecurringDueDate(maintenanceEvent.performed_date,pmSchedule || null) : "")} onChange={e=>setMaintenanceEvent({...maintenanceEvent,next_due_date:e.target.value})} style={input}/>
               </EditField>
               <div style={{color:"#64748b",fontSize:12,marginTop:5}}>Calculated from the performed date and configured PM interval for preventive maintenance. When entered, this date advances the recurring PM schedule.</div>
             </div>
