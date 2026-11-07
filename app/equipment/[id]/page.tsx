@@ -2880,7 +2880,7 @@ export default function EquipmentMasterPage() {
                   value={maintenanceEvent.maintenance_type}
                   onChange={e=>{
                     const next=e.target.value;
-                    setMaintenanceEvent({...maintenanceEvent,maintenance_type:next});
+                    setMaintenanceEvent({...maintenanceEvent,maintenance_type:next,next_due_date:next==="unplanned"?"":calculateRecurringDueDate(maintenanceEvent.performed_date,pmSchedule)});
                     if(next==="preventive"){
                       setPostMaintenanceAssessment({
                         calibration_required:false,
@@ -2898,7 +2898,7 @@ export default function EquipmentMasterPage() {
               </EditField>
 
               <EditField label="Performed Date">
-                <input type="date" value={maintenanceEvent.performed_date} onChange={e=>setMaintenanceEvent({...maintenanceEvent,performed_date:e.target.value})} style={input}/>
+                <input type="date" value={maintenanceEvent.performed_date} onChange={e=>setMaintenanceEvent({...maintenanceEvent,performed_date:e.target.value,next_due_date:maintenanceEvent.maintenance_type==="unplanned"?"":calculateRecurringDueDate(e.target.value,pmSchedule)})} style={input}/>
               </EditField>
 
               <EditField label="Result">
@@ -3021,7 +3021,7 @@ export default function EquipmentMasterPage() {
               <EditField label="Next Maintenance Due Date">
                 <input type="date" value={maintenanceEvent.next_due_date} onChange={e=>setMaintenanceEvent({...maintenanceEvent,next_due_date:e.target.value})} style={input}/>
               </EditField>
-              <div style={{color:"#64748b",fontSize:12,marginTop:5}}>Optional. When entered, QualiSphere advances the recurring Preventive Maintenance schedule to this date.</div>
+              <div style={{color:"#64748b",fontSize:12,marginTop:5}}>Calculated from the performed date and configured PM interval for preventive maintenance. When entered, this date advances the recurring PM schedule.</div>
             </div>
 
             {maintenanceEvent.maintenance_type==="unplanned" && record.post_unplanned_maintenance_assessment!=="disabled" ? (
