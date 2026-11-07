@@ -1246,7 +1246,7 @@ function getCollaborationTaskUrl(task: any) {
 }
 
 function getRecordDisplay(task: any) {
-  const directRecord = task.capa_number || task.ncmr_number || task.dci_number || task.change_number || task.change_control_number || task.scar_number || task.document_number || task.complaint_number || task.audit_number || task.investigation_number || task.review_number || task.record_number || task.entity_number;
+  const directRecord = task.equipment_number || task.capa_number || task.ncmr_number || task.dci_number || task.change_number || task.change_control_number || task.scar_number || task.document_number || task.complaint_number || task.audit_number || task.investigation_number || task.review_number || task.record_number || task.entity_number;
   if (directRecord) {
     if ((task.workspace_item_type === "document_review" || task.workspace_item_type === "training_assignment") && task.revision) {
       return `${directRecord} Rev ${task.revision}`;
@@ -1254,7 +1254,7 @@ function getRecordDisplay(task: any) {
     return directRecord;
   }
   const title = String(task.task_title || task.title || "");
-  const recordMatch = title.match(/\b(CAPA[-\s]?\d+|NCMR[-\s]?\d+|DCI[-\s]?\d+|CC[-\s]?\d+|SCAR[-\s]?\d+|AUD[-\s]?\d+|DOC[-\s]?\d+|CMP[-\s]?\d+|MR[-\s]?\d+(?:[-\s]?\d+)?|EF[-\s]?\d+)\b/i);
+  const recordMatch = title.match(/\b(EQ[-\s]?\d+|CAPA[-\s]?\d+|NCMR[-\s]?\d+|DCI[-\s]?\d+|CC[-\s]?\d+|SCAR[-\s]?\d+|AUD[-\s]?\d+|DOC[-\s]?\d+|CMP[-\s]?\d+|MR[-\s]?\d+(?:[-\s]?\d+)?|EF[-\s]?\d+)\b/i);
   if (recordMatch?.[1]) return recordMatch[1].toUpperCase();
 
   // SCAR currently has no populated scar_number. Show its meaningful title in
