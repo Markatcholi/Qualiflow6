@@ -3942,6 +3942,9 @@ export default function EquipmentMasterPage() {
         </section>
       ) : null}
 
+      {pendingRelease && releaseRequest?.approver_email?.toLowerCase() === currentUserEmail.toLowerCase() ? (
+        <details style={{marginTop:16}}>
+          <summary style={{cursor:"pointer",fontWeight:700}}>View Audit History</summary>
       <section style={card}>
         <SectionHeader
           title="Equipment Timeline / Activity Feed"
@@ -3958,6 +3961,26 @@ export default function EquipmentMasterPage() {
           ])}
         />
       </section>
+        </details>
+      ) : (
+      <section style={card}>
+        <SectionHeader
+          title="Equipment Timeline / Activity Feed"
+          subtitle="Permanent audit history for the Equipment Master record."
+        />
+        <HistoryTable
+          emptyText="No equipment audit events recorded."
+          headers={["Date / Time", "Action", "User", "Details"]}
+          rows={auditRows.map((row) => [
+            formatDateTime(row.created_at),
+            formatLabel(row.action),
+            row.user_email || "Unknown",
+            row.details || "No details recorded.",
+          ])}
+        />
+      </section>
+      )}
+
     </main>
   );
 }
