@@ -1228,7 +1228,7 @@ export default function EquipmentMasterPage() {
 
       await addAudit(
         pmSchedule?"preventive_maintenance_schedule_updated":"preventive_maintenance_schedule_configured",
-        `${pmSchedule?"Updated":"Configured"} preventive maintenance schedule: every ${frequencyValue} ${pmConfig.frequency_unit}; ${pmConfig.schedule_mode}; nominal ${pmConfig.nominal_due_date}; hard due ${hardDueDate}; reminders ${pmReminderDays.join(", ")}.`
+        `${pmSchedule?"Updated":"Configured"} preventive maintenance schedule: every ${frequencyValue} ${pmConfig.frequency_unit}; ${pmConfig.schedule_mode}; nominal ${pmSchedule?.nominal_due_date || "Not yet established"}; hard due ${pmSchedule?.hard_due_date || "Not yet established"}; reminders ${pmReminderDays.join(", ")}.`
       );
 
       setPmConfigMessage("Preventive Maintenance configuration saved.");
