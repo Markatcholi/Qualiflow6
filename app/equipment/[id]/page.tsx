@@ -645,11 +645,11 @@ export default function EquipmentMasterPage() {
       ]=await Promise.all([
         supabase.from("equipment_governance_members").select("role")
           .eq("tenant_id",eq.tenant_id).ilike("user_email",userEmail).eq("is_active",true).eq("role","coordinator").maybeSingle(),
-        supabase.rpc("get_qualisphere_enterprise_authority",{p_user_email:userEmail}),
+        supabase.rpc("get_equipment_company_authority",{p_tenant_id:eq.tenant_id,p_user_email:userEmail}),
         supabase.from("equipment_release_requests")
           .select("id,equipment_id,submitted_by,submitted_at,approver_email,approver_department,approver_job_title,approve_by_date,status,decision_by,decision_at,decision_comment")
           .eq("equipment_id",eq.id).order("submitted_at",{ascending:false}).limit(1).maybeSingle(),
-        supabase.rpc("list_equipment_release_approvers"),
+        supabase.rpc("list_equipment_company_approvers",{p_tenant_id:eq.tenant_id}),
         supabase.from("md_departments").select("name").order("name",{ascending:true}),
         supabase.from("user_roles").select("job_title,account_status").eq("account_status","active"),
         supabase.from("tenant_module_access").select("is_enabled").eq("tenant_id",eq.tenant_id).eq("module_code","oos_oot").maybeSingle(),
