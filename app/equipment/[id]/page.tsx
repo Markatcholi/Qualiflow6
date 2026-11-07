@@ -1165,24 +1165,10 @@ export default function EquipmentMasterPage() {
       setPmConfigMessage("Preventive Maintenance Frequency must be greater than zero.");
       return;
     }
-    if(!pmConfig.nominal_due_date){
-      setPmConfigMessage("Next Due Date is required.");
-      return;
-    }
-    if(pmConfig.schedule_mode==="flexible"&&!pmConfig.hard_due_date){
-      setPmConfigMessage("Hard Due Date is required for Flexible scheduling.");
-      return;
-    }
-
     setSavingPmConfig(true);
     try{
       const {data:userData}=await supabase.auth.getUser();
       const email=userData?.user?.email||"unknown";
-
-      const hardDueDate=
-        pmConfig.schedule_mode==="fixed"
-          ? (pmConfig.hard_due_date||pmConfig.nominal_due_date)
-          : pmConfig.hard_due_date;
 
       const payload={
         tenant_id:record.tenant_id,
@@ -1192,9 +1178,9 @@ export default function EquipmentMasterPage() {
         frequency_value:frequencyValue,
         frequency_unit:pmConfig.frequency_unit,
         schedule_mode:pmConfig.schedule_mode,
-        nominal_due_date:pmConfig.nominal_due_date,
+        nominal_due_date:pmSchedule?.nominal_due_date || null,
         scheduled_service_date:null,
-        hard_due_date:hardDueDate,
+        hard_due_date:pmSchedule?.hard_due_date || null,
         early_window_days:Math.max(0,Number(pmConfig.early_window_days)||0),
         late_window_days:Math.max(0,Number(pmConfig.late_window_days)||0),
         equipment_family:pmConfig.equipment_family.trim()||null,
@@ -2798,14 +2784,9 @@ export default function EquipmentMasterPage() {
                 </select>
               </EditField>
 
-              <EditField label="Next Due Date">
-                <input type="date" value={pmConfig.nominal_due_date} onChange={e=>setPmConfig({...pmConfig,nominal_due_date:e.target.value})} style={input}/>
-              </EditField>
-
-              <EditField label="Hard Due Date">
-                <input type="date" value={pmConfig.hard_due_date} onChange={e=>setPmConfig({...pmConfig,hard_due_date:e.target.value})} style={input}/>
-              </EditField>
-
+              <div style={{gridColumn:"1 / -1",color:"#64748b"}}>
+                Configure the maintenance interval here. Next maintenance due dates are populated when a maintenance record is added. Existing due dates are preserved when configuration is edited.
+              </div>
               <EditField label="Overdue Use Action">
                 <select value={pmConfig.overdue_use_action} onChange={e=>setPmConfig({...pmConfig,overdue_use_action:e.target.value})} style={input}>
                   <option value="notification_only">Notification Only</option>
