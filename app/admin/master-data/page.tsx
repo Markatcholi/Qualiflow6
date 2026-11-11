@@ -100,6 +100,7 @@ export default function MasterDataPage() {
   const [userEmail, setUserEmail] = useState("");
   const [userRole, setUserRole] = useState("");
   const [tenantId, setTenantId] = useState("");
+  const [tenantError, setTenantError] = useState("");
   const [securityRoles, setSecurityRoles] = useState<SecurityRoleDefinition[]>([]);
   const [userDirectory, setUserDirectory] = useState<UserDirectoryItem[]>([]);
   const [tenantMemberEmails, setTenantMemberEmails] = useState<string[]>([]);
@@ -220,13 +221,21 @@ export default function MasterDataPage() {
 
     setUserRole(data?.role || "");
 
-    const { data: membership } = await supabase
+    // Local selection is a hint only; validate it against authenticated memberships.
+    const selectedTenantId = window.localStorage.getItem("qualisphere_active_tenant_id") || "";
+    const { data: memberships, error: membershipError } = await supabase
       .from("tenant_memberships")
-      .select("tenant_id")
+      .select("tenant_id,tenants!inner(status)")
       .ilike("user_email", email)
       .eq("membership_status", "active")
-      .maybeSingle();
-    setTenantId(membership?.tenant_id || "");
+      .eq("tenants.status", "active");
+    const matches = (memberships || []).filter(m => !selectedTenantId || m.tenant_id === selectedTenantId);
+    if (membershipError || matches.length !== 1) {
+      setTenantError(membershipError?.message || "Select an active Company Account from My Workspace before editing Master Data.");
+      setLoading(false);
+      return;
+    }
+    setTenantId(matches[0].tenant_id);
     setLoading(false);
   };
 
@@ -308,6 +317,7 @@ export default function MasterDataPage() {
   };
 
   const fetchAll = async () => {
+    if (!tenantId) return;
     const [
       partRes,
       dispositionRes,
@@ -321,17 +331,17 @@ export default function MasterDataPage() {
       methodRes,
       limitRes,
     ] = await Promise.all([
-      supabase.from("md_product_part_numbers").select("*").order("label"),
-      supabase.from("md_dispositions").select("*").order("label"),
-      supabase.from("md_detection_sources").select("*").order("label"),
-      supabase.from("md_departments").select("*").order("label"),
-      supabase.from("md_material_statuses").select("*").order("label"),
-      supabase.from("md_defect_categories").select("*").order("label"),
-      supabase.from("md_defect_subcategories").select("*").order("label"),
-      supabase.from("md_rooms").select("*").order("label"),
-      supabase.from("md_equipment").select("*").order("equipment_name"),
-      supabase.from("md_test_methods").select("*").order("label"),
-      supabase.from("md_oos_limits").select("*").order("investigation_source"),
+      supabase.from("md_product_part_numbers").select("*").eq("tenant_id", tenantId).order("label"),
+      supabase.from("md_dispositions").select("*").eq("tenant_id", tenantId).order("label"),
+      supabase.from("md_detection_sources").select("*").eq("tenant_id", tenantId).order("label"),
+      supabase.from("md_departments").select("*").eq("tenant_id", tenantId).order("label"),
+      supabase.from("md_material_statuses").select("*").eq("tenant_id", tenantId).order("label"),
+      supabase.from("md_defect_categories").select("*").eq("tenant_id", tenantId).order("label"),
+      supabase.from("md_defect_subcategories").select("*").eq("tenant_id", tenantId).order("label"),
+      supabase.from("md_rooms").select("*").eq("tenant_id", tenantId).order("label"),
+      supabase.from("md_equipment").select("*").eq("tenant_id", tenantId).order("equipment_name"),
+      supabase.from("md_test_methods").select("*").eq("tenant_id", tenantId).order("label"),
+      supabase.from("md_oos_limits").select("*").eq("tenant_id", tenantId).order("investigation_source"),
     ]);
 
     if (partRes.error) return alert(partRes.error.message);
@@ -361,14 +371,17 @@ export default function MasterDataPage() {
 
   useEffect(() => {
     fetchUserRole();
-    fetchAll();
   }, []);
 
   useEffect(() => {
-    if (tenantId) fetchUserAdministration();
+    if (tenantId) {
+      fetchUserAdministration();
+      fetchAll();
+    }
   }, [tenantId]);
 
   const insertProductPart = async () => {
+    if (!tenantId) return;
     const partNumber = newPartCode.trim();
     const partDescription = newPartDescription.trim();
 
@@ -378,6 +391,7 @@ export default function MasterDataPage() {
     }
 
     const { error } = await supabase.from("md_product_part_numbers").insert({
+      tenant_id: tenantId,
       code: partNumber,
       label: partNumber,
       part_description: partDescription,
@@ -396,6 +410,7 @@ export default function MasterDataPage() {
   };
 
   const updateProductPart = async (item: ProductPartItem) => {
+    if (!tenantId) return;
     const partNumber = String(item.code || "").trim();
     const partDescription = String(item.part_description || "").trim();
 
@@ -412,7 +427,7 @@ export default function MasterDataPage() {
         part_description: partDescription,
         is_active: item.is_active !== false,
       })
-      .eq("id", item.id);
+      .eq("id", item.id).eq("tenant_id", tenantId);
 
     if (error) {
       alert(error.message);
@@ -423,12 +438,13 @@ export default function MasterDataPage() {
   };
 
   const insertSimple = async (table: string, code: string, label: string, reset: () => void) => {
+    if (!tenantId) return;
     if (!code || !label) {
       alert("Code and label are required.");
       return;
     }
 
-    const { error } = await supabase.from(table).insert({ code, label });
+    const { error } = await supabase.from(table).insert({ tenant_id: tenantId, code, label });
 
     if (error) {
       alert(error.message);
@@ -440,7 +456,8 @@ export default function MasterDataPage() {
   };
 
   const deleteSimple = async (table: string, id: string) => {
-    const { error } = await supabase.from(table).delete().eq("id", id);
+    if (!tenantId) return;
+    const { error } = await supabase.from(table).delete().eq("id", id).eq("tenant_id", tenantId);
 
     if (error) {
       alert(error.message);
@@ -451,12 +468,14 @@ export default function MasterDataPage() {
   };
 
   const insertDefectSubcategory = async () => {
+    if (!tenantId) return;
     if (!newDefectSubcategoryCategoryCode || !newDefectSubcategoryCode || !newDefectSubcategoryLabel) {
       alert("Category, code, and label are required.");
       return;
     }
 
     const { error } = await supabase.from("md_defect_subcategories").insert({
+      tenant_id: tenantId,
       category_code: newDefectSubcategoryCategoryCode,
       code: newDefectSubcategoryCode,
       label: newDefectSubcategoryLabel,
@@ -474,7 +493,8 @@ export default function MasterDataPage() {
   };
 
   const deleteDefectSubcategory = async (id: string) => {
-    const { error } = await supabase.from("md_defect_subcategories").delete().eq("id", id);
+    if (!tenantId) return;
+    const { error } = await supabase.from("md_defect_subcategories").delete().eq("id", id).eq("tenant_id", tenantId);
 
     if (error) {
       alert(error.message);
@@ -485,12 +505,14 @@ export default function MasterDataPage() {
   };
 
   const insertRoom = async () => {
+    if (!tenantId) return;
     if (!newRoomCode || !newRoomLabel) {
       alert("Room code and label are required.");
       return;
     }
 
     const { error } = await supabase.from("md_rooms").insert({
+      tenant_id: tenantId,
       code: newRoomCode,
       label: newRoomLabel,
       room_type: newRoomType || null,
@@ -509,7 +531,8 @@ export default function MasterDataPage() {
   };
 
   const deleteRoom = async (id: string) => {
-    const { error } = await supabase.from("md_rooms").delete().eq("id", id);
+    if (!tenantId) return;
+    const { error } = await supabase.from("md_rooms").delete().eq("id", id).eq("tenant_id", tenantId);
 
     if (error) {
       alert(error.message);
@@ -520,12 +543,14 @@ export default function MasterDataPage() {
   };
 
   const insertEquipment = async () => {
+    if (!tenantId) return;
     if (!newEquipmentId || !newEquipmentName) {
       alert("Equipment ID and equipment name are required.");
       return;
     }
 
     const { error } = await supabase.from("md_equipment").insert({
+      tenant_id: tenantId,
       equipment_id: newEquipmentId,
       equipment_name: newEquipmentName,
       equipment_type: newEquipmentType || null,
@@ -546,7 +571,8 @@ export default function MasterDataPage() {
   };
 
   const deleteEquipment = async (id: string) => {
-    const { error } = await supabase.from("md_equipment").delete().eq("id", id);
+    if (!tenantId) return;
+    const { error } = await supabase.from("md_equipment").delete().eq("id", id).eq("tenant_id", tenantId);
 
     if (error) {
       alert(error.message);
@@ -557,12 +583,14 @@ export default function MasterDataPage() {
   };
 
   const insertTestMethod = async () => {
+    if (!tenantId) return;
     if (!newMethodCode || !newMethodLabel) {
       alert("Method code and label are required.");
       return;
     }
 
     const { error } = await supabase.from("md_test_methods").insert({
+      tenant_id: tenantId,
       code: newMethodCode,
       label: newMethodLabel,
       investigation_source: newMethodSource || null,
@@ -583,7 +611,8 @@ export default function MasterDataPage() {
   };
 
   const deleteTestMethod = async (id: string) => {
-    const { error } = await supabase.from("md_test_methods").delete().eq("id", id);
+    if (!tenantId) return;
+    const { error } = await supabase.from("md_test_methods").delete().eq("id", id).eq("tenant_id", tenantId);
 
     if (error) {
       alert(error.message);
@@ -594,6 +623,7 @@ export default function MasterDataPage() {
   };
 
   const insertOosLimit = async () => {
+    if (!tenantId) return;
     if (!newLimitSource || !newLimitMethodCode) {
       alert("Investigation source and test method are required.");
       return;
@@ -607,6 +637,7 @@ export default function MasterDataPage() {
     const selectedMethod = testMethods.find((m) => m.code === newLimitMethodCode);
 
     const { error } = await supabase.from("md_oos_limits").insert({
+      tenant_id: tenantId,
       investigation_source: newLimitSource,
       test_method_code: newLimitMethodCode,
       room_code: newLimitRoomCode || null,
@@ -635,7 +666,8 @@ export default function MasterDataPage() {
   };
 
   const deleteOosLimit = async (id: string) => {
-    const { error } = await supabase.from("md_oos_limits").delete().eq("id", id);
+    if (!tenantId) return;
+    const { error } = await supabase.from("md_oos_limits").delete().eq("id", id).eq("tenant_id", tenantId);
 
     if (error) {
       alert(error.message);
@@ -883,6 +915,14 @@ export default function MasterDataPage() {
 
   if (loading) {
     return <main style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>Loading...</main>;
+  }
+
+  if (tenantError || !tenantId) {
+    return <main style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
+      <h1>Select Company Account</h1>
+      <p>{tenantError || "No active Company Account is available."}</p>
+      <Link href="/workspace">Back to My Workspace</Link>
+    </main>;
   }
 
   if (
