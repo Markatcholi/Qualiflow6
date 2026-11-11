@@ -38,6 +38,8 @@ export async function POST(request: NextRequest) {
     // remain strictly tenant-scoped. Membership must belong to this company in both cases.
     let profileActive = profile.data?.account_status === "active";
     if (company.data.is_internal === true) {
+      const callerProfile = await userClient.from("user_roles").select("account_status").eq("user_email", identity.user.email.trim().toLowerCase()).maybeSingle();
+      if (callerProfile.error || callerProfile.data?.account_status !== "active") return reply({ error: "Active Internal administrator profile required." }, 403);
       const internalProfile = await userClient.from("user_roles").select("account_status").eq("user_email", email).maybeSingle();
       if (internalProfile.error) return reply({ error: "Unable to verify Internal employee authorization." }, 500);
       profileActive = internalProfile.data?.account_status === "active" && (!profile.data || profile.data.account_status === "active");
