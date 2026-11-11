@@ -33,8 +33,16 @@ export async function POST(request: NextRequest) {
       userClient.from("tenant_user_profiles").select("user_email,account_status").eq("tenant_id", tenantId).eq("user_email", email).maybeSingle(),
     ]);
     if ([company, membership, profile].some(result => result.error)) return reply({ error: "Unable to verify employee authorization." }, 500);
-    if (!company.data || company.data.status !== "active" || company.data.is_internal !== false) return reply({ error: "An active customer Company Account is required." }, 403);
-    if (!membership.data || membership.data.membership_status !== "active" || !profile.data || profile.data.account_status !== "active") {
+    if (!company.data || company.data.status !== "active") return reply({ error: "An active Company Account is required." }, 403);
+    // Internal employees retain their existing QMS directory; customer profiles
+    // remain strictly tenant-scoped. Membership must belong to this company in both cases.
+    let profileActive = profile.data?.account_status === "active";
+    if (company.data.is_internal === true) {
+      const internalProfile = await userClient.from("user_roles").select("account_status").eq("user_email", email).maybeSingle();
+      if (internalProfile.error) return reply({ error: "Unable to verify Internal employee authorization." }, 500);
+      profileActive = internalProfile.data?.account_status === "active" && (!profile.data || profile.data.account_status === "active");
+    }
+    if (!membership.data || membership.data.membership_status !== "active" || !profileActive) {
       return reply({ error: "Save and activate this employee in your Company Account before sending an invitation." }, 403);
     }
 
