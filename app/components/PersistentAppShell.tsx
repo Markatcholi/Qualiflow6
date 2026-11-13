@@ -119,9 +119,7 @@ export default function PersistentAppShell({ children }: { children: React.React
         { name: "Approval Matrix", href: "/approval-matrix" },
         { name: "Company Settings", href: "/admin/company-settings" }
       ]
-    : internal && companyAdmin
-      ? [{ name: "Master Data", href: "/admin/master-data" }]
-      : companyAdmin
+    : companyAdmin
       ? [
           { name: "Company Administration", href: "/company-administration" },
           { name: "Admin Master Data", href: "/company-administration/master-data" },
