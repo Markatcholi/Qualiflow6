@@ -101,12 +101,6 @@ export default function MasterDataPage() {
   const [userRole, setUserRole] = useState("");
   const [tenantId, setTenantId] = useState("");
   const [tenantError, setTenantError] = useState("");
-  const [isCompanyAdministrator, setIsCompanyAdministrator] = useState(false);
-  const [companyMembers, setCompanyMembers] = useState<{user_email:string;membership_role:string;membership_status:string}[]>([]);
-  const [administratorCandidate, setAdministratorCandidate] = useState("");
-  const [administrationMessage, setAdministrationMessage] = useState("");
-  const [savingAuthority, setSavingAuthority] = useState(false);
-  const [sendingInvitation, setSendingInvitation] = useState("");
   const [securityRoles, setSecurityRoles] = useState<SecurityRoleDefinition[]>([]);
   const [userDirectory, setUserDirectory] = useState<UserDirectoryItem[]>([]);
   const [tenantMemberEmails, setTenantMemberEmails] = useState<string[]>([]);
@@ -231,7 +225,7 @@ export default function MasterDataPage() {
     const selectedTenantId = window.localStorage.getItem("qualisphere_active_tenant_id") || "";
     const { data: memberships, error: membershipError } = await supabase
       .from("tenant_memberships")
-      .select("tenant_id,tenants!inner(status,is_internal)")
+      .select("tenant_id,tenants!inner(status)")
       .ilike("user_email", email)
       .eq("membership_status", "active")
       .eq("tenants.status", "active");
@@ -241,14 +235,6 @@ export default function MasterDataPage() {
       setLoading(false);
       return;
     }
-    const company = Array.isArray(matches[0].tenants) ? matches[0].tenants[0] : matches[0].tenants;
-    if (company?.is_internal !== true) {
-      window.location.replace("/company-administration/master-data");
-      return;
-    }
-    const { data: companyAdmin, error: adminError } = await supabase.rpc("qualisphere_is_company_admin", { p_tenant_id: matches[0].tenant_id });
-    if (adminError) { setTenantError(adminError.message); setLoading(false); return; }
-    setIsCompanyAdministrator(companyAdmin === true);
     setTenantId(matches[0].tenant_id);
     setLoading(false);
   };
@@ -270,7 +256,7 @@ export default function MasterDataPage() {
         .order("user_email")
         .order("role_code"),
       tenantId ? supabase.from("employee_profiles").select("user_email,full_name,manager_email,department").eq("tenant_id", tenantId) : Promise.resolve({ data: [], error: null }),
-      tenantId ? supabase.from("tenant_memberships").select("user_email,membership_role,membership_status").eq("tenant_id", tenantId).in("membership_status", ["active", "invited"]) : Promise.resolve({ data: [], error: null }),
+      tenantId ? supabase.from("tenant_memberships").select("user_email").eq("tenant_id", tenantId).in("membership_status", ["active", "invited"]) : Promise.resolve({ data: [], error: null }),
     ]);
 
     if (roleDefinitionsRes.error) {
@@ -288,7 +274,6 @@ export default function MasterDataPage() {
     const tenantProfileByEmail = new Map(((tenantProfiles || []) as {user_email:string;job_title:string|null;department:string|null;account_status:string|null}[]).map(p => [p.user_email.trim().toLowerCase(), p]));
     const memberEmails = new Set(((membersRes.data || []) as {user_email:string}[]).map(m => m.user_email.trim().toLowerCase()));
     setTenantMemberEmails([...memberEmails]);
-    setCompanyMembers(membersRes.data || []);
     const profileByEmail = new Map(((profilesRes.data || []) as {user_email:string;full_name:string|null;manager_email:string|null;department:string|null}[]).map(p => [p.user_email.toLowerCase(),p]));
     if (usersRes.error) {
       console.warn("Unable to load user directory:", usersRes.error.message);
@@ -329,40 +314,6 @@ export default function MasterDataPage() {
     } else {
       setUserRoleAssignments((assignmentsRes.data as UserRoleAssignment[]) || []);
     }
-  };
-
-  const changeCompanyAdministrator = async (email: string, appoint: boolean) => {
-    if (!isCompanyAdministrator || !email || savingAuthority) return;
-    if (!appoint && !window.confirm(`Remove Company Administrator authority from ${email}? QMS roles and platform authority remain unchanged.`)) return;
-    setSavingAuthority(true);
-    setAdministrationMessage("");
-    try {
-      const {error} = await supabase.rpc("qualisphere_set_company_administrator", {p_tenant_id:tenantId,p_user_email:email,p_is_administrator:appoint});
-      if (error) throw error;
-      if (!appoint && email.toLowerCase() === userEmail.toLowerCase()) { window.location.href="/workspace"; return; }
-      setAdministratorCandidate("");
-      setAdministrationMessage(appoint ? "Company Administrator appointed." : "Company Administrator authority removed.");
-      await fetchUserAdministration();
-    } catch (error) { setAdministrationMessage((error as {message?:string})?.message || "Unable to change company authority."); }
-    finally { setSavingAuthority(false); }
-  };
-
-  const sendInvitation = async (email: string) => {
-    if (!isCompanyAdministrator || sendingInvitation) return;
-    setSendingInvitation(email);
-    setAdministrationMessage("");
-    try {
-      const {data,error} = await supabase.auth.getSession();
-      if (error || !data.session?.access_token) throw new Error("Your session has expired. Please sign in again.");
-      const response = await fetch("/api/company-administration/invite-employee", {
-        method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${data.session.access_token}`},
-        body:JSON.stringify({tenantId,email})
-      });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || "Unable to send invitation.");
-      setAdministrationMessage(result.message);
-    } catch (error) { setAdministrationMessage((error as {message?:string})?.message || "Unable to send invitation."); }
-    finally { setSendingInvitation(""); }
   };
 
   const fetchAll = async () => {
@@ -975,7 +926,6 @@ export default function MasterDataPage() {
   }
 
   if (
-    !isCompanyAdministrator &&
     !userRole?.includes("approver") &&
     !userRole?.includes("vp_quality") &&
     userRole !== "admin" &&
@@ -1235,21 +1185,6 @@ export default function MasterDataPage() {
 
       <div id="user-administration" style={sectionStyle}>
         <h2>User Administration</h2>
-        <div style={{padding:16,border:"1px solid #d1d5db",borderRadius:8,marginBottom:16}}>
-          <h3>Company Administrators</h3>
-          <p>Company authority is separate from QMS module roles and platform administration. Appoint another administrator before removing your own authority.</p>
-          {administrationMessage ? <p role="status">{administrationMessage}</p> : null}
-          <ul>{companyMembers.filter(m=>m.membership_role==="company_admin" && m.membership_status==="active").map(m=><li key={m.user_email}>
-            {m.user_email} {isCompanyAdministrator ? <button disabled={savingAuthority} onClick={()=>changeCompanyAdministrator(m.user_email,false)}>Remove Administrator Authority</button> : null}
-          </li>)}</ul>
-          {isCompanyAdministrator ? <>
-            <select aria-label="Employee to appoint" value={administratorCandidate} onChange={e=>setAdministratorCandidate(e.target.value)}>
-              <option value="">Select active employee</option>
-              {userDirectory.filter(u=>u.account_status==="active" && companyMembers.some(m=>m.user_email.toLowerCase()===u.user_email.toLowerCase() && m.membership_status==="active" && m.membership_role!=="company_admin")).map(u=><option key={u.user_email} value={u.user_email}>{u.full_name || u.user_email} — {u.user_email}</option>)}
-            </select>
-            <button disabled={!administratorCandidate || savingAuthority} onClick={()=>changeCompanyAdministrator(administratorCandidate,true)}>Appoint Company Administrator</button>
-          </> : <p>Only a Company Administrator can delegate company authority or send invitations.</p>}
-        </div>
         <p style={{ color: "#4b5563" }}>
           Job title and department describe the person. Module Access controls what the user may do in QualiSphere. CAPA Owner, CAPA Reviewer, and Task Owner remain record-specific workflow assignments and are not granted here.
         </p>
@@ -1336,7 +1271,7 @@ export default function MasterDataPage() {
                 <th style={{ textAlign: "left", padding: "10px", borderBottom: "1px solid #d1d5db" }}>Department</th>
                 <th style={{ textAlign: "left", padding: "10px", borderBottom: "1px solid #d1d5db" }}>Manager Email</th>
                 <th style={{ textAlign: "left", padding: "10px", borderBottom: "1px solid #d1d5db" }}>Status</th>
-                <th style={{ textAlign: "left", padding: "10px", borderBottom: "1px solid #d1d5db" }}>Company Authority / Module Access</th>
+                <th style={{ textAlign: "left", padding: "10px", borderBottom: "1px solid #d1d5db" }}>Module Access</th>
                 <th style={{ textAlign: "left", padding: "10px", borderBottom: "1px solid #d1d5db" }}>Action</th>
               </tr>
             </thead>
@@ -1360,7 +1295,6 @@ export default function MasterDataPage() {
                         : user.account_status || "Not specified"}
                   </td>
                   <td style={{ padding: "10px", borderBottom: "1px solid #e5e7eb" }}>
-                    <div style={{fontWeight:700,marginBottom:6}}>{companyMembers.some(m=>m.user_email.toLowerCase()===user.user_email.toLowerCase() && m.membership_role==="company_admin" && m.membership_status==="active") ? "Company Administrator" : "Company Member"}</div>
                     {assignmentsForUser(user.user_email).length === 0 ? (
                       <span style={{ color: "#6b7280" }}>No module access assigned</span>
                     ) : (
@@ -1412,12 +1346,6 @@ export default function MasterDataPage() {
                     ) : (
                       <span style={{ color: "#6b7280" }}>—</span>
                     )}
-                    {isCompanyAdministrator ? <button
-                      style={{marginLeft:8}}
-                      disabled={Boolean(sendingInvitation) || user.account_status!=="active" || !companyMembers.some(m=>m.user_email.toLowerCase()===user.user_email.toLowerCase() && m.membership_status==="active")}
-                      onClick={()=>sendInvitation(user.user_email)}>
-                      {sendingInvitation===user.user_email ? "Sending…" : "Send / Resend Invitation"}
-                    </button> : null}
                   </td>
                 </tr>
               ))}
