@@ -11,6 +11,7 @@ export default function AppHeader() {
   const [role, setRole] = useState("");
   const [companyName, setCompanyName] = useState("");
   const [isCompanyAdministrator, setIsCompanyAdministrator] = useState(false);
+  const [internalCompany, setInternalCompany] = useState(false);
 
   const isPlatformContext =
     pathname?.startsWith("/platform-admin") ||
@@ -22,6 +23,7 @@ export default function AppHeader() {
     setEmail(userEmail);
     setCompanyName("");
     setIsCompanyAdministrator(false);
+    setInternalCompany(false);
 
     if (!userEmail) {
       setRole("");
@@ -77,6 +79,7 @@ export default function AppHeader() {
     const tenantId = String(membership.tenant_id || "");
     const tenantName = String(tenant?.company_name || "");
     const isInternalTenant = tenant?.is_internal === true;
+    setInternalCompany(isInternalTenant);
 
     window.localStorage.setItem("qualisphere_active_tenant_id", tenantId);
     window.localStorage.setItem("qualisphere_active_tenant_name", tenantName);
@@ -168,7 +171,7 @@ export default function AppHeader() {
         </a>
 
         {!isPlatformContext && isCompanyAdministrator ? (
-          <a href="/company-administration" style={headerLinkStyle}>
+          <a href={internalCompany ? "/admin/master-data" : "/company-administration"} style={headerLinkStyle}>
             Company Administration
           </a>
         ) : null}
