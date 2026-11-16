@@ -2207,6 +2207,7 @@ export default function EquipmentMasterPage() {
   const releasePackageLocked = record?.record_status === "pending_release" || releaseRequest?.status === "pending";
   const canMaintain=governanceRole==="coordinator" && !releasePackageLocked;
   const canCompleteQualification = canMaintain || (isEquipmentOwner && record?.record_status === "draft" && !releasePackageLocked);
+  const canSubmitRelease = !recordIsReleased && !pendingRelease && (canMaintain || (isEquipmentOwner && record?.record_status === "draft"));
   const serviceReadOnly = releasePackageLocked || !(governanceRole === "coordinator" || (isEquipmentOwner && record?.record_status === "draft"));
   const canLinkDocuments = !releasePackageLocked && (governanceRole==="coordinator" || (isEquipmentOwner && record?.record_status==="draft"));
   const canApproveRelease=enterpriseApprovalAuthority==="equipment_approver"||enterpriseApprovalAuthority==="quality_approver"||enterpriseApprovalAuthority==="admin";
@@ -2216,7 +2217,7 @@ export default function EquipmentMasterPage() {
   const equipmentAccess = canMaintain ? "Coordinator" : isEquipmentOwner ? "Equipment Owner" : "Read Only";
 
   const submitEquipmentForRelease=async()=>{
-    if(!record||!canMaintain)return;
+    if(!record||!canSubmitRelease)return;
     setReleaseMessage("");
     const approver=releaseApproverEmail.trim().toLowerCase();
     const department=releaseDepartment.trim();
@@ -3564,13 +3565,13 @@ export default function EquipmentMasterPage() {
               Department: {releaseRequest?.approver_department||"—"} · Job Title: {releaseRequest?.approver_job_title||"—"} · Approver: {releaseRequest?.approver_email||"—"} · Approve By: {formatDate(releaseRequest?.approve_by_date)}
             </div>
           </div> : null}
-          {canMaintain && !recordIsReleased && !pendingRelease && lifecycleReadiness.some(item=>item.required&&!item.complete) ? (
+          {canSubmitRelease && lifecycleReadiness.some(item=>item.required&&!item.complete) ? (
             <div style={{marginBottom:12,border:"1px solid #fecaca",background:"#fef2f2",color:"#991b1b",borderRadius:10,padding:12,fontSize:13,lineHeight:1.5}}>
               <strong>Release not yet ready:</strong> {lifecycleReadiness.filter(item=>item.required&&!item.complete).map(item=>item.label).join(", ")} must be completed before Equipment Record Release can be submitted. You may still click <strong>Submit Equipment Record for Release</strong> to review the blocking requirement.
             </div>
           ) : null}
 
-          {canMaintain && !recordIsReleased && !pendingRelease ? (
+          {canSubmitRelease ? (
             <div>
               <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:10,alignItems:"end"}}>
                 <EditField label="Department">
