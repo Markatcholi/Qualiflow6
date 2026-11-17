@@ -2235,19 +2235,16 @@ export default function EquipmentMasterPage() {
   const equipmentAccess = canMaintain ? "Coordinator" : isEquipmentOwner ? "Equipment Owner" : "Read Only";
 
   const approverNameForEmail=(email:string|null|undefined)=>approverProfiles.find(item=>item.user_email===String(email||"").toLowerCase())?.full_name||"—";
-  const chooseReleaseApprover=(email:string)=>{
-    const selected=approverProfiles.find(item=>item.user_email===email);
-    setReleaseApproverEmail(selected?.user_email||"");
-    setReleaseEmployeeSearch(selected? `${selected.full_name||selected.user_email} (${selected.user_email})` : "");
-    setReleaseDepartment(selected?.department||"");
-    setReleaseJobTitle(selected?.job_title||"");
-  };
   const submitEquipmentForRelease=async()=>{
     if(!record||!canSubmitRelease)return;
     setReleaseMessage("");
     const approver=releaseApproverEmail.trim().toLowerCase();
-    if(!approverProfiles.some(item=>item.user_email===approver)){
-      setReleaseMessage("Select an active authorized Equipment Approver by employee name."); return;
+    const matchingApprover=approverProfiles.find(item=>item.user_email===approver);
+    if(!matchingApprover){
+      setReleaseMessage("Enter the email address of an active authorized Equipment Approver in this company."); return;
+    }
+    if(!releaseEmployeeSearch.trim() || (matchingApprover.full_name && releaseEmployeeSearch.trim().toLowerCase()!==matchingApprover.full_name.toLowerCase())){
+      setReleaseMessage("Employee Name must match the authorized approver associated with the entered email address."); return;
     }
     const department=releaseDepartment.trim();
     const jobTitle=releaseJobTitle.trim();
@@ -3604,16 +3601,7 @@ export default function EquipmentMasterPage() {
             <div>
               <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:10,alignItems:"end"}}>
                 <EditField label="Employee Name">
-                  <input list="equipment-authorized-employees" value={releaseEmployeeSearch} onChange={e=>{
-                    const value=e.target.value;
-                    setReleaseEmployeeSearch(value);
-                    const selected=approverProfiles.find(item=>value===`${item.full_name||item.user_email} (${item.user_email})`);
-                    if(selected)chooseReleaseApprover(selected.user_email);
-                    else {setReleaseApproverEmail("");setReleaseDepartment("");setReleaseJobTitle("");}
-                  }} placeholder="Search authorized employee name" style={input}/>
-                  <datalist id="equipment-authorized-employees">
-                    {approverProfiles.map(item=><option key={item.user_email} value={`${item.full_name||item.user_email} (${item.user_email})`}/>)}
-                  </datalist>
+                  <input value={releaseEmployeeSearch} onChange={e=>setReleaseEmployeeSearch(e.target.value)} placeholder="Enter employee name" style={input}/>
                 </EditField>
                 <EditField label="Job Title">
                   <input list="equipment-release-job-titles" value={releaseJobTitle} onChange={e=>setReleaseJobTitle(e.target.value)} placeholder="Select or enter job title" style={input}/>
@@ -3624,14 +3612,14 @@ export default function EquipmentMasterPage() {
                   <datalist id="equipment-release-departments">{releaseDepartments.map(item=><option key={item} value={item}/>)}</datalist>
                 </EditField>
                 <EditField label="Email Address">
-                  <input value={releaseApproverEmail} readOnly placeholder="Auto-filled from selected employee" style={{...input,background:"#f1f5f9"}}/>
+                  <input type="email" value={releaseApproverEmail} onChange={e=>setReleaseApproverEmail(e.target.value)} placeholder="Enter approver email address" style={input}/>
                 </EditField>
                 <EditField label="Approve By Date">
                   <input type="date" value={releaseApproveByDate} onChange={e=>setReleaseApproveByDate(e.target.value)} style={input}/>
                 </EditField>
               </div>
               <div style={{fontSize:12,color:"#64748b",marginTop:6}}>
-                Only active, authorized Equipment Approvers from this company can be selected. Email is verified against the selected employee record.
+                Enter the employee name and email manually. Job Title and Department provide selectable suggestions. Submission verifies the email against active, authorized Equipment Approvers in this company.
               </div>
               <div style={{display:"flex",justifyContent:"flex-end",marginTop:10}}>
                 <button
