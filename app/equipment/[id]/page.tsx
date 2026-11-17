@@ -2207,7 +2207,7 @@ export default function EquipmentMasterPage() {
   const releasePackageLocked = record?.record_status === "pending_release" || releaseRequest?.status === "pending";
   const canMaintain=governanceRole==="coordinator" && !releasePackageLocked;
   const canCompleteQualification = canMaintain || (isEquipmentOwner && record?.record_status === "draft" && !releasePackageLocked);
-  const canSubmitRelease = !recordIsReleased && !pendingRelease && (canMaintain || (isEquipmentOwner && record?.record_status === "draft"));
+  const canSubmitRelease = record?.record_status !== "released" && !releasePackageLocked && (canMaintain || (isEquipmentOwner && record?.record_status === "draft"));
   const serviceReadOnly = releasePackageLocked || !(governanceRole === "coordinator" || (isEquipmentOwner && record?.record_status === "draft"));
   const canLinkDocuments = !releasePackageLocked && (governanceRole==="coordinator" || (isEquipmentOwner && record?.record_status==="draft"));
   const canApproveRelease=enterpriseApprovalAuthority==="equipment_approver"||enterpriseApprovalAuthority==="quality_approver"||enterpriseApprovalAuthority==="admin";
