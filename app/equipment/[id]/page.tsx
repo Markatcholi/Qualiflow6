@@ -1909,6 +1909,7 @@ export default function EquipmentMasterPage() {
     const selectedDocs=qualificationForm.qualification_element_documents||{};
 
     if(qualificationForm.status==="released"){
+      if(!qualificationForm.qualification_date){setQualificationMessage("Qualification Date is required when marking equipment Qualified.");return;}
       for(const element of selectedElements){
         const doc=selectedDocs[element.key]||{};
         if(!String(doc.protocol_number||"").trim()){setQualificationMessage(`${element.label} Protocol Number is required before the overall qualification can be marked Qualified.`);return;}
@@ -1952,6 +1953,7 @@ export default function EquipmentMasterPage() {
       const payload:any={
         qualification_type:qualificationForm.qualification_type,
         qualification_basis:qualificationForm.qualification_basis,
+        qualification_date:qualificationForm.qualification_date||null,
         iq_applicable:qualificationForm.iq_applicable,
         oq_applicable:qualificationForm.oq_applicable,
         pq_applicable:qualificationForm.pq_applicable,
@@ -2125,7 +2127,7 @@ export default function EquipmentMasterPage() {
   const oosRecordById=(id:string)=>oosRecords.find(row=>row.id===id)||null;
 
   const linkOosOot=async()=>{
-    if(!record||!canMaintain||!oosModuleEnabled||!selectedOosId)return;
+    if(!record||!canLinkOos||!oosModuleEnabled||!selectedOosId)return;
     setSavingOosLink(true); setOosLinkMessage("");
     try{
       const {error}=await supabase.from("equipment_oos_oot_links").insert({
@@ -2147,7 +2149,7 @@ export default function EquipmentMasterPage() {
   };
 
   const unlinkOosOot=async(link:OosLink)=>{
-    if(!record||!canMaintain||!oosModuleEnabled)return;
+    if(!record||!canLinkOos||!oosModuleEnabled)return;
     const selected=oosRecordById(link.oos_oot_id);
     if(!window.confirm(`Remove the Equipment link to ${selected?.investigation_number||"this OOS/OOT investigation"}? The OOS/OOT record itself will not be changed.`))return;
     setSavingOosLink(true); setOosLinkMessage("");
@@ -2227,7 +2229,8 @@ export default function EquipmentMasterPage() {
   const canCompleteQualification = canMaintain || (isEquipmentOwner && record?.record_status === "draft" && !releasePackageLocked);
   const canSubmitRelease = record?.record_status !== "released" && !releasePackageLocked && (canMaintain || (isEquipmentOwner && record?.record_status === "draft"));
   const serviceReadOnly = releasePackageLocked || !(governanceRole === "coordinator" || (isEquipmentOwner && record?.record_status === "draft"));
-  const canLinkDocuments = !releasePackageLocked && (governanceRole==="coordinator" || (isEquipmentOwner && record?.record_status==="draft"));
+  const canLinkDocuments = !releasePackageLocked && (governanceRole==="coordinator" || isEquipmentOwner);
+  const canLinkOos = !releasePackageLocked && (governanceRole==="coordinator" || isEquipmentOwner);
   const canApproveRelease=enterpriseApprovalAuthority==="equipment_approver"||enterpriseApprovalAuthority==="quality_approver"||enterpriseApprovalAuthority==="admin";
   const recordIsReleased=record?.record_status==="released";
   const pendingRelease=releasePackageLocked;
@@ -3243,6 +3246,9 @@ export default function EquipmentMasterPage() {
                   <option value="cancelled">Cancelled</option>
                 </select>
               </EditField>
+              <EditField label="Qualification Date">
+                <input type="date" value={qualificationForm.qualification_date} onChange={e=>setQualificationForm({...qualificationForm,qualification_date:e.target.value})} style={input}/>
+              </EditField>
               <EditField label="Qualification Owner">
                 <input value={qualificationForm.owner_email} onChange={e=>setQualificationForm({...qualificationForm,owner_email:e.target.value})} style={input}/>
               </EditField>
@@ -3566,7 +3572,7 @@ export default function EquipmentMasterPage() {
               <table style={{width:"100%",borderCollapse:"collapse"}}>
                 <thead>
                   <tr>
-                    {["Employee Name","Email Address","Job Title","Department","Status","Due Date","Approval / Decision Date","Comment"].map(label=><th key={label} style={{...tdMini,fontWeight:800,textAlign:"left",background:"#f8fafc"}}>{label}</th>)}
+                    {["Employee Name","Email Address","Job Title","Department","Status",...(releaseRequest.status==="pending"?["Due Date"]:[]),releaseRequest.status==="rejected"?"Decision Date":"Approval Date","Comment"].map(label=><th key={label} style={{...tdMini,fontWeight:800,textAlign:"left",background:"#f8fafc"}}>{label}</th>)}
                   </tr>
                 </thead>
                 <tbody>
@@ -3576,7 +3582,7 @@ export default function EquipmentMasterPage() {
                     <td style={tdMini}>{releaseRequest.approver_job_title||"—"}</td>
                     <td style={tdMini}>{releaseRequest.approver_department||"—"}</td>
                     <td style={tdMini}>{releaseRequest.status==="approved"?"Approved / Released":releaseRequest.status==="rejected"?"Rejected / Returned":"Pending"}</td>
-                    <td style={tdMini}>{releaseRequest.status==="pending"?formatDate(releaseRequest.approve_by_date):"—"}</td>
+                    {releaseRequest.status==="pending"?<td style={tdMini}>{formatDate(releaseRequest.approve_by_date)}</td>:null}
                     <td style={tdMini}>{releaseRequest.status==="pending"?"—":formatDateTime(releaseRequest.decision_at)}</td>
                     <td style={tdMini}>{releaseRequest.decision_comment||"—"}</td>
                   </tr>
@@ -3895,7 +3901,7 @@ export default function EquipmentMasterPage() {
           <SectionHeader
             title="9. OOS / OOT — Optional"
             subtitle="Link an existing OOS/OOT investigation when an equipment-related exception requires formal investigation. This relationship is optional and does not block Equipment Record Release."
-            action={canMaintain ? (
+            action={canLinkOos ? (
               <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                 <Link href="/oos-oot" style={secondaryButton}>Open OOS/OOT Module</Link>
                 <button type="button" style={showOosLinkForm?secondaryButton:primaryButton} onClick={()=>{setShowOosLinkForm(v=>!v);setOosLinkMessage("");setSelectedOosId("");setOosSearch("");}}>
@@ -3905,7 +3911,7 @@ export default function EquipmentMasterPage() {
             ) : <Link href="/oos-oot" style={secondaryButton}>Open OOS/OOT Module</Link>}
           />
 
-          {showOosLinkForm && canMaintain ? (
+          {showOosLinkForm && canLinkOos ? (
             <div style={{border:"1px solid #bfdbfe",background:"#f8fbff",borderRadius:12,padding:16,marginBottom:16}}>
               <h3 style={{margin:"0 0 5px"}}>Link Existing OOS/OOT Investigation</h3>
               <p style={{margin:"0 0 12px",color:"#64748b",fontSize:13,lineHeight:1.5}}>
@@ -3948,7 +3954,7 @@ export default function EquipmentMasterPage() {
                   <td style={tdMini}>{formatDateTime(link.linked_at)}</td>
                   <td style={tdMini}><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                     <Link href={`/oos-oot/${link.oos_oot_id}`} style={secondaryButton}>Open Investigation</Link>
-                    {canMaintain?<button type="button" style={secondaryButton} disabled={savingOosLink} onClick={()=>unlinkOosOot(link)}>Remove Link</button>:null}
+                    {canLinkOos?<button type="button" style={secondaryButton} disabled={savingOosLink} onClick={()=>unlinkOosOot(link)}>Remove Link</button>:null}
                   </div></td>
                 </tr>})}</tbody>
               </table>
