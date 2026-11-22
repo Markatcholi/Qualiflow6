@@ -568,7 +568,7 @@ export default function EquipmentMasterPage() {
       .filter(Number.isFinite)
       .sort((a:number,b:number)=>b-a);
 
-    setPmReminderDays(days.length?days:[30,17,7,1]);
+    setPmReminderDays(days);
   };
 
   const load = async () => {
