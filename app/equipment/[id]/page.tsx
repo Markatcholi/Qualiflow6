@@ -344,7 +344,7 @@ export default function EquipmentMasterPage() {
     procedure_revision: "",
     overdue_use_action: "notification_only",
   });
-  const [calibrationReminderDays, setCalibrationReminderDays] = useState<number[]>([30, 14, 7, 3, 1, 0]);
+  const [calibrationReminderDays, setCalibrationReminderDays] = useState<number[]>([30, 17, 7, 1]);
 
   const [showCalibrationEvent,setShowCalibrationEvent]=useState(false);
   const [savingCalibrationEvent,setSavingCalibrationEvent]=useState(false);
@@ -389,7 +389,7 @@ export default function EquipmentMasterPage() {
     procedure_revision:"",
     overdue_use_action:"notification_only"
   });
-  const [pmReminderDays,setPmReminderDays]=useState<number[]>([30,14,7,3,1,0]);
+  const [pmReminderDays,setPmReminderDays]=useState<number[]>([30,17,7,1]);
 
   const [showMaintenanceEvent,setShowMaintenanceEvent]=useState(false);
   const [savingMaintenanceEvent,setSavingMaintenanceEvent]=useState(false);
@@ -496,7 +496,7 @@ export default function EquipmentMasterPage() {
   const loadCalibrationConfiguration = async (scheduleRows: Schedule[]) => {
     const existing = scheduleRows.find((item) => item.activity_type === "calibration" && item.is_active);
     if (!existing) {
-      setCalibrationReminderDays([30,14,7,3,1,0]);
+      setCalibrationReminderDays([30,17,7,1]);
       return;
     }
 
@@ -525,7 +525,7 @@ export default function EquipmentMasterPage() {
       .eq("is_enabled", true);
 
     const days = (data || []).map((row:any)=>Number(row.days_before_due)).filter(Number.isFinite).sort((a:number,b:number)=>b-a);
-    setCalibrationReminderDays(days.length ? days : [30,14,7,3,1,0]);
+    setCalibrationReminderDays(days);
   };
 
 
@@ -535,7 +535,7 @@ export default function EquipmentMasterPage() {
     );
 
     if (!existing) {
-      setPmReminderDays([30,14,7,3,1,0]);
+      setPmReminderDays([30,17,7,1]);
       return;
     }
 
@@ -568,7 +568,7 @@ export default function EquipmentMasterPage() {
       .filter(Number.isFinite)
       .sort((a:number,b:number)=>b-a);
 
-    setPmReminderDays(days.length?days:[30,14,7,3,1,0]);
+    setPmReminderDays(days.length?days:[30,17,7,1]);
   };
 
   const load = async () => {
@@ -2687,7 +2687,7 @@ export default function EquipmentMasterPage() {
 
             {calibrationConfig.schedule_mode==="flexible" ? <div style={{marginTop:14,border:"1px solid #bfdbfe",background:"#eff6ff",borderRadius:10,padding:12,color:"#1e3a8a",fontSize:13,lineHeight:1.5}}><strong>Flexible Scheduling:</strong> QualiSphere stores the allowable window, equipment family, and capacity rules so future fleet-balancing logic can distribute equivalent equipment without exceeding the Hard Due Date.</div> : null}
 
-            <div style={{marginTop:18}}><div style={fieldLabel}>Calibration Notifications</div><div style={{color:"#64748b",fontSize:13,marginBottom:8}}>Progressive reminders to the equipment owner.</div><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{[30,14,7,3,1,0].map(day=>{const selected=calibrationReminderDays.includes(day);return <label key={day} style={{display:"inline-flex",alignItems:"center",gap:6,border:selected?"1px solid #86efac":"1px solid #cbd5e1",background:selected?"#f0fdf4":"#fff",borderRadius:999,padding:"6px 10px",cursor:"pointer",fontSize:13,fontWeight:700}}><input type="checkbox" checked={selected} onChange={()=>toggleCalibrationReminder(day)}/>{day===0?"Due Date":`${day} Days`}</label>})}</div></div>
+            <div style={{marginTop:18}}><div style={fieldLabel}>Calibration Notifications</div><div style={{color:"#64748b",fontSize:13,marginBottom:8}}>Optional reminders to the Equipment Owner and Equipment Coordinators. Uncheck all to disable notifications; overdue-use action is separate.</div><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{[30,17,14,7,3,1,0].map(day=>{const selected=calibrationReminderDays.includes(day);return <label key={day} style={{display:"inline-flex",alignItems:"center",gap:6,border:selected?"1px solid #86efac":"1px solid #cbd5e1",background:selected?"#f0fdf4":"#fff",borderRadius:999,padding:"6px 10px",cursor:"pointer",fontSize:13,fontWeight:700}}><input type="checkbox" checked={selected} onChange={()=>toggleCalibrationReminder(day)}/>{day===0?"Due Date":`${day} Days`}</label>})}</div></div>
 
             {calibrationConfigMessage ? <div style={{marginTop:14,border:calibrationConfigMessage.includes("saved")?"1px solid #86efac":"1px solid #fecaca",background:calibrationConfigMessage.includes("saved")?"#f0fdf4":"#fef2f2",color:calibrationConfigMessage.includes("saved")?"#166534":"#991b1b",borderRadius:10,padding:10}}>{calibrationConfigMessage}</div> : null}
 
@@ -2888,9 +2888,9 @@ export default function EquipmentMasterPage() {
 
             <div style={{marginTop:18}}>
               <div style={fieldLabel}>Preventive Maintenance Notifications</div>
-              <div style={{color:"#64748b",fontSize:13,marginBottom:8}}>Progressive reminders to the equipment owner.</div>
+              <div style={{color:"#64748b",fontSize:13,marginBottom:8}}>Optional reminders to the Equipment Owner and Equipment Coordinators. Uncheck all to disable notifications; overdue-use action is separate.</div>
               <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                {[30,14,7,3,1,0].map(day=>{
+                {[30,17,14,7,3,1,0].map(day=>{
                   const selected=pmReminderDays.includes(day);
                   return (
                     <label key={day} style={{display:"inline-flex",alignItems:"center",gap:6,border:selected?"1px solid #86efac":"1px solid #cbd5e1",background:selected?"#f0fdf4":"#fff",borderRadius:999,padding:"6px 10px",cursor:"pointer",fontSize:13,fontWeight:700}}>
