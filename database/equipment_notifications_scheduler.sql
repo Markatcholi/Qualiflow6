@@ -81,6 +81,7 @@ begin
 end;
 $fn$;
 revoke all on function public.qualisphere_equipment_daily_notifications() from public, anon, authenticated;
--- Deployment: schedule daily under the privileged postgres role only after Sandbox validation.
--- select cron.schedule('qualisphere-equipment-daily','30 6 * * *',
---   'select public.qualisphere_equipment_daily_notifications();');
+-- Schedule daily under the privileged postgres role. Apply in each environment after review.
+create extension if not exists pg_cron with schema pg_catalog;
+select cron.schedule('qualisphere-equipment-daily','30 6 * * *',
+  'select public.qualisphere_equipment_daily_notifications();');
