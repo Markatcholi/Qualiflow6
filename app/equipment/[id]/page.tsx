@@ -342,7 +342,7 @@ export default function EquipmentMasterPage() {
     provider_name: "",
     procedure_document_number: "",
     procedure_revision: "",
-    overdue_use_action: "notification_only",
+    overdue_use_action: "conditional_use",
   });
   const [calibrationReminderDays, setCalibrationReminderDays] = useState<number[]>([30, 17, 7, 1]);
 
@@ -387,7 +387,7 @@ export default function EquipmentMasterPage() {
     provider_name:"",
     procedure_document_number:"",
     procedure_revision:"",
-    overdue_use_action:"notification_only"
+    overdue_use_action:"conditional_use"
   });
   const [pmReminderDays,setPmReminderDays]=useState<number[]>([30,17,7,1]);
 
@@ -515,7 +515,7 @@ export default function EquipmentMasterPage() {
       provider_name: existing.provider_name || "",
       procedure_document_number: existing.procedure_document_number || "",
       procedure_revision: existing.procedure_revision || "",
-      overdue_use_action: existing.overdue_use_action || "notification_only",
+      overdue_use_action: (existing.overdue_use_action === "notification_only" ? "conditional_use" : existing.overdue_use_action || "conditional_use"),
     });
 
     const { data } = await supabase
@@ -554,7 +554,7 @@ export default function EquipmentMasterPage() {
       provider_name:existing.provider_name||"",
       procedure_document_number:existing.procedure_document_number||"",
       procedure_revision:existing.procedure_revision||"",
-      overdue_use_action:existing.overdue_use_action||"notification_only"
+      overdue_use_action:(existing.overdue_use_action==="notification_only"?"conditional_use":existing.overdue_use_action||"conditional_use")
     });
 
     const {data}=await supabase
@@ -2671,7 +2671,7 @@ export default function EquipmentMasterPage() {
             <div style={formGridStyle}>
               <EditField label="Frequency"><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}><input type="number" min="1" value={calibrationConfig.frequency_value} onChange={e=>setCalibrationConfig({...calibrationConfig,frequency_value:e.target.value})} style={input}/><select value={calibrationConfig.frequency_unit} onChange={e=>setCalibrationConfig({...calibrationConfig,frequency_unit:e.target.value})} style={input}><option value="days">Days</option><option value="weeks">Weeks</option><option value="months">Months</option><option value="years">Years</option></select></div></EditField>
               <EditField label="Schedule Type"><select value={calibrationConfig.schedule_mode} onChange={e=>setCalibrationConfig({...calibrationConfig,schedule_mode:e.target.value})} style={input}><option value="fixed">Fixed</option><option value="flexible">Flexible</option></select></EditField>
-              <EditField label="Overdue Use Action"><select value={calibrationConfig.overdue_use_action} onChange={e=>setCalibrationConfig({...calibrationConfig,overdue_use_action:e.target.value})} style={input}><option value="notification_only">Notification Only</option><option value="restricted">Restricted</option><option value="out_of_service">Out of Service</option></select></EditField>
+              <EditField label="Overdue Use Action"><select value={calibrationConfig.overdue_use_action} onChange={e=>setCalibrationConfig({...calibrationConfig,overdue_use_action:e.target.value})} style={input}><option value="restricted">Restricted</option><option value="out_of_service">Out for Service</option><option value="conditional_use">Conditional Use</option></select></EditField>
 
               {calibrationConfig.schedule_mode==="flexible" ? <>
                 <EditField label="Early Window (Days)"><input type="number" min="0" value={calibrationConfig.early_window_days} onChange={e=>setCalibrationConfig({...calibrationConfig,early_window_days:e.target.value})} style={input}/></EditField>
