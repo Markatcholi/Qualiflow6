@@ -2841,9 +2841,9 @@ export default function EquipmentMasterPage() {
               </div>
               <EditField label="Overdue Use Action">
                 <select value={pmConfig.overdue_use_action} onChange={e=>setPmConfig({...pmConfig,overdue_use_action:e.target.value})} style={input}>
-                  <option value="notification_only">Notification Only</option>
                   <option value="restricted">Restricted</option>
-                  <option value="out_of_service">Out of Service</option>
+                  <option value="out_of_service">Out for Service</option>
+                  <option value="conditional_use">Conditional Use</option>
                 </select>
               </EditField>
 
