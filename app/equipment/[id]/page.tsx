@@ -515,7 +515,7 @@ export default function EquipmentMasterPage() {
       provider_name: existing.provider_name || "",
       procedure_document_number: existing.procedure_document_number || "",
       procedure_revision: existing.procedure_revision || "",
-      overdue_use_action: (existing.overdue_use_action === "notification_only" ? "conditional_use" : existing.overdue_use_action || "conditional_use"),
+      overdue_use_action: (existing.overdue_use_action || "conditional_use"),
     });
 
     const { data } = await supabase
@@ -554,7 +554,7 @@ export default function EquipmentMasterPage() {
       provider_name:existing.provider_name||"",
       procedure_document_number:existing.procedure_document_number||"",
       procedure_revision:existing.procedure_revision||"",
-      overdue_use_action:(existing.overdue_use_action==="notification_only"?"conditional_use":existing.overdue_use_action||"conditional_use")
+      overdue_use_action:(existing.overdue_use_action||"conditional_use")
     });
 
     const {data}=await supabase
