@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
       const { data: completed, error: eventError } = await db.from(eventsTable)
         .select("id").eq("tenant_id", schedule.tenant_id).eq("equipment_id", schedule.equipment_id)
         .eq("status", "completed").not("performed_date", "is", null)
-        .gte("performed_date", schedule.nominal_due_date).limit(1);
+        .eq("nominal_due_date", schedule.nominal_due_date).limit(1);
       if (eventError) return NextResponse.json({ error: "Unable to verify Equipment completion" }, { status: 500 });
       if (completed?.length) { skipped++; continue; }
       const { data: equipment, error: equipmentError } = await db.from("equipment")
@@ -70,7 +70,7 @@ export async function GET(request: NextRequest) {
       const { error: insertError } = await db.from("notifications").insert({
         user_email: email.toLowerCase(),
         title: `Equipment ${schedule.activity_type === "calibration" ? "calibration" : "maintenance"} reminder: ${equipment.equipment_number}`,
-        message: `${equipment.equipment_name || equipment.equipment_number} is due for ${schedule.activity_type === "calibration" ? "calibration" : "preventive maintenance"} on ${schedule.nominal_due_date}.`,
+        message: `${equipment.equipment_name || equipment.equipment_number} ${remaining < 0 ? "was due" : "is due"} for ${schedule.activity_type === "calibration" ? "calibration" : "preventive maintenance"} on ${schedule.nominal_due_date}.`,
         related_module: "equipment", related_record_id: equipment.id, related_url: `/equipment/${equipment.id}`,
         notification_type: "equipment_schedule_reminder", created_by: "equipment_scheduler",
         deduplication_key: keyPart, delivery_status: emailEnabled ? "pending" : "not_required",
