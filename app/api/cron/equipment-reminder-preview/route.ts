@@ -67,15 +67,16 @@ export async function GET(request: NextRequest) {
       if (!enabled) continue;
       const keyPart = [schedule.tenant_id, schedule.id, schedule.nominal_due_date, rule.days_before_due, email.toLowerCase()].join(":");
       const emailEnabled = rule.notification_type === "both" || rule.notification_type === "email";
-      const { error: insertError } = await db.from("notifications").upsert({
+      const { error: insertError } = await db.from("notifications").insert({
         user_email: email.toLowerCase(),
         title: `Equipment ${schedule.activity_type === "calibration" ? "calibration" : "maintenance"} reminder: ${equipment.equipment_number}`,
         message: `${equipment.equipment_name || equipment.equipment_number} is due for ${schedule.activity_type === "calibration" ? "calibration" : "preventive maintenance"} on ${schedule.nominal_due_date}.`,
         related_module: "equipment", related_record_id: equipment.id, related_url: `/equipment/${equipment.id}`,
         notification_type: "equipment_schedule_reminder", created_by: "equipment_scheduler",
         deduplication_key: keyPart, delivery_status: emailEnabled ? "pending" : "not_required",
-      }, { onConflict: "deduplication_key", ignoreDuplicates: true });
-      if (insertError) return NextResponse.json({ error: "Unable to queue Equipment reminder" }, { status: 500 });
+      });
+      if (insertError && insertError.code !== "23505") return NextResponse.json({ error: "Unable to queue Equipment reminder" }, { status: 500 });
+      if (insertError?.code === "23505") { skipped++; continue; }
       created++;
     }
     if (schedules.length < 200) break;
