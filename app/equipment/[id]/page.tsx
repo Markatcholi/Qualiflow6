@@ -578,8 +578,14 @@ export default function EquipmentMasterPage() {
     setLoadError("");
 
     try {
-      const {data:userData}=await supabase.auth.getUser();
-      const userEmail=(userData?.user?.email||"").toLowerCase();
+      // Email deep links may open in a browser without an authenticated session.
+      // Never request tenant-protected Equipment data until authentication succeeds.
+      const { data: userData, error: authError } = await supabase.auth.getUser();
+      if (authError || !userData?.user) {
+        window.location.replace("/login");
+        return;
+      }
+      const userEmail = (userData.user.email || "").toLowerCase();
       setCurrentUserEmail(userEmail);
 
       const [
@@ -635,7 +641,13 @@ export default function EquipmentMasterPage() {
           .order("created_at", { ascending: false }),
       ]);
 
-      if (equipmentRes.error) throw new Error(equipmentRes.error.message);
+      if (equipmentRes.error) {
+        if (equipmentRes.error.code === "42501" || /permission denied/i.test(equipmentRes.error.message)) {
+          throw new Error("Access denied. You do not have permission to view this Equipment record.");
+        }
+        throw new Error(equipmentRes.error.message);
+      }
+      if (!equipmentRes.data) throw new Error("Equipment record not found or unavailable to your company.");
 
       const eq = equipmentRes.data as EquipmentRecord;
       setRecord(eq);
