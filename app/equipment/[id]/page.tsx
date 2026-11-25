@@ -877,6 +877,7 @@ export default function EquipmentMasterPage() {
   };
 
   const saveCalibrationConfiguration = async () => {
+    if (calibrationRecipient === "specific_user" && !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(calibrationRecipientEmail.trim())) { setCalibrationConfigMessage("Enter a valid recipient email."); return; }
     if (record?.record_status !== "draft" && governanceRole !== "coordinator") return;
     if (record?.record_status === "pending_release" || releaseRequest?.status === "pending") return;
     if (!record) return;
@@ -1196,6 +1197,7 @@ export default function EquipmentMasterPage() {
   };
 
   const savePmConfiguration=async()=>{
+    if (pmRecipient === "specific_user" && !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(pmRecipientEmail.trim())) { setPmConfigMessage("Enter a valid recipient email."); return; }
     if (record?.record_status !== "draft" && governanceRole !== "coordinator") return;
     if (record?.record_status === "pending_release" || releaseRequest?.status === "pending") return;
     if(!record)return;
