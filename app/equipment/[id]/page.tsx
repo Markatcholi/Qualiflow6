@@ -345,6 +345,9 @@ export default function EquipmentMasterPage() {
     overdue_use_action: "conditional_use",
   });
   const [calibrationReminderDays, setCalibrationReminderDays] = useState<number[]>([30, 17, 7, 1]);
+  const [calibrationRecipient, setCalibrationRecipient] = useState<"owner" | "specific_user">("owner");
+  const [calibrationRecipientEmail, setCalibrationRecipientEmail] = useState("");
+  const [calibrationDelivery, setCalibrationDelivery] = useState<"in_app" | "email" | "both">("both");
 
   const [showCalibrationEvent,setShowCalibrationEvent]=useState(false);
   const [savingCalibrationEvent,setSavingCalibrationEvent]=useState(false);
@@ -390,6 +393,9 @@ export default function EquipmentMasterPage() {
     overdue_use_action:"conditional_use"
   });
   const [pmReminderDays,setPmReminderDays]=useState<number[]>([30,17,7,1]);
+  const [pmRecipient, setPmRecipient] = useState<"owner" | "specific_user">("owner");
+  const [pmRecipientEmail, setPmRecipientEmail] = useState("");
+  const [pmDelivery, setPmDelivery] = useState<"in_app" | "email" | "both">("both");
 
   const [showMaintenanceEvent,setShowMaintenanceEvent]=useState(false);
   const [savingMaintenanceEvent,setSavingMaintenanceEvent]=useState(false);
@@ -520,12 +526,14 @@ export default function EquipmentMasterPage() {
 
     const { data } = await supabase
       .from("equipment_schedule_notifications")
-      .select("days_before_due,is_enabled")
+      .select("days_before_due,is_enabled,recipient_type,recipient_email,notification_type")
       .eq("schedule_configuration_id", existing.id)
       .eq("is_enabled", true);
 
     const days = (data || []).map((row:any)=>Number(row.days_before_due)).filter(Number.isFinite).sort((a:number,b:number)=>b-a);
     setCalibrationReminderDays(days);
+    const first = (data || [])[0];
+    if (first) { setCalibrationRecipient(first.recipient_type === "specific_user" ? "specific_user" : "owner"); setCalibrationRecipientEmail(first.recipient_email || ""); setCalibrationDelivery(first.notification_type || "both"); }
   };
 
 
@@ -559,7 +567,7 @@ export default function EquipmentMasterPage() {
 
     const {data}=await supabase
       .from("equipment_schedule_notifications")
-      .select("days_before_due,is_enabled")
+      .select("days_before_due,is_enabled,recipient_type,recipient_email,notification_type")
       .eq("schedule_configuration_id",existing.id)
       .eq("is_enabled",true);
 
@@ -569,6 +577,8 @@ export default function EquipmentMasterPage() {
       .sort((a:number,b:number)=>b-a);
 
     setPmReminderDays(days);
+    const first = (data || [])[0];
+    if (first) { setPmRecipient(first.recipient_type === "specific_user" ? "specific_user" : "owner"); setPmRecipientEmail(first.recipient_email || ""); setPmDelivery(first.notification_type || "both"); }
   };
 
   const load = async () => {
@@ -909,7 +919,7 @@ export default function EquipmentMasterPage() {
       const { error:delError } = await supabase.from("equipment_schedule_notifications").delete().eq("schedule_configuration_id",scheduleId);
       if (delError) throw new Error(delError.message);
       if (calibrationReminderDays.length) {
-        const rows = calibrationReminderDays.map((day)=>({tenant_id:record.tenant_id,schedule_configuration_id:scheduleId,days_before_due:day,is_enabled:true,recipient_type:"owner",recipient_email:null,notification_type:"both",created_by:email}));
+        const rows = calibrationReminderDays.map((day)=>({tenant_id:record.tenant_id,schedule_configuration_id:scheduleId,days_before_due:day,is_enabled:true,recipient_type:calibrationRecipient,recipient_email:calibrationRecipient === "specific_user" ? calibrationRecipientEmail.trim() : null,notification_type:calibrationDelivery,created_by:email}));
         const { error } = await supabase.from("equipment_schedule_notifications").insert(rows);
         if (error) throw new Error(error.message);
       }
@@ -1259,9 +1269,9 @@ export default function EquipmentMasterPage() {
           schedule_configuration_id:scheduleId,
           days_before_due:day,
           is_enabled:true,
-          recipient_type:"owner",
-          recipient_email:null,
-          notification_type:"both",
+          recipient_type:pmRecipient,
+          recipient_email:pmRecipient === "specific_user" ? pmRecipientEmail.trim() : null,
+          notification_type:pmDelivery,
           created_by:email
         }));
 
@@ -2699,7 +2709,7 @@ export default function EquipmentMasterPage() {
 
             {calibrationConfig.schedule_mode==="flexible" ? <div style={{marginTop:14,border:"1px solid #bfdbfe",background:"#eff6ff",borderRadius:10,padding:12,color:"#1e3a8a",fontSize:13,lineHeight:1.5}}><strong>Flexible Scheduling:</strong> QualiSphere stores the allowable window, equipment family, and capacity rules so future fleet-balancing logic can distribute equivalent equipment without exceeding the Hard Due Date.</div> : null}
 
-            <div style={{marginTop:18}}><div style={fieldLabel}>Calibration Notifications</div><div style={{color:"#64748b",fontSize:13,marginBottom:8}}>Optional reminders to the Equipment Owner and Equipment Coordinators. Uncheck all to disable notifications; overdue-use action is separate.</div><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{[30,17,14,7,3,1,0].map(day=>{const selected=calibrationReminderDays.includes(day);return <label key={day} style={{display:"inline-flex",alignItems:"center",gap:6,border:selected?"1px solid #86efac":"1px solid #cbd5e1",background:selected?"#f0fdf4":"#fff",borderRadius:999,padding:"6px 10px",cursor:"pointer",fontSize:13,fontWeight:700}}><input type="checkbox" checked={selected} onChange={()=>toggleCalibrationReminder(day)}/>{day===0?"Due Date":`${day} Days`}</label>})}</div></div>
+            <div style={{marginTop:18}}><div style={fieldLabel}>Calibration Notifications</div><div style={{color:"#64748b",fontSize:13,marginBottom:8}}>Optional reminders to the Equipment Owner and Equipment Coordinators. Uncheck all to disable notifications; overdue-use action is separate.</div><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{[30,17,14,7,3,1,0,-1,-3,-7,-14].map(day=>{const selected=calibrationReminderDays.includes(day);return <label key={day} style={{display:"inline-flex",alignItems:"center",gap:6,border:selected?"1px solid #86efac":"1px solid #cbd5e1",background:selected?"#f0fdf4":"#fff",borderRadius:999,padding:"6px 10px",cursor:"pointer",fontSize:13,fontWeight:700}}><input type="checkbox" checked={selected} onChange={()=>toggleCalibrationReminder(day)}/>{day===0?"Due Date":day<0?`${Math.abs(day)} Days Overdue`:`${day} Days Before`}</label>})}</div><div style={{display:"flex",gap:12,flexWrap:"wrap",marginTop:12,alignItems:"center"}}><label>Recipient <select value={calibrationRecipient} onChange={e=>setCalibrationRecipient(e.target.value as "owner"|"specific_user")}><option value="owner">Equipment Owner</option><option value="specific_user">Specific Equipment Coordinator / User</option></select></label>{calibrationRecipient==="specific_user"?<label>Email <input type="email" required value={calibrationRecipientEmail} onChange={e=>setCalibrationRecipientEmail(e.target.value)} placeholder="Coordinator email"/></label>:null}<label>Delivery <select value={calibrationDelivery} onChange={e=>setCalibrationDelivery(e.target.value as "in_app"|"email"|"both")}><option value="both">Workspace and Email</option><option value="in_app">Workspace only</option><option value="email">Email only</option></select></label></div></div>
 
             {calibrationConfigMessage ? <div style={{marginTop:14,border:calibrationConfigMessage.includes("saved")?"1px solid #86efac":"1px solid #fecaca",background:calibrationConfigMessage.includes("saved")?"#f0fdf4":"#fef2f2",color:calibrationConfigMessage.includes("saved")?"#166534":"#991b1b",borderRadius:10,padding:10}}>{calibrationConfigMessage}</div> : null}
 
@@ -2902,12 +2912,12 @@ export default function EquipmentMasterPage() {
               <div style={fieldLabel}>Preventive Maintenance Notifications</div>
               <div style={{color:"#64748b",fontSize:13,marginBottom:8}}>Optional reminders to the Equipment Owner and Equipment Coordinators. Uncheck all to disable notifications; overdue-use action is separate.</div>
               <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                {[30,17,14,7,3,1,0].map(day=>{
+                {[30,17,14,7,3,1,0,-1,-3,-7,-14].map(day=>{
                   const selected=pmReminderDays.includes(day);
                   return (
                     <label key={day} style={{display:"inline-flex",alignItems:"center",gap:6,border:selected?"1px solid #86efac":"1px solid #cbd5e1",background:selected?"#f0fdf4":"#fff",borderRadius:999,padding:"6px 10px",cursor:"pointer",fontSize:13,fontWeight:700}}>
                       <input type="checkbox" checked={selected} onChange={()=>togglePmReminder(day)}/>
-                      {day===0?"Due Date":`${day} Days`}
+                      {day===0?"Due Date":day<0?`${Math.abs(day)} Days Overdue`:`${day} Days Before`}
                     </label>
                   );
                 })}
