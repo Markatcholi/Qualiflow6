@@ -1,6 +1,10 @@
 {
   "crons": [
     {
+      "path": "/api/cron/equipment-reminder-preview",
+      "schedule": "45 6 * * *"
+    },
+    {
       "path": "/api/cron/equipment-reminder-email",
       "schedule": "0 7 * * *"
     }
