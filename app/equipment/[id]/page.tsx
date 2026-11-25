@@ -2923,8 +2923,8 @@ export default function EquipmentMasterPage() {
                     </label>
                   );
                 })}
-              <div style={{display:"flex",gap:12,flexWrap:"wrap",marginTop:12,alignItems:"center"}}><label>Recipient <select value={pmRecipient} onChange={e=>setPmRecipient(e.target.value as "owner"|"specific_user")}><option value="owner">Equipment Owner</option><option value="specific_user">Specific Equipment Coordinator / User</option></select></label>{pmRecipient==="specific_user"?<label>Email <input type="email" required value={pmRecipientEmail} onChange={e=>setPmRecipientEmail(e.target.value)} placeholder="Coordinator email"/></label>:null}<label>Delivery <select value={pmDelivery} onChange={e=>setPmDelivery(e.target.value as "in_app"|"email"|"both")}><option value="both">Workspace and Email</option><option value="in_app">Workspace only</option><option value="email">Email only</option></select></label></div>
               </div>
+              <div style={{display:"flex",gap:12,flexWrap:"wrap",marginTop:12,alignItems:"center"}}><label>Recipient <select value={pmRecipient} onChange={e=>setPmRecipient(e.target.value as "owner"|"specific_user")}><option value="owner">Equipment Owner</option><option value="specific_user">Specific Equipment Coordinator / User</option></select></label>{pmRecipient==="specific_user"?<label>Email <input type="email" required value={pmRecipientEmail} onChange={e=>setPmRecipientEmail(e.target.value)} placeholder="Coordinator email"/></label>:null}<label>Delivery <select value={pmDelivery} onChange={e=>setPmDelivery(e.target.value as "in_app"|"email"|"both")}><option value="both">Workspace and Email</option><option value="in_app">Workspace only</option><option value="email">Email only</option></select></label></div>
             </div>
 
             {pmConfigMessage ? (
