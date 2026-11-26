@@ -12,6 +12,7 @@ type Recipient = Omit<ReminderRule, "days_before_due"> & { days: number[] };
 const offsets = [30, 17, 14, 7, 3, 1, 0, -1, -3, -7, -14];
 export const defaultRecipients: Recipient[] = [
   { recipient_type: "owner", recipient_email: null, notification_type: "both", days: [30, 17, 7, 1] },
+  { recipient_type: "coordinator", recipient_email: null, notification_type: "both", days: [30, 17, 7, 1] },
 ];
 
 export function groupRecipients(rules: ReminderRule[]): Recipient[] {
@@ -47,6 +48,8 @@ export function ReminderRecipients({ employeeEmails, recipients, onChange }: {
   onChange: (recipients: Recipient[]) => void;
 }) {
   const employeeListId = useId();
+  const selectedDays = [...new Set(recipients.flatMap(recipient => recipient.days))];
+  const days = [...new Set([...offsets, ...selectedDays])].sort((a, b) => b - a);
   return (
     <div style={{ marginTop: 18 }}>
       <datalist id={employeeListId}>
@@ -56,7 +59,6 @@ export function ReminderRecipients({ employeeEmails, recipients, onChange }: {
       {recipients.map((recipient, index) => {
         const update = (changes: Partial<Recipient>) =>
           onChange(recipients.map((row, position) => position === index ? { ...row, ...changes } : row));
-        const days = [...new Set([...offsets, ...recipient.days])].sort((a, b) => b - a);
         return (
           <fieldset key={index} style={{ marginBottom: 12 }}>
             <legend>Recipient {index + 1}</legend>
@@ -64,6 +66,7 @@ export function ReminderRecipients({ employeeEmails, recipients, onChange }: {
               <label>Recipient <select value={recipient.recipient_type} onChange={event =>
                 update({ recipient_type: event.target.value, recipient_email: null })}>
                 <option value="owner">Equipment Owner</option>
+                <option value="coordinator">Equipment Coordinator</option>
                 <option value="specific_user">Specific employee</option>
                 {recipient.recipient_type === "department" && <option value="department">Department (legacy)</option>}
                 {recipient.recipient_type === "quality" && <option value="quality">Quality (legacy)</option>}
@@ -82,21 +85,34 @@ export function ReminderRecipients({ employeeEmails, recipients, onChange }: {
                 Remove recipient
               </button>
             </div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 8 }}>
-              {days.map(day => <label key={day}>
-                <input type="checkbox" checked={recipient.days.includes(day)} onChange={() =>
-                  update({ days: recipient.days.includes(day) ? recipient.days.filter(value => value !== day) : [...recipient.days, day] })} />
-                {day === 0 ? "Due Date" : day < 0 ? `${-day} Days Overdue` : `${day} Days Before`}
-              </label>)}
-            </div>
+
           </fieldset>
         );
       })}
+      {recipients.length > 0 && <fieldset style={{ marginBottom: 12 }}>
+        <legend>Reminder timing for all recipients</legend>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+          {days.map(day => {
+            const selectedForAll = recipients.every(recipient => recipient.days.includes(day));
+            const selectedForSome = !selectedForAll && selectedDays.includes(day);
+            return <label key={day}>
+              <input type="checkbox" checked={selectedForAll}
+                ref={element => { if (element) element.indeterminate = selectedForSome; }}
+                onChange={() => onChange(recipients.map(recipient => ({
+                  ...recipient,
+                  days: selectedForAll ? recipient.days.filter(value => value !== day) :
+                    [...new Set([...recipient.days, day])],
+                })))} />
+              {day === 0 ? "Due Date" : day < 0 ? `${-day} Days Overdue` : `${day} Days Before`}
+            </label>;
+          })}
+        </div>
+      </fieldset>}
       <button type="button" onClick={() => onChange([...recipients, {
         recipient_type: recipients.length ? "specific_user" : "owner",
         recipient_email: null,
         notification_type: "both",
-        days: [...defaultRecipients[0].days],
+        days: recipients.length ? selectedDays : [...defaultRecipients[0].days],
       }])}>Add recipient</button>
     </div>
   );

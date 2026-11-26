@@ -21,7 +21,10 @@ export async function GET(request: NextRequest) {
   if (!url || !key) return NextResponse.json({ error: "Scheduler configuration incomplete" }, { status: 503 });
   const db = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
   const enabled = process.env.EQUIPMENT_REMINDERS_ENABLED === "true";
+  const { error: taskError } = await db.rpc("qualisphere_reconcile_equipment_tasks");
+  if (taskError) return NextResponse.json({ error: "Unable to reconcile Equipment execution tasks" }, { status: 500 });
   const today = new Date().toISOString().slice(0, 10);
+  const coordinatorEmails = new Map<string, string[]>();
   let due = 0, created = 0, skipped = 0;
   // Paginate to avoid silently skipping customer schedules beyond the first 1000.
   for (let offset = 0; ; offset += 200) {
@@ -77,15 +80,30 @@ export async function GET(request: NextRequest) {
 
       const recipients = new Map<string, { email: boolean; workspace: boolean }>();
       for (const rule of matchingRules) {
-        const configuredEmail = rule.recipient_type === "owner" ? equipment.owner_email :
-          rule.recipient_type === "specific_user" ? rule.recipient_email : null;
-        const email = configuredEmail?.trim().toLowerCase();
-        if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { skipped++; continue; }
-        const existing = recipients.get(email);
-        recipients.set(email, {
-          email: !!existing?.email || rule.notification_type === "both" || rule.notification_type === "email",
-          workspace: !!existing?.workspace || rule.notification_type === "both" || rule.notification_type === "in_app",
-        });
+        let configuredEmails: (string | null)[] = [];
+        if (rule.recipient_type === "coordinator") {
+          let emails = coordinatorEmails.get(schedule.tenant_id);
+          if (!emails) {
+            const { data, error } = await db.rpc("qualisphere_equipment_coordinators", { p_tenant_id: schedule.tenant_id });
+            if (error) return NextResponse.json({ error: "Unable to resolve Equipment coordinators" }, { status: 500 });
+            emails = (data || []).map((row: { email: string }) => row.email);
+            coordinatorEmails.set(schedule.tenant_id, emails!);
+          }
+          configuredEmails = emails || [];
+        } else if (rule.recipient_type === "owner") {
+          configuredEmails = [equipment.owner_email];
+        } else if (rule.recipient_type === "specific_user") {
+          configuredEmails = [rule.recipient_email];
+        }
+        for (const configuredEmail of configuredEmails) {
+          const email = configuredEmail?.trim().toLowerCase();
+          if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { skipped++; continue; }
+          const existing = recipients.get(email);
+          recipients.set(email, {
+            email: !!existing?.email || rule.notification_type === "both" || rule.notification_type === "email",
+            workspace: !!existing?.workspace || rule.notification_type === "both" || rule.notification_type === "in_app",
+          });
+        }
       }
 
       for (const [email, delivery] of recipients) {
