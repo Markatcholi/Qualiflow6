@@ -1237,7 +1237,8 @@ function getTaskUrl(task: any) {
   if (task.entity_type === "training") return `/training`;
   if (task.entity_type === "management_review") return `/management-review/${task.entity_id}/approval-review?taskId=${task.id}`;
   if (task.entity_type === "equipment" && task.task_type === "equipment_execution") {
-    return `/equipment/${task.entity_id}#${task.activity_type === "calibration" ? "calibration" : "maintenance"}`;
+    const activity = task.activity_type === "calibration" ? "calibration" : "maintenance";
+    return `/equipment/${task.entity_id}?execution=${activity}#${activity}`;
   }
   if (task.entity_type === "equipment") return `/equipment/${task.entity_id}`;
   return "/";

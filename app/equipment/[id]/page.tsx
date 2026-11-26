@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "../../../lib/supabaseClient";
 import { defaultRecipients, groupRecipients, ReminderRecipients, reminderRules } from "./ReminderRecipients";
@@ -2157,6 +2157,40 @@ export default function EquipmentMasterPage() {
     ];
   }, [record, calibrations, schedules, qualifications]);
 
+  const releasePackageLocked = record?.record_status === "pending_release" || releaseRequest?.status === "pending";
+  const canMaintain=governanceRole==="coordinator" && !releasePackageLocked;
+  const canCompleteQualification = canMaintain || (isEquipmentOwner && record?.record_status === "draft" && !releasePackageLocked);
+  const canSubmitRelease = record?.record_status !== "released" && !releasePackageLocked && (canMaintain || (isEquipmentOwner && record?.record_status === "draft"));
+  const calibrationSchedule = schedules.find(
+    (row) => row.activity_type === "calibration" && row.is_active
+  );
+  const pmSchedule = schedules.find(
+    (row) => row.activity_type === "preventive_maintenance" && row.is_active
+  );
+  const canConfigureService = !releasePackageLocked && (governanceRole === "coordinator" || (isEquipmentOwner && record?.record_status === "draft"));
+  const canRecordOwnerService = !releasePackageLocked && isEquipmentOwner && record?.record_status === "released";
+  const canRecordCalibration = canConfigureService || (canRecordOwnerService && !!calibrationSchedule && record?.calibration_required);
+  const canRecordMaintenance = canConfigureService || (canRecordOwnerService && !!pmSchedule && record?.preventive_maintenance_required);
+  const openedExecutionForm = useRef("");
+  useEffect(() => {
+    if (loading || loadError || !record) return;
+    const activity = new URLSearchParams(window.location.search).get("execution");
+    const key = `${record.id}:${activity}`;
+    if (openedExecutionForm.current === key) return;
+    if (activity === "calibration" && canRecordCalibration && record.calibration_required) {
+      openedExecutionForm.current = key;
+      resetCalibrationEventForm();
+      applyScheduledCalibrationDates("scheduled", "");
+      setShowCalibrationEvent(true);
+      requestAnimationFrame(() => document.getElementById("calibration")?.scrollIntoView());
+    } else if (activity === "maintenance" && canRecordMaintenance && record.preventive_maintenance_required) {
+      openedExecutionForm.current = key;
+      resetMaintenanceEventForm();
+      setShowMaintenanceEvent(true);
+      requestAnimationFrame(() => document.getElementById("maintenance")?.scrollIntoView());
+    }
+  }, [loading, loadError, record, canRecordCalibration, canRecordMaintenance]);
+
   if (loading) {
     return (
       <main style={pageStyle}>
@@ -2181,20 +2215,6 @@ export default function EquipmentMasterPage() {
     );
   }
 
-  const releasePackageLocked = record?.record_status === "pending_release" || releaseRequest?.status === "pending";
-  const canMaintain=governanceRole==="coordinator" && !releasePackageLocked;
-  const canCompleteQualification = canMaintain || (isEquipmentOwner && record?.record_status === "draft" && !releasePackageLocked);
-  const canSubmitRelease = record?.record_status !== "released" && !releasePackageLocked && (canMaintain || (isEquipmentOwner && record?.record_status === "draft"));
-  const calibrationSchedule = schedules.find(
-    (row) => row.activity_type === "calibration" && row.is_active
-  );
-  const pmSchedule = schedules.find(
-    (row) => row.activity_type === "preventive_maintenance" && row.is_active
-  );
-  const canConfigureService = !releasePackageLocked && (governanceRole === "coordinator" || (isEquipmentOwner && record?.record_status === "draft"));
-  const canRecordOwnerService = !releasePackageLocked && isEquipmentOwner && record?.record_status === "released";
-  const canRecordCalibration = canConfigureService || (canRecordOwnerService && !!calibrationSchedule && record.calibration_required);
-  const canRecordMaintenance = canConfigureService || (canRecordOwnerService && !!pmSchedule && record.preventive_maintenance_required);
   const canLinkDocuments = !releasePackageLocked && (governanceRole==="coordinator" || isEquipmentOwner);
   const canLinkOos = !releasePackageLocked && (governanceRole==="coordinator" || isEquipmentOwner);
   const canApproveRelease=enterpriseApprovalAuthority==="equipment_approver"||enterpriseApprovalAuthority==="quality_approver"||enterpriseApprovalAuthority==="admin";
