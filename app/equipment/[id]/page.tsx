@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "../../../lib/supabaseClient";
+import { defaultRecipients, groupRecipients, ReminderRecipients, reminderRules } from "./ReminderRecipients";
 
 type EquipmentRecord = {
   id: string;
@@ -304,6 +305,7 @@ export default function EquipmentMasterPage() {
   const [governanceRole,setGovernanceRole]=useState<"viewer"|"coordinator"|"quality_approver"|"admin">("viewer");
   const [enterpriseApprovalAuthority,setEnterpriseApprovalAuthority]=useState<"none"|"quality_approver"|"equipment_approver"|"admin">("none");
   const [equipmentReleaseApprovers,setEquipmentReleaseApprovers]=useState<EquipmentReleaseApprover[]>([]);
+  const [reminderEmployeeEmails, setReminderEmployeeEmails] = useState<string[]>([]);
   const [approverProfiles,setApproverProfiles]=useState<EquipmentApproverProfile[]>([]);
   const [releaseEmployeeSearch,setReleaseEmployeeSearch]=useState("");
   const [releaseDepartments,setReleaseDepartments]=useState<string[]>([]);
@@ -344,10 +346,7 @@ export default function EquipmentMasterPage() {
     procedure_revision: "",
     overdue_use_action: "conditional_use",
   });
-  const [calibrationReminderDays, setCalibrationReminderDays] = useState<number[]>([30, 17, 7, 1]);
-  const [calibrationRecipient, setCalibrationRecipient] = useState<"owner" | "specific_user">("owner");
-  const [calibrationRecipientEmail, setCalibrationRecipientEmail] = useState("");
-  const [calibrationDelivery, setCalibrationDelivery] = useState<"in_app" | "email" | "both">("both");
+  const [calibrationRecipients, setCalibrationRecipients] = useState(defaultRecipients);
 
   const [showCalibrationEvent,setShowCalibrationEvent]=useState(false);
   const [savingCalibrationEvent,setSavingCalibrationEvent]=useState(false);
@@ -392,10 +391,7 @@ export default function EquipmentMasterPage() {
     procedure_revision:"",
     overdue_use_action:"conditional_use"
   });
-  const [pmReminderDays,setPmReminderDays]=useState<number[]>([30,17,7,1]);
-  const [pmRecipient, setPmRecipient] = useState<"owner" | "specific_user">("owner");
-  const [pmRecipientEmail, setPmRecipientEmail] = useState("");
-  const [pmDelivery, setPmDelivery] = useState<"in_app" | "email" | "both">("both");
+  const [pmRecipients, setPmRecipients] = useState(defaultRecipients);
 
   const [showMaintenanceEvent,setShowMaintenanceEvent]=useState(false);
   const [savingMaintenanceEvent,setSavingMaintenanceEvent]=useState(false);
@@ -502,7 +498,7 @@ export default function EquipmentMasterPage() {
   const loadCalibrationConfiguration = async (scheduleRows: Schedule[]) => {
     const existing = scheduleRows.find((item) => item.activity_type === "calibration" && item.is_active);
     if (!existing) {
-      setCalibrationReminderDays([30,17,7,1]);
+      setCalibrationRecipients(defaultRecipients);
       return;
     }
 
@@ -524,16 +520,13 @@ export default function EquipmentMasterPage() {
       overdue_use_action: (existing.overdue_use_action || "conditional_use"),
     });
 
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("equipment_schedule_notifications")
-      .select("days_before_due,is_enabled,recipient_type,recipient_email,notification_type")
+      .select("days_before_due,recipient_type,recipient_email,notification_type")
       .eq("schedule_configuration_id", existing.id)
       .eq("is_enabled", true);
-
-    const days = (data || []).map((row:any)=>Number(row.days_before_due)).filter(Number.isFinite).sort((a:number,b:number)=>b-a);
-    setCalibrationReminderDays(days);
-    const first = (data || [])[0];
-    if (first) { setCalibrationRecipient(first.recipient_type === "specific_user" ? "specific_user" : "owner"); setCalibrationRecipientEmail(first.recipient_email || ""); setCalibrationDelivery(first.notification_type || "both"); }
+    if (error) throw new Error(error.message);
+    setCalibrationRecipients(groupRecipients(data || []));
   };
 
 
@@ -543,7 +536,7 @@ export default function EquipmentMasterPage() {
     );
 
     if (!existing) {
-      setPmReminderDays([30,17,7,1]);
+      setPmRecipients(defaultRecipients);
       return;
     }
 
@@ -565,20 +558,13 @@ export default function EquipmentMasterPage() {
       overdue_use_action:(existing.overdue_use_action||"conditional_use")
     });
 
-    const {data}=await supabase
+    const { data, error } = await supabase
       .from("equipment_schedule_notifications")
-      .select("days_before_due,is_enabled,recipient_type,recipient_email,notification_type")
-      .eq("schedule_configuration_id",existing.id)
-      .eq("is_enabled",true);
-
-    const days=(data||[])
-      .map((row:any)=>Number(row.days_before_due))
-      .filter(Number.isFinite)
-      .sort((a:number,b:number)=>b-a);
-
-    setPmReminderDays(days);
-    const first = (data || [])[0];
-    if (first) { setPmRecipient(first.recipient_type === "specific_user" ? "specific_user" : "owner"); setPmRecipientEmail(first.recipient_email || ""); setPmDelivery(first.notification_type || "both"); }
+      .select("days_before_due,recipient_type,recipient_email,notification_type")
+      .eq("schedule_configuration_id", existing.id)
+      .eq("is_enabled", true);
+    if (error) throw new Error(error.message);
+    setPmRecipients(groupRecipients(data || []));
   };
 
   const load = async () => {
@@ -694,6 +680,8 @@ export default function EquipmentMasterPage() {
       if(departmentRowsError)console.warn(departmentRowsError.message);
       if(userProfileRowsError)console.warn(userProfileRowsError.message);
       if(employeeRowsError)console.warn(employeeRowsError.message);
+      setReminderEmployeeEmails([...new Set((employeeRows || [])
+        .map(row => String(row.user_email || "").trim().toLowerCase()).filter(Boolean))].sort());
       if(oosModuleError)console.warn(oosModuleError.message);
       if(oosReferenceError)console.warn(oosReferenceError.message);
       setOosModuleEnabled(oosModuleRow?.is_enabled===true);
@@ -872,12 +860,7 @@ export default function EquipmentMasterPage() {
     await load();
   };
 
-  const toggleCalibrationReminder = (day:number) => {
-    setCalibrationReminderDays((current) => current.includes(day) ? current.filter((d)=>d!==day) : [...current,day].sort((a,b)=>b-a));
-  };
-
   const saveCalibrationConfiguration = async () => {
-    if (calibrationRecipient === "specific_user" && !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(calibrationRecipientEmail.trim())) { setCalibrationConfigMessage("Enter a valid recipient email."); return; }
     if (record?.record_status !== "draft" && governanceRole !== "coordinator") return;
     if (record?.record_status === "pending_release" || releaseRequest?.status === "pending") return;
     if (!record) return;
@@ -907,25 +890,15 @@ export default function EquipmentMasterPage() {
         created_by: email,
       };
 
-      let scheduleId = calibrationSchedule?.id || "";
-      if (scheduleId) {
-        const { error } = await supabase.from("equipment_schedule_configurations").update(payload).eq("id",scheduleId);
-        if (error) throw new Error(error.message);
-      } else {
-        const { data,error } = await supabase.from("equipment_schedule_configurations").insert(payload).select("id").single();
-        if (error) throw new Error(error.message);
-        scheduleId = data.id;
-      }
+      const rules = reminderRules(calibrationRecipients);
+      const { error } = await supabase.rpc("qualisphere_save_equipment_schedule", {
+        p_schedule_id: calibrationSchedule?.id || null,
+        p_schedule: payload,
+        p_rules: rules,
+      });
+      if (error) throw new Error(error.message);
 
-      const { error:delError } = await supabase.from("equipment_schedule_notifications").delete().eq("schedule_configuration_id",scheduleId);
-      if (delError) throw new Error(delError.message);
-      if (calibrationReminderDays.length) {
-        const rows = calibrationReminderDays.map((day)=>({tenant_id:record.tenant_id,schedule_configuration_id:scheduleId,days_before_due:day,is_enabled:true,recipient_type:calibrationRecipient,recipient_email:calibrationRecipient === "specific_user" ? calibrationRecipientEmail.trim() : null,notification_type:calibrationDelivery,created_by:email}));
-        const { error } = await supabase.from("equipment_schedule_notifications").insert(rows);
-        if (error) throw new Error(error.message);
-      }
-
-      await addAudit(calibrationSchedule ? "calibration_schedule_updated" : "calibration_schedule_configured", `${calibrationSchedule ? "Updated" : "Configured"} calibration rules: every ${frequencyValue} ${calibrationConfig.frequency_unit}; ${calibrationConfig.schedule_mode}; reminders ${calibrationReminderDays.join(", ")}.`);
+      await addAudit(calibrationSchedule ? "calibration_schedule_updated" : "calibration_schedule_configured", `${calibrationSchedule ? "Updated" : "Configured"} calibration rules: every ${frequencyValue} ${calibrationConfig.frequency_unit}; ${calibrationConfig.schedule_mode}; ${rules.length} reminder rules.`);
       setCalibrationConfigMessage("Calibration configuration saved.");
       setShowCalibrationConfig(false);
       await load();
@@ -1058,7 +1031,7 @@ export default function EquipmentMasterPage() {
   };
 
   const saveCalibrationEvent=async()=>{
-    if (record?.record_status !== "draft" && governanceRole !== "coordinator") return;
+    if (!canConfigureService && (!canRecordCalibration || !calibrationSchedule || editingCalibrationEventId || calibrationEvent.event_source !== "scheduled")) return;
     if (record?.record_status === "pending_release" || releaseRequest?.status === "pending") return;
     if(!record)return;
     setCalibrationEventMessage("");
@@ -1074,6 +1047,7 @@ export default function EquipmentMasterPage() {
       calibrationEvent.next_due_date!==automaticCalibrationDates.nextDue||
       calibrationEvent.next_hard_due_date!==automaticCalibrationDates.nextHardDue
     );
+    if (scheduleWasOverridden && !canConfigureService) return;
     if(scheduleWasOverridden&&!calibrationEvent.schedule_override_reason.trim()){
       setCalibrationEventMessage("Override Reason / Justification is required when changing an automatically calculated calibration due date.");
       return;
@@ -1188,16 +1162,7 @@ export default function EquipmentMasterPage() {
   };
 
 
-  const togglePmReminder=(day:number)=>{
-    setPmReminderDays(current=>
-      current.includes(day)
-        ? current.filter(item=>item!==day)
-        : [...current,day].sort((a,b)=>b-a)
-    );
-  };
-
   const savePmConfiguration=async()=>{
-    if (pmRecipient === "specific_user" && !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(pmRecipientEmail.trim())) { setPmConfigMessage("Enter a valid recipient email."); return; }
     if (record?.record_status !== "draft" && governanceRole !== "coordinator") return;
     if (record?.record_status === "pending_release" || releaseRequest?.status === "pending") return;
     if(!record)return;
@@ -1242,50 +1207,17 @@ export default function EquipmentMasterPage() {
         created_by:email
       };
 
-      let scheduleId=pmSchedule?.id||"";
-      if(scheduleId){
-        const {error}=await supabase
-          .from("equipment_schedule_configurations")
-          .update(payload)
-          .eq("id",scheduleId);
-        if(error)throw new Error(error.message);
-      }else{
-        const {data,error}=await supabase
-          .from("equipment_schedule_configurations")
-          .insert(payload)
-          .select("id")
-          .single();
-        if(error)throw new Error(error.message);
-        scheduleId=data.id;
-      }
-
-      const {error:deleteError}=await supabase
-        .from("equipment_schedule_notifications")
-        .delete()
-        .eq("schedule_configuration_id",scheduleId);
-      if(deleteError)throw new Error(deleteError.message);
-
-      if(pmReminderDays.length){
-        const rows=pmReminderDays.map(day=>({
-          tenant_id:record.tenant_id,
-          schedule_configuration_id:scheduleId,
-          days_before_due:day,
-          is_enabled:true,
-          recipient_type:pmRecipient,
-          recipient_email:pmRecipient === "specific_user" ? pmRecipientEmail.trim() : null,
-          notification_type:pmDelivery,
-          created_by:email
-        }));
-
-        const {error}=await supabase
-          .from("equipment_schedule_notifications")
-          .insert(rows);
-        if(error)throw new Error(error.message);
-      }
+      const rules = reminderRules(pmRecipients);
+      const { error } = await supabase.rpc("qualisphere_save_equipment_schedule", {
+        p_schedule_id: pmSchedule?.id || null,
+        p_schedule: payload,
+        p_rules: rules,
+      });
+      if (error) throw new Error(error.message);
 
       await addAudit(
         pmSchedule?"preventive_maintenance_schedule_updated":"preventive_maintenance_schedule_configured",
-        `${pmSchedule?"Updated":"Configured"} preventive maintenance schedule: every ${frequencyValue} ${pmConfig.frequency_unit}; ${pmConfig.schedule_mode}; nominal ${pmSchedule?.nominal_due_date || "Not yet established"}; hard due ${pmSchedule?.hard_due_date || "Not yet established"}; reminders ${pmReminderDays.join(", ")}.`
+        `${pmSchedule?"Updated":"Configured"} preventive maintenance schedule: every ${frequencyValue} ${pmConfig.frequency_unit}; ${pmConfig.schedule_mode}; nominal ${pmSchedule?.nominal_due_date || "Not yet established"}; hard due ${pmSchedule?.hard_due_date || "Not yet established"}; ${rules.length} reminder rules.`
       );
 
       setPmConfigMessage("Preventive Maintenance configuration saved.");
@@ -1443,7 +1375,7 @@ export default function EquipmentMasterPage() {
   };
 
   const saveMaintenanceEvent=async()=>{
-    if (record?.record_status !== "draft" && governanceRole !== "coordinator") return;
+    if (!canConfigureService && (!canRecordMaintenance || !pmSchedule || editingMaintenanceEventId || maintenanceEvent.maintenance_type !== "preventive")) return;
     if (record?.record_status === "pending_release" || releaseRequest?.status === "pending") return;
     if(!record)return;
     setMaintenanceEventMessage("");
@@ -1453,6 +1385,7 @@ export default function EquipmentMasterPage() {
         : "");
 
 
+    if (!canConfigureService && nextMaintenanceDueDate !== calculateRecurringDueDate(maintenanceEvent.performed_date, pmSchedule)) return;
     if(!maintenanceEvent.performed_date){
       setMaintenanceEventMessage("Performed Date is required.");
       return;
@@ -2252,7 +2185,16 @@ export default function EquipmentMasterPage() {
   const canMaintain=governanceRole==="coordinator" && !releasePackageLocked;
   const canCompleteQualification = canMaintain || (isEquipmentOwner && record?.record_status === "draft" && !releasePackageLocked);
   const canSubmitRelease = record?.record_status !== "released" && !releasePackageLocked && (canMaintain || (isEquipmentOwner && record?.record_status === "draft"));
-  const serviceReadOnly = releasePackageLocked || !(governanceRole === "coordinator" || (isEquipmentOwner && record?.record_status === "draft"));
+  const calibrationSchedule = schedules.find(
+    (row) => row.activity_type === "calibration" && row.is_active
+  );
+  const pmSchedule = schedules.find(
+    (row) => row.activity_type === "preventive_maintenance" && row.is_active
+  );
+  const canConfigureService = !releasePackageLocked && (governanceRole === "coordinator" || (isEquipmentOwner && record?.record_status === "draft"));
+  const canRecordOwnerService = !releasePackageLocked && isEquipmentOwner && record?.record_status === "released";
+  const canRecordCalibration = canConfigureService || (canRecordOwnerService && !!calibrationSchedule && record.calibration_required);
+  const canRecordMaintenance = canConfigureService || (canRecordOwnerService && !!pmSchedule && record.preventive_maintenance_required);
   const canLinkDocuments = !releasePackageLocked && (governanceRole==="coordinator" || isEquipmentOwner);
   const canLinkOos = !releasePackageLocked && (governanceRole==="coordinator" || isEquipmentOwner);
   const canApproveRelease=enterpriseApprovalAuthority==="equipment_approver"||enterpriseApprovalAuthority==="quality_approver"||enterpriseApprovalAuthority==="admin";
@@ -2334,12 +2276,6 @@ export default function EquipmentMasterPage() {
     finally{setProcessingRelease(false);}
   };
 
-  const calibrationSchedule = schedules.find(
-    (row) => row.activity_type === "calibration" && row.is_active
-  );
-  const pmSchedule = schedules.find(
-    (row) => row.activity_type === "preventive_maintenance" && row.is_active
-  );
 
   return (
     <main style={pageStyle}>
@@ -2646,16 +2582,16 @@ export default function EquipmentMasterPage() {
       </section>
 
       {releasePackageLocked ? <p role="status" style={{color:"#475569"}}>Read only while Equipment Record Release approval is pending. Calibration and maintenance changes resume if the record is returned.</p> : null}
-      <fieldset disabled={serviceReadOnly} style={{border:0,padding:0,margin:0,minWidth:0}}>
-      <section style={{ ...card, marginBottom: 16 }}>
+      <fieldset disabled={!canRecordCalibration} style={{border:0,padding:0,margin:0,minWidth:0}}>
+      <section id="calibration" style={{ ...card, marginBottom: 16 }}>
         <SectionHeader
           title="4. Calibration Program"
           subtitle="Calibration scheduling and permanent calibration-event history."
-          action={!serviceReadOnly ? (
+          action={canRecordCalibration ? (
             <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
               {record.calibration_required ? (
                 <>
-                  <button
+                  {canConfigureService && <button
                     type="button"
                     style={primaryButton}
                     onClick={()=>{
@@ -2668,12 +2604,13 @@ export default function EquipmentMasterPage() {
                       : calibrationSchedule
                       ? "Edit Calibration Configuration"
                       : "Configure Calibration"}
-                  </button>
+                  </button>}
                   <button
                     type="button"
                     style={secondaryButton}
                     onClick={()=>{
                       resetCalibrationEventForm();
+                      if (!canConfigureService) applyScheduledCalibrationDates("scheduled", "");
                       setShowCalibrationEvent(v=>!v);
                     }}
                   >
@@ -2687,7 +2624,7 @@ export default function EquipmentMasterPage() {
           ) : null}
         />
 
-        {!serviceReadOnly && showCalibrationConfig && record.calibration_required ? (
+        {canConfigureService && showCalibrationConfig && record.calibration_required ? (
           <div style={{border:"1px solid #bfdbfe",background:"#f8fbff",borderRadius:12,padding:16,marginBottom:20}}>
             <h3 style={{margin:"0 0 5px"}}>Calibration Configuration</h3>
             <p style={{margin:"0 0 14px",color:"#64748b",fontSize:13}}>Configure the recurring calibration requirement and scheduling rules. The customer's calibration procedure remains the controlling instruction.</p>
@@ -2711,7 +2648,7 @@ export default function EquipmentMasterPage() {
 
             {calibrationConfig.schedule_mode==="flexible" ? <div style={{marginTop:14,border:"1px solid #bfdbfe",background:"#eff6ff",borderRadius:10,padding:12,color:"#1e3a8a",fontSize:13,lineHeight:1.5}}><strong>Flexible Scheduling:</strong> QualiSphere stores the allowable window, equipment family, and capacity rules so future fleet-balancing logic can distribute equivalent equipment without exceeding the Hard Due Date.</div> : null}
 
-            <div style={{marginTop:18}}><div style={fieldLabel}>Calibration Notifications</div><div style={{color:"#64748b",fontSize:13,marginBottom:8}}>Optional reminders to the Equipment Owner and Equipment Coordinators. Uncheck all to disable notifications; overdue-use action is separate.</div><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{[30,17,14,7,3,1,0,-1,-3,-7,-14].map(day=>{const selected=calibrationReminderDays.includes(day);return <label key={day} style={{display:"inline-flex",alignItems:"center",gap:6,border:selected?"1px solid #86efac":"1px solid #cbd5e1",background:selected?"#f0fdf4":"#fff",borderRadius:999,padding:"6px 10px",cursor:"pointer",fontSize:13,fontWeight:700}}><input type="checkbox" checked={selected} onChange={()=>toggleCalibrationReminder(day)}/>{day===0?"Due Date":day<0?`${Math.abs(day)} Days Overdue`:`${day} Days Before`}</label>})}</div><div style={{display:"flex",gap:12,flexWrap:"wrap",marginTop:12,alignItems:"center"}}><label>Recipient <select value={calibrationRecipient} onChange={e=>setCalibrationRecipient(e.target.value as "owner"|"specific_user")}><option value="owner">Equipment Owner</option><option value="specific_user">Specific Equipment Coordinator / User</option></select></label>{calibrationRecipient==="specific_user"?<label>Email <input type="email" required value={calibrationRecipientEmail} onChange={e=>setCalibrationRecipientEmail(e.target.value)} placeholder="Coordinator email"/></label>:null}<label>Delivery <select value={calibrationDelivery} onChange={e=>setCalibrationDelivery(e.target.value as "in_app"|"email"|"both")}><option value="both">Workspace and Email</option><option value="in_app">Workspace only</option><option value="email">Email only</option></select></label></div></div>
+            <ReminderRecipients employeeEmails={reminderEmployeeEmails} recipients={calibrationRecipients} onChange={setCalibrationRecipients} />
 
             {calibrationConfigMessage ? <div style={{marginTop:14,border:calibrationConfigMessage.includes("saved")?"1px solid #86efac":"1px solid #fecaca",background:calibrationConfigMessage.includes("saved")?"#f0fdf4":"#fef2f2",color:calibrationConfigMessage.includes("saved")?"#166534":"#991b1b",borderRadius:10,padding:10}}>{calibrationConfigMessage}</div> : null}
 
@@ -2719,12 +2656,12 @@ export default function EquipmentMasterPage() {
           </div>
         ) : null}
 
-        {showCalibrationEvent&&record.calibration_required?(
+        {canRecordCalibration && showCalibrationEvent && record.calibration_required ?(
           <div style={{border:"1px solid #cbd5e1",background:"#fff",borderRadius:12,padding:16,marginBottom:20}}>
             <h3 style={{margin:"0 0 5px"}}>{editingCalibrationEventId?"Update Calibration Record":"Add Calibration Record"}</h3>
             <p style={{margin:"0 0 14px",color:"#64748b",fontSize:13}}>{editingCalibrationEventId?"Update the calibration event, comments, and supporting records.":"Record a calibration event and attach one or more supporting calibration records."}</p>
             <div style={formGridStyle}>
-              <EditField label="Event Source"><select value={calibrationEvent.event_source} onChange={e=>applyScheduledCalibrationDates(e.target.value,calibrationEvent.performed_date)} style={input}><option value="manual">Manual / Historical</option><option value="scheduled">Scheduled</option><option value="post_maintenance">Post Maintenance</option><option value="other">Other</option></select></EditField>
+              <EditField label="Event Source"><select disabled={!canConfigureService} value={calibrationEvent.event_source} onChange={e=>applyScheduledCalibrationDates(e.target.value,calibrationEvent.performed_date)} style={input}><option value="manual">Manual / Historical</option><option value="scheduled">Scheduled</option><option value="post_maintenance">Post Maintenance</option><option value="other">Other</option></select></EditField>
               <EditField label="Calibration Date"><input type="date" value={calibrationEvent.performed_date} onChange={e=>applyScheduledCalibrationDates(calibrationEvent.event_source,e.target.value)} style={input}/></EditField>
               <EditField label="Result"><select value={calibrationEvent.result} onChange={e=>setCalibrationEvent({...calibrationEvent,result:e.target.value})} style={input}><option value="pass">Pass</option><option value="oot">OOT</option><option value="oos">OOS</option></select></EditField>
               <EditField label="Certificate / Record Number"><input value={calibrationEvent.certificate_number} onChange={e=>setCalibrationEvent({...calibrationEvent,certificate_number:e.target.value})} style={input}/></EditField>
@@ -2738,13 +2675,13 @@ export default function EquipmentMasterPage() {
             <div style={{marginTop:14,maxWidth:760}}>
               <div style={formGridStyle}>
                 <EditField label="Next Calibration Due Date">
-                  <input type="date" value={calibrationEvent.next_due_date} onChange={e=>{const next=e.target.value;setCalibrationEvent(current=>({...current,next_due_date:next,next_hard_due_date:current.event_source==="scheduled"?getMonthEndDate(next):current.next_hard_due_date}));}} style={input}/>
+                  <input type="date" readOnly={!canConfigureService} value={calibrationEvent.next_due_date} onChange={e=>{const next=e.target.value;setCalibrationEvent(current=>({...current,next_due_date:next,next_hard_due_date:current.event_source==="scheduled"?getMonthEndDate(next):current.next_hard_due_date}));}} style={input}/>
                 </EditField>
                 {calibrationEvent.event_source==="scheduled"?<EditField label="Hard Due Date">
-                  <input type="date" value={calibrationEvent.next_hard_due_date} onChange={e=>setCalibrationEvent({...calibrationEvent,next_hard_due_date:e.target.value})} style={input}/>
+                  <input type="date" readOnly={!canConfigureService} value={calibrationEvent.next_hard_due_date} onChange={e=>setCalibrationEvent({...calibrationEvent,next_hard_due_date:e.target.value})} style={input}/>
                 </EditField>:null}
               </div>
-              <div style={{color:"#64748b",fontSize:12,marginTop:5}}>{calibrationEvent.event_source==="scheduled"?"Automatically calculated from the Calibration Date and configured frequency. You may override the dates when justified.":"Optional. When entered, QualiSphere advances the recurring calibration schedule to this date."}</div>
+              <div style={{color:"#64748b",fontSize:12,marginTop:5}}>{calibrationEvent.event_source==="scheduled"?"Automatically calculated from the Calibration Date and configured frequency.":"Optional. When entered, QualiSphere advances the recurring calibration schedule to this date."}</div>
               {calibrationEvent.event_source==="scheduled"&&calibrationEvent.performed_date&&(()=>{const automatic=getAutomaticCalibrationDates(calibrationEvent.performed_date);const overridden=calibrationEvent.next_due_date!==automatic.nextDue||calibrationEvent.next_hard_due_date!==automatic.nextHardDue;return overridden?<div style={{marginTop:12}}><EditField label="Override Reason / Justification"><textarea rows={3} value={calibrationEvent.schedule_override_reason} onChange={e=>setCalibrationEvent({...calibrationEvent,schedule_override_reason:e.target.value})} placeholder="Required because the automatically calculated calibration schedule was changed." style={{...input,resize:"vertical"}}/></EditField><div style={{color:"#64748b",fontSize:12,marginTop:5}}>Calculated schedule: Next Due {formatDate(automatic.nextDue)} · Hard Due {formatDate(automatic.nextHardDue)}. The calculated dates, final dates, justification, user, and timestamp are retained in the audit trail.</div></div>:null;})()}
             </div>
             <div style={{marginTop:18}}>
@@ -2786,7 +2723,7 @@ export default function EquipmentMasterPage() {
                   <td style={tdMini}>{formatDate(row.hard_due_date||getMonthEndDate(row.performed_date))}</td>
                   <td style={tdMini}>{a.length===0?"None":<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{a.map((x:any,i:number)=><button key={`${x?.path||x?.name||i}`} type="button" style={attachmentButton} onClick={()=>openCalibrationAttachment(x)}>{x?.name||`Attachment ${i+1}`}</button>)}</div>}</td>
                   <td style={tdMini}>{formatLabel(row.status)}</td>
-                  <td style={tdMini}>{!serviceReadOnly ? <button type="button" style={secondaryButton} onClick={()=>editCalibrationEvent(row)}>Edit</button> : "Read Only"}</td>
+                  <td style={tdMini}>{canConfigureService ? <button type="button" style={secondaryButton} onClick={()=>editCalibrationEvent(row)}>Edit</button> : "Read Only"}</td>
                 </tr>
               })}</tbody>
             </table>
@@ -2795,12 +2732,12 @@ export default function EquipmentMasterPage() {
       </section>
       </fieldset>
 
-      <fieldset disabled={serviceReadOnly} style={{border:0,padding:0,margin:0,minWidth:0}}>
-      <section style={{ ...card, marginBottom: 16 }}>
+      <fieldset disabled={!canRecordMaintenance} style={{border:0,padding:0,margin:0,minWidth:0}}>
+      <section id="maintenance" style={{ ...card, marginBottom: 16 }}>
         <SectionHeader
           title="5. Preventive / Unplanned Maintenance"
           subtitle="Preventive Maintenance uses controlled Fixed/Flexible scheduling. Unplanned Maintenance captures the issue, repair, major components replaced, and the optional post-maintenance calibration/requalification assessment."
-          action={!serviceReadOnly ? (
+          action={canRecordMaintenance ? (
             <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
               <button
                 type="button"
@@ -2813,7 +2750,7 @@ export default function EquipmentMasterPage() {
                 {showMaintenanceEvent?"Close Maintenance Record":"Add Maintenance Record"}
               </button>
 
-              {record.preventive_maintenance_required ? (
+              {canConfigureService && record.preventive_maintenance_required ? (
                 <button
                   type="button"
                   style={primaryButton}
@@ -2833,7 +2770,7 @@ export default function EquipmentMasterPage() {
           ) : null}
         />
 
-        {!serviceReadOnly && showPmConfig && record.preventive_maintenance_required ? (
+        {canConfigureService && showPmConfig && record.preventive_maintenance_required ? (
           <div style={{border:"1px solid #bfdbfe",background:"#f8fbff",borderRadius:12,padding:16,marginBottom:20}}>
             <h3 style={{margin:"0 0 5px"}}>Preventive Maintenance Configuration</h3>
             <p style={{margin:"0 0 14px",color:"#64748b",fontSize:13}}>
@@ -2910,22 +2847,7 @@ export default function EquipmentMasterPage() {
               </div>
             ) : null}
 
-            <div style={{marginTop:18}}>
-              <div style={fieldLabel}>Preventive Maintenance Notifications</div>
-              <div style={{color:"#64748b",fontSize:13,marginBottom:8}}>Optional reminders to the Equipment Owner and Equipment Coordinators. Uncheck all to disable notifications; overdue-use action is separate.</div>
-              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                {[30,17,14,7,3,1,0,-1,-3,-7,-14].map(day=>{
-                  const selected=pmReminderDays.includes(day);
-                  return (
-                    <label key={day} style={{display:"inline-flex",alignItems:"center",gap:6,border:selected?"1px solid #86efac":"1px solid #cbd5e1",background:selected?"#f0fdf4":"#fff",borderRadius:999,padding:"6px 10px",cursor:"pointer",fontSize:13,fontWeight:700}}>
-                      <input type="checkbox" checked={selected} onChange={()=>togglePmReminder(day)}/>
-                      {day===0?"Due Date":day<0?`${Math.abs(day)} Days Overdue`:`${day} Days Before`}
-                    </label>
-                  );
-                })}
-              </div>
-              <div style={{display:"flex",gap:12,flexWrap:"wrap",marginTop:12,alignItems:"center"}}><label>Recipient <select value={pmRecipient} onChange={e=>setPmRecipient(e.target.value as "owner"|"specific_user")}><option value="owner">Equipment Owner</option><option value="specific_user">Specific Equipment Coordinator / User</option></select></label>{pmRecipient==="specific_user"?<label>Email <input type="email" required value={pmRecipientEmail} onChange={e=>setPmRecipientEmail(e.target.value)} placeholder="Coordinator email"/></label>:null}<label>Delivery <select value={pmDelivery} onChange={e=>setPmDelivery(e.target.value as "in_app"|"email"|"both")}><option value="both">Workspace and Email</option><option value="in_app">Workspace only</option><option value="email">Email only</option></select></label></div>
-            </div>
+            <ReminderRecipients employeeEmails={reminderEmployeeEmails} recipients={pmRecipients} onChange={setPmRecipients} />
 
             {pmConfigMessage ? (
               <div style={{marginTop:14,border:pmConfigMessage.includes("saved")?"1px solid #86efac":"1px solid #fecaca",background:pmConfigMessage.includes("saved")?"#f0fdf4":"#fef2f2",color:pmConfigMessage.includes("saved")?"#166534":"#991b1b",borderRadius:10,padding:10}}>
@@ -2942,7 +2864,7 @@ export default function EquipmentMasterPage() {
           </div>
         ) : null}
 
-        {showMaintenanceEvent ? (
+        {canRecordMaintenance && showMaintenanceEvent ? (
           <div style={{border:"1px solid #cbd5e1",background:"#fff",borderRadius:12,padding:16,marginBottom:20}}>
             <h3 style={{margin:"0 0 5px"}}>
               {editingMaintenanceEventId?"Update Maintenance Record":"Add Maintenance Record"}
@@ -2954,6 +2876,7 @@ export default function EquipmentMasterPage() {
             <div style={formGridStyle}>
               <EditField label="Maintenance Type">
                 <select
+                  disabled={!canConfigureService}
                   value={maintenanceEvent.maintenance_type}
                   onChange={e=>{
                     const next=e.target.value;
@@ -3096,7 +3019,7 @@ export default function EquipmentMasterPage() {
 
             <div style={{marginTop:14,maxWidth:360}}>
               <EditField label="Next Maintenance Due Date">
-                <input type="date" value={maintenanceEvent.next_due_date || (maintenanceEvent.maintenance_type==="preventive" ? calculateRecurringDueDate(maintenanceEvent.performed_date,pmSchedule || null) : "")} onChange={e=>setMaintenanceEvent({...maintenanceEvent,next_due_date:e.target.value})} style={input}/>
+                <input type="date" readOnly={!canConfigureService} value={maintenanceEvent.next_due_date || (maintenanceEvent.maintenance_type==="preventive" ? calculateRecurringDueDate(maintenanceEvent.performed_date,pmSchedule || null) : "")} onChange={e=>setMaintenanceEvent({...maintenanceEvent,next_due_date:e.target.value})} style={input}/>
               </EditField>
               <div style={{color:"#64748b",fontSize:12,marginTop:5}}>Calculated from the performed date and configured PM interval for preventive maintenance. When entered, this date advances the recurring PM schedule.</div>
             </div>
@@ -3202,7 +3125,7 @@ export default function EquipmentMasterPage() {
                         </td>
                         <td style={tdMini}>{formatLabel(row.status)}</td>
                         <td style={tdMini}>
-                          {!serviceReadOnly ? <button type="button" style={secondaryButton} onClick={()=>editMaintenanceEvent(row)}>Edit</button> : "Read Only"}
+                          {canConfigureService ? <button type="button" style={secondaryButton} onClick={()=>editMaintenanceEvent(row)}>Edit</button> : "Read Only"}
                         </td>
                       </tr>
                     );

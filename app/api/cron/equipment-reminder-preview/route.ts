@@ -3,7 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-type Rule = { schedule_configuration_id: string; days_before_due: number; recipient_type: string; recipient_email: string | null; notification_type: string };
+type Rule = { tenant_id: string; schedule_configuration_id: string; days_before_due: number; recipient_type: string; recipient_email: string | null; notification_type: string };
 const dateDiff = (due: string, today: string) => Math.round((Date.parse(due + "T00:00:00Z") - Date.parse(today + "T00:00:00Z")) / 86400000);
 
 /**
@@ -32,52 +32,85 @@ export async function GET(request: NextRequest) {
     if (error) return NextResponse.json({ error: "Unable to read Equipment schedules" }, { status: 500 });
     if (!schedules?.length) break;
     const ids = schedules.map(s => s.id);
-    const { data: rules, error: ruleError } = await db.from("equipment_schedule_notifications")
-      .select("schedule_configuration_id,days_before_due,recipient_type,recipient_email,notification_type")
-      .eq("is_enabled", true).in("schedule_configuration_id", ids);
-    if (ruleError) return NextResponse.json({ error: "Unable to read reminder rules" }, { status: 500 });
-    const scheduleById = new Map(schedules.map(s => [s.id, s]));
-    for (const rule of (rules || []) as Rule[]) {
-      const schedule = scheduleById.get(rule.schedule_configuration_id);
-      if (!schedule?.nominal_due_date || !schedule.tenant_id || !schedule.equipment_id) continue;
+    const rulesBySchedule = new Map<string, Rule[]>();
+    for (let ruleOffset = 0; ; ruleOffset += 500) {
+      const { data: rules, error: ruleError } = await db.from("equipment_schedule_notifications")
+        .select("tenant_id,schedule_configuration_id,days_before_due,recipient_type,recipient_email,notification_type")
+        .eq("is_enabled", true).in("schedule_configuration_id", ids)
+        .order("id").range(ruleOffset, ruleOffset + 499);
+      if (ruleError) return NextResponse.json({ error: "Unable to read reminder rules" }, { status: 500 });
+      for (const rule of (rules || []) as Rule[]) {
+        if (!rulesBySchedule.has(rule.schedule_configuration_id)) rulesBySchedule.set(rule.schedule_configuration_id, []);
+        rulesBySchedule.get(rule.schedule_configuration_id)!.push(rule);
+      }
+      if (!rules || rules.length < 500) break;
+    }
+
+    for (const schedule of schedules) {
+      if (!schedule.nominal_due_date || !schedule.tenant_id || !schedule.equipment_id) continue;
       const remaining = dateDiff(schedule.nominal_due_date, today);
-      if (!Number.isFinite(remaining) || remaining !== rule.days_before_due) continue;
-      due++;
-      // Check completion before queueing any reminder. Only a new due cycle
-      // may generate a notification after a completed event.
-      const eventsTable = schedule.activity_type === "calibration" ? "equipment_calibration_events" : "equipment_maintenance_events";
-      const { data: completed, error: eventError } = await db.from(eventsTable)
+      const matchingRules = (rulesBySchedule.get(schedule.id) || []).filter(rule =>
+        rule.tenant_id === schedule.tenant_id && rule.days_before_due === remaining);
+      if (!matchingRules.length) continue;
+      due += matchingRules.length;
+
+      const calibration = schedule.activity_type === "calibration";
+      const eventsTable = calibration ? "equipment_calibration_events" : "equipment_maintenance_events";
+      let completion = db.from(eventsTable)
         .select("id").eq("tenant_id", schedule.tenant_id).eq("equipment_id", schedule.equipment_id)
         .eq("status", "completed").not("performed_date", "is", null)
-        .eq("nominal_due_date", schedule.nominal_due_date).limit(1);
+        .eq("nominal_due_date", schedule.nominal_due_date);
+      if (!calibration) completion = completion.eq("maintenance_type", "preventive");
+      const { data: completed, error: eventError } = await completion.limit(1);
       if (eventError) return NextResponse.json({ error: "Unable to verify Equipment completion" }, { status: 500 });
-      if (completed?.length) { skipped++; continue; }
+      if (completed?.length) { skipped += matchingRules.length; continue; }
+
       const { data: equipment, error: equipmentError } = await db.from("equipment")
-        .select("id,tenant_id,equipment_number,equipment_name,owner_email,record_status")
+        .select("id,tenant_id,equipment_number,equipment_name,owner_email,record_status,calibration_required,preventive_maintenance_required")
         .eq("id", schedule.equipment_id).eq("tenant_id", schedule.tenant_id).maybeSingle();
-      if (equipmentError || !equipment || equipment.record_status !== "released") { skipped++; continue; }
-      // Until role-specific coordinator lookup is validated, only configured
-      // owner or explicit recipient rules are eligible for generation.
-      const email = rule.recipient_type === "owner" ? equipment.owner_email : rule.recipient_type === "specific_user" ? rule.recipient_email : null;
-      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { skipped++; continue; }
-      const { data: membership, error: membershipError } = await db.from("tenant_memberships")
-        .select("tenant_id").eq("tenant_id", schedule.tenant_id).eq("membership_status", "active")
-        .ilike("user_email", email).limit(1);
-      if (membershipError || !membership?.length) { skipped++; continue; }
-      if (!enabled) continue;
-      const keyPart = [schedule.tenant_id, schedule.id, schedule.nominal_due_date, rule.days_before_due, email.toLowerCase()].join(":");
-      const emailEnabled = rule.notification_type === "both" || rule.notification_type === "email";
-      const { error: insertError } = await db.from("notifications").insert({
-        user_email: email.toLowerCase(),
-        title: `Equipment ${schedule.activity_type === "calibration" ? "calibration" : "maintenance"} reminder: ${equipment.equipment_number}`,
-        message: `${equipment.equipment_name || equipment.equipment_number} ${remaining < 0 ? "was due" : "is due"} for ${schedule.activity_type === "calibration" ? "calibration" : "preventive maintenance"} on ${schedule.nominal_due_date}.`,
-        related_module: "equipment", related_record_id: equipment.id, related_url: `/equipment/${equipment.id}`,
-        notification_type: "equipment_schedule_reminder", created_by: "equipment_scheduler",
-        deduplication_key: keyPart, delivery_status: emailEnabled ? "pending" : "not_required",
-      });
-      if (insertError && insertError.code !== "23505") return NextResponse.json({ error: "Unable to queue Equipment reminder" }, { status: 500 });
-      if (insertError?.code === "23505") { skipped++; continue; }
-      created++;
+      if (equipmentError) return NextResponse.json({ error: "Unable to verify Equipment status" }, { status: 500 });
+      if (!equipment || equipment.record_status !== "released" ||
+          !(calibration ? equipment.calibration_required : equipment.preventive_maintenance_required)) {
+        skipped += matchingRules.length;
+        continue;
+      }
+
+      const recipients = new Map<string, { email: boolean; workspace: boolean }>();
+      for (const rule of matchingRules) {
+        const configuredEmail = rule.recipient_type === "owner" ? equipment.owner_email :
+          rule.recipient_type === "specific_user" ? rule.recipient_email : null;
+        const email = configuredEmail?.trim().toLowerCase();
+        if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { skipped++; continue; }
+        const existing = recipients.get(email);
+        recipients.set(email, {
+          email: !!existing?.email || rule.notification_type === "both" || rule.notification_type === "email",
+          workspace: !!existing?.workspace || rule.notification_type === "both" || rule.notification_type === "in_app",
+        });
+      }
+
+      for (const [email, delivery] of recipients) {
+        const { data: membership, error: membershipError } = await db.from("tenant_memberships")
+          .select("user_email").eq("tenant_id", schedule.tenant_id).eq("membership_status", "active")
+          .ilike("user_email", email.replace(/[\\_%]/g, "\\$&")).limit(1);
+        if (membershipError) return NextResponse.json({ error: "Unable to verify reminder recipient" }, { status: 500 });
+        if (!membership?.some(row => row.user_email.toLowerCase() === email)) { skipped++; continue; }
+        if (!enabled) continue;
+
+        const keyPart = [schedule.tenant_id, schedule.id, schedule.nominal_due_date, remaining, email].join(":");
+        const { error: insertError } = await db.from("notifications").insert({
+          user_email: email,
+          title: `Equipment ${calibration ? "calibration" : "maintenance"} reminder: ${equipment.equipment_number}`,
+          message: `${equipment.equipment_name || equipment.equipment_number} ${remaining < 0 ? "was due" : "is due"} for ${calibration ? "calibration" : "preventive maintenance"} on ${schedule.nominal_due_date}.`,
+          related_module: "equipment", related_record_id: equipment.id,
+          related_url: `/equipment/${equipment.id}#${calibration ? "calibration" : "maintenance"}`,
+          notification_type: "equipment_schedule_reminder", created_by: "equipment_scheduler",
+          deduplication_key: keyPart, delivery_status: delivery.email ? "pending" : "not_required",
+          workspace_visible: delivery.workspace,
+        });
+        if (insertError && insertError.code !== "23505") return NextResponse.json({ error: "Unable to queue Equipment reminder" }, { status: 500 });
+        if (insertError) { skipped++; continue; }
+        created++;
+      }
     }
     if (schedules.length < 200) break;
   }
