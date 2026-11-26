@@ -279,10 +279,15 @@ export default function HomePage() {
         }))
         .filter((task: any) => internalTenant || workItemModuleEnabled(task, entitlementSet));
 
-      const [ownedRecordItems, documentReviewItems, trainingItems] = await Promise.all([
+      const [ownedRecordItems, documentReviewItems, trainingItems, equipmentTasks] = await Promise.all([
         fetchOwnedRecordItems(userEmail),
         fetchDocumentReviewItems(userEmail),
         fetchTrainingItems(userEmail),
+        internalTenant || moduleIsEnabled("equipment", entitlementSet)
+          ? supabase.from("equipment_execution_tasks")
+              .select("id,equipment_id,activity_type,due_date,record_number,assigned_to_email,status")
+              .eq("tenant_id", tenantId).eq("status", "pending")
+          : { data: [], error: null },
       ]);
       const entitlementFilteredOwnedItems = ownedRecordItems.filter(
         (item: any) => internalTenant || workItemModuleEnabled(item, entitlementSet)
@@ -291,9 +296,20 @@ export default function HomePage() {
         (item: any) => internalTenant || workItemModuleEnabled(item, entitlementSet)
       );
 
+      if (equipmentTasks.error) console.warn("Unable to load Equipment execution tasks", equipmentTasks.error.message);
+      const equipmentTaskItems = (equipmentTasks.data || []).map(task => ({
+        ...task,
+        entity_type: "equipment",
+        entity_id: task.equipment_id,
+        task_type: "equipment_execution",
+        workspace_item_type: "assigned_task" as WorkspaceItemType,
+        task_title: task.activity_type === "calibration" ? "Complete Calibration" : "Complete Preventive Maintenance",
+      }));
+
       setWorkItems(
         [
           ...assignedTaskItems,
+          ...equipmentTaskItems,
           ...entitlementFilteredOwnedItems,
           ...entitlementFilteredDocumentReviewItems,
           ...trainingItems.filter((item: any) => internalTenant || workItemModuleEnabled(item, entitlementSet)),
@@ -1144,7 +1160,7 @@ function requiresUserAction(record: any, itemType: WorkspaceItemType) {
 }
 
 function canReassignItem(item: any) {
-  return item.workspace_item_type === "assigned_task" || item.workspace_item_type === "owned_capa";
+  return item.task_type !== "equipment_execution" && (item.workspace_item_type === "assigned_task" || item.workspace_item_type === "owned_capa");
 }
 
 function matchesWorkspaceFilter(item: any, filter: WorkspaceFilter) {
@@ -1220,6 +1236,9 @@ function getTaskUrl(task: any) {
   if (task.entity_type === "audit") return `/audits/${task.entity_id}`;
   if (task.entity_type === "training") return `/training`;
   if (task.entity_type === "management_review") return `/management-review/${task.entity_id}/approval-review?taskId=${task.id}`;
+  if (task.entity_type === "equipment" && task.task_type === "equipment_execution") {
+    return `/equipment/${task.entity_id}#${task.activity_type === "calibration" ? "calibration" : "maintenance"}`;
+  }
   if (task.entity_type === "equipment") return `/equipment/${task.entity_id}`;
   return "/";
 }
